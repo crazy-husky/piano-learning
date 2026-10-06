@@ -4,6 +4,7 @@ import { formatTargetNoteLabel, noteToVexKey } from "../../domain/notes";
 import { positiveTertileLevel, type NoteConfusionStat } from "../../domain/stats";
 import type { NoteName, Staff, StaffNotationMode, TargetNote } from "../../domain/types";
 import { STATS_RANGE_STAFF_LAYOUT } from "../staffLayoutProfiles";
+import { useNightMode } from "../pageAppearance";
 import {
   alignStaveNotesToCenters,
   createStaffRenderSurface,
@@ -72,6 +73,16 @@ interface NoteTooltipState {
   top: number;
 }
 
+interface StatsNotationPalette {
+  heatBlue: Record<1 | 2 | 3, string>;
+  heatRed: Record<1 | 2 | 3, string>;
+  ink: string;
+  muted: string;
+  p10: string;
+  p90: string;
+  median: string;
+}
+
 const NOTE_DURATION = "w";
 const RANGE_COLUMNS: Array<{ answerNumber: string; noteName: NoteName }> = [
   { answerNumber: "1", noteName: "C" },
@@ -102,22 +113,23 @@ function comparePitch(left: StaffHeatNote, right: StaffHeatNote): number {
   return pitchOrder(left.note) - pitchOrder(right.note);
 }
 
-function heatColor(value: number | undefined, positiveValues: number[], tone: StatsRangeTone): string {
+function heatColor(value: number | undefined, positiveValues: number[], tone: StatsRangeTone, palette: StatsNotationPalette): string {
   if (value === undefined || value <= 0 || positiveValues.length === 0) {
-    return STATS_COLORS.range.neutral;
+    return palette.ink;
   }
 
-  return STATS_COLORS.range.tone[tone][positiveTertileLevel(value, positiveValues)];
+  const level = positiveTertileLevel(value, positiveValues);
+  return (tone === "blue" ? palette.heatBlue : palette.heatRed)[level];
 }
 
-function getRangeColumns(notes: StaffHeatNote[], tone: StatsRangeTone): RangeColumn[] {
+function getRangeColumns(notes: StaffHeatNote[], tone: StatsRangeTone, palette: StatsNotationPalette): RangeColumn[] {
   const positiveValues = notes
     .map((note) => note.value)
     .filter((value): value is number => value !== undefined && value > 0)
     .sort((a, b) => a - b);
   const coloredNotes = notes.map((note) => ({
     ...note,
-    color: heatColor(note.value, positiveValues, tone),
+    color: heatColor(note.value, positiveValues, tone, palette),
   }));
 
   return RANGE_COLUMNS.map((column) => {
@@ -130,14 +142,14 @@ function getRangeColumns(notes: StaffHeatNote[], tone: StatsRangeTone): RangeCol
   });
 }
 
-function makeChord(notes: ColoredStaffHeatNote[], staff: Staff): StaveNote {
+function makeChord(notes: ColoredStaffHeatNote[], staff: Staff, neutralColor: string): StaveNote {
   const hasNotes = notes.length > 0;
   const chord = new StaveNote({
     clef: staff,
     duration: NOTE_DURATION,
     keys: hasNotes ? notes.map((note) => noteToVexKey(note.note)) : [staff === "treble" ? "b/4" : "d/3"],
   });
-  const baseColor = hasNotes ? STATS_COLORS.range.neutral : STATS_COLORS.range.transparentNote;
+  const baseColor = hasNotes ? neutralColor : STATS_COLORS.range.transparentNote;
   chord.setStyle({ fillStyle: baseColor, strokeStyle: baseColor });
   chord.setLedgerLineStyle({ fillStyle: baseColor, strokeStyle: baseColor });
   notes.forEach((note, index) => {
@@ -205,7 +217,21 @@ export function StatsRangeStaff({ label, notes, staffNotationMode, tone }: Stats
   const frameRef = useRef<HTMLDivElement | null>(null);
   const rendererTargetRef = useRef<HTMLDivElement | null>(null);
   const [noteTooltip, setNoteTooltip] = useState<NoteTooltipState | undefined>();
-  const columns = useMemo(() => getRangeColumns(notes, tone), [notes, tone]);
+  const isNightMode = useNightMode();
+  const palette = useMemo<StatsNotationPalette>(() => ({
+    heatBlue: isNightMode
+      ? { 1: "#6bd6a0", 2: "#dfcf62", 3: "#ed8b7e" }
+      : { 1: "#26ad75", 2: "#cdc611", 3: "#ad3226" },
+    heatRed: isNightMode
+      ? { 1: "#e9aaa1", 2: "#f08c79", 3: "#ed766b" }
+      : { 1: "#e7aaa2", 2: "#d86f63", 3: "#ad3226" },
+    ink: isNightMode ? "#bcc6be" : "#211c18",
+    muted: isNightMode ? "#b2beb5" : "#766b5f",
+    p10: isNightMode ? "#55c5b3" : "#2f7d74",
+    p90: isNightMode ? "#ed8b7e" : "#c84c3d",
+    median: isNightMode ? "#e2e9e2" : "#2b2520",
+  }), [isNightMode]);
+  const columns = useMemo(() => getRangeColumns(notes, tone, palette), [notes, palette, tone]);
   const useLedgerGap = staffNotationMode === "grand" && notes.some((item) => item.note.isInterStaffLedgerSpelling);
   const effectiveTargetNoteIds = useMemo(() => new Set(notes.map((item) => item.note.id)), [notes]);
 
@@ -248,8 +274,8 @@ export function StatsRangeStaff({ label, notes, staffNotationMode, tone }: Stats
       let layoutTickables: StaveNote[];
       if (system.mode === "grand") {
         const { bass, treble } = system;
-        trebleTickables.push(...columns.map((column) => makeChord(column.trebleNotes, "treble")));
-        bassTickables.push(...columns.map((column) => makeChord(column.bassNotes, "bass")));
+        trebleTickables.push(...columns.map((column) => makeChord(column.trebleNotes, "treble", palette.ink)));
+        bassTickables.push(...columns.map((column) => makeChord(column.bassNotes, "bass", palette.ink)));
         const trebleVoice = new Voice(voiceOptions).addTickables(trebleTickables);
         const bassVoice = new Voice(voiceOptions).addTickables(bassTickables);
         treble.setNoteStartX(noteArea.left);
@@ -267,7 +293,7 @@ export function StatsRangeStaff({ label, notes, staffNotationMode, tone }: Stats
       } else {
         const { staff, stave } = system;
         const tickables = columns.map((column) =>
-          makeChord(staff === "treble" ? column.trebleNotes : column.bassNotes, staff),
+          makeChord(staff === "treble" ? column.trebleNotes : column.bassNotes, staff, palette.ink),
         );
         (staff === "treble" ? trebleTickables : bassTickables).push(...tickables);
         const voice = new Voice(voiceOptions).addTickables(tickables);
@@ -281,13 +307,13 @@ export function StatsRangeStaff({ label, notes, staffNotationMode, tone }: Stats
 
       context
         .setFont("Inter", logicalPx(STATS_RANGE_STAFF_LAYOUT.labels.noteNameFontSizePx, surface.scale), 800)
-        .setFillStyle(STATS_COLORS.range.neutral);
+        .setFillStyle(palette.ink);
       columns.forEach((column, index) => {
         drawCenteredText(context, column.noteName, staveNoteCenterX(layoutTickables[index]), metrics.noteNameY);
       });
       context
         .setFont("Inter", logicalPx(STATS_RANGE_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale), 700)
-        .setFillStyle(STATS_COLORS.range.muted);
+        .setFillStyle(palette.muted);
       columns.forEach((column, index) => {
         drawCenteredText(context, column.answerNumber, staveNoteCenterX(layoutTickables[index]), metrics.fixedDoNumberY);
       });
@@ -311,27 +337,27 @@ export function StatsRangeStaff({ label, notes, staffNotationMode, tone }: Stats
           ? [
               {
                 label: "P10",
-                labelColor: STATS_COLORS.recognitionChart.p10,
+                labelColor: palette.p10,
                 value: formatTooltipSeconds(note.durations.p10Ms),
-                valueColor: STATS_COLORS.recognitionChart.p10,
+                valueColor: palette.p10,
               },
               {
                 label: "中位",
-                labelColor: STATS_COLORS.recognitionChart.median,
+                labelColor: palette.median,
                 value: formatTooltipSeconds(note.durations.medianMs),
-                valueColor: STATS_COLORS.recognitionChart.median,
+                valueColor: palette.median,
               },
               {
                 label: "P90",
-                labelColor: STATS_COLORS.recognitionChart.p90,
+                labelColor: palette.p90,
                 value: formatTooltipSeconds(note.durations.p90Ms),
-                valueColor: STATS_COLORS.recognitionChart.p90,
+                valueColor: palette.p90,
               },
             ]
           : [];
         const confusionRows = (note.confusions ?? []).map((confusion) => ({
           label: confusion.noteName,
-          labelColor: STATS_COLORS.recognitionChart.p90,
+          labelColor: palette.p90,
           value: `${confusion.count}次`,
         }));
         const hasDurations = note.durations && Object.values(note.durations).some((value) => value !== undefined);
@@ -375,7 +401,7 @@ export function StatsRangeStaff({ label, notes, staffNotationMode, tone }: Stats
     const observer = new ResizeObserver(render);
     observer.observe(frame);
     return () => observer.disconnect();
-  }, [columns, effectiveTargetNoteIds, staffNotationMode, useLedgerGap]);
+  }, [columns, effectiveTargetNoteIds, palette, staffNotationMode, useLedgerGap]);
 
   return (
     <div

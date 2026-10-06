@@ -19,27 +19,29 @@ export function buildMobileStaffPageView<T>({
   firstNoteOffset,
   fixedSessionCount,
   notes,
+  pageNoteCount = MOBILE_STAFF_PAGE_NOTE_COUNT,
 }: {
   completedCount: number;
   currentIndex: number;
   firstNoteOffset: number;
   fixedSessionCount?: number;
   notes: T[];
+  pageNoteCount?: number;
 }): MobileStaffPageView<T> {
-  const pageStartIndex = Math.floor(Math.max(0, currentIndex) / MOBILE_STAFF_PAGE_NOTE_COUNT) *
-    MOBILE_STAFF_PAGE_NOTE_COUNT;
-  const currentPage = Math.floor((firstNoteOffset + Math.max(0, currentIndex)) / MOBILE_STAFF_PAGE_NOTE_COUNT) + 1;
+  const resolvedPageNoteCount = Math.max(1, Math.floor(pageNoteCount));
+  const pageStartIndex = Math.floor(Math.max(0, currentIndex) / resolvedPageNoteCount) * resolvedPageNoteCount;
+  const currentPage = Math.floor((firstNoteOffset + Math.max(0, currentIndex)) / resolvedPageNoteCount) + 1;
   const noteCount = fixedSessionCount ?? firstNoteOffset + notes.length;
 
   return {
     completedCount: Math.max(
       0,
-      Math.min(MOBILE_STAFF_PAGE_NOTE_COUNT, completedCount - pageStartIndex),
+      Math.min(resolvedPageNoteCount, completedCount - pageStartIndex),
     ),
     currentPage,
     noteIndexInPage: Math.max(0, currentIndex - pageStartIndex),
-    notes: notes.slice(pageStartIndex, pageStartIndex + MOBILE_STAFF_PAGE_NOTE_COUNT),
-    totalPages: Math.max(1, currentPage, Math.ceil(noteCount / MOBILE_STAFF_PAGE_NOTE_COUNT)),
+    notes: notes.slice(pageStartIndex, pageStartIndex + resolvedPageNoteCount),
+    totalPages: Math.max(1, currentPage, Math.ceil(noteCount / resolvedPageNoteCount)),
   };
 }
 

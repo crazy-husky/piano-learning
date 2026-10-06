@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { DailyStat } from "../../domain/stats";
 import { STATS_COLORS } from "./statsColors";
 import { getStatsRangeCutoff, type StatsRange } from "./statsRange";
+import { useNightMode } from "../pageAppearance";
 
 const HEATMAP_WEEK_COUNT = 53;
 const WEEKDAY_LABELS = ["周一", "", "周三", "", "周五", "", "周日"];
@@ -65,6 +66,7 @@ export function averageDailyPracticeMs(
 function HeatMap({ dailyStats }: { dailyStats: readonly DailyStat[] }): JSX.Element {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [tooltip, setTooltip] = useState<{ label: string; left: number; top: number } | undefined>();
+  const isNightMode = useNightMode();
   const todayKey = formatDateKey(new Date());
   const { days, weekStarts } = useMemo(() => {
     const byDate = new Map(dailyStats.map((day) => [day.date, day]));
@@ -138,7 +140,11 @@ function HeatMap({ dailyStats }: { dailyStats: readonly DailyStat[] }): JSX.Elem
                     });
                   }}
                   onPointerLeave={() => setTooltip(undefined)}
-                  style={{ backgroundColor: STATS_COLORS.heatmap[heatLevel] }}
+                  style={{
+                    backgroundColor: heatLevel === 0
+                      ? isNightMode ? "#303a33" : STATS_COLORS.heatmap[0]
+                      : STATS_COLORS.heatmap[heatLevel],
+                  }}
                 />
               );
             })}

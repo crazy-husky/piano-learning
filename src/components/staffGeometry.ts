@@ -1,6 +1,7 @@
 import { Renderer, Stave, StaveConnector, Stem, type StaveNote } from "vexflow";
 import { staffForSingleClefMode } from "../domain/staffNotation";
 import type { NoteName, Staff, StaffNotationMode, TargetNote } from "../domain/types";
+import { getPageThemeColor } from "./pageAppearance";
 import type {
   ResponsiveStaffHorizontalProfile,
   StaffHorizontalProfile,
@@ -110,6 +111,8 @@ export function createStaffRenderSurface(
   const renderer = new Renderer(target, Renderer.Backends.SVG);
   renderer.resize(resolvedDisplayWidth, resolvedDisplayHeight);
   const context = renderer.getContext();
+  context.setFillStyle(getPageThemeColor("--notation-ink", "#211c18"));
+  context.setStrokeStyle(getPageThemeColor("--notation-staff", "#766b5f"));
   if (scale !== 1) {
     context.scale(scale, scale);
   }

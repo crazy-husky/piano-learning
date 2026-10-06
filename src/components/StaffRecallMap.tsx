@@ -5,6 +5,7 @@ import { compareTargetNotePitch, formatStaffRecallDeltaMs, type NoteNameColumn }
 import { formatMs } from "../domain/stats";
 import type { NoteName, Staff, StaffNotationMode, TargetNote, TargetNoteId } from "../domain/types";
 import { STAFF_RECALL_LAYOUT } from "./staffLayoutProfiles";
+import { useNightMode } from "./pageAppearance";
 import {
   alignStaveNotesToCenters,
   createStaffRenderSurface,
@@ -60,6 +61,13 @@ const MUTED_COLOR = "#766b5f";
 const CORRECT_COLOR = "#2f8f5f";
 const WRONG_COLOR = "#c84c3d";
 const HOVER_COLOR = "rgba(37, 111, 103, 0.42)";
+interface StaffRecallPalette {
+  correct: string;
+  hover: string;
+  ink: string;
+  muted: string;
+  wrong: string;
+}
 function getStatusLineY(lineIndex: 0 | 1 | 2): number {
   const lastLineY = logicalPx(
     STAFF_RECALL_LAYOUT.vertical.viewHeightPx - STAFF_RECALL_LAYOUT.status.bottomLineOffsetPx,
@@ -305,6 +313,14 @@ export function StaffRecallMap({
   const rendererTargetRef = useRef<HTMLDivElement | null>(null);
   const geometryRef = useRef<MapGeometry | null>(null);
   const [hovered, setHovered] = useState<{ columnNoteName: NoteName; targetNoteId: TargetNoteId } | null>(null);
+  const isNightMode = useNightMode();
+  const palette = useMemo<StaffRecallPalette>(() => ({
+    correct: isNightMode ? "#78c994" : CORRECT_COLOR,
+    hover: isNightMode ? "rgba(128, 203, 180, 0.42)" : HOVER_COLOR,
+    ink: isNightMode ? "#bcc6be" : NEUTRAL_COLOR,
+    muted: isNightMode ? "#b2beb5" : MUTED_COLOR,
+    wrong: isNightMode ? "#f18476" : WRONG_COLOR,
+  }), [isNightMode]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -404,13 +420,13 @@ export function StaffRecallMap({
         const correctIds = new Set(columnStates[column.noteName].correctNoteIds);
         return column.notes.filter((note) => note.staff === staff && correctIds.has(note.id));
       };
-      drawLayer(correctNotesForColumn, CORRECT_COLOR);
+      drawLayer(correctNotesForColumn, palette.correct);
 
       const wrongNoteForColumn = (column: NoteNameColumn, staff: Staff): TargetNote[] => {
         const note = noteById(inputNotes, columnStates[column.noteName].wrongNoteId);
         return note?.staff === staff ? [note] : [];
       };
-      drawLayer(wrongNoteForColumn, WRONG_COLOR);
+      drawLayer(wrongNoteForColumn, palette.wrong);
 
       const hoverNoteForColumn = (column: NoteNameColumn, staff: Staff): TargetNote[] => {
         if (hovered?.columnNoteName !== column.noteName) {
@@ -422,7 +438,7 @@ export function StaffRecallMap({
         }
         return [note];
       };
-      drawLayer(hoverNoteForColumn, HOVER_COLOR);
+      drawLayer(hoverNoteForColumn, palette.hover);
 
       const placements = [
         ...(treble ? getPlacements(trebleInputNotes, treble) : []),
@@ -493,7 +509,7 @@ export function StaffRecallMap({
       });
       context
         .setFont("Inter", logicalPx(STAFF_RECALL_LAYOUT.labels.noteNameFontSizePx, surface.scale), 800)
-        .setFillStyle(NEUTRAL_COLOR);
+        .setFillStyle(palette.ink);
       columnGeometry.forEach((geometry) => {
         drawCenteredText(
           context,
@@ -504,7 +520,7 @@ export function StaffRecallMap({
       });
       context
         .setFont("Inter", logicalPx(STAFF_RECALL_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale), 700)
-        .setFillStyle(MUTED_COLOR);
+        .setFillStyle(palette.muted);
       columnGeometry.forEach((geometry, index) => {
         drawCenteredText(
           context,
@@ -541,6 +557,7 @@ export function StaffRecallMap({
     comparisonMedianMsByNoteName,
     hovered,
     inputNotes,
+    palette,
     runCompleted,
     staffNotationMode,
   ]);

@@ -3,7 +3,11 @@ import { Beam, Formatter, GhostNote, Stave, StaveNote, Stem, Voice } from "vexfl
 import { markMidiLatencyStage } from "../diagnostics/midiLatencyDiagnostics";
 import { noteToVexKey } from "../domain/notes";
 import type { PromptNoteDuration, StaffNotationMode, TargetNote } from "../domain/types";
-import { PRACTICE_PAGE_STAFF_LAYOUT } from "./staffLayoutProfiles";
+import {
+  PRACTICE_PAGE_STAFF_LAYOUT,
+  type PracticePageStaffLayoutProfile,
+} from "./staffLayoutProfiles";
+import { useNightMode } from "./pageAppearance";
 import {
   alignStaveNotesToCenters,
   createStaffRenderSurface,
@@ -29,6 +33,7 @@ interface StaffPagePromptProps {
   completedCount: number;
   isScrolling?: boolean;
   noteDuration: PromptNoteDuration;
+  layout?: PracticePageStaffLayoutProfile;
   scrollDurationMs?: number;
   staffNotationMode: StaffNotationMode;
   useLedgerGap: boolean;
@@ -43,9 +48,12 @@ interface StaffPagePromptProps {
 const NEUTRAL_COLOR = "#211c18";
 const COMPLETE_COLOR = "#2f8f5f";
 const WRONG_COLOR = "#c84c3d";
-const BARLINE_COLOR = "#211c18";
-const STAFF_PAGE_NOTE_COLORS = new Set([NEUTRAL_COLOR, COMPLETE_COLOR, WRONG_COLOR]);
 type StaffPageTickable = GhostNote | StaveNote;
+interface StaffPagePalette {
+  complete: string;
+  error: string;
+  ink: string;
+}
 interface RenderedStaffPageNote {
   color: string;
   element: SVGElement;
@@ -72,14 +80,19 @@ function makeStaveNote(note: TargetNote, color: string, noteDuration: PromptNote
   return staveNote;
 }
 
-function colorForIndex(index: number, completedCount: number, wrongIndex: number | undefined): string {
+function colorForIndex(
+  index: number,
+  completedCount: number,
+  wrongIndex: number | undefined,
+  palette: StaffPagePalette,
+): string {
   if (index === wrongIndex) {
-    return WRONG_COLOR;
+    return palette.error;
   }
   if (index < completedCount) {
-    return COMPLETE_COLOR;
+    return palette.complete;
   }
-  return NEUTRAL_COLOR;
+  return palette.ink;
 }
 
 function updateRenderedNoteColor(renderedNote: RenderedStaffPageNote, color: string): void {
@@ -90,11 +103,13 @@ function updateRenderedNoteColor(renderedNote: RenderedStaffPageNote, color: str
   for (const element of elements) {
     for (const attribute of ["fill", "stroke"] as const) {
       const value = element.getAttribute(attribute);
-      if (value && STAFF_PAGE_NOTE_COLORS.has(value.toLowerCase())) {
+      if (value?.toLowerCase() === renderedNote.color.toLowerCase()) {
         element.setAttribute(attribute, color);
       }
     }
   }
+  renderedNote.element.setAttribute("fill", color);
+  renderedNote.element.setAttribute("stroke", color);
   renderedNote.color = color;
 }
 
@@ -103,6 +118,7 @@ function makeStaffPageBeams(
   rowTickables: readonly StaffPageTickable[],
   noteDuration: PromptNoteDuration,
   visibleYBounds: { bottomY: number; topY: number },
+  neutralColor: string,
 ): Beam[] {
   return getStaffPageBeamRuns(rowSlots, noteDuration).flatMap(({ size, startIndex }) => {
     const groupNotes = rowSlots.slice(startIndex, startIndex + size);
@@ -123,19 +139,19 @@ function makeStaffPageBeams(
       preferredDirection === undefined ? undefined : preferredDirection === "up" ? Stem.UP : Stem.DOWN;
     const beams = Beam.generateBeams(staveNotes, stemDirection === undefined ? {} : { stemDirection });
     return beams.map((beam) =>
-      beam.setStyle({ fillStyle: NEUTRAL_COLOR, strokeStyle: NEUTRAL_COLOR }),
+      beam.setStyle({ fillStyle: neutralColor, strokeStyle: neutralColor }),
     );
   });
 }
 
-function addBarline(parent: SVGElement, x: number, y1: number, y2: number): void {
+function addBarline(parent: SVGElement, x: number, y1: number, y2: number, color: string): void {
   const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
   line.setAttribute("class", "staff-page-barline");
   line.setAttribute("x1", x.toFixed(2));
   line.setAttribute("x2", x.toFixed(2));
   line.setAttribute("y1", y1.toFixed(2));
   line.setAttribute("y2", y2.toFixed(2));
-  line.setAttribute("stroke", BARLINE_COLOR);
+  line.setAttribute("stroke", color);
   line.setAttribute("stroke-width", "1.6");
   line.setAttribute("shape-rendering", "crispEdges");
   parent.appendChild(line);
@@ -177,14 +193,15 @@ export function StaffPagePrompt({
   completedCount,
   isScrolling = false,
   noteDuration,
+  layout = PRACTICE_PAGE_STAFF_LAYOUT,
   scrollDurationMs = 0,
   staffNotationMode,
   useLedgerGap,
   distributeNotesEvenly = false,
-  notesPerRow = PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
-  maxRowCount = PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows + 1,
-  minDisplayWidthPx = PRACTICE_PAGE_STAFF_LAYOUT.width.minPx,
-  visibleRowCount = PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows,
+  notesPerRow = layout.multirow.notesPerRow,
+  maxRowCount = layout.multirow.rows + 1,
+  minDisplayWidthPx = layout.width.minPx,
+  visibleRowCount = layout.multirow.rows,
   wrongIndex,
 }: StaffPagePromptProps): JSX.Element {
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -193,6 +210,12 @@ export function StaffPagePrompt({
   const completedCountRef = useRef(completedCount);
   const renderedNotesRef = useRef<Array<RenderedStaffPageNote | undefined>>([]);
   const wrongIndexRef = useRef(wrongIndex);
+  const isNightMode = useNightMode();
+  const palette = useMemo<StaffPagePalette>(() => ({
+    complete: isNightMode ? "#78c994" : COMPLETE_COLOR,
+    error: isNightMode ? "#f18476" : WRONG_COLOR,
+    ink: isNightMode ? "#bcc6be" : NEUTRAL_COLOR,
+  }), [isNightMode]);
   diagnosticSampleIdRef.current = diagnosticSampleId;
   completedCountRef.current = completedCount;
   wrongIndexRef.current = wrongIndex;
@@ -221,40 +244,38 @@ export function StaffPagePrompt({
       const containerWidth = frame.clientWidth || 920;
       const displayWidth = Math.max(
         minDisplayWidthPx,
-        Math.min(PRACTICE_PAGE_STAFF_LAYOUT.width.maxPx, containerWidth),
+        Math.min(layout.width.maxPx, containerWidth),
       );
       const surface = createStaffRenderSurface(
         rendererTarget,
         displayWidth,
-        rowCount * PRACTICE_PAGE_STAFF_LAYOUT.vertical.viewHeightPx +
-          Math.max(0, rowCount - 1) * PRACTICE_PAGE_STAFF_LAYOUT.multirow.rowGapPx,
-        PRACTICE_PAGE_STAFF_LAYOUT.notationScale,
+        rowCount * layout.vertical.viewHeightPx +
+          Math.max(0, rowCount - 1) * layout.multirow.rowGapPx,
+        layout.notationScale,
       );
       const renderedScale = containerWidth / displayWidth;
       const rowStepPx =
-        (PRACTICE_PAGE_STAFF_LAYOUT.vertical.viewHeightPx +
-          PRACTICE_PAGE_STAFF_LAYOUT.multirow.rowGapPx) * renderedScale;
+        (layout.vertical.viewHeightPx + layout.multirow.rowGapPx) * renderedScale;
       const clampedVisibleRowCount = Math.max(1, Math.min(visibleRowCount, rowCount));
       const visibleHeight =
-        (clampedVisibleRowCount * PRACTICE_PAGE_STAFF_LAYOUT.vertical.viewHeightPx +
-          Math.max(0, clampedVisibleRowCount - 1) * PRACTICE_PAGE_STAFF_LAYOUT.multirow.rowGapPx) * renderedScale;
+        (clampedVisibleRowCount * layout.vertical.viewHeightPx +
+          Math.max(0, clampedVisibleRowCount - 1) * layout.multirow.rowGapPx) * renderedScale;
       frame.style.height = `${visibleHeight}px`;
       rendererTarget.style.setProperty("--staff-page-scroll-distance", `${rowStepPx}px`);
       rendererTarget.style.setProperty("--staff-page-scroll-duration", `${scrollDurationMs}ms`);
       const { context } = surface;
       const frameMetrics = getFixedStaffFrame(
         surface,
-        PRACTICE_PAGE_STAFF_LAYOUT.horizontal.staffSidePaddingPx,
+        layout.horizontal.staffSidePaddingPx,
       );
       rows.forEach((rowNotes, rowIndex) => {
         const rowStep = logicalPx(
-          PRACTICE_PAGE_STAFF_LAYOUT.vertical.viewHeightPx +
-            PRACTICE_PAGE_STAFF_LAYOUT.multirow.rowGapPx,
+          layout.vertical.viewHeightPx + layout.multirow.rowGapPx,
           surface.scale,
         );
         const baseY = rowIndex * rowStep;
         const visibleYBounds = {
-          bottomY: baseY + logicalPx(PRACTICE_PAGE_STAFF_LAYOUT.vertical.viewHeightPx, surface.scale),
+          bottomY: baseY + logicalPx(layout.vertical.viewHeightPx, surface.scale),
           topY: baseY,
         };
         const rowGroup = context.openGroup("staff-page-system");
@@ -278,11 +299,11 @@ export function StaffPagePrompt({
           columnCount: notesPerRow,
           context,
           frame: frameMetrics,
-          horizontal: PRACTICE_PAGE_STAFF_LAYOUT.horizontal,
+          horizontal: layout.horizontal,
           mode: staffNotationMode,
           scale: surface.scale,
           useLedgerGap,
-          vertical: PRACTICE_PAGE_STAFF_LAYOUT.vertical,
+          vertical: layout.vertical,
           yOffset: baseY,
         });
         const { noteArea } = system;
@@ -292,8 +313,8 @@ export function StaffPagePrompt({
               right:
                 noteArea.right +
                 logicalPx(
-                  PRACTICE_PAGE_STAFF_LAYOUT.horizontal.noteAreaSidePaddingPx -
-                    PRACTICE_PAGE_STAFF_LAYOUT.horizontal.minNoteAreaSidePaddingPx,
+                  layout.horizontal.noteAreaSidePaddingPx -
+                    layout.horizontal.minNoteAreaSidePaddingPx,
                   surface.scale,
                 ),
             }
@@ -306,7 +327,7 @@ export function StaffPagePrompt({
             }
             return makeStaveNote(
               note,
-              colorForIndex(rowStartIndex + slotIndex, completedCountRef.current, wrongIndexRef.current),
+              colorForIndex(rowStartIndex + slotIndex, completedCountRef.current, wrongIndexRef.current, palette),
               noteDuration,
             ).setStave(note.staff === "treble" ? treble : bass);
           });
@@ -315,7 +336,7 @@ export function StaffPagePrompt({
           bass.setNoteStartX(noteArea.left);
           treble.setWidth(Math.max(1, noteArea.right - frameMetrics.x));
           bass.setWidth(Math.max(1, noteArea.right - frameMetrics.x));
-          beams = makeStaffPageBeams(rowSlots, tickables, noteDuration, visibleYBounds);
+          beams = makeStaffPageBeams(rowSlots, tickables, noteDuration, visibleYBounds, palette.ink);
           const formatter = new Formatter().joinVoices([voice]);
           formatter.format(
             [voice],
@@ -339,13 +360,13 @@ export function StaffPagePrompt({
             note
               ? makeStaveNote(
                   note,
-                  colorForIndex(rowStartIndex + slotIndex, completedCountRef.current, wrongIndexRef.current),
+                  colorForIndex(rowStartIndex + slotIndex, completedCountRef.current, wrongIndexRef.current, palette),
                   noteDuration,
                 ).setStave(stave)
               : new GhostNote(vexDuration).setStave(stave),
           );
           const voice = new Voice(voiceOptions).addTickables(tickables);
-          beams = makeStaffPageBeams(rowSlots, tickables, noteDuration, visibleYBounds);
+          beams = makeStaffPageBeams(rowSlots, tickables, noteDuration, visibleYBounds, palette.ink);
           stave.setNoteStartX(noteArea.left);
           stave.setWidth(Math.max(1, noteArea.right - frameMetrics.x));
           new Formatter().joinVoices([voice]).formatToStave([voice], stave, { context, stave });
@@ -368,7 +389,7 @@ export function StaffPagePrompt({
           }
           const index = rowStartIndex + slotIndex;
           renderedNotesRef.current[index] = {
-            color: colorForIndex(index, completedCountRef.current, wrongIndexRef.current),
+            color: colorForIndex(index, completedCountRef.current, wrongIndexRef.current, palette),
             element,
           };
         });
@@ -388,7 +409,7 @@ export function StaffPagePrompt({
             visibleTickables[boundaryIndex],
           );
           if (barlineX !== undefined) {
-            addBarline(rowGroup, barlineX, barlineTopY, barlineBottomY);
+            addBarline(rowGroup, barlineX, barlineTopY, barlineBottomY, palette.ink);
           }
         }
         context.closeGroup();
@@ -401,10 +422,12 @@ export function StaffPagePrompt({
     observer.observe(frame);
     return () => observer.disconnect();
   }, [
+    layout,
     minDisplayWidthPx,
     distributeNotesEvenly,
     noteDuration,
     notesPerRow,
+    palette,
     rows,
     scrollDurationMs,
     staffNotationMode,
@@ -417,11 +440,11 @@ export function StaffPagePrompt({
     markMidiLatencyStage(renderedDiagnosticSampleId, "staffColorStarted");
     renderedNotesRef.current.forEach((renderedNote, index) => {
       if (renderedNote) {
-        updateRenderedNoteColor(renderedNote, colorForIndex(index, completedCount, wrongIndex));
+        updateRenderedNoteColor(renderedNote, colorForIndex(index, completedCount, wrongIndex, palette));
       }
     });
     markMidiLatencyStage(renderedDiagnosticSampleId, "staffColorEnded");
-  }, [completedCount, wrongIndex]);
+  }, [completedCount, isNightMode, palette, wrongIndex]);
 
   return (
     <div ref={frameRef} className="staff-page" aria-label="谱页">

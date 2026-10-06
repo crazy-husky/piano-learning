@@ -10,6 +10,7 @@ interface PauseOverlayProps {
   playbackState?: RemainingPlaybackState;
   resumeBlockedMessage?: string;
   resumeMessage?: string;
+  showKeyboardShortcuts?: boolean;
   showRemainingPlayback?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function PauseOverlay({
   playbackState = "idle",
   resumeBlockedMessage,
   resumeMessage,
+  showKeyboardShortcuts = true,
   showRemainingPlayback = false,
 }: PauseOverlayProps): JSX.Element {
   const playbackLabel =
@@ -53,7 +55,9 @@ export function PauseOverlay({
           </div>
         ) : null}
         <small>
-          {resumeBlockedMessage ?? resumeMessage ?? "按 P 或点击空白处继续练习 · 按 Esc 退出练习"}
+          {resumeBlockedMessage ?? resumeMessage ?? (
+            showKeyboardShortcuts ? "按 P 或点击空白处继续练习 · 按 Esc 退出练习" : "点击空白处继续练习"
+          )}
         </small>
       </div>
     </div>

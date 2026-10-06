@@ -55,6 +55,21 @@ export interface StaffLayoutProfile {
   [pageSpecificKey: string]: unknown;
 }
 
+export interface PracticePageStaffLayoutProfile {
+  notationScale: number;
+  horizontal: StaffHorizontalProfile;
+  vertical: StaffVerticalProfile;
+  width: {
+    minPx: number;
+    maxPx: number;
+  };
+  multirow: {
+    rows: number;
+    notesPerRow: number;
+    rowGapPx: number;
+  };
+}
+
 /** 具有响应式列布局的谱表共有接口。 */
 export interface ResponsiveStaffLayoutProfile extends StaffLayoutProfile {
   horizontal: ResponsiveStaffHorizontalProfile;
@@ -222,4 +237,16 @@ export const PRACTICE_PAGE_STAFF_LAYOUT = {
     // 相邻两个固定行 viewport 之间的额外空白。
     rowGapPx: 10,
   },
-} as const satisfies StaffLayoutProfile;
+} as const satisfies PracticePageStaffLayoutProfile;
+
+export const MOBILE_PRACTICE_PAGE_STAFF_LAYOUT = {
+  ...PRACTICE_PAGE_STAFF_LAYOUT,
+  vertical: {
+    ...PRACTICE_PAGE_STAFF_LAYOUT.vertical,
+    viewHeightPx: 220,
+  },
+  multirow: {
+    ...PRACTICE_PAGE_STAFF_LAYOUT.multirow,
+    rowGapPx: 4,
+  },
+} as const satisfies PracticePageStaffLayoutProfile;

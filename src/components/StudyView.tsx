@@ -47,6 +47,7 @@ import {
 } from "./staffGeometry";
 import { useLocalStorageState } from "./useLocalStorageState";
 import { useDelayedBusy } from "./useDelayedBusy";
+import { useNightMode } from "./pageAppearance";
 
 type FixedStudyColumnOrderId = Exclude<StudyColumnOrderId, "random">;
 interface StudyUiPreferences {
@@ -76,6 +77,12 @@ const DEFAULT_STUDY_UI_PREFERENCES: StudyUiPreferences = {
   playbackMode: "octaves",
   showLabels: true,
 };
+interface StudyNotationColors {
+  active: string;
+  activeFill: string;
+  ink: string;
+  muted: string;
+}
 interface HeldKeyboardPlayback extends HeldNoteSequence {
   highlightedNoteName?: NoteName;
   kind: "answer" | "prompt";
@@ -192,6 +199,7 @@ function makeChord(
   staff: Staff,
   highlightedNoteNames: ReadonlySet<NoteName> | undefined,
   highlightedNoteId: string | undefined,
+  colors: StudyNotationColors,
 ): StaveNote {
   const columnHighlighted = notes.some((note) => highlightedNoteNames?.has(note.noteName) ?? false);
   const hasNotes = notes.length > 0;
@@ -200,13 +208,13 @@ function makeChord(
     duration: NOTE_DURATION,
     keys: hasNotes ? notes.map(noteToVexKey) : [staff === "treble" ? "b/4" : "d/3"],
   });
-  const baseColor = hasNotes ? (columnHighlighted ? ACTIVE_COLOR : NEUTRAL_COLOR) : TRANSPARENT_NOTE_COLOR;
+  const baseColor = hasNotes ? (columnHighlighted ? colors.active : colors.ink) : TRANSPARENT_NOTE_COLOR;
   chord.setStyle({ fillStyle: baseColor, strokeStyle: baseColor });
   chord.setLedgerLineStyle({ fillStyle: baseColor, strokeStyle: baseColor });
   if (hasNotes && !columnHighlighted && highlightedNoteId) {
     notes.forEach((note, index) => {
       if (note.id === highlightedNoteId) {
-        chord.setKeyStyle(index, { fillStyle: ACTIVE_COLOR, strokeStyle: ACTIVE_COLOR });
+        chord.setKeyStyle(index, { fillStyle: colors.active, strokeStyle: colors.active });
       }
     });
   }
@@ -276,7 +284,12 @@ function getStudyColumnLayouts(tickables: StaveNote[], scale: number): StudyColu
   });
 }
 
-function addColumnHighlight(svg: SVGSVGElement, layout: StudyColumnLayout, metrics: StudyMapMetrics): void {
+function addColumnHighlight(
+  svg: SVGSVGElement,
+  layout: StudyColumnLayout,
+  metrics: StudyMapMetrics,
+  colors: StudyNotationColors,
+): void {
   const highlight = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   highlight.setAttribute("class", "study-column-highlight");
   highlight.setAttribute("x", String(layout.centerX - layout.highlightWidth / 2));
@@ -294,8 +307,8 @@ function addColumnHighlight(svg: SVGSVGElement, layout: StudyColumnLayout, metri
     ),
   );
   highlight.setAttribute("rx", "8");
-  highlight.setAttribute("fill", ACTIVE_FILL);
-  highlight.setAttribute("stroke", ACTIVE_COLOR);
+  highlight.setAttribute("fill", colors.activeFill);
+  highlight.setAttribute("stroke", colors.active);
   highlight.setAttribute("stroke-width", "1");
   svg.insertBefore(highlight, svg.firstChild);
 }
@@ -423,6 +436,13 @@ function StudyNoteMap({
 }: StudyNoteMapProps): JSX.Element {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const rendererTargetRef = useRef<HTMLDivElement | null>(null);
+  const isNightMode = useNightMode();
+  const colors = useMemo<StudyNotationColors>(() => ({
+    active: isNightMode ? "#80cbb4" : ACTIVE_COLOR,
+    activeFill: isNightMode ? "rgba(128, 203, 180, 0.18)" : ACTIVE_FILL,
+    ink: isNightMode ? "#bcc6be" : NEUTRAL_COLOR,
+    muted: isNightMode ? "#b2beb5" : MUTED_COLOR,
+  }), [isNightMode]);
   const effectiveTargetNoteIds = useMemo(
     () => new Set(columns.flatMap((column) => column.notes.map((note) => note.id))),
     [columns],
@@ -470,10 +490,10 @@ function StudyNoteMap({
       if (system.mode === "grand") {
         const { bass, treble } = system;
         trebleTickables.push(...columns.map((column) =>
-          makeChord(column.trebleNotes, "treble", highlightedNoteNames, highlightedNoteId),
+          makeChord(column.trebleNotes, "treble", highlightedNoteNames, highlightedNoteId, colors),
         ));
         bassTickables.push(...columns.map((column) =>
-          makeChord(column.bassNotes, "bass", highlightedNoteNames, highlightedNoteId),
+          makeChord(column.bassNotes, "bass", highlightedNoteNames, highlightedNoteId, colors),
         ));
         const trebleVoice = new Voice(voiceOptions).addTickables(trebleTickables);
         const bassVoice = new Voice(voiceOptions).addTickables(bassTickables);
@@ -492,7 +512,7 @@ function StudyNoteMap({
       } else {
         const { staff, stave } = system;
         const tickables = columns.map((column) =>
-          makeChord(staff === "treble" ? column.trebleNotes : column.bassNotes, staff, highlightedNoteNames, highlightedNoteId),
+          makeChord(staff === "treble" ? column.trebleNotes : column.bassNotes, staff, highlightedNoteNames, highlightedNoteId, colors),
         );
         if (staff === "treble") {
           trebleTickables.push(...tickables);
@@ -512,7 +532,7 @@ function StudyNoteMap({
       if (svg && highlightedNoteNames && highlightedNoteNames.size > 0) {
         columns.forEach((column, index) => {
           if (highlightedNoteNames.has(column.noteName)) {
-            addColumnHighlight(svg, columnLayouts[index], metrics);
+            addColumnHighlight(svg, columnLayouts[index], metrics, colors);
           }
         });
       }
@@ -520,14 +540,14 @@ function StudyNoteMap({
       if (showLabels) {
         context
           .setFont("Inter", logicalPx(STUDY_STAFF_LAYOUT.labels.noteNameFontSizePx, surface.scale), 800)
-          .setFillStyle(NEUTRAL_COLOR);
+          .setFillStyle(colors.ink);
         columns.forEach((column, index) => {
           const centerX = columnLayouts[index].centerX;
           drawCenteredText(context, column.noteName, centerX, metrics.noteNameY);
         });
         context
           .setFont("Inter", logicalPx(STUDY_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale), 700)
-          .setFillStyle(MUTED_COLOR);
+          .setFillStyle(colors.muted);
         columns.forEach((column, index) => {
           const centerX = columnLayouts[index].centerX;
           drawCenteredText(context, column.answerNumber, centerX, metrics.fixedDoNumberY);
@@ -576,6 +596,7 @@ function StudyNoteMap({
     return () => observer.disconnect();
   }, [
     columns,
+    colors,
     effectiveTargetNoteIds,
     highlightedNoteId,
     highlightedNoteNames,

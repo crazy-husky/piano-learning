@@ -85,7 +85,10 @@ import { isNaturalPianoKey, NATURAL_PIANO_KEYS, PianoKeyboard } from "./PianoKey
 import { getPausedKeyboardAction } from "./practiceKeyboard";
 import { StaffPagePrompt } from "./StaffPagePrompt";
 import { StaffPrompt } from "./StaffPrompt";
-import { PRACTICE_PAGE_STAFF_LAYOUT } from "./staffLayoutProfiles";
+import {
+  MOBILE_PRACTICE_PAGE_STAFF_LAYOUT,
+  PRACTICE_PAGE_STAFF_LAYOUT,
+} from "./staffLayoutProfiles";
 import {
   buildMobileStaffPageView,
   getStaffPageRefillCount,
@@ -219,6 +222,9 @@ const MELODY_BUFFER_SIZE = 16;
 const PRACTICE_SETUP_UI_PREFERENCES_KEY = "anki-note.practiceSetupUiPreferences";
 const PRACTICE_MODES: readonly PracticeMode[] = ["open-ended", "fixed-count", "fixed-duration"];
 const PROMPT_DISPLAY_MODES: readonly PromptDisplayMode[] = ["single-note", "staff-page"];
+const MOBILE_STAFF_PAGE_MAX_ROWS = PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows + 1;
+const MOBILE_STAFF_PAGE_COUNTER_RESERVE_PX = 40;
+const FOCUS_LOSS_PAUSE_DELAY_MS = 15_000;
 const PROMPT_NOTE_DURATION_OPTIONS: Array<{
   ariaLabel: string;
   label: string;
@@ -382,6 +388,8 @@ export function PracticeView({
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches,
   );
+  const mobileStaffPageStageRef = useRef<HTMLDivElement | null>(null);
+  const [mobileStaffPageStageHeight, setMobileStaffPageStageHeight] = useState(0);
   const { isBusyVisible: showStartingSessionStatus, run: runSessionStart } = useDelayedBusy();
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false,
@@ -551,6 +559,23 @@ export function PracticeView({
     mediaQuery.addEventListener("change", onChange);
     return () => mediaQuery.removeEventListener("change", onChange);
   }, []);
+
+  useEffect(() => {
+    if (phase !== "running" || !isMobileViewport || promptDisplayMode !== "staff-page") {
+      setMobileStaffPageStageHeight(0);
+      return;
+    }
+    const stage = mobileStaffPageStageRef.current;
+    if (!stage) {
+      return;
+    }
+
+    const updateHeight = (): void => setMobileStaffPageStageHeight(stage.clientHeight);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [isMobileViewport, phase, promptDisplayMode]);
 
   useEffect(() => {
     onRunningChange(phase === "running");
@@ -781,7 +806,7 @@ export function PracticeView({
     pausePractice("manual-pause");
   }, [pausePractice, resumePractice]);
 
-  const pauseForFocusLoss = useCallback((): void => {
+  const pauseForFocusLoss = useCallback((lostFocusAt = new Date().toISOString()): void => {
     if (isPausedRef.current) {
       return;
     }
@@ -789,7 +814,7 @@ export function PracticeView({
     if (prompt) {
       const lastLoss = prompt.focusLosses[prompt.focusLosses.length - 1];
       if (!lastLoss || lastLoss.regainedFocusAt) {
-        prompt.focusLosses.push({ lostFocusAt: new Date().toISOString() });
+        prompt.focusLosses.push({ lostFocusAt });
       }
     }
     pausePractice("focus-lost");
@@ -1680,17 +1705,51 @@ export function PracticeView({
       return;
     }
 
+    let focusLossStartedAt: number | null = null;
+    let pauseTimeout: number | null = null;
+
     function onVisibilityOrBlur(): void {
-      if (document.visibilityState === "hidden" || !document.hasFocus()) {
-        pauseForFocusLoss();
+      const hasFocus = document.visibilityState !== "hidden" && document.hasFocus();
+      if (!hasFocus) {
+        if (focusLossStartedAt !== null) {
+          return;
+        }
+        focusLossStartedAt = Date.now();
+        pauseTimeout = window.setTimeout(() => {
+          pauseTimeout = null;
+          const lostFocusAt = focusLossStartedAt;
+          focusLossStartedAt = null;
+          if (lostFocusAt !== null && Date.now() - lostFocusAt >= FOCUS_LOSS_PAUSE_DELAY_MS) {
+            pauseForFocusLoss(new Date(lostFocusAt).toISOString());
+          }
+        }, FOCUS_LOSS_PAUSE_DELAY_MS);
+        return;
+      }
+
+      if (focusLossStartedAt === null) {
+        return;
+      }
+      const lostFocusAt = focusLossStartedAt;
+      focusLossStartedAt = null;
+      if (pauseTimeout !== null) {
+        window.clearTimeout(pauseTimeout);
+        pauseTimeout = null;
+      }
+      if (Date.now() - lostFocusAt >= FOCUS_LOSS_PAUSE_DELAY_MS) {
+        pauseForFocusLoss(new Date(lostFocusAt).toISOString());
       }
     }
 
     window.addEventListener("blur", onVisibilityOrBlur);
+    window.addEventListener("focus", onVisibilityOrBlur);
     document.addEventListener("visibilitychange", onVisibilityOrBlur);
     return () => {
       window.removeEventListener("blur", onVisibilityOrBlur);
+      window.removeEventListener("focus", onVisibilityOrBlur);
       document.removeEventListener("visibilitychange", onVisibilityOrBlur);
+      if (pauseTimeout !== null) {
+        window.clearTimeout(pauseTimeout);
+      }
     };
   }, [pauseForFocusLoss, phase]);
 
@@ -1754,6 +1813,17 @@ export function PracticeView({
   }, [phase, setupDisabled, startSession]);
 
   const remainingMs = mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
+  const mobileStaffPageRowHeightPx =
+    MOBILE_PRACTICE_PAGE_STAFF_LAYOUT.vertical.viewHeightPx +
+    MOBILE_PRACTICE_PAGE_STAFF_LAYOUT.multirow.rowGapPx;
+  const mobileStaffPageRowCount = Math.max(
+    1,
+    Math.min(
+      MOBILE_STAFF_PAGE_MAX_ROWS,
+      Math.floor((mobileStaffPageStageHeight - MOBILE_STAFF_PAGE_COUNTER_RESERVE_PX) / mobileStaffPageRowHeightPx),
+    ),
+  );
+  const mobileStaffPageNoteCount = MOBILE_STAFF_PAGE_NOTE_COUNT * mobileStaffPageRowCount;
   const staffPageRowCount = Math.max(
     1,
     Math.min(
@@ -1763,13 +1833,13 @@ export function PracticeView({
   );
   const isMobileStaffPage = isMobileViewport && promptDisplayMode === "staff-page";
   const mobileStaffPageStartIndex =
-    Math.floor(Math.max(0, staffPageIndex) / MOBILE_STAFF_PAGE_NOTE_COUNT) * MOBILE_STAFF_PAGE_NOTE_COUNT;
+    Math.floor(Math.max(0, staffPageIndex) / mobileStaffPageNoteCount) * mobileStaffPageNoteCount;
   const mobileStaffPageNotes = useMemo(
     () =>
       isMobileStaffPage
-        ? staffPageNotes.slice(mobileStaffPageStartIndex, mobileStaffPageStartIndex + MOBILE_STAFF_PAGE_NOTE_COUNT)
+        ? staffPageNotes.slice(mobileStaffPageStartIndex, mobileStaffPageStartIndex + mobileStaffPageNoteCount)
         : staffPageNotes,
-    [isMobileStaffPage, mobileStaffPageStartIndex, staffPageNotes],
+    [isMobileStaffPage, mobileStaffPageNoteCount, mobileStaffPageStartIndex, staffPageNotes],
   );
   const mobileStaffPageView = useMemo(
     () =>
@@ -1780,11 +1850,13 @@ export function PracticeView({
             firstNoteOffset: staffPageFirstNoteOffset,
             fixedSessionCount: mode === "fixed-count" ? fixedCount : undefined,
             notes: staffPageNotes,
+            pageNoteCount: mobileStaffPageNoteCount,
           })
         : null,
     [
       fixedCount,
       isMobileStaffPage,
+      mobileStaffPageNoteCount,
       mode,
       staffPageCompletedCount,
       staffPageFirstNoteOffset,
@@ -2225,7 +2297,7 @@ export function PracticeView({
         isMobileViewport && answerPitchMode !== "note-name" ? "practice-without-touch-keyboard" : "",
         `practice-${promptDisplayMode}`,
         promptDisplayMode === "staff-page"
-          ? `practice-staff-page-rows-${isMobileStaffPage ? 1 : staffPageRowCount}`
+          ? `practice-staff-page-rows-${isMobileStaffPage ? mobileStaffPageRowCount : staffPageRowCount}`
           : "",
       ]
         .filter(Boolean)
@@ -2237,7 +2309,7 @@ export function PracticeView({
             <span>完成 {completedCount}</span>
           ) : mode === "fixed-count" ? (
             <span>
-              {completedCount}/{fixedCount}
+              音符：{completedCount}/{fixedCount}
             </span>
           ) : (
             <span>
@@ -2285,34 +2357,38 @@ export function PracticeView({
         </div>
       ) : null}
 
-      <div className={promptDisplayMode === "staff-page" ? "prompt-stage staff-page-stage" : "prompt-stage"}>
+      <div
+        className={promptDisplayMode === "staff-page" ? "prompt-stage staff-page-stage" : "prompt-stage"}
+        ref={isMobileStaffPage ? mobileStaffPageStageRef : undefined}
+      >
         {promptDisplayMode === "staff-page" ? (
           <div className={isMobileStaffPage ? "staff-page-mobile-view" : undefined}>
-            {mobileStaffPageView ? (
-              <div aria-live="polite" className="staff-page-counter">
-                第 {mobileStaffPageView.currentPage} / {mobileStaffPageView.totalPages} 页
-              </div>
-            ) : null}
             <StaffPagePrompt
               notes={mobileStaffPageNotes}
               completedCount={mobileStaffPageView?.completedCount ?? staffPageCompletedCount}
               diagnosticSampleId={feedback?.diagnosticSampleId}
               isScrolling={isMobileStaffPage ? false : isStaffPageScrolling}
+              layout={isMobileStaffPage ? MOBILE_PRACTICE_PAGE_STAFF_LAYOUT : undefined}
               noteDuration={effectivePromptNoteDuration}
               scrollDurationMs={staffPageScrollDurationMs}
               staffNotationMode={staffNotationMode}
               useLedgerGap={useLedgerGap}
               distributeNotesEvenly={isMobileStaffPage}
               notesPerRow={isMobileStaffPage ? MOBILE_STAFF_PAGE_NOTE_COUNT : undefined}
-              maxRowCount={isMobileStaffPage ? 1 : undefined}
+              maxRowCount={isMobileStaffPage ? mobileStaffPageRowCount : undefined}
               minDisplayWidthPx={isMobileStaffPage ? 0 : undefined}
-              visibleRowCount={isMobileStaffPage ? 1 : staffPageRowCount}
+              visibleRowCount={isMobileStaffPage ? mobileStaffPageRowCount : staffPageRowCount}
               wrongIndex={
                 feedback?.type === "wrong"
                   ? mobileStaffPageView?.noteIndexInPage ?? staffPageIndex
                   : undefined
               }
             />
+            {mobileStaffPageView ? (
+              <div aria-live="polite" className="staff-page-counter">
+                第 {mobileStaffPageView.currentPage} / {mobileStaffPageView.totalPages} 页
+              </div>
+            ) : null}
           </div>
         ) : currentNote ? (
           <StaffPrompt
@@ -2377,12 +2453,17 @@ export function PracticeView({
                 : practiceMicrophone.isListening
                   ? "麦克风已连接，正在继续练习…"
                   : practiceMicrophone.error
-                    ? `麦克风重连失败：${practiceMicrophone.error} 点击空白处或按 P 重试；按 Esc 退出练习`
-                    : "暂停期间麦克风已释放；点击空白处或按 P 重新连接"
+                    ? isMobileViewport
+                      ? `麦克风重连失败：${practiceMicrophone.error} 点击空白处重试`
+                      : `麦克风重连失败：${practiceMicrophone.error} 点击空白处或按 P 重试；按 Esc 退出练习`
+                    : isMobileViewport
+                      ? "暂停期间麦克风已释放；点击空白处重新连接"
+                      : "暂停期间麦克风已释放；点击空白处或按 P 重新连接"
               : undefined
           }
           onToggleRemainingPlayback={toggleRemainingPlayback}
           playbackState={remainingPlaybackState}
+          showKeyboardShortcuts={!isMobileViewport}
           showRemainingPlayback={promptDisplayMode === "staff-page" && answerPitchMode !== "microphone"}
         />
       ) : null}

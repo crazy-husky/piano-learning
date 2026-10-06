@@ -13,6 +13,7 @@ import { backupText, formatBackupConflictDetail } from "../domain/backupText";
 import { normalizeAnswerKeyboardScale, normalizePianoVolume } from "../domain/settings";
 import type { AppSettings, BackupState } from "../domain/types";
 import type { MidiInputController } from "../midi/useMidiInput";
+import type { PageAppearancePreferences } from "./pageAppearance";
 import { BackupConflictResolver } from "./BackupConflictResolver";
 import { PausedPlaybackBpmInput } from "./PausedPlaybackBpmInput";
 import { PlayableKeyboardPreview } from "./PlayableKeyboardPreview";
@@ -62,16 +63,20 @@ function isUserAbort(error: unknown): boolean {
 }
 
 interface SettingsViewProps {
+  pageAppearancePreferences: PageAppearancePreferences;
   settings: AppSettings;
   backupState: BackupState;
+  onPageAppearancePreferencesChange: (preferences: PageAppearancePreferences) => void;
   onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
   onDataChanged: () => Promise<void>;
   midi: MidiInputController;
 }
 
 export function SettingsView({
+  pageAppearancePreferences,
   settings,
   backupState,
+  onPageAppearancePreferencesChange,
   onSettingsSaved,
   onDataChanged,
   midi,
@@ -189,6 +194,71 @@ export function SettingsView({
           <p>全局偏好和备份</p>
         </div>
         <DatabaseBackup size={24} />
+      </div>
+
+      <div className="panel settings-panel page-appearance-panel">
+        <div className="panel-heading">
+          <h2>页面设置</h2>
+        </div>
+        <div className="setting-row page-appearance-mode-row">
+          <div>
+            <strong>夜间模式</strong>
+            <span>应用于所有页面</span>
+          </div>
+          <select
+            aria-label="夜间模式"
+            className="page-appearance-mode"
+            value={pageAppearancePreferences.mode}
+            onChange={(event) => onPageAppearancePreferencesChange({
+              ...pageAppearancePreferences,
+              mode: event.target.value as PageAppearancePreferences["mode"],
+            })}
+          >
+            <option value="off">关闭</option>
+            <option value="on">开启</option>
+            <option value="auto">自动</option>
+          </select>
+        </div>
+        {pageAppearancePreferences.mode === "auto" ? (
+          <div className="setting-row page-appearance-hours-row">
+            <div>
+              <strong>自动时段</strong>
+              <span>按设备本地时间启用夜间模式；开始和结束小时相同时全天启用</span>
+            </div>
+            <div aria-label="夜间模式自动时段" className="page-appearance-hours">
+              <label>
+                <span>开始</span>
+                <select
+                  aria-label="夜间模式开始小时"
+                  value={pageAppearancePreferences.startHour}
+                  onChange={(event) => onPageAppearancePreferencesChange({
+                    ...pageAppearancePreferences,
+                    startHour: Number(event.target.value),
+                  })}
+                >
+                  {Array.from({ length: 24 }, (_, hour) => (
+                    <option key={hour} value={hour}>{String(hour).padStart(2, "0")} 时</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>结束</span>
+                <select
+                  aria-label="夜间模式结束小时"
+                  value={pageAppearancePreferences.endHour}
+                  onChange={(event) => onPageAppearancePreferencesChange({
+                    ...pageAppearancePreferences,
+                    endHour: Number(event.target.value),
+                  })}
+                >
+                  {Array.from({ length: 24 }, (_, hour) => (
+                    <option key={hour} value={hour}>{String(hour).padStart(2, "0")} 时</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="panel settings-panel">

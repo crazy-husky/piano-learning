@@ -1,5 +1,5 @@
 import { AudioLines, BarChart3, BellOff, BookOpen, Dumbbell, FolderOpen, Settings, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { preloadPianoSamples, setPianoVolume } from "./audio/piano";
 import {
   type BackupPreflightResult,
@@ -33,6 +33,14 @@ import {
   type VocalLibraryMutationPreflightResult,
 } from "./components/vocal-pitch/VocalPitchView";
 import { useBlurButtonAfterPointerClick } from "./components/useBlurButtonAfterPointerClick";
+import { useLocalStorageState } from "./components/useLocalStorageState";
+import {
+  DEFAULT_PAGE_APPEARANCE_PREFERENCES,
+  PAGE_APPEARANCE_PREFERENCES_KEY,
+  PageAppearanceProvider,
+  parsePageAppearancePreferences,
+  resolveNightMode,
+} from "./components/pageAppearance";
 import { useMidiInput } from "./midi/useMidiInput";
 import { ENHANCED_PITCH_MODEL_CACHE } from "./vocal-pitch/enhancedPitchModels";
 
@@ -146,6 +154,13 @@ export function App(): JSX.Element {
   const midi = useMidiInput();
 
   const [view, setView] = useState<View>(readInitialView);
+  const [pageAppearancePreferences, setPageAppearancePreferences] = useLocalStorageState(
+    PAGE_APPEARANCE_PREFERENCES_KEY,
+    DEFAULT_PAGE_APPEARANCE_PREFERENCES,
+    { parse: parsePageAppearancePreferences },
+  );
+  const [appearanceTimestamp, setAppearanceTimestamp] = useState(() => Date.now());
+  const isNightMode = resolveNightMode(pageAppearancePreferences, new Date(appearanceTimestamp));
   const [data, setData] = useState<AppData | null>(null);
   const [practiceRunning, setPracticeRunning] = useState(false);
   const [backupReminderBusy, setBackupReminderBusy] = useState(false);
@@ -177,6 +192,45 @@ export function App(): JSX.Element {
   useEffect(() => {
     rememberReloadView(view);
   }, [view]);
+
+  useEffect(() => {
+    let timeoutId = 0;
+    const scheduleNextMinute = (): void => {
+      const now = new Date();
+      const elapsedInMinute = now.getSeconds() * 1000 + now.getMilliseconds();
+      timeoutId = window.setTimeout(() => {
+        setAppearanceTimestamp(Date.now());
+        scheduleNextMinute();
+      }, 60_000 - elapsedInMinute);
+    };
+    const refreshAppearanceTime = (): void => {
+      setAppearanceTimestamp(Date.now());
+      window.clearTimeout(timeoutId);
+      scheduleNextMinute();
+    };
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState === "visible") {
+        refreshAppearanceTime();
+      }
+    };
+
+    scheduleNextMinute();
+    window.addEventListener("focus", refreshAppearanceTime);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("focus", refreshAppearanceTime);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = isNightMode ? "dark" : "light";
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (themeColor) {
+      themeColor.content = isNightMode ? "#171b19" : "#f6f1e8";
+    }
+  }, [isNightMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -552,6 +606,7 @@ export function App(): JSX.Element {
     !practiceRunning &&
     (view !== "vocal" || backupReminderState.kind === "data-conflict");
   return (
+    <PageAppearanceProvider isNightMode={isNightMode}>
     <div className={practiceRunning ? "app-shell app-shell-practice-running" : "app-shell"}>
       {backupToastMessage ? (
         <div className="backup-toast" role="status" aria-live="polite">
@@ -675,9 +730,11 @@ export function App(): JSX.Element {
         {view === "settings" ? (
           <SettingsView
             backupState={data.backupState}
+            pageAppearancePreferences={pageAppearancePreferences}
             settings={data.settings}
             midi={midi}
             onDataChanged={refresh}
+            onPageAppearancePreferencesChange={setPageAppearancePreferences}
             onSettingsSaved={saveSettings}
           />
         ) : null}
@@ -696,5 +753,6 @@ export function App(): JSX.Element {
         <MidiLatencyDiagnosticsPanel correctDelayMs={data.settings.correctDelayMs} />
       ) : null}
     </div>
+    </PageAppearanceProvider>
   );
 }

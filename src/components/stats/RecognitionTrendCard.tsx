@@ -1,6 +1,6 @@
 import * as echarts from "echarts";
 import type { EChartsOption, LineSeriesOption } from "echarts";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
   RECOGNITION_SERIES_KEYS,
@@ -13,18 +13,35 @@ import {
   type RecognitionTimeValueMode,
 } from "./recognitionTrend";
 import { STATS_COLORS } from "./statsColors";
+import { getPageThemeColor, useNightMode } from "../pageAppearance";
 
-const RECOGNITION_CHART_COLORS = STATS_COLORS.recognitionChart;
+const RECOGNITION_CHART_COLORS = {
+  get errorRate() { return getPageThemeColor("--recognition-error-rate", STATS_COLORS.recognitionChart.errorRate); },
+  get grid() { return getPageThemeColor("--chart-grid", STATS_COLORS.recognitionChart.grid); },
+  get median() { return getPageThemeColor("--recognition-median", STATS_COLORS.recognitionChart.median); },
+  get muted() { return getPageThemeColor("--chart-muted", STATS_COLORS.recognitionChart.muted); },
+  get p10() { return getPageThemeColor("--recognition-p10", STATS_COLORS.recognitionChart.p10); },
+  get p90() { return getPageThemeColor("--recognition-p90", STATS_COLORS.recognitionChart.p90); },
+  get panel() { return getPageThemeColor("--chart-surface", STATS_COLORS.recognitionChart.panel); },
+  get rangeFill() { return getPageThemeColor("--recognition-range-fill", STATS_COLORS.recognitionChart.rangeFill); },
+  get rangeMoveHandle() { return getPageThemeColor("--recognition-range-handle", STATS_COLORS.recognitionChart.rangeMoveHandle); },
+  get rangePreview() { return getPageThemeColor("--heatmap-zero", STATS_COLORS.recognitionChart.rangePreview); },
+  get rangePreviewLine() { return getPageThemeColor("--border-strong", STATS_COLORS.recognitionChart.rangePreviewLine); },
+  get selectedRangePreview() { return getPageThemeColor("--recognition-selected-range", STATS_COLORS.recognitionChart.selectedRangePreview); },
+  get sliderBackground() { return getPageThemeColor("--surface", STATS_COLORS.recognitionChart.sliderBackground); },
+  get sliderBorder() { return getPageThemeColor("--border", STATS_COLORS.recognitionChart.sliderBorder); },
+};
 const RECOGNITION_ERROR_RATE_OPACITY = 0.5;
 const RECOGNITION_TRANSITION_OPACITY = 0.45;
-const RECOGNITION_SERIES_OPTIONS: Array<{
+function getRecognitionSeriesOptions(): Array<{
   color: string;
   key: RecognitionSeriesKey;
   label: string;
   opacity?: number;
   width?: number;
   yAxisIndex?: number;
-}> = [
+}> {
+  return [
   { color: RECOGNITION_CHART_COLORS.p10, key: "p10", label: "P10" },
   { color: RECOGNITION_CHART_COLORS.median, key: "median", label: "中位", width: 2.5 },
   { color: RECOGNITION_CHART_COLORS.p90, key: "p90", label: "P90" },
@@ -35,7 +52,8 @@ const RECOGNITION_SERIES_OPTIONS: Array<{
     opacity: RECOGNITION_ERROR_RATE_OPACITY,
     yAxisIndex: 1,
   },
-];
+  ];
+}
 const DEFAULT_RECOGNITION_VISIBLE_SERIES = RECOGNITION_SERIES_KEYS;
 const RECOGNITION_RELATIVE_BASELINE_OPTIONS: Array<{
   label: string;
@@ -196,7 +214,8 @@ export function makeRecognitionTimeChartOption(
     ? makeRelativeRecognitionTimeData(metricData, relativeBaselineMode)
     : metricData;
   const visibleSeriesSet = new Set(visibleSeries);
-  const dataZoomPreviewOption = RECOGNITION_SERIES_OPTIONS.find((option) => visibleSeriesSet.has(option.key));
+  const seriesOptions = getRecognitionSeriesOptions();
+  const dataZoomPreviewOption = seriesOptions.find((option) => visibleSeriesSet.has(option.key));
   const dataZoomPreviewSeries: LineSeriesOption[] = dataZoomPreviewOption
     ? [{
         data: displayedData.map((stat) => stat[dataZoomPreviewOption.key] ?? null),
@@ -311,7 +330,7 @@ export function makeRecognitionTimeChartOption(
     legend: { show: false },
     series: [
       ...dataZoomPreviewSeries,
-      ...RECOGNITION_SERIES_OPTIONS.flatMap((option) => visibleSeriesSet.has(option.key)
+      ...seriesOptions.flatMap((option) => visibleSeriesSet.has(option.key)
         ? makeRecognitionLineSeries({
             color: option.color,
             data: displayedData,
@@ -445,6 +464,8 @@ function RecognitionTrendChart({
 }): JSX.Element {
   const chartElementRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
+  const isNightMode = useNightMode();
+  const seriesOptions = useMemo(() => getRecognitionSeriesOptions(), [isNightMode]);
 
   useEffect(() => {
     const element = chartElementRef.current;
@@ -480,12 +501,12 @@ function RecognitionTrendChart({
       makeRecognitionTimeChartOption(data, metric, valueMode, visibleSeries, relativeBaselineMode),
       true,
     );
-  }, [data, metric, relativeBaselineMode, valueMode, visibleSeries]);
+  }, [data, isNightMode, metric, relativeBaselineMode, valueMode, visibleSeries]);
 
   return (
     <div className="recognition-time-chart-shell">
       <div aria-label="识别趋势图例" className="recognition-trend-legend" role="group">
-        {RECOGNITION_SERIES_OPTIONS.map((option) => {
+        {seriesOptions.map((option) => {
           const selected = visibleSeries.includes(option.key);
           return (
             <div className="recognition-trend-legend-option" key={option.key}>
@@ -514,7 +535,7 @@ function RecognitionTrendChart({
         })}
         <button
           className="recognition-trend-legend-all"
-          disabled={visibleSeries.length === RECOGNITION_SERIES_OPTIONS.length}
+          disabled={visibleSeries.length === seriesOptions.length}
           onClick={onSelectAllSeries}
           type="button"
         >

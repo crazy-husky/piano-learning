@@ -3,6 +3,7 @@ import { Formatter, StaveNote, Voice } from "vexflow";
 import { formatTargetNoteLabel, noteToVexKey } from "../domain/notes";
 import type { PromptNoteDuration, StaffNotationMode, TargetNote, TargetNoteId } from "../domain/types";
 import { PRACTICE_SINGLE_STAFF_LAYOUT } from "./staffLayoutProfiles";
+import { getPageThemeColor, useNightMode } from "./pageAppearance";
 import {
   alignStaveNotesToCenters,
   createStaffRenderSurface,
@@ -21,9 +22,6 @@ interface StaffPromptProps {
   useLedgerGap: boolean;
   wrong?: boolean;
 }
-
-const NEUTRAL_COLOR = "#211c18";
-const WRONG_COLOR = "#c84c3d";
 
 function makePromptNote(note: TargetNote, noteDuration: PromptNoteDuration, color: string): StaveNote {
   const stemDirection = getLedgerStemDirection(note);
@@ -48,6 +46,7 @@ export function StaffPrompt({
 }: StaffPromptProps): JSX.Element {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const rendererTargetRef = useRef<HTMLDivElement | null>(null);
+  const isNightMode = useNightMode();
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -100,14 +99,19 @@ export function StaffPrompt({
         alignStaveNotesToCenters([staveNote], noteCenter);
         voice.draw(context, targetStave);
       };
-      drawNote(note, wrong ? WRONG_COLOR : NEUTRAL_COLOR);
+      drawNote(
+        note,
+        wrong
+          ? getPageThemeColor("--notation-error", "#c84c3d")
+          : getPageThemeColor("--notation-ink", "#211c18"),
+      );
     }
 
     render();
     const observer = new ResizeObserver(render);
     observer.observe(frame);
     return () => observer.disconnect();
-  }, [note, noteDuration, staffNotationMode, useLedgerGap, wrong]);
+  }, [isNightMode, note, noteDuration, staffNotationMode, useLedgerGap, wrong]);
 
   return (
     <div

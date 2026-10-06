@@ -12,6 +12,7 @@ import {
   HistoryLimitControl,
   normalizeHistoryLimit,
 } from "./HistoryLimitControl";
+import { useNightMode } from "./pageAppearance";
 
 export const DEFAULT_SESSION_PROGRESS_HISTORY_LIMIT = DEFAULT_HISTORY_LIMIT;
 
@@ -137,9 +138,16 @@ export function SessionProgressChart({
 }: SessionProgressChartProps): JSX.Element {
   const chartElementRef = useRef<HTMLDivElement | null>(null);
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
+  const isNightMode = useNightMode();
+  const chartColors = useMemo(() => ({
+    accent: isNightMode ? "#72b8a6" : "#256f67",
+    axis: isNightMode ? "#728078" : "#bcae9a",
+    grid: isNightMode ? "#3b4840" : "#e5dccf",
+    muted: isNightMode ? "#b1bcb3" : "#766b5f",
+  }), [isNightMode]);
   const chartGroups = useMemo<SessionProgressChartGroup[]>(
-    () => groups ?? [{ color: "#256f67", id: "single", label: "答对进度", series }],
-    [groups, series],
+    () => groups ?? [{ color: chartColors.accent, id: "single", label: "答对进度", series }],
+    [chartColors.accent, groups, series],
   );
   const allSeries = chartGroups.flatMap((group) => group.series);
   const allPoints = allSeries.flatMap((line) => line.points);
@@ -180,29 +188,29 @@ export function SessionProgressChart({
         valueFormatter: (value) => (typeof value === "number" ? String(value) : String(value ?? "")),
       },
       xAxis: {
-        axisLabel: { color: "#766b5f", formatter: (value: number) => formatElapsedMs(value) },
-        axisLine: { lineStyle: { color: "#bcae9a" } },
+        axisLabel: { color: chartColors.muted, formatter: (value: number) => formatElapsedMs(value) },
+        axisLine: { lineStyle: { color: chartColors.axis } },
         max: xMax,
         min: 0,
         name: "局内时间",
         nameLocation: "middle",
-        nameTextStyle: { color: "#766b5f", padding: 28 },
-        splitLine: { lineStyle: { color: "#e5dccf" }, show: true },
+        nameTextStyle: { color: chartColors.muted, padding: 28 },
+        splitLine: { lineStyle: { color: chartColors.grid }, show: true },
         type: "value",
       },
       yAxis: {
-        axisLabel: { color: "#766b5f" },
-        axisLine: { lineStyle: { color: "#bcae9a" }, show: true },
+        axisLabel: { color: chartColors.muted },
+        axisLine: { lineStyle: { color: chartColors.axis }, show: true },
         min: 0,
         minInterval: 1,
         name: "答对题数",
         nameLocation: "middle",
-        nameTextStyle: { color: "#766b5f", padding: 36 },
-        splitLine: { lineStyle: { color: "#e5dccf" } },
+        nameTextStyle: { color: chartColors.muted, padding: 36 },
+        splitLine: { lineStyle: { color: chartColors.grid } },
         type: "value",
       },
     }),
-    [chartGroups, prefersReducedMotion, xMax],
+    [chartColors, chartGroups, prefersReducedMotion, xMax],
   );
 
   useLayoutEffect(() => {
