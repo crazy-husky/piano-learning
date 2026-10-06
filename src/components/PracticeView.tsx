@@ -1,0 +1,2173 @@
+import { BarChart3, Pause, Play, RotateCcw, SlidersHorizontal, Square, Volume2 } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { playPianoNote, playTargetNote, setPianoVolume, unlockAudio } from "../audio/piano";
+import { db, deletePracticeSessionWithReviews, resolveDrillNoteNames, resolveQueueStrategy, saveReview } from "../data/db";
+import { writeBackupIfSafe, writeBackupNow } from "../data/backup";
+import { createUuid } from "../domain/id";
+import {
+  completeMidiLatencySample,
+  markMidiLatencyStage,
+  MIDI_LATENCY_DIAGNOSTICS_ENABLED,
+  setMidiLatencyCondition,
+  type MidiLatencyStage,
+} from "../diagnostics/midiLatencyDiagnostics";
+import {
+  isPracticeAnswerCorrect,
+  normalizeAnswerPitchMode,
+  resolveAvailableAnswerPitchMode,
+  type PracticeAnswerInput,
+} from "../domain/answerInput";
+import { createMelodyGenerationState } from "../domain/melody";
+import {
+  ANSWER_BUTTONS,
+  formatTargetNoteLabel,
+  getNoteById,
+  getNotesForGroups,
+  PRACTICE_GROUPS,
+} from "../domain/notes";
+import { shouldIgnoreReviewForSession, shouldKeepPracticeSession } from "../domain/practiceSession";
+import { getEffectivePracticeNotes } from "../domain/practiceComparison";
+import {
+  buildPracticeSessionRecordV4,
+  buildPracticeSessionStartSnapshot,
+} from "../domain/practiceSessionStartSnapshot";
+import { isCompletedReview } from "../domain/reviews";
+import { selectNextNote, selectNotePage } from "../domain/scheduler";
+import {
+  buildSessionProgressBenchmark,
+  buildSessionProgressSeries,
+  type SessionProgressMode,
+} from "../domain/sessionProgress";
+import {
+  buildNoteStats,
+  filterLongTermReviews,
+  formatMs,
+  getLongTermStatsEligibility,
+  percentile,
+} from "../domain/stats";
+import type {
+  AppSettings,
+  AnswerPitchMode,
+  FocusLoss,
+  InterruptReason,
+  NoteName,
+  Octave,
+  PracticeGroupId,
+  PracticeMode,
+  PracticeQueueStrategy,
+  PracticeSessionRecord,
+  PracticeSessionStartSnapshot,
+  PromptDisplayMode,
+  PromptNoteDuration,
+  PianoKeyName,
+  ReviewRecord,
+  TargetNote,
+  WrongAnswer,
+} from "../domain/types";
+import { MIDI_START_NOTE_NUMBER } from "../midi/midiInput";
+import type { MidiInputController } from "../midi/useMidiInput";
+import { GlobalRangeControls } from "./GlobalRangeControls";
+import { resolveHistoryLimit } from "./HistoryLimitControl";
+import { isInteractiveShortcutTarget, shouldHandleGlobalEnter } from "./keyboardShortcuts";
+import {
+  SessionProgressChart,
+  SessionProgressControls,
+  SessionProgressLegend,
+} from "./SessionProgressChart";
+import {
+  DEFAULT_SESSION_PROGRESS_UI_PREFERENCES,
+  parseSessionProgressUiPreferences,
+  SESSION_PROGRESS_UI_PREFERENCES_KEY,
+} from "./sessionProgressPreferences";
+import { PauseOverlay } from "./PauseOverlay";
+import { isNaturalPianoKey, NATURAL_PIANO_KEYS, PianoKeyboard } from "./PianoKeyboard";
+import { getPausedKeyboardAction } from "./practiceKeyboard";
+import { StaffPagePrompt } from "./StaffPagePrompt";
+import { StaffPrompt } from "./StaffPrompt";
+import { PRACTICE_PAGE_STAFF_LAYOUT } from "./staffLayoutProfiles";
+import { getStaffPageRefillCount } from "./staffPageFlow";
+import { PROMPT_NOTE_DURATIONS } from "./staffPageNotation";
+import {
+  DEFAULT_STAFF_PAGE_UI_PREFERENCES,
+  normalizePausedPlaybackBpm,
+  parseStaffPageUiPreferences,
+  STAFF_PAGE_UI_PREFERENCES_KEY,
+} from "./staffPageUiPreferences";
+import { useLocalStorageState } from "./useLocalStorageState";
+import { useDelayedBusy } from "./useDelayedBusy";
+import { useRemainingNotePlayback } from "./useRemainingNotePlayback";
+
+interface PracticeViewProps {
+  midi: MidiInputController;
+  settings: AppSettings;
+  sessions: PracticeSessionRecord[];
+  reviews: ReviewRecord[];
+  navigationExitRequest?: PracticeNavigationExitRequest | null;
+  onNavigationExit?: (targetView: PracticeNavigationExitTarget) => void;
+  onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
+  onDataChanged: () => Promise<void>;
+  onOpenStats: () => void;
+  onOpenSettings: () => void;
+  onBeforePracticeStart: () => Promise<PracticeStartPreflightResult>;
+  onPracticeFinished: () => void;
+  onRunningChange: (running: boolean) => void;
+}
+
+export type PracticeNavigationExitTarget = "practice" | "stats" | "settings" | "study" | "vocal";
+
+export interface PracticeStartPreflightResult {
+  proceed: boolean;
+  reviews?: ReviewRecord[];
+  settings?: AppSettings;
+}
+
+export interface PracticeNavigationExitRequest {
+  id: number;
+  targetView: PracticeNavigationExitTarget;
+}
+
+interface PromptRuntime {
+  note: TargetNote;
+  startedAt: string;
+  activeBaseMs: number;
+  activeStartedAt: number | null;
+  lastInputAt: number;
+  wrongAnswers: WrongAnswer[];
+  replayCount: number;
+  focusLosses: FocusLoss[];
+  interrupted: boolean;
+  interruptReason?: InterruptReason;
+}
+
+type Phase = "setup" | "running" | "summary";
+
+interface SessionSummary {
+  session: PracticeSessionRecord;
+  reviews: ReviewRecord[];
+}
+
+interface StaffPageRuntime {
+  notes: TargetNote[];
+  index: number;
+  completedCount: number;
+}
+
+interface CompleteSessionOptions {
+  showSummary?: boolean;
+  updateUi?: boolean;
+}
+
+interface PracticeSetupUiPreferences {
+  answerPitchMode: AnswerPitchMode;
+  autoPlayTarget: boolean;
+  playAnswerNote: boolean;
+  drillNoteNames: NoteName[];
+  fixedCount: number;
+  fixedDurationSeconds: number;
+  mode: PracticeMode;
+  promptDisplayMode: PromptDisplayMode;
+  promptNoteDuration: PromptNoteDuration;
+  queueStrategy: PracticeQueueStrategy;
+}
+
+function newSessionId(): string {
+  return createUuid();
+}
+
+function markMidiLatencyAfterPaint(diagnosticSampleId: number, stage: MidiLatencyStage): () => void {
+  let secondFrame: number | undefined;
+  const firstFrame = window.requestAnimationFrame(() => {
+    secondFrame = window.requestAnimationFrame(() => {
+      markMidiLatencyStage(diagnosticSampleId, stage);
+    });
+  });
+  return () => {
+    window.cancelAnimationFrame(firstFrame);
+    if (secondFrame !== undefined) {
+      window.cancelAnimationFrame(secondFrame);
+    }
+  };
+}
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function durationSecondsToInputMinutes(seconds: number): string {
+  return Number((seconds / 60).toFixed(2)).toString();
+}
+
+function inputMinutesToDurationSeconds(value: string): number {
+  return Math.max(60, Math.round(Number(value) * 60));
+}
+
+const ALL_GROUP_IDS: PracticeGroupId[] = PRACTICE_GROUPS.map((group) => group.id);
+const STAFF_PAGE_SIZE =
+  PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows * PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow;
+const STAFF_PAGE_SCROLL_DURATION_MS = 200;
+const MELODY_BUFFER_SIZE = 16;
+const PRACTICE_SETUP_UI_PREFERENCES_KEY = "anki-note.practiceSetupUiPreferences";
+const PRACTICE_MODES: readonly PracticeMode[] = ["open-ended", "fixed-count", "fixed-duration"];
+const PROMPT_DISPLAY_MODES: readonly PromptDisplayMode[] = ["single-note", "staff-page"];
+const PROMPT_NOTE_DURATION_OPTIONS: Array<{
+  ariaLabel: string;
+  label: string;
+  value: PromptNoteDuration;
+}> = [
+  { ariaLabel: "全音符", label: "全音符 𝅝", value: "whole" },
+  { ariaLabel: "四分音符", label: "四分 ♩", value: "quarter" },
+  { ariaLabel: "八分音符", label: "八分 ♪", value: "eighth" },
+  { ariaLabel: "十六分音符", label: "十六分 𝅘𝅥𝅯", value: "sixteenth" },
+];
+const PRACTICE_QUEUE_STRATEGIES: readonly PracticeQueueStrategy[] = ["adaptive", "focused", "melody", "note-drill"];
+const PRACTICE_QUEUE_OPTIONS: Array<{ strategy: PracticeQueueStrategy; label: string; description: string }> = [
+  {
+    strategy: "adaptive",
+    label: "自适应队列",
+    description: "根据近期识别速度优先练习薄弱音，同时保持全音域复习。",
+  },
+  {
+    strategy: "melody",
+    label: "旋律生成",
+    description: "在启用组音域内生成级进为主的练习",
+  },
+  {
+    strategy: "note-drill",
+    label: "单音强化",
+    description: "只抽所选音名；仅选择一个音名时不写入统计",
+  },
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPracticeMode(value: unknown): value is PracticeMode {
+  return typeof value === "string" && PRACTICE_MODES.includes(value as PracticeMode);
+}
+
+function isPromptDisplayMode(value: unknown): value is PromptDisplayMode {
+  return typeof value === "string" && PROMPT_DISPLAY_MODES.includes(value as PromptDisplayMode);
+}
+
+function isPromptNoteDuration(value: unknown): value is PromptNoteDuration {
+  return typeof value === "string" && PROMPT_NOTE_DURATIONS.includes(value as PromptNoteDuration);
+}
+
+function isPracticeQueueStrategy(value: unknown): value is PracticeQueueStrategy {
+  return typeof value === "string" && PRACTICE_QUEUE_STRATEGIES.includes(value as PracticeQueueStrategy);
+}
+
+function normalizeFixedCount(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(500, Math.max(1, Math.floor(parsed))) : fallback;
+}
+
+function normalizeFixedDurationSeconds(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(60, Math.round(parsed)) : fallback;
+}
+
+function normalizeDrillNoteNames(value: unknown, fallback: NoteName[]): NoteName[] {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+  const selected = new Set(value.filter((noteName): noteName is string => typeof noteName === "string"));
+  return ANSWER_BUTTONS.map((button) => button.noteName).filter((noteName) => selected.has(noteName));
+}
+
+function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeSetupUiPreferences {
+  return {
+    answerPitchMode: settings.answerPitchMode,
+    autoPlayTarget: settings.autoPlayTarget,
+    playAnswerNote: settings.playAnswerNote,
+    drillNoteNames: resolveDrillNoteNames(settings),
+    fixedCount: settings.fixedCount,
+    fixedDurationSeconds: settings.fixedDurationSeconds,
+    mode: settings.defaultMode,
+    promptDisplayMode: settings.promptDisplayMode ?? "staff-page",
+    promptNoteDuration: settings.promptNoteDuration ?? "quarter",
+    queueStrategy: resolveQueueStrategy(settings),
+  };
+}
+
+function parsePracticeSetupUiPreferences(
+  value: unknown,
+  fallback: PracticeSetupUiPreferences,
+): PracticeSetupUiPreferences {
+  if (!isRecord(value)) {
+    return fallback;
+  }
+
+  return {
+    answerPitchMode: normalizeAnswerPitchMode(value.answerPitchMode, fallback.answerPitchMode),
+    autoPlayTarget: typeof value.autoPlayTarget === "boolean" ? value.autoPlayTarget : fallback.autoPlayTarget,
+    playAnswerNote: typeof value.playAnswerNote === "boolean" ? value.playAnswerNote : fallback.playAnswerNote,
+    drillNoteNames: normalizeDrillNoteNames(value.drillNoteNames, fallback.drillNoteNames),
+    fixedCount: normalizeFixedCount(value.fixedCount, fallback.fixedCount),
+    fixedDurationSeconds: normalizeFixedDurationSeconds(value.fixedDurationSeconds, fallback.fixedDurationSeconds),
+    mode: isPracticeMode(value.mode) ? value.mode : fallback.mode,
+    promptDisplayMode: isPromptDisplayMode(value.promptDisplayMode) ? value.promptDisplayMode : fallback.promptDisplayMode,
+    promptNoteDuration: isPromptNoteDuration(value.promptNoteDuration) ? value.promptNoteDuration : fallback.promptNoteDuration,
+    queueStrategy: isPracticeQueueStrategy(value.queueStrategy)
+      ? value.queueStrategy === "focused" ? "adaptive" : value.queueStrategy
+      : fallback.queueStrategy,
+  };
+}
+
+export function PracticeView({
+  midi,
+  settings,
+  sessions,
+  reviews,
+  navigationExitRequest,
+  onNavigationExit,
+  onSettingsSaved,
+  onDataChanged,
+  onOpenStats,
+  onOpenSettings,
+  onBeforePracticeStart,
+  onPracticeFinished,
+  onRunningChange,
+}: PracticeViewProps): JSX.Element {
+  const defaultPracticeSetupUiPreferences = useMemo(
+    () => makeDefaultPracticeSetupUiPreferences(settings),
+    [settings],
+  );
+  const [practiceSetupPreferences, setPracticeSetupPreferences] = useLocalStorageState(
+    PRACTICE_SETUP_UI_PREFERENCES_KEY,
+    defaultPracticeSetupUiPreferences,
+    { parse: parsePracticeSetupUiPreferences },
+  );
+  const [sessionProgressPreferences, setSessionProgressPreferences] = useLocalStorageState(
+    SESSION_PROGRESS_UI_PREFERENCES_KEY,
+    DEFAULT_SESSION_PROGRESS_UI_PREFERENCES,
+    { parse: parseSessionProgressUiPreferences },
+  );
+  const [staffPageUiPreferences, setStaffPageUiPreferences] = useLocalStorageState(
+    STAFF_PAGE_UI_PREFERENCES_KEY,
+    DEFAULT_STAFF_PAGE_UI_PREFERENCES,
+    { parse: parseStaffPageUiPreferences },
+  );
+  const [phase, setPhase] = useState<Phase>("setup");
+  const [session, setSession] = useState<PracticeSessionRecord | null>(null);
+  const [currentNote, setCurrentNote] = useState<TargetNote | null>(null);
+  const [completedCount, setCompletedCount] = useState(0);
+  const [wrongAnswerCount, setWrongAnswerCount] = useState(0);
+  const [feedback, setFeedback] = useState<{
+    diagnosticSampleId?: number;
+    type: "wrong" | "correct";
+    noteName?: NoteName;
+  } | null>(null);
+  const [heldComputerAnswerKeys, setHeldComputerAnswerKeys] = useState<ReadonlySet<PianoKeyName>>(() => new Set());
+  const [heldMidiAnswerKeys, setHeldMidiAnswerKeys] = useState<ReadonlySet<PianoKeyName>>(() => new Set());
+  const [tick, setTick] = useState(0);
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
+  const [staffPageNotes, setStaffPageNotes] = useState<TargetNote[]>([]);
+  const [staffPageIndex, setStaffPageIndex] = useState(0);
+  const [staffPageCompletedCount, setStaffPageCompletedCount] = useState(0);
+  const [isStaffPageScrolling, setIsStaffPageScrolling] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const { isBusyVisible: showStartingSessionStatus, run: runSessionStart } = useDelayedBusy();
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false,
+  );
+  const runningStartSnapshot = phase === "running" && (session?.schemaVersion === 3 || session?.schemaVersion === 4)
+    ? session.startSnapshot
+    : undefined;
+  const answerPitchMode = runningStartSnapshot
+    ? normalizeAnswerPitchMode(runningStartSnapshot.practiceConfig.answerPitchMode)
+    : resolveAvailableAnswerPitchMode(practiceSetupPreferences.answerPitchMode, midi.isConnected);
+  const mode = runningStartSnapshot?.practiceConfig.mode ?? practiceSetupPreferences.mode;
+  const promptDisplayMode = runningStartSnapshot?.presentationConfig.promptDisplayMode ?? practiceSetupPreferences.promptDisplayMode;
+  const promptNoteDuration = runningStartSnapshot?.presentationConfig.promptNoteDuration ?? practiceSetupPreferences.promptNoteDuration;
+  const fixedCount = runningStartSnapshot?.practiceConfig.fixedCount ?? practiceSetupPreferences.fixedCount;
+  const fixedDurationSeconds =
+    runningStartSnapshot?.practiceConfig.fixedDurationSeconds ?? practiceSetupPreferences.fixedDurationSeconds;
+  const autoPlayTarget = runningStartSnapshot?.presentationConfig.autoPlayTarget ?? practiceSetupPreferences.autoPlayTarget;
+  const playAnswerNote = runningStartSnapshot?.presentationConfig.playAnswerNote ?? practiceSetupPreferences.playAnswerNote;
+  const queueStrategy = runningStartSnapshot?.practiceConfig.queueStrategy ?? practiceSetupPreferences.queueStrategy;
+  const drillNoteNames = runningStartSnapshot?.practiceConfig.drillNoteNames ?? practiceSetupPreferences.drillNoteNames;
+  const pausedPlaybackBpm = staffPageUiPreferences.pausedPlaybackBpm;
+  const startPausedReading = staffPageUiPreferences.startPausedReading;
+  const effectivePromptNoteDuration = runningStartSnapshot?.presentationConfig.promptNoteDuration ?? promptNoteDuration;
+  const effectiveAnswerKeyboardScale = runningStartSnapshot?.interactionConfig.answerKeyboardScale ?? settings.answerKeyboardScale;
+  const staffPageScrollDurationMs =
+    (runningStartSnapshot?.presentationConfig.smoothStaffPageScroll ?? staffPageUiPreferences.smoothStaffPageScroll) &&
+    !(runningStartSnapshot?.environment.prefersReducedMotion ?? prefersReducedMotion)
+      ? STAFF_PAGE_SCROLL_DURATION_MS
+      : 0;
+  const summaryProgressMode = sessionProgressPreferences.mode;
+  const summaryAllHistory = sessionProgressPreferences.allHistory;
+  const summaryHistoryLimit = sessionProgressPreferences.historyLimit;
+  const summaryEffectiveHistoryLimit = resolveHistoryLimit(summaryHistoryLimit, summaryAllHistory, sessions.length);
+  const setMode = (nextMode: PracticeMode): void => {
+    setPracticeSetupPreferences((current) => ({ ...current, mode: nextMode }));
+  };
+  const setAnswerPitchMode = (nextAnswerPitchMode: AnswerPitchMode): void => {
+    setPracticeSetupPreferences((current) => ({ ...current, answerPitchMode: nextAnswerPitchMode }));
+  };
+  const setPromptDisplayMode = (nextPromptDisplayMode: PromptDisplayMode): void => {
+    setPracticeSetupPreferences((current) => ({ ...current, promptDisplayMode: nextPromptDisplayMode }));
+  };
+  const setPromptNoteDuration = (nextPromptNoteDuration: PromptNoteDuration): void => {
+    setPracticeSetupPreferences((current) => ({ ...current, promptNoteDuration: nextPromptNoteDuration }));
+  };
+  const setFixedCount = (nextFixedCount: number): void => {
+    setPracticeSetupPreferences((current) => ({ ...current, fixedCount: normalizeFixedCount(nextFixedCount, current.fixedCount) }));
+  };
+  const setFixedDurationSeconds = (nextFixedDurationSeconds: number): void => {
+    setPracticeSetupPreferences((current) => ({
+      ...current,
+      fixedDurationSeconds: normalizeFixedDurationSeconds(nextFixedDurationSeconds, current.fixedDurationSeconds),
+    }));
+  };
+  const setAutoPlayTarget = (nextAutoPlayTarget: boolean): void => {
+    setPracticeSetupPreferences((current) => ({ ...current, autoPlayTarget: nextAutoPlayTarget }));
+  };
+  const setPlayAnswerNote = (nextPlayAnswerNote: boolean): void => {
+    setPracticeSetupPreferences((current) => ({ ...current, playAnswerNote: nextPlayAnswerNote }));
+  };
+  const setQueueStrategy = (nextQueueStrategy: PracticeQueueStrategy): void => {
+    setPracticeSetupPreferences((current) => ({ ...current, queueStrategy: nextQueueStrategy }));
+  };
+  const setPausedPlaybackBpm = (nextBpm: number): void => {
+    setStaffPageUiPreferences((current) => ({
+      ...current,
+      pausedPlaybackBpm: normalizePausedPlaybackBpm(nextBpm, current.pausedPlaybackBpm),
+    }));
+  };
+  const setSummaryProgressMode = (nextMode: SessionProgressMode): void => {
+    setSessionProgressPreferences((current) => ({ ...current, mode: nextMode }));
+  };
+  const setSummaryHistoryLimit = (nextHistoryLimit: number): void => {
+    setSessionProgressPreferences((current) => ({ ...current, historyLimit: nextHistoryLimit }));
+  };
+  const setSummaryAllHistory = (allHistory: boolean): void => {
+    setSessionProgressPreferences((current) => ({ ...current, allHistory }));
+  };
+
+  const promptRef = useRef<PromptRuntime | null>(null);
+  const sessionRef = useRef<PracticeSessionRecord | null>(null);
+  const sessionStartSnapshotRef = useRef<PracticeSessionStartSnapshot | null>(null);
+  const sessionReviewsRef = useRef<ReviewRecord[]>([]);
+  const lastTargetNoteIdRef = useRef<TargetNote["id"] | undefined>();
+  const melodyQueueRef = useRef<TargetNote[]>([]);
+  const melodyGenerationStateRef = useRef(createMelodyGenerationState());
+  const staffPageRef = useRef<StaffPageRuntime | null>(null);
+  const staffPageScrollFrameRef = useRef<number | null>(null);
+  const staffPageScrollTimeoutRef = useRef<number | null>(null);
+  const endingRef = useRef(false);
+  const sessionActiveBaseMsRef = useRef(0);
+  const sessionActiveStartedAtRef = useRef<number | null>(null);
+  const isPausedRef = useRef(false);
+  const pendingAfterPauseRef = useRef<(() => void) | null>(null);
+  const answerInputLockedRef = useRef(false);
+  const lastBackupCompletedRef = useRef(0);
+  const lastBackupAtRef = useRef<number>(performance.now());
+  const handledNavigationExitRequestIdRef = useRef<number | null>(null);
+  const heldMidiInputsRef = useRef(new Map<string, PianoKeyName>());
+  const pendingMidiPressDiagnosticSampleIdRef = useRef<number | undefined>(undefined);
+  const startSessionRef = useRef<() => void>(() => undefined);
+  const submitAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => undefined);
+
+  useLayoutEffect(() => {
+    const diagnosticSampleId = feedback?.diagnosticSampleId;
+    if (diagnosticSampleId === undefined) {
+      return undefined;
+    }
+    markMidiLatencyStage(diagnosticSampleId, "reactCommit");
+    return markMidiLatencyAfterPaint(diagnosticSampleId, "paintApprox");
+  }, [feedback]);
+
+  useLayoutEffect(() => {
+    const diagnosticSampleId = pendingMidiPressDiagnosticSampleIdRef.current;
+    pendingMidiPressDiagnosticSampleIdRef.current = undefined;
+    if (diagnosticSampleId === undefined) {
+      return undefined;
+    }
+    markMidiLatencyStage(diagnosticSampleId, "pressedReactCommit");
+    return markMidiLatencyAfterPaint(diagnosticSampleId, "pressedPaintApprox");
+  }, [heldMidiAnswerKeys]);
+
+  const pressedAnswerKeys = useMemo(
+    () => new Set<PianoKeyName>([...heldComputerAnswerKeys, ...heldMidiAnswerKeys]),
+    [heldComputerAnswerKeys, heldMidiAnswerKeys],
+  );
+
+  function blurQueueStrategyAfterPointerClick(input: HTMLInputElement, clickCount: number): void {
+    if (clickCount === 0) {
+      return;
+    }
+    window.setTimeout(() => {
+      if (document.activeElement === input) {
+        input.blur();
+      }
+    }, 0);
+  }
+
+  const getRemainingPlaybackNotes = useCallback((): TargetNote[] => {
+    const page = staffPageRef.current;
+    const startIndex = page ? Math.max(page.index, page.completedCount) : 0;
+    return page ? page.notes.slice(startIndex) : [];
+  }, []);
+  const {
+    cancel: cancelRemainingPlayback,
+    state: remainingPlaybackState,
+    toggle: toggleRemainingPlayback,
+  } = useRemainingNotePlayback({
+    bpm: pausedPlaybackBpm,
+    getNotes: getRemainingPlaybackNotes,
+    noteDuration: effectivePromptNoteDuration,
+  });
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = (): void => setPrefersReducedMotion(mediaQuery.matches);
+    mediaQuery.addEventListener("change", onChange);
+    return () => mediaQuery.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    onRunningChange(phase === "running");
+    return () => onRunningChange(false);
+  }, [onRunningChange, phase]);
+
+  const applySettingsSnapshot = useCallback((nextSettings: AppSettings): void => {
+    setPracticeSetupPreferences(makeDefaultPracticeSetupUiPreferences(nextSettings));
+  }, [setPracticeSetupPreferences]);
+
+  const staffNotationMode = runningStartSnapshot?.practiceConfig.staffNotationMode ?? settings.staffNotationMode;
+  const effectiveEnabledGroupIds = runningStartSnapshot?.practiceConfig.enabledGroupIds ?? settings.enabledGroupIds;
+  const effectiveInterStaffLedgerSpellings =
+    runningStartSnapshot?.practiceConfig.includeInterStaffLedgerSpellings ?? settings.includeInterStaffLedgerSpellings;
+  const enabledNotes = useMemo(
+    () => getNotesForGroups(effectiveEnabledGroupIds, effectiveInterStaffLedgerSpellings, staffNotationMode),
+    [effectiveEnabledGroupIds, effectiveInterStaffLedgerSpellings, staffNotationMode],
+  );
+  const useLedgerGap = enabledNotes.some((note) => note.isInterStaffLedgerSpelling);
+  const fullPracticeCount = useMemo(
+    () => getNotesForGroups(ALL_GROUP_IDS, effectiveInterStaffLedgerSpellings, staffNotationMode).length,
+    [effectiveInterStaffLedgerSpellings, staffNotationMode],
+  );
+  const fixedCountPresets = useMemo(
+    () => Array.from(new Set([10, 20, fullPracticeCount])).filter((count) => count > 0),
+    [fullPracticeCount],
+  );
+  const queueNotes = useMemo(
+    () =>
+      getEffectivePracticeNotes({
+        drillNoteNames,
+        enabledGroupIds: effectiveEnabledGroupIds,
+        includeInterStaffLedgerSpellings: effectiveInterStaffLedgerSpellings,
+        queueStrategy,
+        staffNotationMode,
+      }),
+    [
+      drillNoteNames,
+      queueStrategy,
+      effectiveEnabledGroupIds,
+      effectiveInterStaffLedgerSpellings,
+      staffNotationMode,
+    ],
+  );
+  const effectiveTargetNoteIds = useMemo(
+    () => new Set(queueNotes.map((note) => note.id)),
+    [queueNotes],
+  );
+  const schedulerReviews = useMemo(() => filterLongTermReviews(reviews), [reviews]);
+  const setupSettings = useMemo<AppSettings>(
+    () => ({
+      ...settings,
+      answerPitchMode,
+      autoPlayTarget,
+      playAnswerNote,
+      defaultMode: mode,
+      drillNoteNames,
+      fixedCount,
+      fixedDurationSeconds,
+      focusedTraining: false,
+      promptDisplayMode,
+      promptNoteDuration,
+      queueStrategy,
+    }),
+    [
+      answerPitchMode,
+      autoPlayTarget,
+      playAnswerNote,
+      drillNoteNames,
+      fixedCount,
+      fixedDurationSeconds,
+      mode,
+      promptDisplayMode,
+      promptNoteDuration,
+      queueStrategy,
+      settings,
+    ],
+  );
+
+  const toggleDrillNoteName = useCallback((noteName: NoteName, checked: boolean): void => {
+    setPracticeSetupPreferences((current) => {
+      const next = checked
+        ? [...current.drillNoteNames, noteName]
+        : current.drillNoteNames.filter((name) => name !== noteName);
+      const selected = new Set(next);
+      return {
+        ...current,
+        drillNoteNames: ANSWER_BUTTONS.map((button) => button.noteName).filter((name) => selected.has(name)),
+      };
+    });
+  }, [setPracticeSetupPreferences]);
+
+  const getPromptActiveMs = useCallback((): number => {
+    const prompt = promptRef.current;
+    if (!prompt) {
+      return 0;
+    }
+    const running = prompt.activeStartedAt === null ? 0 : performance.now() - prompt.activeStartedAt;
+    return Math.round(prompt.activeBaseMs + running);
+  }, []);
+
+  const getSessionActiveMs = useCallback((): number => {
+    const running =
+      sessionActiveStartedAtRef.current === null ? 0 : performance.now() - sessionActiveStartedAtRef.current;
+    return Math.round(sessionActiveBaseMsRef.current + running);
+  }, []);
+
+  const markInterrupted = useCallback((reason: InterruptReason): void => {
+    const prompt = promptRef.current;
+    if (!prompt || prompt.interrupted) {
+      return;
+    }
+    prompt.interrupted = true;
+    prompt.interruptReason = reason;
+  }, []);
+
+  const pauseActiveTimers = useCallback((): void => {
+    const now = performance.now();
+    const prompt = promptRef.current;
+    if (prompt?.activeStartedAt !== null && prompt?.activeStartedAt !== undefined) {
+      prompt.activeBaseMs += now - prompt.activeStartedAt;
+      prompt.activeStartedAt = null;
+    }
+    if (sessionActiveStartedAtRef.current !== null) {
+      sessionActiveBaseMsRef.current += now - sessionActiveStartedAtRef.current;
+      sessionActiveStartedAtRef.current = null;
+    }
+  }, []);
+
+  const clearStaffPageScrollSchedule = useCallback((): void => {
+    if (staffPageScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(staffPageScrollFrameRef.current);
+      staffPageScrollFrameRef.current = null;
+    }
+    if (staffPageScrollTimeoutRef.current !== null) {
+      window.clearTimeout(staffPageScrollTimeoutRef.current);
+      staffPageScrollTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearStaffPageScrollSchedule(), [clearStaffPageScrollSchedule]);
+
+  const resumeActiveTimers = useCallback((): void => {
+    const now = performance.now();
+    const prompt = promptRef.current;
+    if (prompt && prompt.activeStartedAt === null) {
+      const lastLoss = prompt.focusLosses[prompt.focusLosses.length - 1];
+      if (lastLoss && !lastLoss.regainedFocusAt) {
+        lastLoss.regainedFocusAt = new Date().toISOString();
+      }
+      prompt.activeStartedAt = now;
+      prompt.lastInputAt = now;
+    }
+    if (sessionActiveStartedAtRef.current === null) {
+      sessionActiveStartedAtRef.current = now;
+    }
+  }, []);
+
+  const pausePractice = useCallback((interruptReason?: InterruptReason): void => {
+    if (interruptReason) {
+      markInterrupted(interruptReason);
+    }
+    pauseActiveTimers();
+    if (!isPausedRef.current) {
+      isPausedRef.current = true;
+      setIsPaused(true);
+    }
+  }, [markInterrupted, pauseActiveTimers]);
+
+  const resumePractice = useCallback((): void => {
+    if (!isPausedRef.current) {
+      return;
+    }
+    if (answerPitchMode === "exact-pitch" && !midi.isConnected) {
+      return;
+    }
+    cancelRemainingPlayback();
+    isPausedRef.current = false;
+    setIsPaused(false);
+    const pendingAfterPause = pendingAfterPauseRef.current;
+    pendingAfterPauseRef.current = null;
+    if (pendingAfterPause) {
+      pendingAfterPause();
+      return;
+    }
+    if (promptRef.current) {
+      resumeActiveTimers();
+      if (sessionStartSnapshotRef.current?.presentationConfig.autoPlayTarget ?? autoPlayTarget) {
+        void playTargetNote(promptRef.current.note).catch(() => undefined);
+      }
+    }
+  }, [answerPitchMode, autoPlayTarget, cancelRemainingPlayback, midi.isConnected, resumeActiveTimers]);
+
+  const togglePause = useCallback((): void => {
+    if (isPausedRef.current) {
+      resumePractice();
+      return;
+    }
+    pausePractice("manual-pause");
+  }, [pausePractice, resumePractice]);
+
+  const pauseForFocusLoss = useCallback((): void => {
+    if (isPausedRef.current) {
+      return;
+    }
+    const prompt = promptRef.current;
+    if (prompt) {
+      const lastLoss = prompt.focusLosses[prompt.focusLosses.length - 1];
+      if (!lastLoss || lastLoss.regainedFocusAt) {
+        prompt.focusLosses.push({ lostFocusAt: new Date().toISOString() });
+      }
+    }
+    pausePractice("focus-lost");
+  }, [pausePractice]);
+
+  useEffect(() => {
+    if (phase === "running" && answerPitchMode === "exact-pitch" && !midi.isConnected) {
+      pausePractice("midi-disconnected");
+    }
+  }, [answerPitchMode, midi.isConnected, pausePractice, phase]);
+
+  const persistConfig = useCallback(async (): Promise<AppSettings> => {
+    const nextSettings: AppSettings = {
+      ...settings,
+      answerPitchMode,
+      defaultMode: mode,
+      promptDisplayMode,
+      promptNoteDuration,
+      fixedCount,
+      fixedDurationSeconds,
+      autoPlayTarget,
+      playAnswerNote,
+      queueStrategy,
+      drillNoteNames,
+      focusedTraining: false,
+    };
+    await onSettingsSaved(nextSettings);
+    return nextSettings;
+  }, [
+    answerPitchMode,
+    autoPlayTarget,
+    playAnswerNote,
+    fixedCount,
+    fixedDurationSeconds,
+    drillNoteNames,
+    mode,
+    onSettingsSaved,
+    queueStrategy,
+    settings,
+    promptDisplayMode,
+    promptNoteDuration,
+  ]);
+
+  const maybeBackupDuringOpenEnded = useCallback(
+    async (nextCompletedCount: number): Promise<void> => {
+      if (mode !== "open-ended") {
+        return;
+      }
+      const now = performance.now();
+      const reviewsSinceBackup = nextCompletedCount - lastBackupCompletedRef.current;
+      const msSinceBackup = now - lastBackupAtRef.current;
+      if (reviewsSinceBackup < 50 && msSinceBackup < 5 * 60 * 1000) {
+        return;
+      }
+      lastBackupCompletedRef.current = nextCompletedCount;
+      lastBackupAtRef.current = now;
+      await writeBackupIfSafe();
+    },
+    [mode],
+  );
+
+  const syncStaffPage = useCallback((page: StaffPageRuntime | null): void => {
+    staffPageRef.current = page;
+    setStaffPageNotes(page?.notes ?? []);
+    setStaffPageIndex(page?.index ?? 0);
+    setStaffPageCompletedCount(page?.completedCount ?? 0);
+  }, []);
+
+  const getNextStaffPageCount = useCallback(
+    (nextCompletedCount: number): number => {
+      if (mode !== "fixed-count") {
+        return STAFF_PAGE_SIZE;
+      }
+      return Math.min(STAFF_PAGE_SIZE, Math.max(0, fixedCount - nextCompletedCount));
+    },
+    [fixedCount, mode],
+  );
+
+  const startPrompt = useCallback(
+    (note: TargetNote): void => {
+      const now = performance.now();
+      const startsPaused = isPausedRef.current;
+      promptRef.current = {
+        note,
+        startedAt: new Date().toISOString(),
+        activeBaseMs: 0,
+        activeStartedAt: startsPaused ? null : now,
+        lastInputAt: now,
+        wrongAnswers: [],
+        replayCount: 0,
+        focusLosses: [],
+        interrupted: false,
+      };
+      setCurrentNote(note);
+      setFeedback(null);
+      answerInputLockedRef.current = false;
+      if ((sessionStartSnapshotRef.current?.presentationConfig.autoPlayTarget ?? autoPlayTarget) && !startsPaused) {
+        void playTargetNote(note).catch(() => undefined);
+      }
+    },
+    [autoPlayTarget],
+  );
+
+  const markCurrentStaffPageNoteComplete = useCallback((): void => {
+    const page = staffPageRef.current;
+    if (!page) {
+      return;
+    }
+    syncStaffPage({
+      ...page,
+      completedCount: Math.max(page.completedCount, page.index + 1),
+    });
+  }, [syncStaffPage]);
+
+  const startStaffPageIndex = useCallback(
+    (index: number): boolean => {
+      const page = staffPageRef.current;
+      if (!page || index >= page.notes.length) {
+        return false;
+      }
+      const nextPage = {
+        ...page,
+        index,
+      };
+      syncStaffPage(nextPage);
+      startPrompt(nextPage.notes[index]);
+      return true;
+    },
+    [startPrompt, syncStaffPage],
+  );
+
+  const startStaffPage = useCallback(
+    ({
+      sourceNotes,
+      sourceReviews,
+      sourceQueueStrategy,
+      sourceDrillNoteNames,
+      nextCompletedCount,
+    }: {
+      sourceNotes: TargetNote[];
+      sourceReviews: ReviewRecord[];
+      sourceQueueStrategy: PracticeQueueStrategy;
+      sourceDrillNoteNames: NoteName[];
+      nextCompletedCount: number;
+    }): void => {
+      const count = getNextStaffPageCount(nextCompletedCount);
+      if (count <= 0) {
+        return;
+      }
+      const notes = selectNotePage({
+        notes: sourceNotes,
+        reviews: sourceReviews,
+        sessions,
+        currentSessionId: sessionRef.current?.id,
+        queueStrategy: sourceQueueStrategy,
+        drillNoteNames: sourceDrillNoteNames,
+        lastTargetNoteId: lastTargetNoteIdRef.current,
+        melodyState: melodyGenerationStateRef.current,
+        count,
+      });
+      const page = {
+        notes,
+        index: 0,
+        completedCount: 0,
+      };
+      syncStaffPage(page);
+      startPrompt(notes[0]);
+    },
+    [getNextStaffPageCount, sessions, startPrompt, syncStaffPage],
+  );
+
+  const startStaffPageScroll = useCallback(
+    (nextCompletedCount: number, nextIndex: number): boolean => {
+      const page = staffPageRef.current;
+      if (!page) {
+        return false;
+      }
+
+      const remainingVisibleNotes = page.notes.slice(nextIndex);
+      const nextRowCount = getStaffPageRefillCount({
+        completedSessionCount: nextCompletedCount,
+        fixedSessionCount: mode === "fixed-count" ? fixedCount : undefined,
+        nextIndex,
+        plannedNoteCount: page.notes.length,
+      });
+      if (nextRowCount === 0) {
+        return false;
+      }
+
+      const nextRow = selectNotePage({
+        notes: enabledNotes,
+        reviews: [...schedulerReviews, ...sessionReviewsRef.current],
+        sessions,
+        currentSessionId: sessionRef.current?.id,
+        queueStrategy,
+        drillNoteNames,
+        lastTargetNoteId: page.notes[page.notes.length - 1]?.id,
+        plannedTargetNoteIds: remainingVisibleNotes.map((note) => note.id),
+        melodyState: melodyGenerationStateRef.current,
+        count: nextRowCount,
+      });
+      const sessionId = sessionRef.current?.id;
+      syncStaffPage({
+        ...page,
+        index: nextIndex,
+        notes: [...page.notes, ...nextRow],
+      });
+      const finishScroll = (): void => {
+        staffPageScrollTimeoutRef.current = null;
+        if (!sessionId || sessionRef.current?.id !== sessionId || sessionRef.current.endedAt) {
+          return;
+        }
+        const scrolledPage = staffPageRef.current;
+        if (!scrolledPage || scrolledPage.notes.length <= STAFF_PAGE_SIZE) {
+          setIsStaffPageScrolling(false);
+          return;
+        }
+        const rebasedPage = {
+          notes: scrolledPage.notes.slice(PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow),
+          index: scrolledPage.index - PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
+          completedCount:
+            scrolledPage.completedCount - PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
+        };
+        syncStaffPage(rebasedPage);
+        setIsStaffPageScrolling(false);
+        const startNextPrompt = (): void => {
+          resumeActiveTimers();
+          startPrompt(rebasedPage.notes[rebasedPage.index]);
+        };
+        if (isPausedRef.current) {
+          pendingAfterPauseRef.current = startNextPrompt;
+          return;
+        }
+        startNextPrompt();
+      };
+      clearStaffPageScrollSchedule();
+      staffPageScrollFrameRef.current = window.requestAnimationFrame(() => {
+        staffPageScrollFrameRef.current = null;
+        setIsStaffPageScrolling(true);
+        staffPageScrollTimeoutRef.current = window.setTimeout(finishScroll, staffPageScrollDurationMs);
+      });
+      return true;
+    },
+    [
+      clearStaffPageScrollSchedule,
+      drillNoteNames,
+      enabledNotes,
+      fixedCount,
+      mode,
+      queueStrategy,
+      resumeActiveTimers,
+      schedulerReviews,
+      sessions,
+      staffPageScrollDurationMs,
+      startPrompt,
+      syncStaffPage,
+    ],
+  );
+
+  const drawMelodyNote = useCallback((sourceNotes: TargetNote[], remainingCount?: number): TargetNote => {
+    if (melodyQueueRef.current.length === 0) {
+      const count =
+        remainingCount === undefined ? MELODY_BUFFER_SIZE : Math.min(MELODY_BUFFER_SIZE, Math.max(1, remainingCount));
+      melodyQueueRef.current = selectNotePage({
+        notes: sourceNotes,
+        reviews: [],
+        queueStrategy: "melody",
+        lastTargetNoteId: lastTargetNoteIdRef.current,
+        melodyState: melodyGenerationStateRef.current,
+        count,
+      });
+    }
+    const [nextNote, ...remainingNotes] = melodyQueueRef.current;
+    if (!nextNote) {
+      throw new Error("Cannot draw a melody note without enabled groups.");
+    }
+    melodyQueueRef.current = remainingNotes;
+    return nextNote;
+  }, []);
+
+  const selectAndStartNext = useCallback(
+    (nextCompletedCount: number): void => {
+      const nextReviews = [...schedulerReviews, ...sessionReviewsRef.current];
+      const remainingCount = mode === "fixed-count" ? fixedCount - nextCompletedCount : undefined;
+      const note =
+        queueStrategy === "melody"
+          ? drawMelodyNote(enabledNotes, remainingCount)
+          : selectNextNote({
+              notes: enabledNotes,
+              reviews: nextReviews,
+              sessions,
+              currentSessionId: sessionRef.current?.id,
+              queueStrategy,
+              drillNoteNames,
+              lastTargetNoteId: lastTargetNoteIdRef.current,
+            });
+      startPrompt(note);
+    },
+    [drillNoteNames, drawMelodyNote, enabledNotes, fixedCount, mode, queueStrategy, schedulerReviews, sessions, startPrompt],
+  );
+
+  const finishCurrentReview = useCallback(
+    async (answeredCorrectly: boolean, interruptReason?: InterruptReason): Promise<ReviewRecord | null> => {
+      const prompt = promptRef.current;
+      const activeMs = getPromptActiveMs();
+      if (!prompt || !sessionRef.current) {
+        return null;
+      }
+      if (!answeredCorrectly) {
+        prompt.interrupted = true;
+        prompt.interruptReason = interruptReason ?? prompt.interruptReason ?? "manual-stop";
+      }
+      pauseActiveTimers();
+      const endedAt = new Date().toISOString();
+      const ignored = shouldIgnoreReviewForSession(sessionRef.current);
+      const review: ReviewRecord = {
+        id: createUuid(),
+        schemaVersion: 1,
+        sessionId: sessionRef.current.id,
+        targetNoteId: prompt.note.id,
+        groupId: prompt.note.groupId,
+        noteName: prompt.note.noteName,
+        octave: prompt.note.octave,
+        startedAt: prompt.startedAt,
+        endedAt,
+        answeredAt: answeredCorrectly ? endedAt : undefined,
+        answeredCorrectly,
+        interrupted: prompt.interrupted,
+        interruptReason: prompt.interruptReason,
+        activeMs,
+        wrongAnswers: prompt.wrongAnswers,
+        replayCount: prompt.replayCount,
+        focusLosses: prompt.focusLosses,
+        ignored,
+      };
+      promptRef.current = null;
+      lastTargetNoteIdRef.current = prompt.note.id;
+      if (!ignored) {
+        await saveReview(review);
+      }
+      sessionReviewsRef.current = [...sessionReviewsRef.current, review];
+      return review;
+    },
+    [getPromptActiveMs, pauseActiveTimers],
+  );
+
+  const completeSession = useCallback(
+    async (
+      endReason: PracticeSessionRecord["endReason"],
+      unfinishedReason?: InterruptReason,
+      options: CompleteSessionOptions = {},
+    ): Promise<void> => {
+      if (endingRef.current || !sessionRef.current) {
+        return;
+      }
+      const showSummary = options.showSummary ?? true;
+      const updateUi = options.updateUi ?? true;
+      endingRef.current = true;
+      cancelRemainingPlayback();
+      clearStaffPageScrollSchedule();
+      const unfinishedReview = promptRef.current ? await finishCurrentReview(false, unfinishedReason) : null;
+      pauseActiveTimers();
+      const endedAt = new Date().toISOString();
+      const finalReviews = unfinishedReview
+        ? sessionReviewsRef.current
+        : [...sessionReviewsRef.current];
+      const finalSession: PracticeSessionRecord = {
+        ...sessionRef.current,
+        activePracticeMs: getSessionActiveMs(),
+        endedAt,
+        endReason,
+        completedCount: finalReviews.filter(isCompletedReview).length,
+        interruptedCount: finalReviews.filter((review) => review.interrupted).length,
+      };
+      const shouldKeepSession = shouldKeepPracticeSession(finalSession, finalReviews);
+      if (shouldKeepSession) {
+        await db.practiceSessions.put(finalSession);
+        sessionRef.current = finalSession;
+        if (updateUi) {
+          setSession(finalSession);
+          setSummary(showSummary ? { session: finalSession, reviews: finalReviews } : null);
+        }
+      } else {
+        await deletePracticeSessionWithReviews(finalSession.id, finalReviews);
+        sessionRef.current = null;
+        if (updateUi) {
+          setSession(null);
+          setSummary(null);
+        }
+      }
+      if (updateUi) {
+        setCurrentNote(null);
+        syncStaffPage(null);
+        setIsStaffPageScrolling(false);
+      } else {
+        staffPageRef.current = null;
+      }
+      isPausedRef.current = false;
+      pendingAfterPauseRef.current = null;
+      if (updateUi) {
+        setIsPaused(false);
+        setPhase(showSummary && shouldKeepSession ? "summary" : "setup");
+      }
+      if (shouldKeepSession) {
+        await writeBackupNow().catch(() => undefined);
+      }
+      await onDataChanged();
+      if (shouldKeepSession && updateUi) {
+        onPracticeFinished();
+      }
+      endingRef.current = false;
+    },
+    [
+      cancelRemainingPlayback,
+      clearStaffPageScrollSchedule,
+      finishCurrentReview,
+      getSessionActiveMs,
+      onDataChanged,
+      onPracticeFinished,
+      pauseActiveTimers,
+      syncStaffPage,
+    ],
+  );
+
+  useEffect(() => {
+    if (
+      phase !== "running" ||
+      !navigationExitRequest ||
+      handledNavigationExitRequestIdRef.current === navigationExitRequest.id
+    ) {
+      return;
+    }
+    handledNavigationExitRequestIdRef.current = navigationExitRequest.id;
+    const backgroundExit = Promise.resolve().then(() =>
+      completeSession("manual-stop", "manual-stop", { showSummary: false, updateUi: false }),
+    );
+    onNavigationExit?.(navigationExitRequest.targetView);
+    void backgroundExit.catch(() => undefined);
+  }, [completeSession, navigationExitRequest, onNavigationExit, phase]);
+
+  const startSession = useCallback(async (): Promise<void> => {
+    if (queueNotes.length === 0 || (answerPitchMode === "exact-pitch" && !midi.isConnected)) {
+      return;
+    }
+    await runSessionStart(async () => {
+      void unlockAudio().catch(() => undefined);
+      const preflightResult = await onBeforePracticeStart();
+      if (!preflightResult.proceed) {
+        return;
+      }
+      if (preflightResult.settings) {
+        applySettingsSnapshot(preflightResult.settings);
+      }
+      const preflightSettings = preflightResult.settings ?? (await persistConfig());
+      const availablePreflightAnswerPitchMode = resolveAvailableAnswerPitchMode(
+        preflightSettings.answerPitchMode,
+        midi.isConnected,
+      );
+      const nextSettings = preflightSettings.answerPitchMode === availablePreflightAnswerPitchMode
+        ? preflightSettings
+        : { ...preflightSettings, answerPitchMode: availablePreflightAnswerPitchMode };
+      if (nextSettings !== preflightSettings) {
+        await onSettingsSaved(nextSettings);
+      }
+      const nextMode = nextSettings.defaultMode;
+      const nextQueueStrategy = resolveQueueStrategy(nextSettings);
+      const nextSchedulerReviews = preflightResult.reviews
+        ? filterLongTermReviews(preflightResult.reviews)
+        : schedulerReviews;
+      const builtStartSnapshot = buildPracticeSessionStartSnapshot({
+        autoPlayTarget: nextSettings.autoPlayTarget,
+        mode: nextMode,
+        prefersReducedMotion,
+        settings: { ...nextSettings, queueStrategy: nextQueueStrategy },
+        smoothStaffPageScroll: staffPageUiPreferences.smoothStaffPageScroll,
+        startPausedReading,
+      });
+      if (!builtStartSnapshot) {
+        return;
+      }
+      const { snapshot: startSnapshot } = builtStartSnapshot;
+      const { practiceConfig, presentationConfig } = startSnapshot;
+      const nextEnabledNotes = builtStartSnapshot.notes;
+      const shouldStartPaused =
+        presentationConfig.promptDisplayMode === "staff-page" && presentationConfig.startPausedReading;
+      setPianoVolume(startSnapshot.interactionConfig.pianoVolume);
+      const startedAt = new Date().toISOString();
+      const nextSession: PracticeSessionRecord = buildPracticeSessionRecordV4({
+        id: newSessionId(),
+        snapshot: startSnapshot,
+        startedAt,
+      });
+      await db.practiceSessions.put(nextSession);
+      sessionRef.current = nextSession;
+      sessionStartSnapshotRef.current = startSnapshot;
+      sessionReviewsRef.current = [];
+      lastTargetNoteIdRef.current = undefined;
+      melodyQueueRef.current = [];
+      melodyGenerationStateRef.current = createMelodyGenerationState();
+      syncStaffPage(null);
+      setIsStaffPageScrolling(false);
+      endingRef.current = false;
+      lastBackupAtRef.current = performance.now();
+      lastBackupCompletedRef.current = 0;
+      sessionActiveBaseMsRef.current = 0;
+      sessionActiveStartedAtRef.current = shouldStartPaused ? null : performance.now();
+      isPausedRef.current = shouldStartPaused;
+      pendingAfterPauseRef.current = null;
+      setSession(nextSession);
+      setCompletedCount(0);
+      setWrongAnswerCount(0);
+      setSummary(null);
+      setIsPaused(shouldStartPaused);
+      setPhase("running");
+      if (presentationConfig.promptDisplayMode === "staff-page") {
+        startStaffPage({
+          sourceNotes: nextEnabledNotes,
+          sourceReviews: nextSchedulerReviews,
+          sourceQueueStrategy: practiceConfig.queueStrategy,
+          sourceDrillNoteNames: practiceConfig.drillNoteNames,
+          nextCompletedCount: 0,
+        });
+      } else {
+        const firstNote =
+          practiceConfig.queueStrategy === "melody"
+            ? drawMelodyNote(nextEnabledNotes, practiceConfig.fixedCount)
+            : selectNextNote({
+                notes: nextEnabledNotes,
+                reviews: nextSchedulerReviews,
+                sessions,
+                currentSessionId: nextSession.id,
+                queueStrategy: practiceConfig.queueStrategy,
+                drillNoteNames: practiceConfig.drillNoteNames,
+              });
+        startPrompt(firstNote);
+      }
+    });
+  }, [
+    answerPitchMode,
+    applySettingsSnapshot,
+    drawMelodyNote,
+    midi.isConnected,
+    onBeforePracticeStart,
+    onSettingsSaved,
+    persistConfig,
+    queueNotes.length,
+    runSessionStart,
+    prefersReducedMotion,
+    schedulerReviews,
+    sessions,
+    startPausedReading,
+    staffPageUiPreferences.smoothStaffPageScroll,
+    staffNotationMode,
+    startPrompt,
+    startStaffPage,
+    syncStaffPage,
+  ]);
+  startSessionRef.current = () => void startSession();
+
+  const replayTarget = useCallback(async (): Promise<void> => {
+    const prompt = promptRef.current;
+    if (!prompt || isPausedRef.current) {
+      return;
+    }
+    prompt.lastInputAt = performance.now();
+    prompt.replayCount += 1;
+    await playTargetNote(prompt.note).catch(() => undefined);
+  }, []);
+
+  const submitAnswer = useCallback(
+    async (answer: PracticeAnswerInput): Promise<void> => {
+      const prompt = promptRef.current;
+      if (!prompt || isPausedRef.current || answerInputLockedRef.current) {
+        return;
+      }
+      const diagnosticSampleId = answer.diagnosticSampleId;
+      const correctDelayMs = sessionStartSnapshotRef.current?.interactionConfig.correctDelayMs ?? settings.correctDelayMs;
+      markMidiLatencyStage(diagnosticSampleId, "submitStarted");
+      if (MIDI_LATENCY_DIAGNOSTICS_ENABLED) {
+        setMidiLatencyCondition(diagnosticSampleId, {
+          answerPitchMode,
+          correctDelayMs,
+          playAnswerNote,
+          promptDisplayMode,
+        });
+      }
+      prompt.lastInputAt = performance.now();
+      if (playAnswerNote) {
+        const answerOctave = answer.octave;
+        if (answerOctave === undefined || (answerOctave >= 1 && answerOctave <= 6)) {
+          const playbackOctave = answerOctave === undefined ? prompt.note.octave : answerOctave as Octave;
+          markMidiLatencyStage(diagnosticSampleId, "audioRequested");
+          void playPianoNote(answer.noteName, playbackOctave).then(
+            () => markMidiLatencyStage(diagnosticSampleId, "audioReady"),
+            () => markMidiLatencyStage(diagnosticSampleId, "audioReady"),
+          );
+        }
+      }
+      const answeredCorrectly = isPracticeAnswerCorrect(answer, prompt.note, answerPitchMode);
+      markMidiLatencyStage(diagnosticSampleId, "verdict");
+      if (!answeredCorrectly) {
+        completeMidiLatencySample(diagnosticSampleId, "wrong");
+        prompt.wrongAnswers.push({
+          noteName: answer.noteName,
+          atActiveMs: getPromptActiveMs(),
+          midiNoteNumber: answer.midiNoteNumber,
+        });
+        setWrongAnswerCount((count) => count + 1);
+        markMidiLatencyStage(diagnosticSampleId, "feedbackRequested");
+        setFeedback({ diagnosticSampleId, type: "wrong", noteName: answer.noteName });
+        window.setTimeout(() => setFeedback((current) => (current?.type === "wrong" ? null : current)), 450);
+        return;
+      }
+
+      answerInputLockedRef.current = true;
+      completeMidiLatencySample(diagnosticSampleId, "correct");
+      markMidiLatencyStage(diagnosticSampleId, "feedbackRequested");
+      setFeedback({ diagnosticSampleId, type: "correct", noteName: answer.noteName });
+      markMidiLatencyStage(diagnosticSampleId, "reviewFinalizeStarted");
+      const review = await finishCurrentReview(true);
+      markMidiLatencyStage(diagnosticSampleId, "reviewFinalizeEnded");
+      if (!review) {
+        return;
+      }
+      const nextCompletedCount = completedCount + 1;
+      setCompletedCount(nextCompletedCount);
+      if (promptDisplayMode === "staff-page") {
+        markCurrentStaffPageNoteComplete();
+      }
+      await maybeBackupDuringOpenEnded(nextCompletedCount);
+      const reviewSessionId = review.sessionId;
+
+      const continueAfterCorrectDelay = (): void => {
+        if (sessionRef.current?.id !== reviewSessionId || sessionRef.current.endedAt) {
+          return;
+        }
+        if (mode === "fixed-count" && nextCompletedCount >= fixedCount) {
+          void completeSession("completed-count");
+          return;
+        }
+        if (promptDisplayMode === "staff-page") {
+          const page = staffPageRef.current;
+          const nextIndex = page ? page.index + 1 : 0;
+          if (page && startStaffPageScroll(nextCompletedCount, nextIndex)) {
+            return;
+          }
+          resumeActiveTimers();
+          if (page && startStaffPageIndex(nextIndex)) {
+            return;
+          }
+          startStaffPage({
+            sourceNotes: enabledNotes,
+            sourceReviews: [...schedulerReviews, ...sessionReviewsRef.current],
+            sourceQueueStrategy: queueStrategy,
+            sourceDrillNoteNames: drillNoteNames,
+            nextCompletedCount,
+          });
+          return;
+        }
+        resumeActiveTimers();
+        selectAndStartNext(nextCompletedCount);
+      };
+
+      window.setTimeout(() => {
+        if (isPausedRef.current) {
+          pendingAfterPauseRef.current = continueAfterCorrectDelay;
+          return;
+        }
+        continueAfterCorrectDelay();
+      }, correctDelayMs);
+    },
+    [
+      answerPitchMode,
+      completeSession,
+      completedCount,
+      drillNoteNames,
+      enabledNotes,
+      finishCurrentReview,
+      fixedCount,
+      getPromptActiveMs,
+      markCurrentStaffPageNoteComplete,
+      maybeBackupDuringOpenEnded,
+      mode,
+      playAnswerNote,
+      promptDisplayMode,
+      queueStrategy,
+      resumeActiveTimers,
+      schedulerReviews,
+      selectAndStartNext,
+      settings.correctDelayMs,
+      startStaffPage,
+      startStaffPageScroll,
+      startStaffPageIndex,
+    ],
+  );
+  submitAnswerRef.current = (answer) => void submitAnswer(answer);
+
+  useEffect(() => {
+    function syncHeldMidiKeys(): void {
+      setHeldMidiAnswerKeys(new Set(heldMidiInputsRef.current.values()));
+    }
+
+    const unsubscribe = midi.subscribe((event) => {
+      if (event.type === "reset") {
+        pendingMidiPressDiagnosticSampleIdRef.current = undefined;
+        heldMidiInputsRef.current.clear();
+        syncHeldMidiKeys();
+        return;
+      }
+      if (!isNaturalPianoKey(event.note.keyName)) {
+        return;
+      }
+      if (event.type === "release") {
+        pendingMidiPressDiagnosticSampleIdRef.current = undefined;
+        heldMidiInputsRef.current.delete(event.note.keyId);
+        syncHeldMidiKeys();
+        return;
+      }
+      heldMidiInputsRef.current.set(event.note.keyId, event.note.keyName);
+      pendingMidiPressDiagnosticSampleIdRef.current = event.note.diagnosticSampleId;
+      syncHeldMidiKeys();
+      if (phase === "running") {
+        markMidiLatencyStage(event.note.diagnosticSampleId, "practiceSubscriber");
+        submitAnswerRef.current({
+          diagnosticSampleId: event.note.diagnosticSampleId,
+          midiNoteNumber: event.note.midiNoteNumber,
+          noteName: event.note.keyName,
+          octave: event.note.octave,
+          source: "midi",
+        });
+        return;
+      }
+      if (event.note.midiNoteNumber === MIDI_START_NOTE_NUMBER) {
+        startSessionRef.current();
+      }
+    });
+    return () => {
+      unsubscribe();
+      pendingMidiPressDiagnosticSampleIdRef.current = undefined;
+      heldMidiInputsRef.current.clear();
+      setHeldMidiAnswerKeys(new Set());
+    };
+  }, [midi.subscribe, phase]);
+
+  useEffect(() => {
+    if (phase !== "running") {
+      return;
+    }
+
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.repeat) {
+        return;
+      }
+      if (event.code === "KeyP") {
+        event.preventDefault();
+        togglePause();
+        return;
+      }
+      if (event.code === "Escape") {
+        event.preventDefault();
+        void completeSession("manual-stop", "manual-stop");
+        return;
+      }
+      if (isPausedRef.current) {
+        const pausedAction = getPausedKeyboardAction({
+          code: event.code,
+          isEditableTarget:
+            event.target instanceof Element &&
+            Boolean(event.target.closest("input, select, textarea, [contenteditable='true']")),
+          promptDisplayMode,
+        });
+        if (pausedAction === "toggle-playback") {
+          event.preventDefault();
+          toggleRemainingPlayback();
+          return;
+        }
+        if (pausedAction === "allow-edit") {
+          return;
+        }
+        event.preventDefault();
+        return;
+      }
+      if (event.code === "Space") {
+        if (event.target instanceof Element && event.target.closest(".piano-key")) {
+          return;
+        }
+        event.preventDefault();
+        void replayTarget();
+        return;
+      }
+      const answer = ANSWER_BUTTONS.find((button) => event.key === button.key);
+      if (answer && answerPitchMode === "note-name") {
+        event.preventDefault();
+        setHeldComputerAnswerKeys((current) => new Set(current).add(answer.noteName));
+        void submitAnswer({ noteName: answer.noteName, source: "computer-keyboard" });
+      }
+    }
+
+    function onKeyUp(event: KeyboardEvent): void {
+      const answer = ANSWER_BUTTONS.find((button) => event.key === button.key);
+      if (!answer) {
+        return;
+      }
+      setHeldComputerAnswerKeys((current) => {
+        const next = new Set(current);
+        next.delete(answer.noteName);
+        return next;
+      });
+    }
+
+    function releaseHeldComputerKeys(): void {
+      setHeldComputerAnswerKeys(new Set());
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", releaseHeldComputerKeys);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", releaseHeldComputerKeys);
+      releaseHeldComputerKeys();
+    };
+  }, [answerPitchMode, completeSession, phase, promptDisplayMode, replayTarget, submitAnswer, togglePause, toggleRemainingPlayback]);
+
+  useEffect(() => {
+    if (phase !== "running") {
+      return;
+    }
+
+    function onVisibilityOrBlur(): void {
+      if (document.visibilityState === "hidden" || !document.hasFocus()) {
+        pauseForFocusLoss();
+      }
+    }
+
+    window.addEventListener("blur", onVisibilityOrBlur);
+    document.addEventListener("visibilitychange", onVisibilityOrBlur);
+    return () => {
+      window.removeEventListener("blur", onVisibilityOrBlur);
+      document.removeEventListener("visibilitychange", onVisibilityOrBlur);
+    };
+  }, [pauseForFocusLoss, phase]);
+
+  useEffect(() => {
+    if (phase !== "running") {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      const prompt = promptRef.current;
+      if (prompt && prompt.activeStartedAt !== null && !prompt.interrupted) {
+        const inactiveMs = performance.now() - prompt.lastInputAt;
+        const inactivityThresholdSeconds =
+          sessionStartSnapshotRef.current?.interactionConfig.inactivityThresholdSeconds ??
+          settings.inactivityThresholdSeconds;
+        if (inactiveMs >= inactivityThresholdSeconds * 1000) {
+          markInterrupted("inactive-timeout");
+        }
+      }
+      if (mode === "fixed-duration" && getSessionActiveMs() >= fixedDurationSeconds * 1000) {
+        void completeSession("completed-duration", "duration-ended");
+      }
+      setTick((value) => value + 1);
+    }, 250);
+    return () => window.clearInterval(interval);
+  }, [
+    completeSession,
+    fixedDurationSeconds,
+    getSessionActiveMs,
+    markInterrupted,
+    mode,
+    phase,
+    settings.inactivityThresholdSeconds,
+  ]);
+
+  const setupDisabledReason =
+    enabledNotes.length === 0
+      ? "请至少选择一组上方的音区"
+      : queueStrategy === "note-drill" && drillNoteNames.length === 0
+        ? "请至少选择一个强化音名"
+        : undefined;
+  const setupDisabled = setupDisabledReason !== undefined;
+
+  useEffect(() => {
+    if (phase === "running") {
+      return;
+    }
+
+    function handleEnter(event: KeyboardEvent): void {
+      if (
+        !shouldHandleGlobalEnter(event, isInteractiveShortcutTarget(event.target)) ||
+        (phase === "setup" && setupDisabled)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      void startSession();
+    }
+
+    window.addEventListener("keydown", handleEnter);
+    return () => window.removeEventListener("keydown", handleEnter);
+  }, [phase, setupDisabled, startSession]);
+
+  const remainingMs = mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
+  const staffPageRowCount = Math.max(
+    1,
+    Math.min(
+      PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows,
+      Math.ceil(staffPageNotes.length / PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow),
+    ),
+  );
+  const sessionQualifiedTimes = (summary?.reviews ?? [])
+    .filter(isCompletedReview)
+    .map((review) => review.activeMs);
+  const summaryStatsEligibility = summary ? getLongTermStatsEligibility(summary.reviews) : undefined;
+  const summaryHasTooManyErrors =
+    summaryStatsEligibility?.reason === "too-many-heavy-error-reviews" ||
+    summaryStatsEligibility?.reason === "too-many-error-reviews";
+  const weakestNotes = summary
+    ? buildNoteStats(summary.reviews)
+        .filter((stat) => stat.reviewCount > 0)
+        .sort((a, b) => b.weaknessScore - a.weaknessScore)
+        .slice(0, 4)
+    : [];
+  const summaryProgressSeries = useMemo(
+    () =>
+      summary
+        ? buildSessionProgressSeries({
+            currentSession: summary.session,
+            currentReviews: summary.reviews,
+            sessions,
+            reviews,
+            historyLimit: summaryEffectiveHistoryLimit,
+            mode: summaryProgressMode,
+          })
+        : [],
+    [reviews, sessions, summary, summaryEffectiveHistoryLimit, summaryProgressMode],
+  );
+  const summaryAllHistoryCount = summaryProgressSeries.filter((series) => !series.isCurrent).length;
+  const summaryProgressBenchmark = useMemo(
+    () =>
+      summary
+        ? buildSessionProgressBenchmark({
+            currentSession: summary.session,
+            currentReviews: summary.reviews,
+            sessions,
+            reviews,
+          })
+        : undefined,
+    [reviews, sessions, summary],
+  );
+
+  if (phase === "setup") {
+    return (
+      <section className="practice-shell practice-setup-shell">
+        <GlobalRangeControls settings={setupSettings} onSettingsSaved={onSettingsSaved} />
+        <div className="setup-grid">
+          <div className="panel setup-panel">
+            <div className="panel-heading">
+              <h1>单音识谱</h1>
+              <div className="practice-setup-heading-meta">
+                <div className="practice-midi-heading-status">
+                  <span title={midi.selectedInput?.name}>
+                    {midi.isConnected ? `MIDI 已连接：${midi.selectedInput?.name}` : "MIDI 未连接"}
+                  </span>
+                  <button onClick={onOpenSettings}>设备设置</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="control-block">
+              <span className="control-label">模式</span>
+              <div className="segmented">
+                <button className={mode === "open-ended" ? "active" : ""} onClick={() => setMode("open-ended")}>
+                  无限
+                </button>
+                <button className={mode === "fixed-count" ? "active" : ""} onClick={() => setMode("fixed-count")}>
+                  固定题数
+                </button>
+                <button className={mode === "fixed-duration" ? "active" : ""} onClick={() => setMode("fixed-duration")}>
+                  固定时长
+                </button>
+              </div>
+            </div>
+
+            <div className="control-block">
+              <span className="control-label">显示方式</span>
+              <div className="display-options">
+                <div className="segmented">
+                  <button
+                    className={promptDisplayMode === "single-note" ? "active" : ""}
+                    onClick={() => setPromptDisplayMode("single-note")}
+                  >
+                    单音
+                  </button>
+                  <button
+                    className={promptDisplayMode === "staff-page" ? "active" : ""}
+                    onClick={() => setPromptDisplayMode("staff-page")}
+                  >
+                    谱页
+                  </button>
+                </div>
+                <div className="segmented prompt-note-duration-options">
+                  {PROMPT_NOTE_DURATION_OPTIONS.map((option) => (
+                    <button
+                      aria-label={option.ariaLabel}
+                      className={promptNoteDuration === option.value ? "active" : ""}
+                      key={option.value}
+                      onClick={() => setPromptNoteDuration(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {promptDisplayMode === "staff-page" ? (
+              <div className="control-block">
+                <span className="control-label">谱页选项</span>
+                <label className="practice-checkbox-option">
+                  <input
+                    checked={startPausedReading}
+                    type="checkbox"
+                    onChange={(event) =>
+                      setStaffPageUiPreferences((current) => ({
+                        ...current,
+                        startPausedReading: event.target.checked,
+                      }))
+                    }
+                  />
+                  <span>开始后暂停（读谱）</span>
+                </label>
+              </div>
+            ) : null}
+
+            {mode === "fixed-count" ? (
+              <div className="control-block">
+                <span className="control-label">题数</span>
+                <div className="number-row">
+                  {fixedCountPresets.map((count) => (
+                    <button className={fixedCount === count ? "active" : ""} key={count} onClick={() => setFixedCount(count)}>
+                      {count}
+                    </button>
+                  ))}
+                  <input
+                    min={1}
+                    max={500}
+                    type="number"
+                    value={fixedCount}
+                    onChange={(event) => setFixedCount(Math.max(1, Number(event.target.value)))}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {mode === "fixed-duration" ? (
+              <div className="control-block">
+                <span className="control-label">时长</span>
+                <div className="number-row practice-duration-row">
+                  {[60, 120, 180, 300].map((seconds) => (
+                    <button
+                      className={fixedDurationSeconds === seconds ? "active" : ""}
+                      key={seconds}
+                      onClick={() => setFixedDurationSeconds(seconds)}
+                    >
+                      {seconds / 60} 分钟
+                    </button>
+                  ))}
+                  <input
+                    min={1}
+                    max={120}
+                    step={0.5}
+                    type="number"
+                    value={durationSecondsToInputMinutes(fixedDurationSeconds)}
+                    onChange={(event) => setFixedDurationSeconds(inputMinutesToDurationSeconds(event.target.value))}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            <div className="control-block">
+              <span className="control-label">训练策略</span>
+              <div className="strategy-options">
+                {PRACTICE_QUEUE_OPTIONS.map((option) => (
+                  <label
+                    className={queueStrategy === option.strategy ? "choice choice-active choice-detail" : "choice choice-detail"}
+                    key={option.strategy}
+                  >
+                    <input
+                      checked={queueStrategy === option.strategy}
+                      name="practice-queue-strategy"
+                      type="radio"
+                      value={option.strategy}
+                      onClick={(event) => blurQueueStrategyAfterPointerClick(event.currentTarget, event.detail)}
+                      onChange={() => setQueueStrategy(option.strategy)}
+                    />
+                    <div className="choice-body">
+                      <strong>{option.label}</strong>
+                      <span>{option.description}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {queueStrategy === "note-drill" ? (
+              <div className="control-block">
+                <span className="control-label">强化音名</span>
+                <div className="note-name-options">
+                  {ANSWER_BUTTONS.map((button) => {
+                    const checked = drillNoteNames.includes(button.noteName);
+                    return (
+                      <label className={checked ? "choice choice-active" : "choice"} key={button.noteName}>
+                        <input
+                          checked={checked}
+                          type="checkbox"
+                          onChange={(event) => toggleDrillNoteName(button.noteName, event.target.checked)}
+                        />
+                        <span>{button.noteName}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {midi.isConnected ? (
+              <div className="control-block">
+                <span className="control-label">答题判定</span>
+                <div className="display-options">
+                  <div className="segmented">
+                    <button
+                      className={answerPitchMode === "note-name" ? "active" : ""}
+                      onClick={() => setAnswerPitchMode("note-name")}
+                    >
+                      只认音名
+                    </button>
+                    <button
+                      className={answerPitchMode === "exact-pitch" ? "active" : ""}
+                      onClick={() => setAnswerPitchMode("exact-pitch")}
+                    >
+                      精确音高
+                    </button>
+                  </div>
+                  <span className="practice-answer-mode-description">
+                    {answerPitchMode === "note-name"
+                      ? "电脑键盘、屏幕琴键和 MIDI 可同时作答，不限八度"
+                      : "仅 MIDI 可作答，必须与谱面八度一致"}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="control-block">
+              <span className="control-label">声音</span>
+              <div className="practice-checkbox-options">
+                <label className="practice-checkbox-option">
+                  <input
+                    checked={autoPlayTarget}
+                    type="checkbox"
+                    onChange={(event) => setAutoPlayTarget(event.target.checked)}
+                  />
+                  <span>自动播放目标音</span>
+                </label>
+                <label className="practice-checkbox-option">
+                  <input
+                    checked={playAnswerNote}
+                    type="checkbox"
+                    onChange={(event) => setPlayAnswerNote(event.target.checked)}
+                  />
+                  <span>按键时播放声音</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="action-row">
+              <span className="practice-start-action" tabIndex={setupDisabled ? 0 : undefined}>
+                <button
+                  aria-keyshortcuts="Enter"
+                  className="primary"
+                  disabled={setupDisabled || showStartingSessionStatus}
+                  onClick={() => void startSession()}
+                >
+                  {showStartingSessionStatus ? (
+                    "检查中"
+                  ) : (
+                    <>
+                      <Play size={18} />
+                      开始<kbd>Enter</kbd>{midi.isConnected ? <kbd>C4</kbd> : null}
+                    </>
+                  )}
+                </button>
+                {setupDisabledReason ? (
+                  <span className="practice-start-tooltip" role="tooltip">
+                    {setupDisabledReason}
+                  </span>
+                ) : null}
+              </span>
+              <button onClick={onOpenStats}>
+                <BarChart3 size={18} />
+                统计
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (phase === "summary" && summary) {
+    return (
+      <section className="practice-shell">
+        <div className="panel summary-panel">
+          <div className="panel-heading summary-result-heading">
+            <h1>本次结果</h1>
+            <p>{summary.session.endReason === "manual-stop" ? "手动结束" : "已完成"}</p>
+            {summaryHasTooManyErrors ? (
+              <p className="summary-quality-warning">
+                错音有点多{'>_<'} 这次先不算~ <br />或许从更少的音区开始练习，或者先去学习页学习/默写一下吧~
+              </p>
+            ) : null}
+          </div>
+          <div className="metric-grid">
+            <div className="metric">
+              <span>答对</span>
+              <strong>{summary.reviews.filter(isCompletedReview).length}</strong>
+            </div>
+            <div className="metric">
+              <span>错误</span>
+              <strong>{summary.reviews.reduce((sum, review) => sum + review.wrongAnswers.length, 0)}</strong>
+            </div>
+            <div className="metric">
+              <span>中位时长</span>
+              <strong>{formatMs(percentile(sessionQualifiedTimes, 0.5))}</strong>
+            </div>
+            <div className="metric">
+              <span>P90</span>
+              <strong>{formatMs(percentile(sessionQualifiedTimes, 0.9))}</strong>
+            </div>
+          </div>
+          <section className="summary-section">
+            <div className="summary-section-heading">
+              <h2>薄弱音</h2>
+            </div>
+            <div className="note-list">
+              <div className="note-row note-row-header">
+                <span>目标音</span>
+                <span>中位时长</span>
+                <span>错音率</span>
+                <span>常错音</span>
+              </div>
+              {weakestNotes.map((note) => (
+                <div className="note-row" key={note.targetNoteId}>
+                  <span>{formatTargetNoteLabel(getNoteById(note.targetNoteId))}</span>
+                  <span>{formatMs(note.medianMs)}</span>
+                  <span>{Math.round(note.errorRate * 100)}%</span>
+                  <span>{note.commonConfusion ?? "无"}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+          {!summaryHasTooManyErrors && summaryProgressSeries.length > 0 ? (
+            <section className="summary-section">
+              <div className="summary-section-heading session-progress-heading">
+                <h2>答对进度</h2>
+                <SessionProgressControls
+                  allHistory={summaryAllHistory}
+                  allHistoryCount={summaryAllHistoryCount}
+                  benchmark={summaryProgressBenchmark}
+                  historyLimit={summaryHistoryLimit}
+                  mode={summaryProgressMode}
+                  onAllHistoryChange={setSummaryAllHistory}
+                  onHistoryLimitChange={setSummaryHistoryLimit}
+                  onModeChange={setSummaryProgressMode}
+                />
+              </div>
+              <SessionProgressChart series={summaryProgressSeries} />
+              <SessionProgressLegend series={summaryProgressSeries} />
+            </section>
+          ) : null}
+          <div className="action-row">
+            <button
+              aria-keyshortcuts="Enter"
+              className="primary"
+              disabled={showStartingSessionStatus}
+              onClick={() => void startSession()}
+            >
+              {showStartingSessionStatus ? (
+                "检查中"
+              ) : (
+                <>
+                  <RotateCcw size={18} />
+                  再来一次<kbd>Enter</kbd>{midi.isConnected ? <kbd>C4</kbd> : null}
+                </>
+              )}
+            </button>
+            <button onClick={() => setPhase("setup")}>
+              <SlidersHorizontal size={18} />
+              调整设置
+            </button>
+            <button onClick={onOpenStats}>
+              <BarChart3 size={18} />
+              查看统计
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      className={[
+        "practice-shell",
+        "practice-running-shell",
+        `practice-${promptDisplayMode}`,
+        promptDisplayMode === "staff-page" ? `practice-staff-page-rows-${staffPageRowCount}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <div className="practice-topline">
+        <div className="progress-readout">
+          {mode === "open-ended" ? (
+            <span>完成 {completedCount}</span>
+          ) : mode === "fixed-count" ? (
+            <span>
+              {completedCount}/{fixedCount}
+            </span>
+          ) : (
+            <span>
+              完成 {completedCount} · {formatDuration(remainingMs)}
+            </span>
+          )}
+        </div>
+        <div className="topline-actions">
+          <button aria-keyshortcuts="Space" title="重播目标音 Space" onClick={() => void replayTarget()}>
+            <Volume2 size={18} />
+            重播<kbd>空格</kbd>
+          </button>
+          <button aria-keyshortcuts="P" title={isPaused ? "继续 P" : "暂停 P"} onClick={togglePause}>
+            {isPaused ? <Play size={18} /> : <Pause size={18} />}
+            {isPaused ? "继续" : "暂停"}<kbd>P</kbd>
+          </button>
+          <button
+            aria-keyshortcuts="Escape"
+            title="结束 Esc"
+            onClick={() => void completeSession("manual-stop", "manual-stop")}
+          >
+            <Square fill="currentColor" size={14} strokeWidth={0} />
+            结束<kbd>Esc</kbd>
+          </button>
+        </div>
+      </div>
+
+      <div className={promptDisplayMode === "staff-page" ? "prompt-stage staff-page-stage" : "prompt-stage"}>
+        {promptDisplayMode === "staff-page" ? (
+          <StaffPagePrompt
+            notes={staffPageNotes}
+            completedCount={staffPageCompletedCount}
+            diagnosticSampleId={feedback?.diagnosticSampleId}
+            isScrolling={isStaffPageScrolling}
+            noteDuration={effectivePromptNoteDuration}
+            scrollDurationMs={staffPageScrollDurationMs}
+            staffNotationMode={staffNotationMode}
+            useLedgerGap={useLedgerGap}
+            visibleRowCount={staffPageRowCount}
+            wrongIndex={feedback?.type === "wrong" ? staffPageIndex : undefined}
+          />
+        ) : currentNote ? (
+          <StaffPrompt
+            effectiveTargetNoteIds={effectiveTargetNoteIds}
+            note={currentNote}
+            noteDuration={effectivePromptNoteDuration}
+            staffNotationMode={staffNotationMode}
+            useLedgerGap={useLedgerGap}
+            wrong={feedback?.type === "wrong"}
+          />
+        ) : null}
+      </div>
+
+      <PianoKeyboard
+        ariaLabel="答案琴键"
+        className="practice-piano-keyboard"
+        enabledKeys={answerPitchMode === "note-name" ? NATURAL_PIANO_KEYS : new Set<PianoKeyName>()}
+        feedback={feedback?.noteName ? { keyName: feedback.noteName, type: feedback.type } : undefined}
+        keyOctave={currentNote?.octave}
+        onKeyPress={(key) => {
+          if (answerPitchMode === "note-name" && isNaturalPianoKey(key.keyName)) {
+            void submitAnswer({ noteName: key.keyName, source: "screen-keyboard" });
+          }
+        }}
+        onFeedbackTransitionEnd={
+          MIDI_LATENCY_DIAGNOSTICS_ENABLED
+            ? (keyName, type, propertyName) => {
+                if (
+                  type === feedback?.type &&
+                  feedback?.noteName === keyName &&
+                  propertyName.startsWith("border-") &&
+                  propertyName.endsWith("-color")
+                ) {
+                  markMidiLatencyStage(feedback.diagnosticSampleId, "transitionEnd");
+                }
+              }
+            : undefined
+        }
+        pressedKeys={pressedAnswerKeys}
+        scale={effectiveAnswerKeyboardScale}
+      />
+      <span className="sr-only" aria-live="polite">
+        {tick} {wrongAnswerCount}
+      </span>
+      {isPaused ? (
+        <PauseOverlay
+          bpm={pausedPlaybackBpm}
+          onBpmChange={setPausedPlaybackBpm}
+          onResume={resumePractice}
+          resumeBlockedMessage={
+            answerPitchMode === "exact-pitch" && !midi.isConnected
+              ? "MIDI 连接已断开；重新连接后可继续练习"
+              : undefined
+          }
+          onToggleRemainingPlayback={toggleRemainingPlayback}
+          playbackState={remainingPlaybackState}
+          showRemainingPlayback={promptDisplayMode === "staff-page"}
+        />
+      ) : null}
+    </section>
+  );
+}

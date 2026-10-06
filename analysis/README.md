@@ -1,0 +1,60 @@
+# Offline queue analysis
+
+This subproject reads the app backup as immutable input and writes every generated CSV, JSON, Markdown draft, and plot to
+the ignored `output/` directory. It does not import data into the app or modify files under `../backup/`.
+
+From the repository root:
+
+```powershell
+uv sync --project analysis
+uv run --project analysis anki-note-analysis
+uv run --project analysis anki-note-analysis --full
+uv run --project analysis pytest
+```
+
+Optional paths can be supplied explicitly:
+
+```powershell
+uv run --project analysis anki-note-analysis --backup-dir backup --output-dir analysis/output
+```
+
+The default command is the routine audit: it replays the production `adaptive_v2` policy and reports the observed queue
+distribution. Pass `--full` to additionally run all candidate-policy comparisons, bootstrap window analysis, cross-day
+diagnostics, and hyperparameter, maintenance-gap, and cold-start sensitivity experiments.
+
+The routine audit also anchors a deployment review to the first default `adaptive-v2` target set. It reports the actual
+distribution for sessions that keep that exact stable target set, checks every observed activation of the 90-review
+maintenance guard, and tracks the fixed deployment cohort with equal-note rolling metrics. This remains separate from the
+latest-target replay, so adding new notes does not rewrite the stable deployment comparison. If the latest target set still
+has notes below the learning-metric evidence threshold, `latest_learning_progress` is `null` until that range matures.
+Maintenance replay includes each session's own statistical reviews while it is active, then carries the session into later
+history only when the completed session meets the long-term eligibility rules, matching the production call path.
+The fixed-cohort details are written to `output/adaptive_v2_observed_distribution.csv`,
+`output/adaptive_v2_observed_summary.csv`, and `output/adaptive_v2_learning_progress.csv`, with the compact result in
+`output/summary.json` under `adaptive_v2_post_deployment`.
+
+Historical queue replay uses up to eight worker processes by default, while full-mode sensitivity experiments use up to
+three. Use `--jobs 1` for a serial run, or pass another positive worker count when resource usage needs to be limited.
+Deterministic replay arrays are cached under
+`output/cache/historical_queue_replay/`; the cache is invalidated when backup content, the target-note set, replay
+parameters, NumPy or pandas version, queue-analysis source, or
+[`../src/domain/adaptiveV2Spec.json`](../src/domain/adaptiveV2Spec.json) changes. Removing `output/` is always safe because
+it contains generated analysis artifacts only.
+
+The analysis selects the latest session's effective target-note set and uses each note's latest 100 qualified scheduler
+reviews for queue metrics. This keeps the evidence count equal across notes without allowing low-volume calendar days to
+make one note noisier than another. Daily charts independently use the same P33/P67 review-volume levels as the app
+heatmap; medium and high days are retained for robust progress summaries.
+
+Queue backtesting is a distribution replay, not an outcome forecast. At each historical cutoff it freezes measured speed
+and error statistics, continuously draws 300 notes from each policy, and updates exposure after every draw. The resulting
+`output/queue_replay_*.csv` files show note allocation, tier allocation, effective note count, minimum coverage, and the
+longest unseen gap. Cross-day alignment files are auxiliary diagnostics only; historical outcomes cannot reveal what
+learning outcome an unchosen policy would have caused.
+
+The production `adaptive_v2` replay reads its constants from
+[`../src/domain/adaptiveV2Spec.json`](../src/domain/adaptiveV2Spec.json). Python and TypeScript both verify the shared
+adjusted-score and tie-aware tier cases in [`fixtures/adaptive_v2_tiers.json`](fixtures/adaptive_v2_tiers.json).
+
+Tracked conclusions and the offline validation procedure live in
+[`../docs/queue-algorithm-analysis.md`](../docs/queue-algorithm-analysis.md).

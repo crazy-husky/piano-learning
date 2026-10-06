@@ -1,0 +1,425 @@
+import { DatabaseBackup, FolderOpen, Upload } from "lucide-react";
+import { type RefObject, useEffect, useRef, useState } from "react";
+import {
+  chooseBackupDirectory,
+  resolveBackupConflict,
+  restoreBackupFromDirectory,
+  supportsFileBackups,
+  type BackupConflictResolution,
+  type BackupDirectorySelectionResult,
+} from "../data/backup";
+import { getBackupState } from "../data/db";
+import { backupText, formatBackupConflictDetail } from "../domain/backupText";
+import { normalizeAnswerKeyboardScale, normalizePianoVolume } from "../domain/settings";
+import type { AppSettings, BackupState } from "../domain/types";
+import type { MidiInputController } from "../midi/useMidiInput";
+import { BackupConflictResolver } from "./BackupConflictResolver";
+import { PausedPlaybackBpmInput } from "./PausedPlaybackBpmInput";
+import { PlayableKeyboardPreview } from "./PlayableKeyboardPreview";
+import { handleWheelStep } from "./settingsWheel";
+import {
+  DEFAULT_STAFF_PAGE_UI_PREFERENCES,
+  parseStaffPageUiPreferences,
+  STAFF_PAGE_UI_PREFERENCES_KEY,
+} from "./staffPageUiPreferences";
+import { useLocalStorageState } from "./useLocalStorageState";
+
+type StoredBackupState = BackupState & { restoreRequiredBeforeBackup?: boolean };
+const PIANO_VOLUME_STEP = 0.05;
+const ANSWER_KEYBOARD_SCALE_STEP = 0.05;
+
+function useWheelSteps<T extends HTMLElement>(
+  elementRef: RefObject<T>,
+  onStep: (direction: -1 | 1) => void,
+): void {
+  const onStepRef = useRef(onStep);
+  onStepRef.current = onStep;
+
+  useEffect(() => {
+    const element = elementRef.current;
+    if (!element) {
+      return;
+    }
+
+    function handleWheel(event: WheelEvent): void {
+      handleWheelStep(event, onStepRef.current);
+    }
+
+    element.addEventListener("wheel", handleWheel, { passive: false });
+    return () => element.removeEventListener("wheel", handleWheel);
+  }, [elementRef]);
+}
+
+function truncateStart(value: string, maxLength = 24): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `...${value.slice(-(maxLength - 3))}`;
+}
+
+function isUserAbort(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+interface SettingsViewProps {
+  settings: AppSettings;
+  backupState: BackupState;
+  onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
+  onDataChanged: () => Promise<void>;
+  midi: MidiInputController;
+}
+
+export function SettingsView({
+  settings,
+  backupState,
+  onSettingsSaved,
+  onDataChanged,
+  midi,
+}: SettingsViewProps): JSX.Element {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [pianoVolumeDraft, setPianoVolumeDraft] = useState(() => normalizePianoVolume(settings.pianoVolume));
+  const [answerKeyboardScaleDraft, setAnswerKeyboardScaleDraft] = useState(() =>
+    normalizeAnswerKeyboardScale(settings.answerKeyboardScale),
+  );
+  const [staffPageUiPreferences, setStaffPageUiPreferences] = useLocalStorageState(
+    STAFF_PAGE_UI_PREFERENCES_KEY,
+    DEFAULT_STAFF_PAGE_UI_PREFERENCES,
+    { parse: parseStaffPageUiPreferences },
+  );
+  const pianoVolumeRef = useRef(pianoVolumeDraft);
+  const answerKeyboardScaleRef = useRef(answerKeyboardScaleDraft);
+  const pianoVolumeControlRef = useRef<HTMLLabelElement>(null);
+  const answerKeyboardScaleControlRef = useRef<HTMLLabelElement>(null);
+  const storedBackupState = backupState as StoredBackupState;
+  const backupBlockedUntilSync = Boolean(
+    backupState.dataConflictBeforeBackup ?? backupState.syncRequiredBeforeBackup ?? storedBackupState.restoreRequiredBeforeBackup,
+  );
+  const hasBackupSnapshot = Boolean(backupBlockedUntilSync || backupState.lastSeenBackupVersion);
+  const pianoVolumePercent = Math.round(pianoVolumeDraft * 100);
+  const answerKeyboardScalePercent = Math.round(answerKeyboardScaleDraft * 100);
+
+  useEffect(() => {
+    const nextPianoVolume = normalizePianoVolume(settings.pianoVolume);
+    pianoVolumeRef.current = nextPianoVolume;
+    setPianoVolumeDraft(nextPianoVolume);
+  }, [settings.pianoVolume]);
+
+  useEffect(() => {
+    const nextScale = normalizeAnswerKeyboardScale(settings.answerKeyboardScale);
+    answerKeyboardScaleRef.current = nextScale;
+    setAnswerKeyboardScaleDraft(nextScale);
+  }, [settings.answerKeyboardScale]);
+
+  async function saveSettings(next: AppSettings): Promise<void> {
+    await onSettingsSaved(next);
+  }
+
+  function savePianoVolume(nextVolume: number): void {
+    const normalizedVolume = normalizePianoVolume(nextVolume);
+    if (normalizedVolume === pianoVolumeRef.current) {
+      return;
+    }
+    pianoVolumeRef.current = normalizedVolume;
+    setPianoVolumeDraft(normalizedVolume);
+    void saveSettings({ ...settings, pianoVolume: normalizedVolume });
+  }
+
+  function saveAnswerKeyboardScale(nextScale: number): void {
+    const normalizedScale = normalizeAnswerKeyboardScale(nextScale);
+    if (normalizedScale === answerKeyboardScaleRef.current) {
+      return;
+    }
+    answerKeyboardScaleRef.current = normalizedScale;
+    setAnswerKeyboardScaleDraft(normalizedScale);
+    void saveSettings({ ...settings, answerKeyboardScale: normalizedScale });
+  }
+
+  useWheelSteps(pianoVolumeControlRef, (direction) => {
+    savePianoVolume(pianoVolumeRef.current + direction * PIANO_VOLUME_STEP);
+  });
+  useWheelSteps(answerKeyboardScaleControlRef, (direction) => {
+    saveAnswerKeyboardScale(answerKeyboardScaleRef.current + direction * ANSWER_KEYBOARD_SCALE_STEP);
+  });
+
+  function describeDirectorySelection(result: BackupDirectorySelectionResult, selectedBackupState: BackupState): string {
+    if (result === "diverged") {
+      return formatBackupConflictDetail(selectedBackupState);
+    }
+    if (result === "synced-up") {
+      return backupText.messages.importSuccessDetail;
+    }
+    return backupText.messages.directorySelected;
+  }
+
+  async function runBusy(action: () => Promise<string | void>, doneMessage: string): Promise<void> {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const resultMessage = await action();
+      setMessage(resultMessage ?? doneMessage);
+      await onDataChanged();
+    } catch (error) {
+      if (isUserAbort(error)) {
+        setMessage(null);
+        return;
+      }
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function resolveConflict(resolution: BackupConflictResolution): Promise<void> {
+    return runBusy(async () => {
+      try {
+        await resolveBackupConflict(resolution);
+      } catch (error) {
+        await onDataChanged();
+        throw error;
+      }
+    }, backupText.messages.conflictResolvedDetail);
+  }
+
+  return (
+    <section className="settings-shell">
+      <div className="stats-header">
+        <div>
+          <h1>设置</h1>
+          <p>全局偏好和备份</p>
+        </div>
+        <DatabaseBackup size={24} />
+      </div>
+
+      <div className="panel settings-panel">
+        <div className="setting-row">
+          <div>
+            <strong>离开阈值</strong>
+            <span>聚焦但无输入后标记中断</span>
+          </div>
+          <select
+            value={settings.inactivityThresholdSeconds}
+            onChange={(event) =>
+              void saveSettings({ ...settings, inactivityThresholdSeconds: Number(event.target.value) })
+            }
+          >
+            <option value={15}>15 秒</option>
+            <option value={30}>30 秒</option>
+            <option value={45}>45 秒</option>
+            <option value={60}>60 秒</option>
+          </select>
+        </div>
+
+        <div className="setting-row">
+          <div>
+            <strong>正确后延迟</strong>
+            <span>答对后自动进入下一题</span>
+          </div>
+          <select
+            value={settings.correctDelayMs}
+            onChange={(event) => void saveSettings({ ...settings, correctDelayMs: Number(event.target.value) })}
+          >
+            <option value={0}>0ms</option>
+            <option value={300}>300ms</option>
+            <option value={400}>400ms</option>
+            <option value={500}>500ms</option>
+            <option value={800}>800ms</option>
+          </select>
+        </div>
+
+        <div className="setting-row">
+          <div>
+            <strong>音量</strong>
+            <span>目标音、学习页和琴键预览播放音量</span>
+          </div>
+          <label className="volume-control" ref={pianoVolumeControlRef}>
+            <input
+              aria-label="音量"
+              max={100}
+              min={0}
+              step={5}
+              type="range"
+              value={pianoVolumePercent}
+              onChange={(event) => savePianoVolume(Number(event.target.value) / 100)}
+            />
+            <span>{pianoVolumePercent}%</span>
+          </label>
+        </div>
+
+        <div className="setting-row">
+          <div>
+            <strong>播放剩余 BPM</strong>
+            <span>暂停时按谱面时值播放的速度</span>
+          </div>
+          <PausedPlaybackBpmInput
+            className="setting-number-input"
+            value={staffPageUiPreferences.pausedPlaybackBpm}
+            onChange={(pausedPlaybackBpm) =>
+              setStaffPageUiPreferences((current) => ({
+                ...current,
+                pausedPlaybackBpm,
+              }))
+            }
+          />
+        </div>
+
+        <div className="setting-row">
+          <div>
+            <strong>谱页平滑滚动</strong>
+            <span>换行时平滑上移，过渡时间不计入练习与识别用时</span>
+          </div>
+          <label className="toggle">
+            <input
+              aria-label="谱页平滑滚动"
+              checked={staffPageUiPreferences.smoothStaffPageScroll}
+              type="checkbox"
+              onChange={(event) =>
+                setStaffPageUiPreferences((current) => ({
+                  ...current,
+                  smoothStaffPageScroll: event.target.checked,
+                }))
+              }
+            />
+            <span aria-hidden="true" />
+          </label>
+        </div>
+      </div>
+
+      <div className="panel settings-panel keyboard-settings-panel">
+        <div className="setting-row">
+          <div>
+            <strong>MIDI 键盘</strong>
+            <span>
+              {midi.status === "insecure-context"
+                ? "当前页面不是安全连接，请改用 HTTPS 或本机 localhost"
+                : midi.status === "unsupported"
+                  ? "当前浏览器不支持 Web MIDI"
+                  : midi.status === "requesting"
+                    ? "正在请求 MIDI 权限…"
+                    : midi.isConnected
+                      ? `已连接：${midi.selectedInput?.name}`
+                      : midi.status === "ready"
+                        ? midi.inputs.length > 0 ? "请选择 MIDI 输入设备" : "未检测到可用的 MIDI 输入"
+                        : midi.errorMessage ?? "连接后可选择设备并测试按键"}
+            </span>
+          </div>
+          {midi.status === "ready" && midi.inputs.length > 0 ? (
+            <select
+              aria-label="MIDI 输入设备"
+              value={midi.selectedInput ? midi.selectedInputId : ""}
+              onChange={(event) => midi.selectInput(event.target.value)}
+            >
+              {!midi.selectedInput ? <option disabled value="">请选择 MIDI 输入</option> : null}
+              {midi.inputs.map((input) => (
+                <option key={input.id} value={input.id}>
+                  {input.manufacturer ? `${input.manufacturer} · ` : ""}{input.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <button
+              disabled={
+                midi.status === "requesting" ||
+                midi.status === "insecure-context" ||
+                midi.status === "unsupported"
+              }
+              onClick={() => void midi.connect()}
+            >
+              {midi.status === "denied" || midi.status === "error" ? "重新连接" : "连接 MIDI"}
+            </button>
+          )}
+        </div>
+        {midi.isConnected ? (
+          <p className="keyboard-settings-description" aria-live="polite">
+            测试输入：{midi.lastNote
+              ? `${midi.lastNote.keyName}${midi.lastNote.octave}`
+              : "请按下一个琴键"}
+          </p>
+        ) : null}
+        <div className="setting-row keyboard-size-row">
+          <div>
+            <strong>琴键大小</strong>
+            <span>练习页以此尺寸为基准</span>
+          </div>
+          <label className="volume-control" ref={answerKeyboardScaleControlRef}>
+            <input
+              aria-label="琴键大小"
+              max={150}
+              min={70}
+              step={5}
+              type="range"
+              value={answerKeyboardScalePercent}
+              onChange={(event) => saveAnswerKeyboardScale(Number(event.target.value) / 100)}
+            />
+            <span>{answerKeyboardScalePercent}%</span>
+          </label>
+        </div>
+        <p className="keyboard-settings-description">
+          预览音区 C4–C5，可按住多键试听和弦；练习页仅白键可作答，空间不足时会先缩空白，再缩小琴键。
+        </p>
+        <PlayableKeyboardPreview scale={answerKeyboardScaleDraft} />
+      </div>
+
+      <div className="panel settings-panel">
+        <div className="backup-status">
+          <div>
+            <strong>备份目录</strong>
+            <span title={backupState.directoryName}>
+              {backupState.directoryName ? truncateStart(backupState.directoryName) : backupText.status.unselected}
+            </span>
+          </div>
+          <div>
+            <strong>数据更新</strong>
+            <span>{backupState.backupDataModifiedAt ? new Date(backupState.backupDataModifiedAt).toLocaleString() : "-"}</span>
+          </div>
+          <div>
+            <strong>状态</strong>
+            <span>{backupState.lastError ?? backupText.status.normal}</span>
+          </div>
+        </div>
+        <div className="action-row">
+          <button
+            disabled={!supportsFileBackups() || busy}
+            onClick={() =>
+              void runBusy(async () => {
+                const result = await chooseBackupDirectory();
+                return describeDirectorySelection(result, await getBackupState());
+              }, backupText.messages.directorySelected)
+            }
+          >
+            <FolderOpen size={18} />
+            {backupText.labels.chooseDirectory}
+          </button>
+          {!backupBlockedUntilSync ? (
+            <button
+              disabled={!backupState.directoryHandle || !hasBackupSnapshot || busy}
+              onClick={() => {
+                if (!backupState.directoryHandle) {
+                  return;
+                }
+                if (window.confirm(backupText.messages.browserDataWillBeReplaced)) {
+                  void runBusy(() => restoreBackupFromDirectory(backupState.directoryHandle!), backupText.titles.importSuccess);
+                }
+              }}
+            >
+              <Upload size={18} />
+              {backupText.labels.importBackup}
+            </button>
+          ) : null}
+        </div>
+        {backupBlockedUntilSync ? (
+          <>
+            <div className="status-line warning">{formatBackupConflictDetail(backupState)}</div>
+            <BackupConflictResolver backupState={backupState} disabled={busy} onResolve={resolveConflict} />
+          </>
+        ) : backupState.directoryHandle && !hasBackupSnapshot ? (
+          <div className="status-line">{backupText.messages.emptyBackupDirectory}</div>
+        ) : backupState.directoryHandle ? (
+          <div className="status-line">{backupText.messages.backupEnabled}</div>
+        ) : null}
+        {message ? <div className="status-line">{message}</div> : null}
+        {!supportsFileBackups() ? <div className="status-line">{backupText.status.unsupportedFileSystemAccess}</div> : null}
+      </div>
+    </section>
+  );
+}

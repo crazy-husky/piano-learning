@@ -1,0 +1,36 @@
+{
+  "name": "piano-learning",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@11.10.0",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 6136 --strictPort",
+    "dev:open": "vite --host 127.0.0.1 --port 6136 --strictPort --open http://127.0.0.1:6136/",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 6136 --strictPort --open http://127.0.0.1:6136/",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "dexie": "^4.4.4",
+    "echarts": "^6.1.0",
+    "lucide-react": "^0.468.0",
+    "onnxruntime-web": "1.27.0",
+    "pitchy": "4.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tone": "^15.5.27",
+    "vexflow": "^5.0.0",
+    "webmidi": "^3.1.16"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "fake-indexeddb": "^6.2.5",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3",
+    "vitest": "^2.1.9"
+  }
+}

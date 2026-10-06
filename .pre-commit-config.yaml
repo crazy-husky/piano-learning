@@ -1,0 +1,21 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check-fix
+        name: ruff check --fix
+        entry: uv run --project analysis ruff check --no-cache --fix
+        language: system
+        files: ^analysis/.*\.py$
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --project analysis ruff format --no-cache
+        language: system
+        files: ^analysis/.*\.py$
+        types: [python]
+      - id: frontend-build
+        name: pnpm run build
+        entry: pwsh.exe -NoProfile -File scripts/pre-commit-build.ps1
+        language: system
+        pass_filenames: false
+        always_run: true
