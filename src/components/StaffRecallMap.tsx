@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Formatter, Renderer, type Stave, StaveNote, Voice } from "vexflow";
 import { noteToVexKey } from "../domain/notes";
 import { compareTargetNotePitch, formatStaffRecallDeltaMs, type NoteNameColumn } from "../domain/staffRecall";
