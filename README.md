@@ -4,6 +4,8 @@
 
 本项目基于 [coolermzb3/anki-note](https://github.com/coolermzb3/anki-note) 二次开发。
 
+在线演示：[https://gohusky.cn/piano-learning/](https://gohusky.cn/piano-learning/)
+
 源仓库目前没有提供 `LICENSE` 文件。此处注明来源不代表额外授予使用或再分发许可；公开分发前请确认相应授权。
 
 <details name="screenshots" open>
@@ -47,6 +49,13 @@ uv run --project analysis pre-commit install
 ```
 
 提交钩子会检查并格式化 `analysis/` 下的 Python 代码，并在每次提交前执行前端生产构建。
+前端构建包含 TypeScript 检查，未导入的名称等编译错误会阻止提交。每个工作区都需要安装一次钩子；没有安装时，本地提交不会触发这些检查。也可以手动运行：
+
+```bash
+uv run --project analysis pre-commit run frontend-build --all-files
+```
+
+GitHub Actions 会在推送到 `main`、创建 Pull Request 或手动触发时运行测试和生产构建。它只做校验，不会部署页面。
 
 ## MIDI 键盘
 
@@ -72,9 +81,9 @@ pnpm run build
 - [自动旋律生成规则](docs/melody-generation.md)
 - [UI 手调位置速查](docs/ui-tuning.md)
 
-## 部署
+## 发布与预览
 
-推送到 `main` 后，GitHub Actions 会构建 `dist` 并部署到 GitHub Pages。
+线上演示部署由维护者按需执行，不会由构建、提交或推送自动触发。部署脚本保存在本地 `scripts/deploy/` 目录并被 Git 忽略；需要发布时再手动运行，不包含服务器配置的提交。
 
 ### 临时 HTTPS 预览
 
