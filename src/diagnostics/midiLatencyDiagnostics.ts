@@ -318,7 +318,11 @@ function formatMs(value: number | undefined): string {
 export function formatMidiLatencyCondition(condition: MidiLatencyCondition, separator = " / "): string {
   const display = condition.promptDisplayMode === "staff-page" ? "谱页" : "单音";
   const audio = condition.playAnswerNote ? "声音开" : "声音关";
-  const pitch = condition.answerPitchMode === "exact-pitch" ? "精确音高" : "音名";
+  const pitch = condition.answerPitchMode === "microphone"
+    ? "麦克风单音"
+    : condition.answerPitchMode === "exact-pitch"
+      ? "MIDI 精确音高"
+      : "音名";
   return [display, audio, `${condition.correctDelayMs}ms`, pitch].join(separator);
 }
 

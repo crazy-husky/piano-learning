@@ -44,8 +44,12 @@ interface ConditionMetadata {
 const CONDITION_METADATA: Record<SessionProgressConditionDimension, ConditionMetadata> = {
   answerPitchMode: {
     label: "答题判定",
-    order: ["note-name", "exact-pitch"],
-    valueLabel: (value) => value === "note-name" ? "只认音名" : "精确音高",
+    order: ["note-name", "exact-pitch", "microphone"],
+    valueLabel: (value) => ({
+      "note-name": "只认音名",
+      "exact-pitch": "MIDI 精确音高",
+      microphone: "麦克风单音",
+    })[value as "note-name" | "exact-pitch" | "microphone"],
   },
   promptDisplayMode: {
     label: "显示模式",

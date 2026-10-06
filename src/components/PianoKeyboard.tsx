@@ -101,6 +101,7 @@ interface PianoKeyboardProps {
   onFeedbackTransitionEnd?: (keyName: PianoKeyName, type: PianoKeyFeedback["type"], propertyName: string) => void;
   pressedKeys?: ReadonlySet<PianoKeyId>;
   scale: number;
+  touchLabels?: boolean;
 }
 
 interface DragState {
@@ -142,6 +143,7 @@ export function PianoKeyboard({
   onFeedbackTransitionEnd,
   pressedKeys,
   scale,
+  touchLabels = false,
 }: PianoKeyboardProps): JSX.Element {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const keybedRef = useRef<HTMLDivElement | null>(null);
@@ -359,6 +361,7 @@ export function PianoKeyboard({
       aria-label={ariaLabel}
       className={[
         "piano-keyboard",
+        touchLabels ? "piano-keyboard-touch-labels" : "",
         overflowing ? "piano-keyboard-overflowing" : "",
         dragging ? "piano-keyboard-dragging" : "",
         className ?? "",
@@ -430,7 +433,11 @@ export function PianoKeyboard({
                 style={keyStyle}
                 type="button"
               >
-                {definition.label ? <kbd>{definition.label}</kbd> : null}
+                {touchLabels ? (
+                  <span className="piano-touch-note-label">{pitchLabel}</span>
+                ) : definition.label ? (
+                  <kbd>{definition.label}</kbd>
+                ) : null}
               </button>
             );
           })}

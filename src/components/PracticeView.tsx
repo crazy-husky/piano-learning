@@ -12,6 +12,7 @@ import {
   type MidiLatencyStage,
 } from "../diagnostics/midiLatencyDiagnostics";
 import {
+  isPracticeAnswerSourceAllowed,
   isPracticeAnswerCorrect,
   normalizeAnswerPitchMode,
   resolveAvailableAnswerPitchMode,
@@ -28,7 +29,7 @@ import {
 import { shouldIgnoreReviewForSession, shouldKeepPracticeSession } from "../domain/practiceSession";
 import { getEffectivePracticeNotes } from "../domain/practiceComparison";
 import {
-  buildPracticeSessionRecordV4,
+  buildPracticeSessionRecordV5,
   buildPracticeSessionStartSnapshot,
 } from "../domain/practiceSessionStartSnapshot";
 import { isCompletedReview } from "../domain/reviews";
@@ -85,7 +86,11 @@ import { getPausedKeyboardAction } from "./practiceKeyboard";
 import { StaffPagePrompt } from "./StaffPagePrompt";
 import { StaffPrompt } from "./StaffPrompt";
 import { PRACTICE_PAGE_STAFF_LAYOUT } from "./staffLayoutProfiles";
-import { getStaffPageRefillCount } from "./staffPageFlow";
+import {
+  buildMobileStaffPageView,
+  getStaffPageRefillCount,
+  MOBILE_STAFF_PAGE_NOTE_COUNT,
+} from "./staffPageFlow";
 import { PROMPT_NOTE_DURATIONS } from "./staffPageNotation";
 import {
   DEFAULT_STAFF_PAGE_UI_PREFERENCES,
@@ -96,6 +101,8 @@ import {
 import { useLocalStorageState } from "./useLocalStorageState";
 import { useDelayedBusy } from "./useDelayedBusy";
 import { useRemainingNotePlayback } from "./useRemainingNotePlayback";
+import { usePracticeMicrophoneInput } from "../vocal-pitch/usePracticeMicrophoneInput";
+import { ensurePracticeMicrophoneForResume, releasePracticeMicrophoneOnPause } from "./practiceInputLifecycle";
 
 interface PracticeViewProps {
   midi: MidiInputController;
@@ -369,13 +376,18 @@ export function PracticeView({
   const [staffPageNotes, setStaffPageNotes] = useState<TargetNote[]>([]);
   const [staffPageIndex, setStaffPageIndex] = useState(0);
   const [staffPageCompletedCount, setStaffPageCompletedCount] = useState(0);
+  const [staffPageFirstNoteOffset, setStaffPageFirstNoteOffset] = useState(0);
   const [isStaffPageScrolling, setIsStaffPageScrolling] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches,
+  );
   const { isBusyVisible: showStartingSessionStatus, run: runSessionStart } = useDelayedBusy();
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false,
   );
-  const runningStartSnapshot = phase === "running" && (session?.schemaVersion === 3 || session?.schemaVersion === 4)
+  const runningStartSnapshot = phase === "running" &&
+      (session?.schemaVersion === 3 || session?.schemaVersion === 4 || session?.schemaVersion === 5)
     ? session.startSnapshot
     : undefined;
   const answerPitchMode = runningStartSnapshot
@@ -469,10 +481,12 @@ export function PracticeView({
   const lastBackupCompletedRef = useRef(0);
   const lastBackupAtRef = useRef<number>(performance.now());
   const handledNavigationExitRequestIdRef = useRef<number | null>(null);
+  const microphoneResumeInFlightRef = useRef(false);
   const heldMidiInputsRef = useRef(new Map<string, PianoKeyName>());
   const pendingMidiPressDiagnosticSampleIdRef = useRef<number | undefined>(undefined);
   const startSessionRef = useRef<() => void>(() => undefined);
   const submitAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => undefined);
+  const practiceMicrophone = usePracticeMicrophoneInput((answer) => submitAnswerRef.current(answer));
 
   useLayoutEffect(() => {
     const diagnosticSampleId = feedback?.diagnosticSampleId;
@@ -527,6 +541,13 @@ export function PracticeView({
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const onChange = (): void => setPrefersReducedMotion(mediaQuery.matches);
+    mediaQuery.addEventListener("change", onChange);
+    return () => mediaQuery.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 820px)");
+    const onChange = (): void => setIsMobileViewport(mediaQuery.matches);
     mediaQuery.addEventListener("change", onChange);
     return () => mediaQuery.removeEventListener("change", onChange);
   }, []);
@@ -692,19 +713,40 @@ export function PracticeView({
     if (interruptReason) {
       markInterrupted(interruptReason);
     }
+    releasePracticeMicrophoneOnPause(answerPitchMode, () =>
+      practiceMicrophone.stop({ preserveError: practiceMicrophone.status === "error" }),
+    );
     pauseActiveTimers();
     if (!isPausedRef.current) {
       isPausedRef.current = true;
       setIsPaused(true);
     }
-  }, [markInterrupted, pauseActiveTimers]);
+  }, [answerPitchMode, markInterrupted, pauseActiveTimers, practiceMicrophone.status, practiceMicrophone.stop]);
 
-  const resumePractice = useCallback((): void => {
+  const resumePractice = useCallback(async (): Promise<void> => {
     if (!isPausedRef.current) {
       return;
     }
     if (answerPitchMode === "exact-pitch" && !midi.isConnected) {
       return;
+    }
+    if (microphoneResumeInFlightRef.current) {
+      return;
+    }
+    if (answerPitchMode === "microphone") {
+      microphoneResumeInFlightRef.current = true;
+      try {
+        const microphoneReady = await ensurePracticeMicrophoneForResume({
+          answerPitchMode,
+          isListening: practiceMicrophone.isListening,
+          startMicrophone: practiceMicrophone.start,
+        });
+        if (!microphoneReady || !isPausedRef.current || endingRef.current) {
+          return;
+        }
+      } finally {
+        microphoneResumeInFlightRef.current = false;
+      }
     }
     cancelRemainingPlayback();
     isPausedRef.current = false;
@@ -721,7 +763,15 @@ export function PracticeView({
         void playTargetNote(promptRef.current.note).catch(() => undefined);
       }
     }
-  }, [answerPitchMode, autoPlayTarget, cancelRemainingPlayback, midi.isConnected, resumeActiveTimers]);
+  }, [
+    answerPitchMode,
+    autoPlayTarget,
+    cancelRemainingPlayback,
+    midi.isConnected,
+    practiceMicrophone.isListening,
+    practiceMicrophone.start,
+    resumeActiveTimers,
+  ]);
 
   const togglePause = useCallback((): void => {
     if (isPausedRef.current) {
@@ -750,6 +800,24 @@ export function PracticeView({
       pausePractice("midi-disconnected");
     }
   }, [answerPitchMode, midi.isConnected, pausePractice, phase]);
+
+  useEffect(() => {
+    if (phase === "running" && answerPitchMode === "microphone" && practiceMicrophone.status === "error") {
+      pausePractice("microphone-disconnected");
+    }
+  }, [answerPitchMode, pausePractice, phase, practiceMicrophone.status]);
+
+  useEffect(() => {
+    if (
+      phase === "running" &&
+      answerPitchMode === "microphone" &&
+      isPaused &&
+      !microphoneResumeInFlightRef.current &&
+      practiceMicrophone.status === "listening"
+    ) {
+      practiceMicrophone.stop();
+    }
+  }, [answerPitchMode, isPaused, phase, practiceMicrophone.status, practiceMicrophone.stop]);
 
   const persistConfig = useCallback(async (): Promise<AppSettings> => {
     const nextSettings: AppSettings = {
@@ -806,6 +874,9 @@ export function PracticeView({
     setStaffPageNotes(page?.notes ?? []);
     setStaffPageIndex(page?.index ?? 0);
     setStaffPageCompletedCount(page?.completedCount ?? 0);
+    if (!page) {
+      setStaffPageFirstNoteOffset(0);
+    }
   }, []);
 
   const getNextStaffPageCount = useCallback(
@@ -963,6 +1034,7 @@ export function PracticeView({
           completedCount:
             scrolledPage.completedCount - PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
         };
+        setStaffPageFirstNoteOffset((offset) => offset + PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow);
         syncStaffPage(rebasedPage);
         setIsStaffPageScrolling(false);
         const startNextPrompt = (): void => {
@@ -1098,6 +1170,7 @@ export function PracticeView({
       const showSummary = options.showSummary ?? true;
       const updateUi = options.updateUi ?? true;
       endingRef.current = true;
+      practiceMicrophone.stop();
       cancelRemainingPlayback();
       clearStaffPageScrollSchedule();
       const unfinishedReview = promptRef.current ? await finishCurrentReview(false, unfinishedReason) : null;
@@ -1160,6 +1233,7 @@ export function PracticeView({
       onDataChanged,
       onPracticeFinished,
       pauseActiveTimers,
+      practiceMicrophone.stop,
       syncStaffPage,
     ],
   );
@@ -1184,104 +1258,133 @@ export function PracticeView({
     if (queueNotes.length === 0 || (answerPitchMode === "exact-pitch" && !midi.isConnected)) {
       return;
     }
-    await runSessionStart(async () => {
-      void unlockAudio().catch(() => undefined);
-      const preflightResult = await onBeforePracticeStart();
-      if (!preflightResult.proceed) {
-        return;
-      }
-      if (preflightResult.settings) {
-        applySettingsSnapshot(preflightResult.settings);
-      }
-      const preflightSettings = preflightResult.settings ?? (await persistConfig());
-      const availablePreflightAnswerPitchMode = resolveAvailableAnswerPitchMode(
-        preflightSettings.answerPitchMode,
-        midi.isConnected,
-      );
-      const nextSettings = preflightSettings.answerPitchMode === availablePreflightAnswerPitchMode
-        ? preflightSettings
-        : { ...preflightSettings, answerPitchMode: availablePreflightAnswerPitchMode };
-      if (nextSettings !== preflightSettings) {
-        await onSettingsSaved(nextSettings);
-      }
-      const nextMode = nextSettings.defaultMode;
-      const nextQueueStrategy = resolveQueueStrategy(nextSettings);
-      const nextSchedulerReviews = preflightResult.reviews
-        ? filterLongTermReviews(preflightResult.reviews)
-        : schedulerReviews;
-      const builtStartSnapshot = buildPracticeSessionStartSnapshot({
-        autoPlayTarget: nextSettings.autoPlayTarget,
-        mode: nextMode,
-        prefersReducedMotion,
-        settings: { ...nextSettings, queueStrategy: nextQueueStrategy },
-        smoothStaffPageScroll: staffPageUiPreferences.smoothStaffPageScroll,
-        startPausedReading,
-      });
-      if (!builtStartSnapshot) {
-        return;
-      }
-      const { snapshot: startSnapshot } = builtStartSnapshot;
-      const { practiceConfig, presentationConfig } = startSnapshot;
-      const nextEnabledNotes = builtStartSnapshot.notes;
-      const shouldStartPaused =
-        presentationConfig.promptDisplayMode === "staff-page" && presentationConfig.startPausedReading;
-      setPianoVolume(startSnapshot.interactionConfig.pianoVolume);
-      const startedAt = new Date().toISOString();
-      const nextSession: PracticeSessionRecord = buildPracticeSessionRecordV4({
-        id: newSessionId(),
-        snapshot: startSnapshot,
-        startedAt,
-      });
-      await db.practiceSessions.put(nextSession);
-      sessionRef.current = nextSession;
-      sessionStartSnapshotRef.current = startSnapshot;
-      sessionReviewsRef.current = [];
-      lastTargetNoteIdRef.current = undefined;
-      melodyQueueRef.current = [];
-      melodyGenerationStateRef.current = createMelodyGenerationState();
-      syncStaffPage(null);
-      setIsStaffPageScrolling(false);
-      endingRef.current = false;
-      lastBackupAtRef.current = performance.now();
-      lastBackupCompletedRef.current = 0;
-      sessionActiveBaseMsRef.current = 0;
-      sessionActiveStartedAtRef.current = shouldStartPaused ? null : performance.now();
-      isPausedRef.current = shouldStartPaused;
-      pendingAfterPauseRef.current = null;
-      setSession(nextSession);
-      setCompletedCount(0);
-      setWrongAnswerCount(0);
-      setSummary(null);
-      setIsPaused(shouldStartPaused);
-      setPhase("running");
-      if (presentationConfig.promptDisplayMode === "staff-page") {
-        startStaffPage({
-          sourceNotes: nextEnabledNotes,
-          sourceReviews: nextSchedulerReviews,
-          sourceQueueStrategy: practiceConfig.queueStrategy,
-          sourceDrillNoteNames: practiceConfig.drillNoteNames,
-          nextCompletedCount: 0,
+    let microphoneStarted = false;
+    let sessionStarted = false;
+    try {
+      await runSessionStart(async () => {
+        void unlockAudio().catch(() => undefined);
+        const preflightResult = await onBeforePracticeStart();
+        if (!preflightResult.proceed) {
+          return;
+        }
+        if (preflightResult.settings) {
+          applySettingsSnapshot(preflightResult.settings);
+        }
+        const loadedPreflightSettings = preflightResult.settings ?? (await persistConfig());
+        const preflightSettings = answerPitchMode === "microphone" &&
+            loadedPreflightSettings.answerPitchMode !== "microphone"
+          ? { ...loadedPreflightSettings, answerPitchMode: "microphone" as const }
+          : loadedPreflightSettings;
+        const availablePreflightAnswerPitchMode = resolveAvailableAnswerPitchMode(
+          preflightSettings.answerPitchMode,
+          midi.isConnected,
+        );
+        const nextSettings = preflightSettings.answerPitchMode === availablePreflightAnswerPitchMode
+          ? preflightSettings
+          : { ...preflightSettings, answerPitchMode: availablePreflightAnswerPitchMode };
+        if (nextSettings !== preflightSettings) {
+          await onSettingsSaved(nextSettings);
+        }
+        const nextMode = nextSettings.defaultMode;
+        const nextQueueStrategy = resolveQueueStrategy(nextSettings);
+        const nextSchedulerReviews = preflightResult.reviews
+          ? filterLongTermReviews(preflightResult.reviews)
+          : schedulerReviews;
+        const microphoneSettings = availablePreflightAnswerPitchMode === "microphone"
+          ? { ...nextSettings, playAnswerNote: false }
+          : nextSettings;
+        const builtStartSnapshot = buildPracticeSessionStartSnapshot({
+          autoPlayTarget:
+            availablePreflightAnswerPitchMode === "microphone" ? false : nextSettings.autoPlayTarget,
+          mode: nextMode,
+          prefersReducedMotion,
+          settings: { ...microphoneSettings, queueStrategy: nextQueueStrategy },
+          smoothStaffPageScroll: staffPageUiPreferences.smoothStaffPageScroll,
+          startPausedReading,
         });
-      } else {
-        const firstNote =
-          practiceConfig.queueStrategy === "melody"
-            ? drawMelodyNote(nextEnabledNotes, practiceConfig.fixedCount)
-            : selectNextNote({
-                notes: nextEnabledNotes,
-                reviews: nextSchedulerReviews,
-                sessions,
-                currentSessionId: nextSession.id,
-                queueStrategy: practiceConfig.queueStrategy,
-                drillNoteNames: practiceConfig.drillNoteNames,
-              });
-        startPrompt(firstNote);
+        if (!builtStartSnapshot) {
+          return;
+        }
+        const { snapshot: startSnapshot } = builtStartSnapshot;
+        const { practiceConfig, presentationConfig } = startSnapshot;
+        const nextEnabledNotes = builtStartSnapshot.notes;
+        const shouldStartPaused =
+          presentationConfig.promptDisplayMode === "staff-page" && presentationConfig.startPausedReading;
+        if (availablePreflightAnswerPitchMode === "microphone") {
+          if (shouldStartPaused) {
+            practiceMicrophone.stop();
+          } else {
+            microphoneStarted = await practiceMicrophone.start();
+            if (!microphoneStarted) {
+              return;
+            }
+          }
+        }
+        setPianoVolume(startSnapshot.interactionConfig.pianoVolume);
+        const startedAt = new Date().toISOString();
+        const nextSession: PracticeSessionRecord = buildPracticeSessionRecordV5({
+          id: newSessionId(),
+          snapshot: startSnapshot,
+          startedAt,
+        });
+        await db.practiceSessions.put(nextSession);
+        sessionRef.current = nextSession;
+        sessionStartSnapshotRef.current = startSnapshot;
+        sessionReviewsRef.current = [];
+        lastTargetNoteIdRef.current = undefined;
+        melodyQueueRef.current = [];
+        melodyGenerationStateRef.current = createMelodyGenerationState();
+        syncStaffPage(null);
+        setIsStaffPageScrolling(false);
+        endingRef.current = false;
+        lastBackupAtRef.current = performance.now();
+        lastBackupCompletedRef.current = 0;
+        sessionActiveBaseMsRef.current = 0;
+        sessionActiveStartedAtRef.current = shouldStartPaused ? null : performance.now();
+        isPausedRef.current = shouldStartPaused;
+        pendingAfterPauseRef.current = null;
+        setSession(nextSession);
+        setCompletedCount(0);
+        setWrongAnswerCount(0);
+        setSummary(null);
+        setIsPaused(shouldStartPaused);
+        setPhase("running");
+        sessionStarted = true;
+        if (presentationConfig.promptDisplayMode === "staff-page") {
+          startStaffPage({
+            sourceNotes: nextEnabledNotes,
+            sourceReviews: nextSchedulerReviews,
+            sourceQueueStrategy: practiceConfig.queueStrategy,
+            sourceDrillNoteNames: practiceConfig.drillNoteNames,
+            nextCompletedCount: 0,
+          });
+        } else {
+          const firstNote =
+            practiceConfig.queueStrategy === "melody"
+              ? drawMelodyNote(nextEnabledNotes, practiceConfig.fixedCount)
+              : selectNextNote({
+                  notes: nextEnabledNotes,
+                  reviews: nextSchedulerReviews,
+                  sessions,
+                  currentSessionId: nextSession.id,
+                  queueStrategy: practiceConfig.queueStrategy,
+                  drillNoteNames: practiceConfig.drillNoteNames,
+                });
+          startPrompt(firstNote);
+        }
+      });
+    } finally {
+      if (microphoneStarted && !sessionStarted) {
+        practiceMicrophone.stop();
       }
-    });
+    }
   }, [
     answerPitchMode,
     applySettingsSnapshot,
     drawMelodyNote,
     midi.isConnected,
+    practiceMicrophone.start,
+    practiceMicrophone.stop,
     onBeforePracticeStart,
     onSettingsSaved,
     persistConfig,
@@ -1301,16 +1404,19 @@ export function PracticeView({
 
   const replayTarget = useCallback(async (): Promise<void> => {
     const prompt = promptRef.current;
-    if (!prompt || isPausedRef.current) {
+    if (!prompt || isPausedRef.current || answerPitchMode === "microphone") {
       return;
     }
     prompt.lastInputAt = performance.now();
     prompt.replayCount += 1;
     await playTargetNote(prompt.note).catch(() => undefined);
-  }, []);
+  }, [answerPitchMode]);
 
   const submitAnswer = useCallback(
     async (answer: PracticeAnswerInput): Promise<void> => {
+      if (!isPracticeAnswerSourceAllowed(answer, answerPitchMode)) {
+        return;
+      }
       const prompt = promptRef.current;
       if (!prompt || isPausedRef.current || answerInputLockedRef.current) {
         return;
@@ -1461,7 +1567,7 @@ export function PracticeView({
       heldMidiInputsRef.current.set(event.note.keyId, event.note.keyName);
       pendingMidiPressDiagnosticSampleIdRef.current = event.note.diagnosticSampleId;
       syncHeldMidiKeys();
-      if (phase === "running") {
+      if (phase === "running" && answerPitchMode !== "microphone") {
         markMidiLatencyStage(event.note.diagnosticSampleId, "practiceSubscriber");
         submitAnswerRef.current({
           diagnosticSampleId: event.note.diagnosticSampleId,
@@ -1472,7 +1578,7 @@ export function PracticeView({
         });
         return;
       }
-      if (event.note.midiNoteNumber === MIDI_START_NOTE_NUMBER) {
+      if (event.note.midiNoteNumber === MIDI_START_NOTE_NUMBER && answerPitchMode !== "microphone") {
         startSessionRef.current();
       }
     });
@@ -1482,7 +1588,7 @@ export function PracticeView({
       heldMidiInputsRef.current.clear();
       setHeldMidiAnswerKeys(new Set());
     };
-  }, [midi.subscribe, phase]);
+  }, [answerPitchMode, midi.subscribe, phase]);
 
   useEffect(() => {
     if (phase !== "running") {
@@ -1513,7 +1619,9 @@ export function PracticeView({
         });
         if (pausedAction === "toggle-playback") {
           event.preventDefault();
-          toggleRemainingPlayback();
+          if (answerPitchMode !== "microphone") {
+            toggleRemainingPlayback();
+          }
           return;
         }
         if (pausedAction === "allow-edit") {
@@ -1527,7 +1635,9 @@ export function PracticeView({
           return;
         }
         event.preventDefault();
-        void replayTarget();
+        if (answerPitchMode !== "microphone") {
+          void replayTarget();
+        }
         return;
       }
       const answer = ANSWER_BUTTONS.find((button) => event.key === button.key);
@@ -1650,6 +1760,37 @@ export function PracticeView({
       PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows,
       Math.ceil(staffPageNotes.length / PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow),
     ),
+  );
+  const isMobileStaffPage = isMobileViewport && promptDisplayMode === "staff-page";
+  const mobileStaffPageStartIndex =
+    Math.floor(Math.max(0, staffPageIndex) / MOBILE_STAFF_PAGE_NOTE_COUNT) * MOBILE_STAFF_PAGE_NOTE_COUNT;
+  const mobileStaffPageNotes = useMemo(
+    () =>
+      isMobileStaffPage
+        ? staffPageNotes.slice(mobileStaffPageStartIndex, mobileStaffPageStartIndex + MOBILE_STAFF_PAGE_NOTE_COUNT)
+        : staffPageNotes,
+    [isMobileStaffPage, mobileStaffPageStartIndex, staffPageNotes],
+  );
+  const mobileStaffPageView = useMemo(
+    () =>
+      isMobileStaffPage
+        ? buildMobileStaffPageView({
+            completedCount: staffPageCompletedCount,
+            currentIndex: staffPageIndex,
+            firstNoteOffset: staffPageFirstNoteOffset,
+            fixedSessionCount: mode === "fixed-count" ? fixedCount : undefined,
+            notes: staffPageNotes,
+          })
+        : null,
+    [
+      fixedCount,
+      isMobileStaffPage,
+      mode,
+      staffPageCompletedCount,
+      staffPageFirstNoteOffset,
+      staffPageIndex,
+      staffPageNotes,
+    ],
   );
   const sessionQualifiedTimes = (summary?.reviews ?? [])
     .filter(isCompletedReview)
@@ -1867,53 +2008,77 @@ export function PracticeView({
               </div>
             ) : null}
 
-            {midi.isConnected ? (
-              <div className="control-block">
-                <span className="control-label">答题判定</span>
-                <div className="display-options">
-                  <div className="segmented">
-                    <button
-                      className={answerPitchMode === "note-name" ? "active" : ""}
-                      onClick={() => setAnswerPitchMode("note-name")}
-                    >
-                      只认音名
-                    </button>
-                    <button
-                      className={answerPitchMode === "exact-pitch" ? "active" : ""}
-                      onClick={() => setAnswerPitchMode("exact-pitch")}
-                    >
-                      精确音高
-                    </button>
-                  </div>
-                  <span className="practice-answer-mode-description">
-                    {answerPitchMode === "note-name"
-                      ? "电脑键盘、屏幕琴键和 MIDI 可同时作答，不限八度"
-                      : "仅 MIDI 可作答，必须与谱面八度一致"}
-                  </span>
+            <div className="control-block">
+              <span className="control-label">答题方式</span>
+              <div className="display-options">
+                <div className="segmented">
+                  <button
+                    className={answerPitchMode === "note-name" ? "active" : ""}
+                    onClick={() => setAnswerPitchMode("note-name")}
+                  >
+                    只认音名
+                  </button>
+                  <button
+                    className={answerPitchMode === "exact-pitch" ? "active" : ""}
+                    disabled={!midi.isConnected}
+                    title={!midi.isConnected ? "需要连接 MIDI 设备" : undefined}
+                    onClick={() => setAnswerPitchMode("exact-pitch")}
+                  >
+                    MIDI 精确音高
+                  </button>
+                  <button
+                    className={answerPitchMode === "microphone" ? "active" : ""}
+                    onClick={() => setAnswerPitchMode("microphone")}
+                  >
+                    麦克风单音
+                  </button>
                 </div>
+                <span className="practice-answer-mode-description">
+                  {answerPitchMode === "note-name"
+                    ? "键盘、屏幕琴键和 MIDI 只需音名正确，不限八度"
+                    : answerPitchMode === "microphone"
+                      ? "开始练习时请求麦克风权限；识别 F1–G6 自然音并核对八度"
+                      : "仅 MIDI 可作答，必须与谱面八度一致"}
+                </span>
               </div>
-            ) : null}
+              {answerPitchMode === "microphone" && practiceMicrophone.error ? (
+                <span className="practice-microphone-error" role="status">{practiceMicrophone.error}</span>
+              ) : null}
+            </div>
 
             <div className="control-block">
               <span className="control-label">声音</span>
               <div className="practice-checkbox-options">
-                <label className="practice-checkbox-option">
+                <label
+                  className={`practice-checkbox-option${answerPitchMode === "microphone" ? " is-disabled" : ""}`}
+                  title={answerPitchMode === "microphone" ? "disabled：麦克风模式下不可用" : undefined}
+                >
                   <input
-                    checked={autoPlayTarget}
+                    checked={answerPitchMode === "microphone" ? false : autoPlayTarget}
+                    disabled={answerPitchMode === "microphone"}
                     type="checkbox"
                     onChange={(event) => setAutoPlayTarget(event.target.checked)}
                   />
                   <span>自动播放目标音</span>
                 </label>
-                <label className="practice-checkbox-option">
+                <label
+                  className={`practice-checkbox-option${answerPitchMode === "microphone" ? " is-disabled" : ""}`}
+                  title={answerPitchMode === "microphone" ? "disabled：麦克风模式下不可用" : undefined}
+                >
                   <input
-                    checked={playAnswerNote}
+                    checked={answerPitchMode === "microphone" ? false : playAnswerNote}
+                    disabled={answerPitchMode === "microphone"}
                     type="checkbox"
                     onChange={(event) => setPlayAnswerNote(event.target.checked)}
                   />
                   <span>按键时播放声音</span>
                 </label>
               </div>
+              {answerPitchMode === "microphone" ? (
+                <span className="practice-answer-mode-description practice-microphone-sound-note">
+                  麦克风模式不播放应用提示音，避免把提示音识别成弹奏。
+                </span>
+              ) : null}
             </div>
 
             <div className="action-row">
@@ -2056,8 +2221,12 @@ export function PracticeView({
       className={[
         "practice-shell",
         "practice-running-shell",
+        isMobileViewport ? "practice-running-mobile" : "",
+        isMobileViewport && answerPitchMode !== "note-name" ? "practice-without-touch-keyboard" : "",
         `practice-${promptDisplayMode}`,
-        promptDisplayMode === "staff-page" ? `practice-staff-page-rows-${staffPageRowCount}` : "",
+        promptDisplayMode === "staff-page"
+          ? `practice-staff-page-rows-${isMobileStaffPage ? 1 : staffPageRowCount}`
+          : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -2077,10 +2246,12 @@ export function PracticeView({
           )}
         </div>
         <div className="topline-actions">
-          <button aria-keyshortcuts="Space" title="重播目标音 Space" onClick={() => void replayTarget()}>
-            <Volume2 size={18} />
-            重播<kbd>空格</kbd>
-          </button>
+          {answerPitchMode !== "microphone" ? (
+            <button aria-keyshortcuts="Space" title="重播目标音 Space" onClick={() => void replayTarget()}>
+              <Volume2 size={18} />
+              重播<kbd>空格</kbd>
+            </button>
+          ) : null}
           <button aria-keyshortcuts="P" title={isPaused ? "继续 P" : "暂停 P"} onClick={togglePause}>
             {isPaused ? <Play size={18} /> : <Pause size={18} />}
             {isPaused ? "继续" : "暂停"}<kbd>P</kbd>
@@ -2096,20 +2267,53 @@ export function PracticeView({
         </div>
       </div>
 
+      {answerPitchMode === "microphone" ? (
+        <div className="practice-microphone-status" role="status">
+          <span
+            className={`practice-microphone-indicator ${practiceMicrophone.error ? "error" : practiceMicrophone.status}`}
+            aria-hidden="true"
+          />
+          <span>
+            {practiceMicrophone.status === "listening"
+              ? "正在监听麦克风"
+              : practiceMicrophone.status === "requesting"
+                ? "正在连接麦克风"
+                : practiceMicrophone.error ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接")}
+          </span>
+          {practiceMicrophone.detectedNote ? <strong>听到 {practiceMicrophone.detectedNote}</strong> : null}
+          <progress aria-label="麦克风输入电平" max={1} value={practiceMicrophone.inputLevel} />
+        </div>
+      ) : null}
+
       <div className={promptDisplayMode === "staff-page" ? "prompt-stage staff-page-stage" : "prompt-stage"}>
         {promptDisplayMode === "staff-page" ? (
-          <StaffPagePrompt
-            notes={staffPageNotes}
-            completedCount={staffPageCompletedCount}
-            diagnosticSampleId={feedback?.diagnosticSampleId}
-            isScrolling={isStaffPageScrolling}
-            noteDuration={effectivePromptNoteDuration}
-            scrollDurationMs={staffPageScrollDurationMs}
-            staffNotationMode={staffNotationMode}
-            useLedgerGap={useLedgerGap}
-            visibleRowCount={staffPageRowCount}
-            wrongIndex={feedback?.type === "wrong" ? staffPageIndex : undefined}
-          />
+          <div className={isMobileStaffPage ? "staff-page-mobile-view" : undefined}>
+            {mobileStaffPageView ? (
+              <div aria-live="polite" className="staff-page-counter">
+                第 {mobileStaffPageView.currentPage} / {mobileStaffPageView.totalPages} 页
+              </div>
+            ) : null}
+            <StaffPagePrompt
+              notes={mobileStaffPageNotes}
+              completedCount={mobileStaffPageView?.completedCount ?? staffPageCompletedCount}
+              diagnosticSampleId={feedback?.diagnosticSampleId}
+              isScrolling={isMobileStaffPage ? false : isStaffPageScrolling}
+              noteDuration={effectivePromptNoteDuration}
+              scrollDurationMs={staffPageScrollDurationMs}
+              staffNotationMode={staffNotationMode}
+              useLedgerGap={useLedgerGap}
+              distributeNotesEvenly={isMobileStaffPage}
+              notesPerRow={isMobileStaffPage ? MOBILE_STAFF_PAGE_NOTE_COUNT : undefined}
+              maxRowCount={isMobileStaffPage ? 1 : undefined}
+              minDisplayWidthPx={isMobileStaffPage ? 0 : undefined}
+              visibleRowCount={isMobileStaffPage ? 1 : staffPageRowCount}
+              wrongIndex={
+                feedback?.type === "wrong"
+                  ? mobileStaffPageView?.noteIndexInPage ?? staffPageIndex
+                  : undefined
+              }
+            />
+          </div>
         ) : currentNote ? (
           <StaffPrompt
             effectiveTargetNoteIds={effectiveTargetNoteIds}
@@ -2122,34 +2326,37 @@ export function PracticeView({
         ) : null}
       </div>
 
-      <PianoKeyboard
-        ariaLabel="答案琴键"
-        className="practice-piano-keyboard"
-        enabledKeys={answerPitchMode === "note-name" ? NATURAL_PIANO_KEYS : new Set<PianoKeyName>()}
-        feedback={feedback?.noteName ? { keyName: feedback.noteName, type: feedback.type } : undefined}
-        keyOctave={currentNote?.octave}
-        onKeyPress={(key) => {
-          if (answerPitchMode === "note-name" && isNaturalPianoKey(key.keyName)) {
-            void submitAnswer({ noteName: key.keyName, source: "screen-keyboard" });
-          }
-        }}
-        onFeedbackTransitionEnd={
-          MIDI_LATENCY_DIAGNOSTICS_ENABLED
-            ? (keyName, type, propertyName) => {
-                if (
-                  type === feedback?.type &&
-                  feedback?.noteName === keyName &&
-                  propertyName.startsWith("border-") &&
-                  propertyName.endsWith("-color")
-                ) {
-                  markMidiLatencyStage(feedback.diagnosticSampleId, "transitionEnd");
+      {!isMobileViewport || answerPitchMode === "note-name" ? (
+        <PianoKeyboard
+          ariaLabel="答案琴键"
+          className="practice-piano-keyboard"
+          enabledKeys={answerPitchMode === "note-name" ? NATURAL_PIANO_KEYS : new Set<PianoKeyName>()}
+          feedback={feedback?.noteName ? { keyName: feedback.noteName, type: feedback.type } : undefined}
+          keyOctave={currentNote?.octave}
+          onKeyPress={(key) => {
+            if (answerPitchMode === "note-name" && isNaturalPianoKey(key.keyName)) {
+              void submitAnswer({ noteName: key.keyName, source: "screen-keyboard" });
+            }
+          }}
+          onFeedbackTransitionEnd={
+            MIDI_LATENCY_DIAGNOSTICS_ENABLED
+              ? (keyName, type, propertyName) => {
+                  if (
+                    type === feedback?.type &&
+                    feedback?.noteName === keyName &&
+                    propertyName.startsWith("border-") &&
+                    propertyName.endsWith("-color")
+                  ) {
+                    markMidiLatencyStage(feedback.diagnosticSampleId, "transitionEnd");
+                  }
                 }
-              }
-            : undefined
-        }
-        pressedKeys={pressedAnswerKeys}
-        scale={effectiveAnswerKeyboardScale}
-      />
+              : undefined
+          }
+          pressedKeys={pressedAnswerKeys}
+          touchLabels={isMobileViewport}
+          scale={effectiveAnswerKeyboardScale}
+        />
+      ) : null}
       <span className="sr-only" aria-live="polite">
         {tick} {wrongAnswerCount}
       </span>
@@ -2163,9 +2370,20 @@ export function PracticeView({
               ? "MIDI 连接已断开；重新连接后可继续练习"
               : undefined
           }
+          resumeMessage={
+            answerPitchMode === "microphone"
+              ? practiceMicrophone.status === "requesting"
+                ? "正在重新连接麦克风…"
+                : practiceMicrophone.isListening
+                  ? "麦克风已连接，正在继续练习…"
+                  : practiceMicrophone.error
+                    ? `麦克风重连失败：${practiceMicrophone.error} 点击空白处或按 P 重试；按 Esc 退出练习`
+                    : "暂停期间麦克风已释放；点击空白处或按 P 重新连接"
+              : undefined
+          }
           onToggleRemainingPlayback={toggleRemainingPlayback}
           playbackState={remainingPlaybackState}
-          showRemainingPlayback={promptDisplayMode === "staff-page"}
+          showRemainingPlayback={promptDisplayMode === "staff-page" && answerPitchMode !== "microphone"}
         />
       ) : null}
     </section>

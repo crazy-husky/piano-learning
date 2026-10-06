@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { makeDefaultSettings } from "../data/db";
 import {
   buildPracticeSessionRecordV4,
+  buildPracticeSessionRecordV5,
   buildPracticeSessionStartSnapshot,
 } from "./practiceSessionStartSnapshot";
 
@@ -124,5 +125,32 @@ describe("practice session start snapshot", () => {
       startedAt: "2026-07-12T10:00:00.000Z",
       targetNoteSetKey: built.snapshot.practiceConfig.targetNoteSetKey,
     });
+  });
+
+  it("stores microphone answers in a distinct V5 session", () => {
+    const settings = {
+      ...makeDefaultSettings(),
+      answerPitchMode: "microphone" as const,
+      playAnswerNote: false,
+    };
+    const built = buildPracticeSessionStartSnapshot({
+      autoPlayTarget: false,
+      mode: "open-ended",
+      prefersReducedMotion: false,
+      settings,
+      smoothStaffPageScroll: true,
+      startPausedReading: false,
+    })!;
+    const session = buildPracticeSessionRecordV5({
+      id: "session-microphone",
+      snapshot: built.snapshot,
+      startedAt: "2026-07-12T10:00:00.000Z",
+    });
+
+    expect(session.schemaVersion).toBe(5);
+    expect(session.answerPitchMode).toBe("microphone");
+    expect(session.startSnapshot.practiceConfig.answerPitchMode).toBe("microphone");
+    expect(session.startSnapshot.presentationConfig.autoPlayTarget).toBe(false);
+    expect(session.startSnapshot.presentationConfig.playAnswerNote).toBe(false);
   });
 });

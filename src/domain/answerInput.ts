@@ -10,7 +10,7 @@ const NOTE_NAME_SEMITONES: Record<NoteName, number> = {
   B: 11,
 };
 
-export type AnswerInputSource = "computer-keyboard" | "midi" | "screen-keyboard";
+export type AnswerInputSource = "computer-keyboard" | "microphone" | "midi" | "screen-keyboard";
 
 export interface PracticeAnswerInput {
   diagnosticSampleId?: number;
@@ -24,6 +24,9 @@ export function normalizeAnswerPitchMode(
   value: unknown,
   fallback: AnswerPitchMode = "note-name",
 ): AnswerPitchMode {
+  if (value === "microphone") {
+    return "microphone";
+  }
   if (value === "exact-pitch" || value === "absolute-pitch") {
     return "exact-pitch";
   }
@@ -34,7 +37,23 @@ export function resolveAvailableAnswerPitchMode(
   configuredMode: AnswerPitchMode,
   midiConnected: boolean,
 ): AnswerPitchMode {
+  if (configuredMode === "microphone") {
+    return configuredMode;
+  }
   return midiConnected ? configuredMode : "note-name";
+}
+
+export function isPracticeAnswerSourceAllowed(
+  answer: PracticeAnswerInput,
+  mode: AnswerPitchMode,
+): boolean {
+  if (mode === "microphone") {
+    return answer.source === "microphone";
+  }
+  if (mode === "exact-pitch") {
+    return answer.source === "midi";
+  }
+  return true;
 }
 
 export function getTargetMidiNoteNumber(target: Pick<TargetNote, "noteName" | "octave">): number {
@@ -52,5 +71,8 @@ export function isPracticeAnswerCorrect(
   if (mode === "note-name") {
     return true;
   }
-  return answer.source === "midi" && answer.midiNoteNumber === getTargetMidiNoteNumber(target);
+  return (
+    (mode === "microphone" ? answer.source === "microphone" : answer.source === "midi") &&
+    answer.midiNoteNumber === getTargetMidiNoteNumber(target)
+  );
 }

@@ -30,7 +30,7 @@ function deriveV1PracticeComparisonSnapshot(
 export function getPracticeSessionComparisonSnapshot(
   session: PracticeSessionRecord,
 ): PracticeComparisonSnapshot | undefined {
-  if (session.schemaVersion === 3 || session.schemaVersion === 4) {
+  if (session.schemaVersion === 3 || session.schemaVersion === 4 || session.schemaVersion === 5) {
     return {
       answerPitchMode: normalizeAnswerPitchMode(session.startSnapshot.practiceConfig.answerPitchMode),
       effectiveQueueAlgorithm: session.startSnapshot.practiceConfig.effectiveQueueAlgorithm,

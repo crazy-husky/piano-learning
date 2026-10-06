@@ -9,7 +9,7 @@ export type PitchId = `${NoteName}${Octave}`;
 export type TargetNoteId = PitchId | `${PitchId}-${Staff}`;
 
 export type PracticeMode = "open-ended" | "fixed-count" | "fixed-duration";
-export type AnswerPitchMode = "note-name" | "exact-pitch";
+export type AnswerPitchMode = "note-name" | "exact-pitch" | "microphone";
 export type StoredAnswerPitchMode = AnswerPitchMode | "absolute-pitch";
 export type PracticeQueueStrategy = "adaptive" | "focused" | "melody" | "note-drill";
 export type PromptDisplayMode = "single-note" | "staff-page";
@@ -22,6 +22,7 @@ export type InterruptReason =
   | "inactive-timeout"
   | "manual-pause"
   | "midi-disconnected"
+  | "microphone-disconnected"
   | "manual-stop"
   | "duration-ended"
   | "session-abandoned";
@@ -154,11 +155,16 @@ export interface PracticeSessionRecordV4 extends Omit<PracticeSessionRecordV3, "
   answerPitchMode: StoredAnswerPitchMode;
 }
 
+export interface PracticeSessionRecordV5 extends Omit<PracticeSessionRecordV4, "schemaVersion"> {
+  schemaVersion: 5;
+}
+
 export type PracticeSessionRecord =
   | PracticeSessionRecordV1
   | PracticeSessionRecordV2
   | PracticeSessionRecordV3
-  | PracticeSessionRecordV4;
+  | PracticeSessionRecordV4
+  | PracticeSessionRecordV5;
 
 interface StaffRecallRunRecordBase {
   id: string;

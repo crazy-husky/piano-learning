@@ -5,6 +5,7 @@ import type {
   AppSettings,
   PracticeMode,
   PracticeSessionRecordV4,
+  PracticeSessionRecordV5,
   PracticeSessionStartSnapshot,
   TargetNote,
 } from "./types";
@@ -55,6 +56,19 @@ export function buildPracticeSessionRecordV4({
     startedAt,
     targetNoteSetKey: practiceConfig.targetNoteSetKey,
   };
+}
+
+export function buildPracticeSessionRecordV5({
+  id,
+  snapshot,
+  startedAt,
+}: {
+  id: string;
+  snapshot: PracticeSessionStartSnapshot;
+  startedAt: string;
+}): PracticeSessionRecordV5 {
+  const session = buildPracticeSessionRecordV4({ id, snapshot, startedAt });
+  return { ...session, schemaVersion: 5 };
 }
 
 export function buildPracticeSessionStartSnapshot({

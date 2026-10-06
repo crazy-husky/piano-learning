@@ -977,6 +977,52 @@ main.has-backup-reminder .setup-grid::after {
   align-self: center;
 }
 
+.practice-microphone-error {
+  color: var(--danger, #b42318);
+  font-size: 13px;
+}
+
+.practice-microphone-status {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-height: 30px;
+  padding: 4px 0;
+}
+
+.practice-microphone-status strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.practice-microphone-status progress {
+  height: 8px;
+  max-width: 128px;
+  min-width: 64px;
+}
+
+.practice-microphone-indicator {
+  background: var(--border);
+  border-radius: 50%;
+  flex: 0 0 9px;
+  height: 9px;
+  width: 9px;
+}
+
+.practice-microphone-indicator.listening {
+  background: #228833;
+}
+
+.practice-microphone-indicator.requesting {
+  background: #eeaa33;
+}
+
+.practice-microphone-indicator.error {
+  background: #cc3311;
+}
+
 .practice-setup-heading-meta {
   display: grid;
   gap: 6px;
@@ -1032,12 +1078,25 @@ main.has-backup-reminder .setup-grid::after {
   width: fit-content;
 }
 
+.practice-checkbox-option.is-disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 .practice-checkbox-option input {
   accent-color: var(--accent);
   height: 16px;
   margin: 0;
   min-height: 0;
   width: 16px;
+}
+
+.practice-checkbox-option input:disabled {
+  cursor: not-allowed;
+}
+
+.practice-microphone-sound-note {
+  color: var(--danger);
 }
 
 .strategy-options {
@@ -1428,6 +1487,23 @@ main.has-backup-reminder .setup-grid::after {
     inset 0 -8px 8px rgba(255, 255, 255, 0.05),
     2px 5px 7px rgba(31, 26, 22, 0.36);
   transform: translateX(-50%);
+}
+
+.piano-keyboard-touch-labels .piano-touch-note-label {
+  position: absolute;
+  bottom: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(9px, calc(var(--piano-white-key-width) * 0.17), 12px);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.piano-keyboard-touch-labels .piano-key-black .piano-touch-note-label {
+  bottom: 6px;
+  font-size: 9px;
 }
 
 .piano-key-black:hover:not(:disabled) {
@@ -2919,6 +2995,23 @@ button.primary kbd {
     flex-direction: row;
   }
 
+  .app-shell-practice-running {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .app-shell-practice-running .app-nav {
+    display: none;
+  }
+
+  .app-shell-practice-running main {
+    min-height: 0;
+  }
+
+  .app-shell-practice-running .practice-running-shell {
+    --practice-available-height: 100dvh;
+    height: 100dvh;
+  }
+
   .practice-shell,
   .stats-shell,
   .study-shell,
@@ -2945,6 +3038,10 @@ button.primary kbd {
   .practice-running-shell.practice-staff-page-rows-2 {
     --piano-fit-reserve: 570px;
     min-height: 768px;
+  }
+
+  .practice-running-shell.practice-staff-page-rows-1 {
+    min-height: 518px;
   }
 
   .backup-reminder {
@@ -2986,6 +3083,31 @@ button.primary kbd {
 
   .staff-page-stage {
     min-height: 430px;
+  }
+
+  .practice-running-mobile.practice-staff-page .staff-page-stage {
+    align-items: start;
+  }
+
+  .staff-page-mobile-view {
+    position: relative;
+    width: 100%;
+    padding-top: 0;
+  }
+
+  .staff-page-mobile-view .staff-page {
+    width: 100%;
+    min-height: 0;
+  }
+
+  .staff-page-counter {
+    position: absolute;
+    top: 0;
+    right: 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
   }
 
   .staff-recall-summary-heading {

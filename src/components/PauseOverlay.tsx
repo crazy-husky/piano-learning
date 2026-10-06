@@ -9,6 +9,7 @@ interface PauseOverlayProps {
   onToggleRemainingPlayback?: () => void;
   playbackState?: RemainingPlaybackState;
   resumeBlockedMessage?: string;
+  resumeMessage?: string;
   showRemainingPlayback?: boolean;
 }
 
@@ -19,6 +20,7 @@ export function PauseOverlay({
   onToggleRemainingPlayback,
   playbackState = "idle",
   resumeBlockedMessage,
+  resumeMessage,
   showRemainingPlayback = false,
 }: PauseOverlayProps): JSX.Element {
   const playbackLabel =
@@ -51,7 +53,7 @@ export function PauseOverlay({
           </div>
         ) : null}
         <small>
-          {resumeBlockedMessage ?? "按 P 或点击空白处继续练习 · 按 Esc 退出练习"}
+          {resumeBlockedMessage ?? resumeMessage ?? "按 P 或点击空白处继续练习 · 按 Esc 退出练习"}
         </small>
       </div>
     </div>

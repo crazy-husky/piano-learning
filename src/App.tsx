@@ -552,7 +552,7 @@ export function App(): JSX.Element {
     !practiceRunning &&
     (view !== "vocal" || backupReminderState.kind === "data-conflict");
   return (
-    <div className="app-shell">
+    <div className={practiceRunning ? "app-shell app-shell-practice-running" : "app-shell"}>
       {backupToastMessage ? (
         <div className="backup-toast" role="status" aria-live="polite">
           <strong>{backupToastMessage.title}</strong>

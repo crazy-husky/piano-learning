@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { isComparablePracticeSession } from "./sessionProgress";
 import { getPracticeSessionComparisonSnapshot } from "./legacyPracticeSessionCompatibility";
-import type { PracticeSessionRecordV2, PracticeSessionRecordV3, PracticeSessionRecordV4 } from "./types";
+import type {
+  PracticeSessionRecordV2,
+  PracticeSessionRecordV3,
+  PracticeSessionRecordV4,
+  PracticeSessionRecordV5,
+} from "./types";
 
 const v2Session: PracticeSessionRecordV2 = {
   completedCount: 5,
@@ -68,6 +74,20 @@ const v4Session: PracticeSessionRecordV4 = {
   },
 };
 
+const v5MicrophoneSession: PracticeSessionRecordV5 = {
+  ...v4Session,
+  answerPitchMode: "microphone",
+  id: "v5-microphone",
+  schemaVersion: 5,
+  startSnapshot: {
+    ...v4Session.startSnapshot,
+    practiceConfig: {
+      ...v4Session.startSnapshot.practiceConfig,
+      answerPitchMode: "microphone",
+    },
+  },
+};
+
 describe("legacy practice session compatibility", () => {
   it("treats V1/V2 duration as quarter and reads the V3 snapshot duration", () => {
     expect(getPracticeSessionComparisonSnapshot(v2Session)?.promptNoteDuration).toBe("quarter");
@@ -77,5 +97,11 @@ describe("legacy practice session compatibility", () => {
   it("defaults pre-MIDI sessions to note-name matching and reads V4 pitch matching", () => {
     expect(getPracticeSessionComparisonSnapshot(v3Session)?.answerPitchMode).toBe("note-name");
     expect(getPracticeSessionComparisonSnapshot(v4Session)?.answerPitchMode).toBe("exact-pitch");
+  });
+
+  it("reads the V5 microphone comparison group without changing V4 history", () => {
+    expect(getPracticeSessionComparisonSnapshot(v4Session)?.answerPitchMode).toBe("exact-pitch");
+    expect(getPracticeSessionComparisonSnapshot(v5MicrophoneSession)?.answerPitchMode).toBe("microphone");
+    expect(isComparablePracticeSession(v4Session, v5MicrophoneSession)).toBe(false);
   });
 });

@@ -5,8 +5,10 @@ import { noteToVexKey } from "../domain/notes";
 import type { PromptNoteDuration, StaffNotationMode, TargetNote } from "../domain/types";
 import { PRACTICE_PAGE_STAFF_LAYOUT } from "./staffLayoutProfiles";
 import {
+  alignStaveNotesToCenters,
   createStaffRenderSurface,
   drawStaffSystem,
+  getEvenlySpacedCenters,
   getFixedStaffFrame,
   getLedgerStemDirection,
   logicalPx,
@@ -30,6 +32,10 @@ interface StaffPagePromptProps {
   scrollDurationMs?: number;
   staffNotationMode: StaffNotationMode;
   useLedgerGap: boolean;
+  distributeNotesEvenly?: boolean;
+  notesPerRow?: number;
+  maxRowCount?: number;
+  minDisplayWidthPx?: number;
   visibleRowCount?: number;
   wrongIndex?: number;
 }
@@ -45,13 +51,12 @@ interface RenderedStaffPageNote {
   element: SVGElement;
 }
 
-function chunkNotes(notes: TargetNote[]): TargetNote[][] {
+function chunkNotes(notes: TargetNote[], notesPerRow: number, maxRowCount: number): TargetNote[][] {
   const rows: TargetNote[][] = [];
-  const { notesPerRow } = PRACTICE_PAGE_STAFF_LAYOUT.multirow;
   for (let index = 0; index < notes.length; index += notesPerRow) {
     rows.push(notes.slice(index, index + notesPerRow));
   }
-  return rows.slice(0, PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows + 1);
+  return rows.slice(0, maxRowCount);
 }
 
 function makeStaveNote(note: TargetNote, color: string, noteDuration: PromptNoteDuration): StaveNote {
@@ -152,6 +157,20 @@ function getBarlineX(
   );
 }
 
+function alignRowNotesEvenly(
+  tickables: readonly StaffPageTickable[],
+  noteCount: number,
+  noteArea: { left: number; right: number },
+): void {
+  const notesToAlign = tickables
+    .slice(0, noteCount)
+    .filter((tickable): tickable is StaveNote => tickable instanceof StaveNote);
+  alignStaveNotesToCenters(
+    notesToAlign,
+    getEvenlySpacedCenters(notesToAlign.length, noteArea.left, noteArea.right),
+  );
+}
+
 export function StaffPagePrompt({
   diagnosticSampleId,
   notes,
@@ -161,6 +180,10 @@ export function StaffPagePrompt({
   scrollDurationMs = 0,
   staffNotationMode,
   useLedgerGap,
+  distributeNotesEvenly = false,
+  notesPerRow = PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
+  maxRowCount = PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows + 1,
+  minDisplayWidthPx = PRACTICE_PAGE_STAFF_LAYOUT.width.minPx,
   visibleRowCount = PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows,
   wrongIndex,
 }: StaffPagePromptProps): JSX.Element {
@@ -173,7 +196,10 @@ export function StaffPagePrompt({
   diagnosticSampleIdRef.current = diagnosticSampleId;
   completedCountRef.current = completedCount;
   wrongIndexRef.current = wrongIndex;
-  const rows = useMemo(() => chunkNotes(notes), [notes]);
+  const rows = useMemo(
+    () => chunkNotes(notes, notesPerRow, maxRowCount),
+    [maxRowCount, notes, notesPerRow],
+  );
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -194,7 +220,7 @@ export function StaffPagePrompt({
       const rowCount = Math.max(1, rows.length);
       const containerWidth = frame.clientWidth || 920;
       const displayWidth = Math.max(
-        PRACTICE_PAGE_STAFF_LAYOUT.width.minPx,
+        minDisplayWidthPx,
         Math.min(PRACTICE_PAGE_STAFF_LAYOUT.width.maxPx, containerWidth),
       );
       const surface = createStaffRenderSurface(
@@ -232,15 +258,15 @@ export function StaffPagePrompt({
           topY: baseY,
         };
         const rowGroup = context.openGroup("staff-page-system");
-        const rowStartIndex = rowIndex * PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow;
+        const rowStartIndex = rowIndex * notesPerRow;
         const rowSlots = Array.from(
-          { length: PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow },
+          { length: notesPerRow },
           (_, slotIndex) => rowNotes[slotIndex],
         );
         const vexDuration = getVexNoteDuration(noteDuration);
         const voiceOptions = {
           beatValue: 4,
-          numBeats: PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow * getQuarterNoteBeats(noteDuration),
+          numBeats: notesPerRow * getQuarterNoteBeats(noteDuration),
         };
         let beams: Beam[];
         let layoutTickables: StaffPageTickable[];
@@ -249,7 +275,7 @@ export function StaffPagePrompt({
         let barlineBottomY: number;
         const system = drawStaffSystem({
           brace: true,
-          columnCount: PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
+          columnCount: notesPerRow,
           context,
           frame: frameMetrics,
           horizontal: PRACTICE_PAGE_STAFF_LAYOUT.horizontal,
@@ -260,6 +286,18 @@ export function StaffPagePrompt({
           yOffset: baseY,
         });
         const { noteArea } = system;
+        const distributionArea = distributeNotesEvenly
+          ? {
+              ...noteArea,
+              right:
+                noteArea.right +
+                logicalPx(
+                  PRACTICE_PAGE_STAFF_LAYOUT.horizontal.noteAreaSidePaddingPx -
+                    PRACTICE_PAGE_STAFF_LAYOUT.horizontal.minNoteAreaSidePaddingPx,
+                  surface.scale,
+                ),
+            }
+          : noteArea;
         if (system.mode === "grand") {
           const { bass, treble } = system;
           const tickables = rowSlots.map((note, slotIndex) => {
@@ -285,6 +323,9 @@ export function StaffPagePrompt({
             { context },
           );
           formatter.postFormat();
+          if (distributeNotesEvenly) {
+            alignRowNotesEvenly(tickables, rowNotes.length, distributionArea);
+          }
           voice.draw(context);
           layoutTickables = tickables;
           visibleTickables = tickables.map((tickable, index) =>
@@ -308,6 +349,9 @@ export function StaffPagePrompt({
           stave.setNoteStartX(noteArea.left);
           stave.setWidth(Math.max(1, noteArea.right - frameMetrics.x));
           new Formatter().joinVoices([voice]).formatToStave([voice], stave, { context, stave });
+          if (distributeNotesEvenly) {
+            alignRowNotesEvenly(tickables, rowNotes.length, distributionArea);
+          }
           voice.draw(context, stave);
           layoutTickables = tickables;
           visibleTickables = tickables.map((tickable, index) =>
@@ -334,7 +378,7 @@ export function StaffPagePrompt({
         const barlineInterval = getStaffPageBarlineInterval(noteDuration);
         for (
           let boundaryIndex = barlineInterval;
-          boundaryIndex <= rowNotes.length && boundaryIndex < PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow;
+          boundaryIndex <= rowNotes.length && boundaryIndex < notesPerRow;
           boundaryIndex += barlineInterval
         ) {
           const nextTickable = layoutTickables[boundaryIndex];
@@ -356,7 +400,17 @@ export function StaffPagePrompt({
     const observer = new ResizeObserver(render);
     observer.observe(frame);
     return () => observer.disconnect();
-  }, [noteDuration, rows, scrollDurationMs, staffNotationMode, useLedgerGap, visibleRowCount]);
+  }, [
+    minDisplayWidthPx,
+    distributeNotesEvenly,
+    noteDuration,
+    notesPerRow,
+    rows,
+    scrollDurationMs,
+    staffNotationMode,
+    useLedgerGap,
+    visibleRowCount,
+  ]);
 
   useLayoutEffect(() => {
     const renderedDiagnosticSampleId = diagnosticSampleIdRef.current;

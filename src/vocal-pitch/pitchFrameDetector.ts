@@ -25,8 +25,12 @@ function nextPowerOfTwo(value: number): number {
   return 2 ** Math.ceil(Math.log2(value));
 }
 
-export function getPitchFrameSize(sampleRate: number): number {
-  return Math.min(16384, Math.max(2048, nextPowerOfTwo((sampleRate / VOCAL_PITCH_MIN_FREQUENCY_HZ) * 3)));
+export function getPitchFrameSize(
+  sampleRate: number,
+  minFrequencyHz = VOCAL_PITCH_MIN_FREQUENCY_HZ,
+  periods = 3,
+): number {
+  return Math.min(16384, Math.max(2048, nextPowerOfTwo((sampleRate / minFrequencyHz) * periods)));
 }
 
 export function createPitchFrameDetector(frameSize: number): PitchFrameDetector {

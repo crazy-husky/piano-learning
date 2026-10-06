@@ -74,7 +74,7 @@ export interface RecognitionTrendPhasePoint extends RecognitionTrendPoint {
 }
 
 function sessionRangeNoteIds(session: PracticeSessionRecord): TargetNoteId[] {
-  if (session.schemaVersion === 3 || session.schemaVersion === 4) {
+  if (session.schemaVersion === 3 || session.schemaVersion === 4 || session.schemaVersion === 5) {
     const config = session.startSnapshot.practiceConfig;
     return getNotesForGroups(
       normalizeCurrentPracticeGroupIds(config.enabledGroupIds),
