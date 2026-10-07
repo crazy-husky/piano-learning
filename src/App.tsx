@@ -54,6 +54,7 @@ import {
 } from "./components/pageAppearance";
 import { useMidiInput } from "./midi/useMidiInput";
 import { ENHANCED_PITCH_MODEL_CACHE } from "./vocal-pitch/enhancedPitchModels";
+import { useAppUpdateNotice } from "./useAppUpdateNotice";
 import {
   DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
   createDefaultPracticeMicrophonePreferences,
@@ -209,6 +210,7 @@ async function loadFreshAppData(): Promise<AppData> {
 
 export function App(): JSX.Element {
   useBlurButtonAfterPointerClick();
+  useAppUpdateNotice();
   const midi = useMidiInput();
 
   const [view, setView] = useState<View>(readInitialView);
