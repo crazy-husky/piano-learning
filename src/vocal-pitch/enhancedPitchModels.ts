@@ -1,5 +1,5 @@
 export const ENHANCED_PITCH_MODEL_CACHE = "anki-note-vocal-pitch-models-v1";
-export const ENHANCED_PITCH_MODEL_BYTES = 43_817_123 + 399_114;
+export const ENHANCED_PITCH_MODEL_BYTES = 43_817_123 + 135_090;
 export const ENHANCED_PITCH_REMINDER_KEY = "anki-note.vocalPitch.enhancedReminderDate";
 
 export type EnhancedPitchModelName = "fcpe" | "swiftf0";
@@ -17,9 +17,9 @@ const MODEL_DEFINITIONS: Record<EnhancedPitchModelName, EnhancedPitchModelDefini
     sha256: "d425a36c66d751558574f230dd6caff682d2b1bdccf57315e3c907677e8b1d1c",
   },
   swiftf0: {
-    bytes: 399_114,
-    fileName: "swift-f0-v1.onnx",
-    sha256: "fa91bb45512b90339cf4b00a599ba8fe3a253c46419fcfe6b46df77a8a8336a5",
+    bytes: 135_090,
+    fileName: "swift-f0-v0.3.0.onnx",
+    sha256: "6385e8c2ebc3872e82c9ff5946228de44cd3be77a750ea53698b7dbfe94b0a22",
   },
 };
 
@@ -62,13 +62,13 @@ export async function areEnhancedPitchModelsCached(): Promise<boolean> {
 async function verifiedModelResponse(name: EnhancedPitchModelName, bytes: ArrayBuffer): Promise<Response> {
   const definition = MODEL_DEFINITIONS[name];
   if (bytes.byteLength !== definition.bytes) {
-    throw new Error(`增强模型大小不符：${definition.fileName}`);
+    throw new Error(`音高模型文件大小不符：${definition.fileName}`);
   }
   const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
     .map((value) => value.toString(16).padStart(2, "0"))
     .join("");
   if (digest !== definition.sha256) {
-    throw new Error(`增强模型校验失败：${definition.fileName}`);
+    throw new Error(`音高模型校验失败：${definition.fileName}`);
   }
   return new Response(bytes, {
     headers: {
@@ -85,7 +85,7 @@ async function fetchModel(
 ): Promise<Response> {
   const response = await fetch(enhancedPitchModelUrl(name), { cache: "no-cache" });
   if (!response.ok) {
-    throw new Error(`增强模型下载失败（HTTP ${response.status}）`);
+    throw new Error(`音高模型下载失败（HTTP ${response.status}）`);
   }
   if (!response.body) {
     const bytes = await response.arrayBuffer();
@@ -145,4 +145,31 @@ export async function loadEnhancedPitchModel(name: EnhancedPitchModelName): Prom
     throw new Error("增强模型缓存已丢失，请重新下载");
   }
   return cached.arrayBuffer();
+}
+
+export async function loadOrDownloadPitchModel(name: EnhancedPitchModelName): Promise<ArrayBuffer> {
+  const url = enhancedPitchModelUrl(name);
+  let cache: Cache | null = null;
+  if ("caches" in globalThis) {
+    try {
+      cache = await caches.open(ENHANCED_PITCH_MODEL_CACHE);
+    } catch {
+      cache = null;
+    }
+  }
+  let cached: Response | undefined;
+  if (cache) {
+    try {
+      cached = await cache.match(url);
+    } catch {
+      cache = null;
+    }
+  }
+  if (cached?.ok && cached.headers.get("X-Anki-Note-SHA256") === MODEL_DEFINITIONS[name].sha256) {
+    return cached.arrayBuffer();
+  }
+
+  const response = await fetchModel(name, () => undefined);
+  if (cache) await cache.put(url, response.clone()).catch(() => undefined);
+  return response.arrayBuffer();
 }

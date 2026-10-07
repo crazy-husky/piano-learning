@@ -15,7 +15,7 @@ from torchfcpe import spawn_bundled_infer_model
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_ROOT = ROOT / "public" / "models" / "vocal-pitch"
 EXPECTED_FCPE_WEIGHT_SHA256 = "b9aeaeb673436eeda50ceafd632aa681aa63417e52eae4207503d180c9b10015"
-EXPECTED_SWIFTF0_SHA256 = "fa91bb45512b90339cf4b00a599ba8fe3a253c46419fcfe6b46df77a8a8336a5"
+EXPECTED_SWIFTF0_SHA256 = "6385e8c2ebc3872e82c9ff5946228de44cd3be77a750ea53698b7dbfe94b0a22"
 
 
 def sha256(path: Path) -> str:
@@ -87,7 +87,7 @@ def copy_swiftf0(output: Path) -> None:
 def main() -> None:
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     fcpe_output = OUTPUT_ROOT / "fcpe-v1.onnx"
-    swift_output = OUTPUT_ROOT / "swift-f0-v1.onnx"
+    swift_output = OUTPUT_ROOT / "swift-f0-v0.3.0.onnx"
     export_fcpe(fcpe_output)
     copy_swiftf0(swift_output)
     print(f"{fcpe_output}: {fcpe_output.stat().st_size} bytes, sha256={sha256(fcpe_output)}")

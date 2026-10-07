@@ -1,5 +1,5 @@
-import { DatabaseBackup, FolderOpen, Upload } from "lucide-react";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { DatabaseBackup, FolderOpen, RotateCcw, Upload } from "lucide-react";
+import { type Dispatch, type RefObject, type SetStateAction, useEffect, useRef, useState } from "react";
 import {
   chooseBackupDirectory,
   resolveBackupConflict,
@@ -14,6 +14,22 @@ import { normalizeAnswerKeyboardScale, normalizePianoVolume } from "../domain/se
 import type { AppSettings, BackupState } from "../domain/types";
 import type { MidiInputController } from "../midi/useMidiInput";
 import type { PageAppearancePreferences } from "./pageAppearance";
+import { useConfirmDialog } from "./ui/ConfirmDialog";
+import { ToggleSwitch } from "./ui/ToggleSwitch";
+import type { PracticePagePreferences } from "./practicePagePreferences";
+import {
+  PRACTICE_MICROPHONE_SENSITIVITY_LEVELS,
+  practiceMicrophoneAlgorithmLabel,
+  practiceMicrophoneDebugParametersForSensitivityLevel,
+  practiceMicrophoneSensitivityLevelLabel,
+  type PracticeMicrophonePreferences,
+  withPracticeMicrophoneAlgorithm,
+} from "../vocal-pitch/practiceMicrophonePreferences";
+import {
+  ensureSwiftF0PracticeRuntimeReady,
+  isSwiftF0PracticeRuntimeReady,
+  releaseSwiftF0PracticeRuntime,
+} from "../vocal-pitch/swiftF0PracticeClient";
 import { BackupConflictResolver } from "./BackupConflictResolver";
 import { PausedPlaybackBpmInput } from "./PausedPlaybackBpmInput";
 import { PlayableKeyboardPreview } from "./PlayableKeyboardPreview";
@@ -64,25 +80,42 @@ function isUserAbort(error: unknown): boolean {
 
 interface SettingsViewProps {
   pageAppearancePreferences: PageAppearancePreferences;
+  practiceMicrophonePreferences: PracticeMicrophonePreferences;
+  practicePagePreferences: PracticePagePreferences;
   settings: AppSettings;
   backupState: BackupState;
   onPageAppearancePreferencesChange: (preferences: PageAppearancePreferences) => void;
+  onPracticeMicrophonePreferencesChange: Dispatch<SetStateAction<PracticeMicrophonePreferences>>;
+  onPracticePagePreferencesChange: (preferences: PracticePagePreferences) => void;
   onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
   onDataChanged: () => Promise<void>;
+  onRestoreDefaultConfiguration: () => Promise<void>;
   midi: MidiInputController;
 }
 
 export function SettingsView({
   pageAppearancePreferences,
+  practiceMicrophonePreferences,
+  practicePagePreferences,
   settings,
   backupState,
   onPageAppearancePreferencesChange,
+  onPracticeMicrophonePreferencesChange,
+  onPracticePagePreferencesChange,
   onSettingsSaved,
   onDataChanged,
+  onRestoreDefaultConfiguration,
   midi,
 }: SettingsViewProps): JSX.Element {
+  const confirmDialog = useConfirmDialog();
   const [busy, setBusy] = useState(false);
+  const [isRestoringConfiguration, setIsRestoringConfiguration] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedMicrophoneAlgorithm, setSelectedMicrophoneAlgorithm] = useState(
+    practiceMicrophonePreferences.algorithm,
+  );
+  const [isLoadingMicrophoneAlgorithm, setIsLoadingMicrophoneAlgorithm] = useState(false);
+  const [microphoneAlgorithmError, setMicrophoneAlgorithmError] = useState<string | null>(null);
   const [pianoVolumeDraft, setPianoVolumeDraft] = useState(() => normalizePianoVolume(settings.pianoVolume));
   const [answerKeyboardScaleDraft, setAnswerKeyboardScaleDraft] = useState(() =>
     normalizeAnswerKeyboardScale(settings.answerKeyboardScale),
@@ -116,8 +149,58 @@ export function SettingsView({
     setAnswerKeyboardScaleDraft(nextScale);
   }, [settings.answerKeyboardScale]);
 
+  useEffect(() => {
+    setSelectedMicrophoneAlgorithm(practiceMicrophonePreferences.algorithm);
+  }, [practiceMicrophonePreferences.algorithm]);
+
   async function saveSettings(next: AppSettings): Promise<void> {
     await onSettingsSaved(next);
+  }
+
+  async function selectMicrophoneAlgorithm(algorithm: PracticeMicrophonePreferences["algorithm"]): Promise<void> {
+    if (algorithm === practiceMicrophonePreferences.algorithm || isLoadingMicrophoneAlgorithm) {
+      return;
+    }
+    setSelectedMicrophoneAlgorithm(algorithm);
+    setMicrophoneAlgorithmError(null);
+
+    if (algorithm === "swiftf0" && !isSwiftF0PracticeRuntimeReady()) {
+      setIsLoadingMicrophoneAlgorithm(true);
+      try {
+        await ensureSwiftF0PracticeRuntimeReady();
+      } catch (error) {
+        setSelectedMicrophoneAlgorithm(practiceMicrophonePreferences.algorithm);
+        setMicrophoneAlgorithmError(
+          `算法资源加载失败：${error instanceof Error ? error.message : String(error)}`,
+        );
+        return;
+      } finally {
+        setIsLoadingMicrophoneAlgorithm(false);
+      }
+    } else if (algorithm !== "swiftf0") {
+      releaseSwiftF0PracticeRuntime();
+    }
+
+    onPracticeMicrophonePreferencesChange((current) => withPracticeMicrophoneAlgorithm(current, algorithm));
+  }
+
+  async function restoreDefaultConfiguration(): Promise<void> {
+    const confirmed = await confirmDialog({
+      title: "恢复所有配置默认值？",
+      description: "这会重置页面、练习、识谱、麦克风和设备选择等设置，并解除此浏览器的备份目录绑定。备份目录中的文件、练习与复习记录、识谱回忆记录、音频素材和数据集身份会保留。",
+      confirmLabel: "恢复默认配置",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setBusy(true);
+    setIsRestoringConfiguration(true);
+    try {
+      releaseSwiftF0PracticeRuntime();
+      await onRestoreDefaultConfiguration();
+    } finally {
+      setIsRestoringConfiguration(false);
+      setBusy(false);
+    }
   }
 
   function savePianoVolume(nextVolume: number): void {
@@ -187,7 +270,7 @@ export function SettingsView({
   }
 
   return (
-    <section className="settings-shell">
+    <section aria-busy={isRestoringConfiguration} className="settings-shell">
       <div className="stats-header">
         <div>
           <h1>设置</h1>
@@ -196,6 +279,7 @@ export function SettingsView({
         <DatabaseBackup size={24} />
       </div>
 
+      <fieldset className="settings-restore-lock" disabled={isRestoringConfiguration}>
       <div className="panel settings-panel page-appearance-panel">
         <div className="panel-heading">
           <h2>页面设置</h2>
@@ -258,6 +342,115 @@ export function SettingsView({
               </label>
             </div>
           </div>
+        ) : null}
+      </div>
+
+      <div className="panel settings-panel">
+        <div className="setting-row">
+          <div>
+            <strong>练习页面离开多久暂停</strong>
+            <span>切换应用或浏览器标签页后自动暂停</span>
+          </div>
+          <select
+            aria-label="练习页面离开多久暂停"
+            value={practicePagePreferences.focusLossPauseSeconds}
+            onChange={(event) => onPracticePagePreferencesChange({
+              ...practicePagePreferences,
+              focusLossPauseSeconds: Number(event.target.value) as PracticePagePreferences["focusLossPauseSeconds"],
+            })}
+          >
+            <option value={0}>立刻</option>
+            <option value={10}>10 秒</option>
+            <option value={20}>20 秒</option>
+            <option value={30}>30 秒</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="panel settings-panel">
+        <div className="panel-heading">
+          <h2>麦克风答题</h2>
+        </div>
+        <div className="setting-row">
+          <div>
+            <strong>识别算法</strong>
+            <span>仅影响练习中的麦克风答题</span>
+            {isLoadingMicrophoneAlgorithm ? (
+              <span aria-live="polite" role="status">加载算法所需资源中...</span>
+            ) : null}
+            {microphoneAlgorithmError ? (
+              <span aria-live="assertive" role="alert">{microphoneAlgorithmError}</span>
+            ) : null}
+          </div>
+          <select
+            aria-label="麦克风识别算法"
+            disabled={isLoadingMicrophoneAlgorithm}
+            value={selectedMicrophoneAlgorithm}
+            onChange={(event) => void selectMicrophoneAlgorithm(
+              event.target.value as PracticeMicrophonePreferences["algorithm"],
+            )}
+          >
+            <option value="mpm-c">{practiceMicrophoneAlgorithmLabel("mpm-c")}</option>
+            <option value="swiftf0">{practiceMicrophoneAlgorithmLabel("swiftf0")}</option>
+            <option value="yin">{practiceMicrophoneAlgorithmLabel("yin")}</option>
+          </select>
+        </div>
+        <div className="setting-row settings-switch-row">
+          <div>
+            <strong>调试开关</strong>
+            <span>开启后由详细参数接管识别，算法敏感度档位暂时隐藏；关闭后恢复之前选择的档位。详细参数可在练习页的“调试设置”中调整。</span>
+          </div>
+          <div className="settings-switch-control">
+            <span>{practiceMicrophonePreferences.debugMode ? "开启" : "关闭"}</span>
+            <ToggleSwitch
+              aria-label="调试开关"
+              checked={practiceMicrophonePreferences.debugMode}
+              disabled={isLoadingMicrophoneAlgorithm}
+              onCheckedChange={(debugMode) => onPracticeMicrophonePreferencesChange((current) => ({
+                ...current,
+                debugMode,
+              }))}
+            />
+          </div>
+        </div>
+        {!practiceMicrophonePreferences.debugMode ? (
+          <>
+            <div className="setting-row">
+              <div>
+                <strong>算法敏感度</strong>
+              </div>
+              <select
+                aria-label="算法敏感度"
+                value={practiceMicrophonePreferences.sensitivityLevel}
+                onChange={(event) => {
+                  const sensitivityLevel = Number(event.target.value) as PracticeMicrophonePreferences["sensitivityLevel"];
+                  onPracticeMicrophonePreferencesChange((current) => ({
+                    ...current,
+                    sensitivityLevel,
+                    ...(!current.debugMode
+                      ? {
+                          debugParameters: practiceMicrophoneDebugParametersForSensitivityLevel(
+                            current.algorithm,
+                            sensitivityLevel,
+                          ),
+                        }
+                      : {}),
+                  }));
+                }}
+              >
+                {PRACTICE_MICROPHONE_SENSITIVITY_LEVELS.map((level) => (
+                  <option key={level} value={level}>{practiceMicrophoneSensitivityLevelLabel(level)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="setting-row">
+              <div className="practice-microphone-sensitivity-warning-wrap">
+                <p className="practice-microphone-sensitivity-warning">
+                  敏感度越高，越容易识别轻声和短促弹奏；但也更容易把环境噪声误认为音符，增加误报。
+                </p>
+              </div>
+            </div>
+          </>
         ) : null}
       </div>
 
@@ -463,11 +656,16 @@ export function SettingsView({
           {!backupBlockedUntilSync ? (
             <button
               disabled={!backupState.directoryHandle || !hasBackupSnapshot || busy}
-              onClick={() => {
+              onClick={async () => {
                 if (!backupState.directoryHandle) {
                   return;
                 }
-                if (window.confirm(backupText.messages.browserDataWillBeReplaced)) {
+                if (await confirmDialog({
+                  title: "确定导入备份？",
+                  description: backupText.messages.browserDataWillBeReplaced,
+                  confirmLabel: backupText.labels.importBackup,
+                  destructive: true,
+                })) {
                   void runBusy(() => restoreBackupFromDirectory(backupState.directoryHandle!), backupText.titles.importSuccess);
                 }
               }}
@@ -490,6 +688,23 @@ export function SettingsView({
         {message ? <div className="status-line">{message}</div> : null}
         {!supportsFileBackups() ? <div className="status-line">{backupText.status.unsupportedFileSystemAccess}</div> : null}
       </div>
+
+      <div className="panel settings-panel settings-reset-panel">
+        <div>
+          <strong>恢复默认配置</strong>
+          <span>重置所有应用配置和备份目录绑定；学习数据及备份目录中的文件会保留。</span>
+        </div>
+        <button
+          className="danger-action"
+          disabled={busy || isLoadingMicrophoneAlgorithm}
+          onClick={() => void restoreDefaultConfiguration()}
+          type="button"
+        >
+          <RotateCcw size={16} />
+          {isRestoringConfiguration ? "正在恢复..." : "恢复默认配置"}
+        </button>
+      </div>
+      </fieldset>
     </section>
   );
 }

@@ -50,14 +50,33 @@ describe("practice single-note recognition", () => {
     });
   });
 
+  it("uses configurable stable frame and duration requirements", () => {
+    const recognizer = createPracticeNoteRecognizer(0.9, { requiredFrames: 2, requiredMs: 50 });
+    expect(recognizer.process(observation(0))).toBeNull();
+    expect(recognizer.process(observation(50))).toMatchObject({ midiNoteNumber: 69 });
+  });
+
   it("ignores silence, low-confidence frames, detector disagreement, and unstable pitches", () => {
     const recognizer = createPracticeNoteRecognizer();
-    expect(recognizer.process(observation(0, 60, 0.006, { confidence: 0.7 }))).toBeNull();
+    expect(recognizer.process(observation(0, 60, 0.006, { confidence: 0.5 }))).toBeNull();
     expect(recognizer.process(observation(30, 60, 0.006, { ambiguous: true }))).toBeNull();
     expect(recognizer.process(observation(60, 60, 0.006, { frequencyHz: null }))).toBeNull();
     expect(recognizer.process(observation(90, 60))).toBeNull();
     expect(recognizer.process(observation(120, 64))).toBeNull();
     expect(recognizer.process(observation(150, 67))).toBeNull();
+  });
+
+  it("uses the selected confidence floor for microphone practice", () => {
+    const sensitiveRecognizer = createPracticeNoteRecognizer(0.6);
+    const strictRecognizer = createPracticeNoteRecognizer(0.9);
+    [0, 30, 60].forEach((timeMs) => {
+      expect(sensitiveRecognizer.process(observation(timeMs, 69, 0.006, { confidence: 0.75 }))).toBeNull();
+    });
+    expect(sensitiveRecognizer.process(observation(90, 69, 0.006, { confidence: 0.75 })))
+      .toMatchObject({ midiNoteNumber: 69 });
+    [0, 30, 60, 90].forEach((timeMs) => {
+      expect(strictRecognizer.process(observation(timeMs, 69, 0.006, { confidence: 0.75 }))).toBeNull();
+    });
   });
 
   it("can recognize a repeated strike on the same key after its new onset", () => {

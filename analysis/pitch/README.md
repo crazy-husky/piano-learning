@@ -37,3 +37,5 @@ pYIN 的 HMM 有声结果覆盖率高，但在本批数据中产生 1143 个音�
 对同一批音频进一步回放 MPM-C 检测音域后，降低下限至 46.875 Hz 会让八度跳变从 19 增至 29；仅将上限提高至 1975.5 Hz 未增加八度跳变或短缺口，耗时变化不足 0.4%。生产 MPM-C 因此固定使用 65.406–1975.5 Hz，不提供检测音域调节。
 
 参数与接口以 [librosa pYIN](https://librosa.org/doc/latest/generated/librosa.pyin.html)、[PESTO](https://github.com/SonyCSLParis/pesto)、[CREPE](https://github.com/marl/crepe)、[torchcrepe](https://github.com/maxrmorrison/torchcrepe)、[FCPE](https://github.com/CNChTu/FCPE) 和 [SwiftF0](https://github.com/lars76/swift-f0) 的官方文档为准。本实验没有把所有算法强行限制到统一音域，而是保留各自支持范围；pYIN 因 API 必须指定范围而使用 C2–C7。
+
+SwiftF0 已升级到 v0.3.0。当前分析脚本和浏览器实时识别均按置信度 `≥ 0.6` 判断有声；上表是此前实验结果，不代表新版本在这批录音上的重新评估。

@@ -66,6 +66,14 @@ const TRANSPARENT_NOTE_COLOR = "rgba(0, 0, 0, 0)";
 const KEY_FLASH_MS = 360;
 const NOTE_FLASH_MS = 260;
 const STUDY_UI_PREFERENCES_KEY = "anki-note.studyUiPreferences";
+const MOBILE_STUDY_STAFF_VERTICAL = {
+  centerYPx: 160,
+  gapPx: 110,
+  ledgerGapPx: 180,
+  trebleOnlyYPx: 160,
+  bassOnlyYPx: 160,
+  viewHeightPx: 460,
+} as const;
 const FIXED_STUDY_COLUMN_ANSWER_NUMBERS: Record<FixedStudyColumnOrderId, readonly string[]> = {
   circle: ["4", "1", "5", "2", "6", "3", "7"],
   scale: ["1", "2", "3", "4", "5", "6", "7"],
@@ -463,10 +471,11 @@ function StudyNoteMap({
       rendererTarget.innerHTML = "";
       const measuredWidth = frame.getBoundingClientRect().width || frame.clientWidth || frame.parentElement?.clientWidth || 1;
       const containerWidth = Math.max(1, Math.floor(measuredWidth));
+      const vertical = containerWidth < 520 ? MOBILE_STUDY_STAFF_VERTICAL : STUDY_STAFF_LAYOUT.vertical;
       const surface = createStaffRenderSurface(
         rendererTarget,
         containerWidth,
-        STUDY_STAFF_LAYOUT.vertical.viewHeightPx,
+        vertical.viewHeightPx,
         STUDY_STAFF_LAYOUT.notationScale,
       );
       const metrics = getStudyMapMetrics(surface, columns.length);
@@ -480,7 +489,7 @@ function StudyNoteMap({
         mode: staffNotationMode,
         scale: surface.scale,
         useLedgerGap,
-        vertical: STUDY_STAFF_LAYOUT.vertical,
+        vertical,
       });
       const { noteArea } = system;
       const trebleTickables: StaveNote[] = [];

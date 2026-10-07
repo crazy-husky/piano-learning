@@ -4,13 +4,18 @@ import type { VocalPitchAnalysis, VocalPitchAnalysisConfig } from "../domain/voc
 import { createEnhancedPitchAnalysis, type NeuralPitchTrack } from "./enhancedPitchFusion";
 import { loadEnhancedPitchModel } from "./enhancedPitchModels";
 import { analyzePitchSamples } from "./pitchDetection";
+import {
+  SWIFTF0_CONFIDENCE_THRESHOLD,
+  SWIFTF0_MAX_FREQUENCY_HZ,
+  SWIFTF0_MIN_FREQUENCY_HZ,
+  SWIFTF0_SILENCE_PEAK_THRESHOLD,
+} from "./swiftF0Config";
 
 const MODEL_SAMPLE_RATE = 16_000;
 const CHUNK_SECONDS = 30;
 const FCPE_CONTEXT_SECONDS = 1;
 const FCPE_THRESHOLD = 0.006;
 const SWIFTF0_CONTEXT_SECONDS = 0.25;
-const SWIFTF0_CONFIDENCE_THRESHOLD = 0.9;
 
 ort.env.wasm.numThreads = 1;
 ort.env.wasm.simd = true;
@@ -150,17 +155,25 @@ async function runSwiftF0(
     }
     const output = await session.run({
       [session.inputNames[0]]: new ort.Tensor("float32", chunk, [1, chunk.length]),
+      [session.inputNames[1]]: new ort.Tensor("float32", Float32Array.of(SWIFTF0_MIN_FREQUENCY_HZ), []),
+      [session.inputNames[2]]: new ort.Tensor("float32", Float32Array.of(SWIFTF0_MAX_FREQUENCY_HZ), []),
     });
-    const pitchHz = output[session.outputNames[0]].data as Float32Array;
+    const pitchHz = output[session.outputNames[0]].data as Float64Array;
     const modelConfidence = output[session.outputNames[1]].data as Float32Array;
     for (let frame = 0; frame < pitchHz.length; frame += 1) {
-      const timeSeconds = bounds.inputStart + (frame * 256 + 127.5) / MODEL_SAMPLE_RATE;
+      const timeSeconds = bounds.inputStart + frame * 256 / MODEL_SAMPLE_RATE;
       if (timeSeconds + 1e-7 < coreStart || timeSeconds >= bounds.coreEnd - 1e-7) continue;
-      const voiced = modelConfidence[frame] > SWIFTF0_CONFIDENCE_THRESHOLD &&
-        pitchHz[frame] >= 46.875 && pitchHz[frame] <= 2093.75;
+      const frameStart = frame * 256;
+      let framePeak = 0;
+      for (let sample = frameStart; sample < Math.min(frameStart + 256, chunk.length); sample += 1) {
+        framePeak = Math.max(framePeak, Math.abs(chunk[sample]));
+      }
+      const frameConfidence = framePeak < SWIFTF0_SILENCE_PEAK_THRESHOLD ? 0 : modelConfidence[frame];
+      const voiced = frameConfidence >= SWIFTF0_CONFIDENCE_THRESHOLD &&
+        pitchHz[frame] >= SWIFTF0_MIN_FREQUENCY_HZ && pitchHz[frame] <= SWIFTF0_MAX_FREQUENCY_HZ;
       times.push(timeSeconds);
       frequencies.push(voiced ? pitchHz[frame] : Number.NaN);
-      confidence.push(modelConfidence[frame]);
+      confidence.push(frameConfidence);
     }
     onProgress((chunkIndex + 1) / chunkCount);
   }

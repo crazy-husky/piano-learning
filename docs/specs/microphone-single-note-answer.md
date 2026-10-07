@@ -35,6 +35,8 @@ Let a learner answer the existing natural-note practice prompts by playing one p
 - Existing Vitest suite covers answer decisions, session compatibility, comparison grouping, and pitch analysis.
 - Manual acceptance uses a real piano and browser microphone in the deployed HTTPS site or localhost. Check low/middle/high notes, wrong notes, repeated notes, prompt playback, silence, and permission denial.
 
+Platform-specific capture measurements, gain experiments, false-candidate risks, and known limitations are recorded in [iOS / iPadOS 麦克风音高识别记录](../research/ios-ipados-microphone-pitch-recognition.md).
+
 ## Success Criteria
 
 - Microphone permission is requested only after the learner selects microphone mode or starts that mode.

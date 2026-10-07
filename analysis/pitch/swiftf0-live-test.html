@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f6f7" />
+    <link rel="icon" href="data:," />
+    <title>SwiftF0 实时验证</title>
+  </head>
+  <body>
+    <div class="test-shell">
+      <header class="page-header">
+        <a class="back-link" href="/">返回练习</a>
+        <div class="heading-group">
+          <p class="eyebrow">LOCAL PITCH TEST</p>
+          <h1>SwiftF0 实时验证</h1>
+        </div>
+        <button id="load-model" class="button button-primary" type="button">加载模型</button>
+      </header>
+
+      <main>
+        <section class="control-row" aria-label="音频输入">
+          <button id="start-microphone" class="button" type="button" disabled>麦克风</button>
+          <label class="button file-button" for="audio-file">选择录音</label>
+          <input id="audio-file" type="file" accept="audio/*,.m4a,.wav,.mp3,.aac" />
+          <button id="stop-input" class="button" type="button" disabled>停止</button>
+          <span id="model-status" class="status" role="status">模型尚未加载</span>
+        </section>
+
+        <audio id="audio-player" controls hidden></audio>
+
+        <section class="readout-grid" aria-label="当前音高候选">
+          <article class="readout readout-mpm">
+            <div class="readout-label">MPM-C</div>
+            <div id="mpm-note" class="note-value">--</div>
+            <div id="mpm-detail" class="readout-detail">等待输入</div>
+          </article>
+          <article class="readout readout-swift">
+            <div class="readout-label">SwiftF0</div>
+            <div id="swift-note" class="note-value">--</div>
+            <div id="swift-detail" class="readout-detail">等待输入</div>
+          </article>
+        </section>
+
+        <section class="runtime-row" aria-label="当前运行参数">
+          <span id="runtime-input">输入：--</span>
+          <span id="runtime-window">窗口：--</span>
+          <span id="runtime-inference">推理：--</span>
+          <span id="runtime-backend">后端：--</span>
+        </section>
+
+        <section class="history-section">
+          <div class="history-heading">
+            <h2>候选记录</h2>
+            <button id="clear-history" class="button button-quiet" type="button">清空</button>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>MPM-C</th>
+                  <th>SwiftF0</th>
+                  <th>置信度</th>
+                  <th>耗时</th>
+                </tr>
+              </thead>
+              <tbody id="candidate-history">
+                <tr class="empty-row"><td colspan="5">尚无候选记录</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="./swiftf0-live-test.ts"></script>
+  </body>
+</html>

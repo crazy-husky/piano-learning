@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WebMidi, type Input, type Listener, type NoteMessageEvent } from "webmidi";
+import { announceLocalStoragePreferenceChange } from "../storage/localPreferenceEvents";
 import {
   markMidiLatencyStage,
   MIDI_LATENCY_DIAGNOSTICS_ENABLED,
@@ -254,6 +255,7 @@ export function useMidiInput(): MidiInputController {
     selectedInputIdRef.current = inputId;
     setSelectedInputId(inputId);
     storeInputId(inputId);
+    announceLocalStoragePreferenceChange(MIDI_INPUT_ID_STORAGE_KEY);
     syncSelectedInputListeners();
   }, [syncSelectedInputListeners]);
 

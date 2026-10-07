@@ -28,4 +28,34 @@ describe("pitch frame classification ranges", () => {
       ).frame.frequencyHz,
     ).toBe(f1FrequencyHz);
   });
+
+  it("applies a caller-provided RMS floor for microphone sensitivity", () => {
+    const frequencyHz = midiToFrequency(69);
+    const detector: PitchFrameDetector = {
+      detect: () => {
+        const candidate = { clarity: 0.8, frequencyHz };
+        return { fallback: candidate, primary: candidate };
+      },
+    };
+    const samples = new Float32Array(2048).fill(0.001);
+    const config = { ...DEFAULT_VOCAL_PITCH_CONFIG, voicingThreshold: 0.75 };
+
+    expect(classifyPitchFrame(
+      detector,
+      samples,
+      44_100,
+      config,
+      0,
+      PRACTICE_NOTE_FREQUENCY_RANGE,
+    ).frame.frequencyHz).toBeNull();
+    expect(classifyPitchFrame(
+      detector,
+      samples,
+      44_100,
+      config,
+      0,
+      PRACTICE_NOTE_FREQUENCY_RANGE,
+      0.0009,
+    ).frame.frequencyHz).toBe(frequencyHz);
+  });
 });

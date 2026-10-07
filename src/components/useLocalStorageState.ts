@@ -1,4 +1,8 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  announceLocalStoragePreferenceChange,
+  LOCAL_STORAGE_PREFERENCES_RESET_EVENT,
+} from "../storage/localPreferenceEvents";
 
 interface LocalStorageStateOptions<T> {
   parse?: (value: unknown, fallback: T) => T;
@@ -49,14 +53,41 @@ export function useLocalStorageState<T>(
 ): [T, Dispatch<SetStateAction<T>>] {
   const { parse, serialize } = options;
   const [state, setState] = useState(() => readLocalStorageState(key, fallback, parse));
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
-    setState(readLocalStorageState(key, fallback, parse));
-  }, [fallback, key, parse]);
+    const syncFromStorage = (): void => {
+      const nextState = readLocalStorageState(key, fallback, parse);
+      stateRef.current = nextState;
+      setState(nextState);
+    };
+    const resetToDefault = (): void => {
+      stateRef.current = fallback;
+      writeLocalStorageState(key, fallback, serialize);
+      setState(fallback);
+    };
+
+    syncFromStorage();
+    window.addEventListener(LOCAL_STORAGE_PREFERENCES_RESET_EVENT, resetToDefault);
+    return () => window.removeEventListener(LOCAL_STORAGE_PREFERENCES_RESET_EVENT, resetToDefault);
+  }, [fallback, key, parse, serialize]);
 
   useEffect(() => {
     writeLocalStorageState(key, state, serialize);
   }, [key, serialize, state]);
 
-  return [state, setState];
+  const setStoredState = useCallback<Dispatch<SetStateAction<T>>>((nextValue) => {
+    const previousValue = stateRef.current;
+    const resolvedValue = typeof nextValue === "function"
+      ? (nextValue as (current: T) => T)(previousValue)
+      : nextValue;
+    stateRef.current = resolvedValue;
+    setState(resolvedValue);
+    if (!Object.is(previousValue, resolvedValue)) {
+      announceLocalStoragePreferenceChange(key);
+    }
+  }, [key]);
+
+  return [state, setStoredState];
 }

@@ -271,7 +271,12 @@ export function StaffRecallView({
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.code === "KeyP" && !event.repeat && isPausedRef.current) {
+      if (
+        event.code === "Space" &&
+        !event.repeat &&
+        isPausedRef.current &&
+        !isInteractiveShortcutTarget(event.target)
+      ) {
         event.preventDefault();
         resumeRecall();
         return;

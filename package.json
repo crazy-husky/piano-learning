@@ -12,6 +12,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@audio/pitch-yin": "1.0.5",
+    "@radix-ui/react-alert-dialog": "^1.1.24",
+    "@radix-ui/react-switch": "^1.3.8",
     "@vitejs/plugin-react": "^4.7.0",
     "dexie": "^4.4.4",
     "echarts": "^6.1.0",
@@ -20,6 +23,7 @@
     "pitchy": "4.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sonner": "^2.0.8",
     "tone": "^15.5.27",
     "vexflow": "^5.0.0",
     "webmidi": "^3.1.16"

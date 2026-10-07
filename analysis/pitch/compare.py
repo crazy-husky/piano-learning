@@ -26,11 +26,12 @@ PRODUCTION_ROOT = ROOT / "analysis" / "output" / "vocal-pitch-2026-08-09" / "pro
 OUTPUT_ROOT = ROOT / "analysis" / "output" / "vocal-pitch-algorithms-2026-08-09"
 CACHE_ROOT = OUTPUT_ROOT / "cache"
 CHART_ROOT = OUTPUT_ROOT / "charts"
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 
 PYIN_FMIN = float(librosa.note_to_hz("C2"))
 PYIN_FMAX = float(librosa.note_to_hz("C7"))
 PESTO_CONFIDENCE_THRESHOLD = 0.5
+SWIFTF0_CONFIDENCE_THRESHOLD = 0.6
 CREPE_PERIODICITY_THRESHOLD = 0.21
 FCPE_THRESHOLD = 0.006
 CONSENSUS_CLUSTER_WIDTH_SEMITONES = 1.0
@@ -63,7 +64,7 @@ COLORS = {
 PARAMETER_SUMMARIES = {
     "pyin": "C2–C7；同生产窗长；10 ms 帧移；内部 HMM 有声判断",
     "production_v2": "连续性引导 MPM；素材配置音域；48 kHz 常见 4096 点窗；10 ms 帧移；clarity 阈值 0.85",
-    "swiftf0": "46.875–2093.75 Hz；16 kHz/1024 点窗；16 ms 帧移；confidence > 0.9",
+    "swiftf0": "46.875–2093.75 Hz；SwiftF0 v0.3.0；16 ms 帧移；confidence ≥ 0.6",
     "pesto": "mir-1k_g7 原生范围；16 kHz CQT；10 ms 帧移；本实验 confidence ≥ 0.5",
     "crepe": "32.7–1975.5 Hz；16 kHz/1024 点输入；10 ms 帧移；periodicity ≥ 0.21",
     "fcpe": "32.7–1975.5 Hz；16 kHz/1024 点 STFT；10 ms 帧移；官方 threshold 0.006",
@@ -172,7 +173,7 @@ def load_production_track(material: dict) -> tuple[Track, dict]:
 class PythonDetectors:
     def __init__(self) -> None:
         print("初始化 SwiftF0、PESTO 与 FCPE 模型…", flush=True)
-        self.swiftf0 = SwiftF0()
+        self.swiftf0 = SwiftF0(threads=1, spin=False)
         self.pesto = pesto.load_model("mir-1k_g7", step_size=10.0, sampling_rate=16000).to("cpu")
         self.fcpe = spawn_bundled_infer_model(device="cpu")
         self._warm_crepe()
@@ -250,11 +251,11 @@ class PythonDetectors:
 
     def _run_swiftf0(self, samples: np.ndarray) -> Track:
         started = time.perf_counter()
-        result = self.swiftf0.detect_from_array(samples, 16000)
+        result = self.swiftf0.detect(samples, 16000)
         runtime = time.perf_counter() - started
         return Track(
             times=np.asarray(result.timestamps, dtype=float),
-            frequencies=np.where(result.voicing, result.pitch_hz, np.nan),
+            frequencies=np.where(result.confidence >= SWIFTF0_CONFIDENCE_THRESHOLD, result.pitch_hz, np.nan),
             confidence=np.asarray(result.confidence, dtype=float),
             runtime_seconds=runtime,
         )

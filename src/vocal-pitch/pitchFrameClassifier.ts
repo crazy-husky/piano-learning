@@ -38,13 +38,14 @@ export function classifyPitchFrame(
     maxFrequencyHz: VOCAL_PITCH_MAX_FREQUENCY_HZ,
     minFrequencyHz: VOCAL_PITCH_MIN_FREQUENCY_HZ,
   },
+  minRms = MIN_VOICED_RMS,
 ): ClassifiedPitchFrame {
   const { fallback, primary } = detector.detect(samples, sampleRate);
   const candidate = fallback;
   const { clarity, frequencyHz } = candidate;
   const rms = calculateRms(samples);
   const voiced =
-    rms >= MIN_VOICED_RMS &&
+    rms >= minRms &&
     clarity >= config.voicingThreshold &&
     frequencyHz >= frequencyRange.minFrequencyHz &&
     frequencyHz <= frequencyRange.maxFrequencyHz;

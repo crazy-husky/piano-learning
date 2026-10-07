@@ -19,13 +19,16 @@ const NATURAL_NOTE_BY_SEMITONE: Partial<Record<number, NoteName>> = {
   9: "A",
   11: "B",
 };
-const MIN_NOTE_CONFIDENCE = 0.9;
+const DEFAULT_MIN_NOTE_CONFIDENCE = 0.9;
 const MAX_NOTE_DEVIATION_CENTS = 45;
 const REQUIRED_STABLE_FRAMES = 4;
 const REQUIRED_STABLE_MS = 80;
 const SILENCE_REARM_FRAMES = 2;
 const SAME_NOTE_REFRACTORY_MS = 180;
 const SAME_NOTE_ONSET_RMS_RATIO = 1.18;
+const CONTINUITY_REFERENCE_WINDOW_MS = 500;
+const OCTAVE_CHANGE_STABILITY_MULTIPLIER = 2;
+export const PRACTICE_NOTE_CONTINUITY_CONFIDENCE = 0.25;
 
 export interface PracticeNoteObservation {
   ambiguous?: boolean;
@@ -44,6 +47,19 @@ export interface RecognizedPracticeNote {
 export interface PracticeNoteRecognizer {
   process: (observation: PracticeNoteObservation) => RecognizedPracticeNote | null;
   reset: () => void;
+}
+
+export interface PracticeNoteRecognizerStabilityOptions {
+  /** Allows low-clarity adjacent notes to be stabilized from a recently confirmed pitch. */
+  continuityConfidence?: number;
+  requiredFrames?: number;
+  requiredMs?: number;
+}
+
+const MAX_CONTINUITY_STEP_SEMITONES = 2;
+
+function isOctaveRegisterChange(candidateMidi: number, referenceMidi: number): boolean {
+  return candidateMidi !== referenceMidi && candidateMidi % 12 === referenceMidi % 12;
 }
 
 export function frequencyToNaturalPracticeNote(frequencyHz: number): RecognizedPracticeNote | null {
@@ -70,12 +86,20 @@ export function frequencyToNaturalPracticeNote(frequencyHz: number): RecognizedP
   };
 }
 
-export function createPracticeNoteRecognizer(): PracticeNoteRecognizer {
+export function createPracticeNoteRecognizer(
+  minConfidence = DEFAULT_MIN_NOTE_CONFIDENCE,
+  stability: PracticeNoteRecognizerStabilityOptions = {},
+): PracticeNoteRecognizer {
+  const requiredStableFrames = stability.requiredFrames ?? REQUIRED_STABLE_FRAMES;
+  const requiredStableMs = stability.requiredMs ?? REQUIRED_STABLE_MS;
+  const continuityConfidence = stability.continuityConfidence ?? minConfidence;
   let candidateMidi: number | null = null;
   let candidateFrames = 0;
   let candidateStartedAt = 0;
   let lastAcceptedMidi: number | null = null;
   let lastAcceptedAt = 0;
+  let continuityReferenceMidi: number | null = null;
+  let continuityReferenceAt = 0;
   let previousRms = 0;
   let silenceFrames = 0;
 
@@ -85,16 +109,61 @@ export function createPracticeNoteRecognizer(): PracticeNoteRecognizer {
     candidateStartedAt = 0;
     lastAcceptedMidi = null;
     lastAcceptedAt = 0;
+    continuityReferenceMidi = null;
+    continuityReferenceAt = 0;
     previousRms = 0;
     silenceFrames = 0;
   };
 
   const process = (observation: PracticeNoteObservation): RecognizedPracticeNote | null => {
-    const candidate = observation.frequencyHz === null ||
-        observation.confidence < MIN_NOTE_CONFIDENCE ||
-        observation.ambiguous
+    const detectedCandidate = observation.frequencyHz === null || observation.ambiguous
       ? null
       : frequencyToNaturalPracticeNote(observation.frequencyHz);
+    const isConfidentCandidate = observation.confidence >= minConfidence;
+    const continuityReferenceAgeMs = observation.timeMs - continuityReferenceAt;
+    const hasRecentContinuityReference = continuityReferenceMidi !== null &&
+      continuityReferenceAgeMs >= 0 &&
+      continuityReferenceAgeMs <= CONTINUITY_REFERENCE_WINDOW_MS;
+    const continuityAnchorMidi = hasRecentContinuityReference ? continuityReferenceMidi : null;
+    // MPM-C can return a neighboring note's octave when the fundamental is weak.
+    // Only use that lower-confidence path near a recently confirmed melody pitch;
+    // the ordinary confidence gate still applies to unrelated notes.
+    const canUsePitchContinuity = continuityAnchorMidi !== null &&
+      observation.confidence >= continuityConfidence;
+    let candidate = detectedCandidate && (isConfidentCandidate || canUsePitchContinuity)
+      ? detectedCandidate
+      : null;
+    let wasOctaveNormalized = false;
+
+    if (candidate && continuityAnchorMidi !== null) {
+      const nearbyOctaves = [
+        candidate.midiNoteNumber - 24,
+        candidate.midiNoteNumber - 12,
+        candidate.midiNoteNumber,
+        candidate.midiNoteNumber + 12,
+        candidate.midiNoteNumber + 24,
+      ].filter((midi) => midi >= PRACTICE_NOTE_MIN_MIDI && midi <= PRACTICE_NOTE_MAX_MIDI);
+      const nearestMidi = nearbyOctaves.sort((left, right) =>
+        Math.abs(left - continuityAnchorMidi) - Math.abs(right - continuityAnchorMidi),
+      )[0];
+      const nearestDistance = nearestMidi === undefined
+        ? Number.POSITIVE_INFINITY
+        : Math.abs(nearestMidi - continuityAnchorMidi);
+      const isOctaveChange = isOctaveRegisterChange(candidate.midiNoteNumber, continuityAnchorMidi);
+      const shouldUseNearbyOctave = !isConfidentCandidate &&
+        !isOctaveChange &&
+        nearestDistance <= MAX_CONTINUITY_STEP_SEMITONES;
+      if (!isConfidentCandidate && !shouldUseNearbyOctave && !isOctaveChange) {
+        candidate = null;
+      } else if (shouldUseNearbyOctave) {
+        wasOctaveNormalized = nearestMidi !== candidate.midiNoteNumber;
+        candidate = {
+          ...candidate,
+          midiNoteNumber: nearestMidi,
+          octave: (Math.floor(nearestMidi / 12) - 1) as Octave,
+        };
+      }
+    }
 
     if (!candidate) {
       candidateMidi = null;
@@ -128,15 +197,30 @@ export function createPracticeNoteRecognizer(): PracticeNoteRecognizer {
     }
     previousRms = observation.rms;
 
+    const isRecentOctaveChange = hasRecentContinuityReference &&
+      continuityAnchorMidi !== null &&
+      isOctaveRegisterChange(candidate.midiNoteNumber, continuityAnchorMidi);
+    // Require more sustained evidence for an octave jump, but don't use loudness
+    // to rewrite its pitch: a real octave change can be quieter than its anchor.
+    const candidateRequiredStableFrames = isRecentOctaveChange
+      ? requiredStableFrames * OCTAVE_CHANGE_STABILITY_MULTIPLIER
+      : requiredStableFrames;
+    const candidateRequiredStableMs = isRecentOctaveChange
+      ? requiredStableMs * OCTAVE_CHANGE_STABILITY_MULTIPLIER
+      : requiredStableMs;
+
     if (
-      candidateFrames < REQUIRED_STABLE_FRAMES ||
-      observation.timeMs - candidateStartedAt < REQUIRED_STABLE_MS
+      candidateFrames < candidateRequiredStableFrames ||
+      observation.timeMs - candidateStartedAt < candidateRequiredStableMs
     ) {
       return null;
     }
+    if (wasOctaveNormalized) return null;
 
     lastAcceptedMidi = candidate.midiNoteNumber;
     lastAcceptedAt = observation.timeMs;
+    continuityReferenceMidi = candidate.midiNoteNumber;
+    continuityReferenceAt = observation.timeMs;
     candidateMidi = null;
     candidateFrames = 0;
     return candidate;

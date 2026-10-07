@@ -1,5 +1,16 @@
-import { BarChart3, Pause, Play, RotateCcw, SlidersHorizontal, Square, Volume2 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { BarChart3, CircleHelp, Copy, Download, Pause, Play, RotateCcw, SlidersHorizontal, Square, Volume2, X } from "lucide-react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import { toast } from "sonner";
 import { playPianoNote, playTargetNote, setPianoVolume, unlockAudio } from "../audio/piano";
 import { db, deletePracticeSessionWithReviews, resolveDrillNoteNames, resolveQueueStrategy, saveReview } from "../data/db";
 import { writeBackupIfSafe, writeBackupNow } from "../data/backup";
@@ -67,6 +78,7 @@ import type {
 } from "../domain/types";
 import { MIDI_START_NOTE_NUMBER } from "../midi/midiInput";
 import type { MidiInputController } from "../midi/useMidiInput";
+import { formatMidiNote } from "../domain/vocalPitch";
 import { GlobalRangeControls } from "./GlobalRangeControls";
 import { resolveHistoryLimit } from "./HistoryLimitControl";
 import { isInteractiveShortcutTarget, shouldHandleGlobalEnter } from "./keyboardShortcuts";
@@ -81,10 +93,12 @@ import {
   SESSION_PROGRESS_UI_PREFERENCES_KEY,
 } from "./sessionProgressPreferences";
 import { PauseOverlay } from "./PauseOverlay";
+import type { PracticePagePreferences } from "./practicePagePreferences";
 import { isNaturalPianoKey, NATURAL_PIANO_KEYS, PianoKeyboard } from "./PianoKeyboard";
 import { getPausedKeyboardAction } from "./practiceKeyboard";
 import { StaffPagePrompt } from "./StaffPagePrompt";
 import { StaffPrompt } from "./StaffPrompt";
+import { ResponsiveDataTable, type ResponsiveDataTableColumn } from "./ui/ResponsiveDataTable";
 import {
   MOBILE_PRACTICE_PAGE_STAFF_LAYOUT,
   PRACTICE_PAGE_STAFF_LAYOUT,
@@ -105,16 +119,161 @@ import { useLocalStorageState } from "./useLocalStorageState";
 import { useDelayedBusy } from "./useDelayedBusy";
 import { useRemainingNotePlayback } from "./useRemainingNotePlayback";
 import { usePracticeMicrophoneInput } from "../vocal-pitch/usePracticeMicrophoneInput";
+import { PRACTICE_NOTE_CONTINUITY_CONFIDENCE } from "../vocal-pitch/practiceNoteRecognizer";
+import {
+  parseExpectedPracticeNoteSequence,
+  type PracticeMicrophoneCandidateSegment,
+  type PracticeMicrophoneAnalysisEvent,
+  type PracticeMicrophoneAnalysis,
+} from "../vocal-pitch/practiceMicrophoneAnalysis";
+import {
+  DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
+  PRACTICE_MICROPHONE_ANALYSIS_GAINS,
+  PRACTICE_MICROPHONE_FRAME_INTERVALS,
+  PRACTICE_MICROPHONE_STABLE_DURATIONS,
+  PRACTICE_MICROPHONE_STABLE_FRAME_COUNTS,
+  normalizePracticeMicrophoneDebugParameters,
+  practiceMicrophoneAlgorithmLabel,
+  practiceMicrophoneSensitivityLevelLabel,
+  resolvePracticeMicrophoneConfiguration,
+  resolvePracticeMicrophoneFrameIntervalMs,
+  withPracticeMicrophoneAlgorithm,
+  type PracticeMicrophoneAlgorithm,
+  type PracticeMicrophoneDebugParameters,
+  type PracticeMicrophonePreferences,
+} from "../vocal-pitch/practiceMicrophonePreferences";
+import {
+  ensureSwiftF0PracticeRuntimeReady,
+  isSwiftF0PracticeRuntimeReady,
+  releaseSwiftF0PracticeRuntime,
+} from "../vocal-pitch/swiftF0PracticeClient";
 import { ensurePracticeMicrophoneForResume, releasePracticeMicrophoneOnPause } from "./practiceInputLifecycle";
+
+interface StableResultDisplayRow {
+  event: PracticeMicrophoneAnalysisEvent | null;
+  expectedMidiNoteNumber: number;
+  isMissing: boolean;
+  rowNumber: number | string;
+}
+
+const MICROPHONE_CANDIDATE_TABLE_MIN_WIDTH = "1300px";
+const MICROPHONE_CANDIDATE_COLUMN_WIDTHS = {
+  note: "44px",
+  time: "116px",
+  status: "76px",
+  confidence: "130px",
+  inputRms: "120px",
+  analysisRms: "160px",
+  eligibleFrames: "100px",
+  gateReasons: "150px",
+  frames: "80px",
+} as const;
+
+function buildStableResultDisplayRows(analysis: PracticeMicrophoneAnalysis): StableResultDisplayRow[] {
+  if (!analysis.expectedSequence) {
+    return analysis.events.map((event, index) => ({
+      event,
+      expectedMidiNoteNumber: event.midiNoteNumber,
+      isMissing: false,
+      rowNumber: index + 1,
+    }));
+  }
+
+  const missedSequenceIndexes = new Set(analysis.missedNotes.map((note) => note.sequenceIndex));
+  const expectedEvents = analysis.events.filter((event) => event.expectedMidiNoteNumber !== null);
+  const extraEvents = analysis.events.filter((event) => event.expectedMidiNoteNumber === null);
+  let expectedEventIndex = 0;
+  const expectedRows = analysis.expectedSequence.map((expectedMidiNoteNumber, index) => {
+    const isMissing = missedSequenceIndexes.has(index);
+    const event = isMissing ? null : expectedEvents[expectedEventIndex++] ?? null;
+    return {
+      event,
+      expectedMidiNoteNumber,
+      isMissing: isMissing || event === null,
+      rowNumber: index + 1,
+    };
+  });
+
+  return [
+    ...expectedRows,
+    ...extraEvents.map((event, index) => ({
+      event,
+      expectedMidiNoteNumber: event.midiNoteNumber,
+      isMissing: false,
+      rowNumber: `+${index + 1}`,
+    })),
+  ];
+}
+
+interface CandidateSegmentDisplayInfo {
+  durationMs: number;
+  failureReasons: string[];
+  isDurationBelowThreshold: boolean;
+  isFrameCountBelowThreshold: boolean;
+  isMissedNote: boolean;
+}
+
+function getCandidateSegmentDisplayInfo(
+  segment: PracticeMicrophoneCandidateSegment,
+  analysis: PracticeMicrophoneAnalysis,
+): CandidateSegmentDisplayInfo {
+  const durationMs = segment.longestEligibleDurationMs;
+  const { confidenceThreshold, inputRmsThreshold, requiredStableFrames, requiredStableMs } = analysis.parameters;
+  const isDurationBelowThreshold = durationMs < requiredStableMs;
+  const isFrameCountBelowThreshold = segment.maxConsecutiveEligibleFrameCount < requiredStableFrames;
+  const ambiguousFrameCount = segment.frames.filter((frame) => frame.ambiguous).length;
+  return {
+    durationMs,
+    failureReasons: [
+      ...(segment.lowConfidenceFrameCount > 0
+        ? [`置信度低于 ${confidenceThreshold.toFixed(3)}：${segment.lowConfidenceFrameCount} 帧`]
+        : []),
+      ...(segment.lowRmsFrameCount > 0
+        ? [`处理后 RMS 低于 ${inputRmsThreshold.toFixed(6)}：${segment.lowRmsFrameCount} 帧`]
+        : []),
+      ...(isFrameCountBelowThreshold
+        ? [`连续有效帧 ${segment.maxConsecutiveEligibleFrameCount}/${requiredStableFrames} 帧，未达到设置门槛`]
+        : []),
+      ...(isDurationBelowThreshold
+        ? [`连续有效时长 ${durationMs}/${requiredStableMs} ms，未达到设置门槛`]
+        : []),
+      ...(ambiguousFrameCount > 0
+        ? [`存在歧义帧 ${ambiguousFrameCount} 帧，未计入有效帧`]
+        : []),
+    ],
+    isDurationBelowThreshold,
+    isFrameCountBelowThreshold,
+    isMissedNote: analysis.missedNotes.some((missedNote) =>
+      missedNote.midiNoteNumber === segment.midiNoteNumber,
+    ),
+  };
+}
+
+function sortCandidateSegmentsMissedFirst(
+  segments: readonly PracticeMicrophoneCandidateSegment[],
+  analysis: PracticeMicrophoneAnalysis,
+): PracticeMicrophoneCandidateSegment[] {
+  return segments
+    .map((segment, originalIndex) => ({
+      isMissedNote: getCandidateSegmentDisplayInfo(segment, analysis).isMissedNote,
+      originalIndex,
+      segment,
+    }))
+    .sort((left, right) => Number(right.isMissedNote) - Number(left.isMissedNote) || left.originalIndex - right.originalIndex)
+    .map(({ segment }) => segment);
+}
 
 interface PracticeViewProps {
   midi: MidiInputController;
+  practiceMicrophonePreferences: PracticeMicrophonePreferences;
+  onPracticeMicrophonePreferencesChange: Dispatch<SetStateAction<PracticeMicrophonePreferences>>;
+  practicePagePreferences: PracticePagePreferences;
   settings: AppSettings;
   sessions: PracticeSessionRecord[];
   reviews: ReviewRecord[];
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   onNavigationExit?: (targetView: PracticeNavigationExitTarget) => void;
-  onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
+  onSettingsSaved: (settings: AppSettings, options?: { feedback?: boolean }) => void | Promise<void>;
   onDataChanged: () => Promise<void>;
   onOpenStats: () => void;
   onOpenSettings: () => void;
@@ -222,9 +381,25 @@ const MELODY_BUFFER_SIZE = 16;
 const PRACTICE_SETUP_UI_PREFERENCES_KEY = "anki-note.practiceSetupUiPreferences";
 const PRACTICE_MODES: readonly PracticeMode[] = ["open-ended", "fixed-count", "fixed-duration"];
 const PROMPT_DISPLAY_MODES: readonly PromptDisplayMode[] = ["single-note", "staff-page"];
-const MOBILE_STAFF_PAGE_MAX_ROWS = PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows + 1;
-const MOBILE_STAFF_PAGE_COUNTER_RESERVE_PX = 40;
-const FOCUS_LOSS_PAUSE_DELAY_MS = 15_000;
+
+function DebugParameterHelp({ label, description, recommendation }: {
+  label: string;
+  description: string;
+  recommendation: string;
+}): JSX.Element {
+  return (
+    <details className="debug-parameter-help">
+      <summary aria-label={`${label}说明和推荐默认值`} title={`${label}说明和推荐默认值`}>
+        <CircleHelp aria-hidden="true" size={16} />
+      </summary>
+      <div className="debug-parameter-help-popover" role="note">
+        <strong>{label}</strong>
+        <span>{description}</span>
+        <span><b>推荐默认值：</b>{recommendation}</span>
+      </div>
+    </details>
+  );
+}
 const PROMPT_NOTE_DURATION_OPTIONS: Array<{
   ariaLabel: string;
   label: string;
@@ -333,6 +508,9 @@ function parsePracticeSetupUiPreferences(
 
 export function PracticeView({
   midi,
+  practiceMicrophonePreferences,
+  onPracticeMicrophonePreferencesChange,
+  practicePagePreferences,
   settings,
   sessions,
   reviews,
@@ -370,6 +548,18 @@ export function PracticeView({
   const [currentNote, setCurrentNote] = useState<TargetNote | null>(null);
   const [completedCount, setCompletedCount] = useState(0);
   const [wrongAnswerCount, setWrongAnswerCount] = useState(0);
+  const [microphoneCaptureAnalysis, setMicrophoneCaptureAnalysis] = useState<PracticeMicrophoneAnalysis | null>(null);
+  const [microphoneCaptureNotice, setMicrophoneCaptureNotice] = useState<string | null>(null);
+  const [microphoneDebugFeedback, setMicrophoneDebugFeedback] = useState<string | null>(null);
+  const [expandedCandidateSegmentKey, setExpandedCandidateSegmentKey] = useState<string | null>(null);
+  const [isMicrophoneAnalysisDialogOpen, setIsMicrophoneAnalysisDialogOpen] = useState(false);
+  const [isMicrophoneDebugDialogOpen, setIsMicrophoneDebugDialogOpen] = useState(false);
+  const [isLoadingMicrophoneAlgorithm, setIsLoadingMicrophoneAlgorithm] = useState(false);
+  const [microphoneAlgorithmError, setMicrophoneAlgorithmError] = useState<string | null>(null);
+  const microphoneAnalysisDialogRef = useRef<HTMLDialogElement | null>(null);
+  const microphoneAnalysisDialogCloseRef = useRef<HTMLButtonElement | null>(null);
+  const microphoneDebugDialogRef = useRef<HTMLDialogElement | null>(null);
+  const microphoneDebugDialogCloseRef = useRef<HTMLButtonElement | null>(null);
   const [feedback, setFeedback] = useState<{
     diagnosticSampleId?: number;
     type: "wrong" | "correct";
@@ -388,8 +578,6 @@ export function PracticeView({
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches,
   );
-  const mobileStaffPageStageRef = useRef<HTMLDivElement | null>(null);
-  const [mobileStaffPageStageHeight, setMobileStaffPageStageHeight] = useState(0);
   const { isBusyVisible: showStartingSessionStatus, run: runSessionStart } = useDelayedBusy();
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false,
@@ -494,7 +682,74 @@ export function PracticeView({
   const pendingMidiPressDiagnosticSampleIdRef = useRef<number | undefined>(undefined);
   const startSessionRef = useRef<() => void>(() => undefined);
   const submitAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => undefined);
-  const practiceMicrophone = usePracticeMicrophoneInput((answer) => submitAnswerRef.current(answer));
+  const practiceMicrophone = usePracticeMicrophoneInput(
+    (answer) => submitAnswerRef.current(answer),
+    practiceMicrophonePreferences,
+  );
+  const microphoneConfiguration = useMemo(
+    () => resolvePracticeMicrophoneConfiguration(practiceMicrophonePreferences),
+    [practiceMicrophonePreferences],
+  );
+  const microphoneAnalysisIntervalMs = resolvePracticeMicrophoneFrameIntervalMs(microphoneConfiguration);
+  const expectedMicrophoneSequence = useMemo(
+    () => parseExpectedPracticeNoteSequence("C4 D4 E4 F4 G4 A4 B4"),
+    [],
+  );
+
+  function updateMicrophoneDebugParameters(patch: Partial<PracticeMicrophoneDebugParameters>): void {
+    if (Object.entries(patch).every(([key, value]) =>
+      practiceMicrophonePreferences.debugParameters[key as keyof PracticeMicrophoneDebugParameters] === value)) {
+      return;
+    }
+    onPracticeMicrophonePreferencesChange((current) => ({
+      ...current,
+      debugParameters: normalizePracticeMicrophoneDebugParameters({ ...current.debugParameters, ...patch }),
+    }));
+    setMicrophoneDebugFeedback("设置已保存并生效");
+  }
+
+  function restoreMicrophoneDebugDefaults(): void {
+    if (practiceMicrophone.status === "listening" || practiceMicrophone.status === "requesting") return;
+    const defaultPreferences = DEFAULT_PRACTICE_MICROPHONE_PREFERENCES;
+    const hasParameterChanges = Object.entries(defaultPreferences.debugParameters).some(([key, value]) =>
+      practiceMicrophonePreferences.debugParameters[key as keyof PracticeMicrophoneDebugParameters] !== value);
+    if (practiceMicrophonePreferences.algorithm === defaultPreferences.algorithm && !hasParameterChanges) return;
+    if (practiceMicrophonePreferences.algorithm === "swiftf0") {
+      releaseSwiftF0PracticeRuntime();
+    }
+    onPracticeMicrophonePreferencesChange((current) => ({
+      ...current,
+      algorithm: defaultPreferences.algorithm,
+      debugParameters: { ...defaultPreferences.debugParameters },
+    }));
+    setMicrophoneDebugFeedback("设置已保存并生效");
+  }
+
+  async function selectMicrophoneAlgorithm(algorithm: PracticeMicrophoneAlgorithm): Promise<void> {
+    if (algorithm === practiceMicrophonePreferences.algorithm || isLoadingMicrophoneAlgorithm) return;
+    if (practiceMicrophone.status === "listening" || practiceMicrophone.status === "requesting") {
+      setMicrophoneAlgorithmError("请先暂停练习并释放麦克风，再切换识别算法。");
+      return;
+    }
+    setMicrophoneAlgorithmError(null);
+    if (algorithm === "swiftf0" && !isSwiftF0PracticeRuntimeReady()) {
+      setIsLoadingMicrophoneAlgorithm(true);
+      try {
+        await ensureSwiftF0PracticeRuntimeReady();
+      } catch (error) {
+        setMicrophoneAlgorithmError(
+          `算法资源加载失败：${error instanceof Error ? error.message : String(error)}`,
+        );
+        return;
+      } finally {
+        setIsLoadingMicrophoneAlgorithm(false);
+      }
+    } else if (algorithm !== "swiftf0") {
+      releaseSwiftF0PracticeRuntime();
+    }
+    onPracticeMicrophonePreferencesChange((current) => withPracticeMicrophoneAlgorithm(current, algorithm));
+    setMicrophoneDebugFeedback("设置已保存并生效");
+  }
 
   useLayoutEffect(() => {
     const diagnosticSampleId = feedback?.diagnosticSampleId;
@@ -559,23 +814,6 @@ export function PracticeView({
     mediaQuery.addEventListener("change", onChange);
     return () => mediaQuery.removeEventListener("change", onChange);
   }, []);
-
-  useEffect(() => {
-    if (phase !== "running" || !isMobileViewport || promptDisplayMode !== "staff-page") {
-      setMobileStaffPageStageHeight(0);
-      return;
-    }
-    const stage = mobileStaffPageStageRef.current;
-    if (!stage) {
-      return;
-    }
-
-    const updateHeight = (): void => setMobileStaffPageStageHeight(stage.clientHeight);
-    updateHeight();
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(stage);
-    return () => observer.disconnect();
-  }, [isMobileViewport, phase, promptDisplayMode]);
 
   useEffect(() => {
     onRunningChange(phase === "running");
@@ -739,7 +977,10 @@ export function PracticeView({
       markInterrupted(interruptReason);
     }
     releasePracticeMicrophoneOnPause(answerPitchMode, () =>
-      practiceMicrophone.stop({ preserveError: practiceMicrophone.status === "error" }),
+      practiceMicrophone.stop({
+        captureStopReason: "practice-paused",
+        preserveError: practiceMicrophone.status === "error",
+      }),
     );
     pauseActiveTimers();
     if (!isPausedRef.current) {
@@ -859,7 +1100,7 @@ export function PracticeView({
       drillNoteNames,
       focusedTraining: false,
     };
-    await onSettingsSaved(nextSettings);
+    await onSettingsSaved(nextSettings, { feedback: false });
     return nextSettings;
   }, [
     answerPitchMode,
@@ -1308,7 +1549,7 @@ export function PracticeView({
           ? preflightSettings
           : { ...preflightSettings, answerPitchMode: availablePreflightAnswerPitchMode };
         if (nextSettings !== preflightSettings) {
-          await onSettingsSaved(nextSettings);
+          await onSettingsSaved(nextSettings, { feedback: false });
         }
         const nextMode = nextSettings.defaultMode;
         const nextQueueStrategy = resolveQueueStrategy(nextSettings);
@@ -1353,6 +1594,11 @@ export function PracticeView({
           startedAt,
         });
         await db.practiceSessions.put(nextSession);
+        practiceMicrophone.resetCapture();
+        setMicrophoneCaptureAnalysis(null);
+        setMicrophoneCaptureNotice(null);
+        setExpandedCandidateSegmentKey(null);
+        setIsMicrophoneAnalysisDialogOpen(false);
         sessionRef.current = nextSession;
         sessionStartSnapshotRef.current = startSnapshot;
         sessionReviewsRef.current = [];
@@ -1409,6 +1655,7 @@ export function PracticeView({
     drawMelodyNote,
     midi.isConnected,
     practiceMicrophone.start,
+    practiceMicrophone.resetCapture,
     practiceMicrophone.stop,
     onBeforePracticeStart,
     onSettingsSaved,
@@ -1624,45 +1871,41 @@ export function PracticeView({
       if (event.repeat) {
         return;
       }
-      if (event.code === "KeyP") {
-        event.preventDefault();
-        togglePause();
-        return;
-      }
       if (event.code === "Escape") {
         event.preventDefault();
+        if (isMicrophoneDebugDialogOpen) {
+          setIsMicrophoneDebugDialogOpen(false);
+          return;
+        }
+        if (isMicrophoneAnalysisDialogOpen) {
+          setIsMicrophoneAnalysisDialogOpen(false);
+          return;
+        }
         void completeSession("manual-stop", "manual-stop");
+        return;
+      }
+      if (event.code === "Space") {
+        if (isInteractiveShortcutTarget(event.target)) {
+          return;
+        }
+        event.preventDefault();
+        if (isPausedRef.current) {
+          void resumePractice();
+        } else {
+          togglePause();
+        }
         return;
       }
       if (isPausedRef.current) {
         const pausedAction = getPausedKeyboardAction({
-          code: event.code,
           isEditableTarget:
             event.target instanceof Element &&
             Boolean(event.target.closest("input, select, textarea, [contenteditable='true']")),
-          promptDisplayMode,
         });
-        if (pausedAction === "toggle-playback") {
-          event.preventDefault();
-          if (answerPitchMode !== "microphone") {
-            toggleRemainingPlayback();
-          }
-          return;
-        }
         if (pausedAction === "allow-edit") {
           return;
         }
         event.preventDefault();
-        return;
-      }
-      if (event.code === "Space") {
-        if (event.target instanceof Element && event.target.closest(".piano-key")) {
-          return;
-        }
-        event.preventDefault();
-        if (answerPitchMode !== "microphone") {
-          void replayTarget();
-        }
         return;
       }
       const answer = ANSWER_BUTTONS.find((button) => event.key === button.key);
@@ -1698,7 +1941,94 @@ export function PracticeView({
       window.removeEventListener("blur", releaseHeldComputerKeys);
       releaseHeldComputerKeys();
     };
-  }, [answerPitchMode, completeSession, phase, promptDisplayMode, replayTarget, submitAnswer, togglePause, toggleRemainingPlayback]);
+  }, [answerPitchMode, completeSession, isMicrophoneAnalysisDialogOpen, isMicrophoneDebugDialogOpen, phase, resumePractice, submitAnswer, togglePause]);
+
+  useLayoutEffect(() => {
+    if (!isMicrophoneAnalysisDialogOpen) {
+      return;
+    }
+    const dialog = microphoneAnalysisDialogRef.current;
+    if (!dialog) {
+      return;
+    }
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+    microphoneAnalysisDialogCloseRef.current?.focus();
+    const outerScroller = dialog.querySelector<HTMLElement>(".practice-microphone-analysis-dialog-body");
+    const tableRegions = Array.from(dialog.querySelectorAll<HTMLElement>(".practice-microphone-analysis-table-scroll"));
+    const onTableWheel = (event: WheelEvent): void => {
+      if (event.ctrlKey || (!event.deltaX && !event.deltaY) || !outerScroller) return;
+      const multiplier = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? outerScroller.clientHeight : 1;
+      const deltaX = event.deltaX * multiplier;
+      const deltaY = event.deltaY * multiplier;
+      const previousLeft = event.currentTarget instanceof HTMLElement ? event.currentTarget.scrollLeft : 0;
+      const previousTop = outerScroller.scrollTop;
+      if (event.currentTarget instanceof HTMLElement && deltaX) {
+        const region = event.currentTarget;
+        region.scrollLeft = Math.max(0, Math.min(region.scrollWidth - region.clientWidth, region.scrollLeft + deltaX));
+      }
+      if (deltaY) {
+        outerScroller.scrollTop = Math.max(
+          0,
+          Math.min(outerScroller.scrollHeight - outerScroller.clientHeight, outerScroller.scrollTop + deltaY),
+        );
+      }
+      const currentLeft = event.currentTarget instanceof HTMLElement ? event.currentTarget.scrollLeft : previousLeft;
+      if (currentLeft !== previousLeft || outerScroller.scrollTop !== previousTop) event.preventDefault();
+    };
+    const onTableKeyDown = (event: KeyboardEvent): void => {
+      if (!outerScroller) return;
+      const step = Math.max(40, Math.round(outerScroller.clientHeight * 0.8));
+      const delta = event.key === "ArrowDown" ? 40
+        : event.key === "ArrowUp" ? -40
+          : event.key === "PageDown" ? step
+            : event.key === "PageUp" ? -step
+              : event.key === "Home" ? -outerScroller.scrollTop
+                : event.key === "End" ? outerScroller.scrollHeight
+                  : 0;
+      if (!delta) return;
+      const previousTop = outerScroller.scrollTop;
+      outerScroller.scrollTop = event.key === "End"
+        ? outerScroller.scrollHeight
+        : Math.max(0, Math.min(outerScroller.scrollHeight - outerScroller.clientHeight, previousTop + delta));
+      if (outerScroller.scrollTop !== previousTop) event.preventDefault();
+    };
+    for (const region of tableRegions) {
+      region.addEventListener("wheel", onTableWheel, { passive: false });
+      region.addEventListener("keydown", onTableKeyDown);
+    }
+    return () => {
+      for (const region of tableRegions) {
+        region.removeEventListener("wheel", onTableWheel);
+        region.removeEventListener("keydown", onTableKeyDown);
+      }
+      if (dialog.open) {
+        dialog.close();
+      }
+    };
+  }, [isMicrophoneAnalysisDialogOpen]);
+
+  useLayoutEffect(() => {
+    if (!isMicrophoneDebugDialogOpen) {
+      return;
+    }
+    const dialog = microphoneDebugDialogRef.current;
+    if (!dialog) {
+      return;
+    }
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+    microphoneDebugDialogCloseRef.current?.focus();
+    return () => {
+      if (dialog.open) {
+        dialog.close();
+      }
+    };
+  }, [isMicrophoneDebugDialogOpen]);
 
   useEffect(() => {
     if (phase !== "running") {
@@ -1714,15 +2044,22 @@ export function PracticeView({
         if (focusLossStartedAt !== null) {
           return;
         }
-        focusLossStartedAt = Date.now();
+        const lostFocusAt = Date.now();
+        focusLossStartedAt = lostFocusAt;
+        const pauseDelayMs = practicePagePreferences.focusLossPauseSeconds * 1000;
+        if (pauseDelayMs === 0) {
+          focusLossStartedAt = null;
+          pauseForFocusLoss(new Date(lostFocusAt).toISOString());
+          return;
+        }
         pauseTimeout = window.setTimeout(() => {
           pauseTimeout = null;
           const lostFocusAt = focusLossStartedAt;
           focusLossStartedAt = null;
-          if (lostFocusAt !== null && Date.now() - lostFocusAt >= FOCUS_LOSS_PAUSE_DELAY_MS) {
+          if (lostFocusAt !== null && Date.now() - lostFocusAt >= pauseDelayMs) {
             pauseForFocusLoss(new Date(lostFocusAt).toISOString());
           }
-        }, FOCUS_LOSS_PAUSE_DELAY_MS);
+        }, pauseDelayMs);
         return;
       }
 
@@ -1735,7 +2072,7 @@ export function PracticeView({
         window.clearTimeout(pauseTimeout);
         pauseTimeout = null;
       }
-      if (Date.now() - lostFocusAt >= FOCUS_LOSS_PAUSE_DELAY_MS) {
+      if (Date.now() - lostFocusAt >= practicePagePreferences.focusLossPauseSeconds * 1000) {
         pauseForFocusLoss(new Date(lostFocusAt).toISOString());
       }
     }
@@ -1751,7 +2088,7 @@ export function PracticeView({
         window.clearTimeout(pauseTimeout);
       }
     };
-  }, [pauseForFocusLoss, phase]);
+  }, [pauseForFocusLoss, phase, practicePagePreferences.focusLossPauseSeconds]);
 
   useEffect(() => {
     if (phase !== "running") {
@@ -1813,24 +2150,11 @@ export function PracticeView({
   }, [phase, setupDisabled, startSession]);
 
   const remainingMs = mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
-  const mobileStaffPageRowHeightPx =
-    MOBILE_PRACTICE_PAGE_STAFF_LAYOUT.vertical.viewHeightPx +
-    MOBILE_PRACTICE_PAGE_STAFF_LAYOUT.multirow.rowGapPx;
-  const mobileStaffPageRowCount = Math.max(
-    1,
-    Math.min(
-      MOBILE_STAFF_PAGE_MAX_ROWS,
-      Math.floor((mobileStaffPageStageHeight - MOBILE_STAFF_PAGE_COUNTER_RESERVE_PX) / mobileStaffPageRowHeightPx),
-    ),
-  );
+  const mobileStaffPageRowCount = 1;
   const mobileStaffPageNoteCount = MOBILE_STAFF_PAGE_NOTE_COUNT * mobileStaffPageRowCount;
-  const staffPageRowCount = Math.max(
-    1,
-    Math.min(
-      PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows,
-      Math.ceil(staffPageNotes.length / PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow),
-    ),
-  );
+  const staffPageRowCount = 1;
+  const showPracticeKeyboard = answerPitchMode !== "microphone" &&
+    (!isMobileViewport || answerPitchMode === "note-name");
   const isMobileStaffPage = isMobileViewport && promptDisplayMode === "staff-page";
   const mobileStaffPageStartIndex =
     Math.floor(Math.max(0, staffPageIndex) / mobileStaffPageNoteCount) * mobileStaffPageNoteCount;
@@ -2319,14 +2643,20 @@ export function PracticeView({
         </div>
         <div className="topline-actions">
           {answerPitchMode !== "microphone" ? (
-            <button aria-keyshortcuts="Space" title="重播目标音 Space" onClick={() => void replayTarget()}>
+            <button title="重播目标音" onClick={() => void replayTarget()}>
               <Volume2 size={18} />
-              重播<kbd>空格</kbd>
+              重播
             </button>
           ) : null}
-          <button aria-keyshortcuts="P" title={isPaused ? "继续 P" : "暂停 P"} onClick={togglePause}>
+          <button
+            aria-keyshortcuts="Space"
+            title={answerPitchMode === "microphone"
+              ? isPaused ? "重新连接麦克风并继续 空格" : "暂停 空格"
+              : isPaused ? "继续 空格" : "暂停 空格"}
+            onClick={togglePause}
+          >
             {isPaused ? <Play size={18} /> : <Pause size={18} />}
-            {isPaused ? "继续" : "暂停"}<kbd>P</kbd>
+            {isPaused ? "继续" : "暂停"}<kbd>空格</kbd>
           </button>
           <button
             aria-keyshortcuts="Escape"
@@ -2340,26 +2670,155 @@ export function PracticeView({
       </div>
 
       {answerPitchMode === "microphone" ? (
-        <div className="practice-microphone-status" role="status">
+        <div className="practice-microphone-status">
           <span
             className={`practice-microphone-indicator ${practiceMicrophone.error ? "error" : practiceMicrophone.status}`}
             aria-hidden="true"
           />
-          <span>
+          <span role="status">
             {practiceMicrophone.status === "listening"
-              ? "正在监听麦克风"
+              ? `正在监听麦克风 · ${practiceMicrophoneAlgorithmLabel(practiceMicrophonePreferences.algorithm)}`
               : practiceMicrophone.status === "requesting"
-                ? "正在连接麦克风"
+                ? `正在连接麦克风并加载 ${practiceMicrophoneAlgorithmLabel(practiceMicrophonePreferences.algorithm)}`
                 : practiceMicrophone.error ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接")}
           </span>
-          {practiceMicrophone.detectedNote ? <strong>听到 {practiceMicrophone.detectedNote}</strong> : null}
-          <progress aria-label="麦克风输入电平" max={1} value={practiceMicrophone.inputLevel} />
+          {practiceMicrophonePreferences.debugMode && practiceMicrophone.detectedNote
+            ? <strong>听到 {practiceMicrophone.detectedNote}</strong>
+            : null}
+          {practiceMicrophonePreferences.debugMode ? (
+            <progress aria-label="麦克风输入电平" max={1} value={practiceMicrophone.inputLevel} />
+          ) : null}
+          {practiceMicrophonePreferences.debugMode ? (
+            <button
+              className="practice-microphone-debug-trigger"
+              disabled={practiceMicrophone.status === "requesting"}
+              title="查看诊断并调整详细识别参数"
+              type="button"
+              onClick={() => setIsMicrophoneDebugDialogOpen(true)}
+            >
+              <SlidersHorizontal size={15} />
+              调试设置
+            </button>
+          ) : null}
+          {practiceMicrophonePreferences.debugMode ? (
+          <div className="practice-microphone-capture">
+            <button
+              type="button"
+              disabled={!practiceMicrophone.isListening ||
+                (practiceMicrophone.captureAnalysisPending && !practiceMicrophone.captureRecording)}
+              onClick={() => {
+                if (practiceMicrophone.captureRecording) {
+                  void (async () => {
+                    const stopped = await practiceMicrophone.stopCapture();
+                    if (stopped.frameCount === 0) {
+                      const captureDiagnostics = [
+                        `算法 ${practiceMicrophoneAlgorithmLabel(practiceMicrophonePreferences.algorithm)}`,
+                        `采集循环 ${stopped.audioLoopFrameCount} 帧`,
+                        `输入 RMS ${stopped.inputRms.toFixed(6)}`,
+                        `音频上下文 ${stopped.audioContextState}`,
+                        `麦克风轨道 ${stopped.trackReadyState}${stopped.trackMuted === null
+                          ? ""
+                          : stopped.trackMuted ? "（静音）" : "（未静音）"}`,
+                      ].join("；");
+                      toast.error(stopped.error ? "麦克风采集失败" : "没有采集到音频", {
+                        description: `${stopped.error ?? "采集期间没有写入音频帧。"} ${captureDiagnostics}`,
+                      });
+                      return;
+                    }
+                    const analysis = practiceMicrophone.analyzeCapture(expectedMicrophoneSequence);
+                    if (!analysis) {
+                      toast.error("采样分析失败", {
+                        description: stopped.error ?? stopped.finalFrameIssue ?? "采样暂时无法分析，请重新采集后再试。",
+                      });
+                      return;
+                    }
+                    setExpandedCandidateSegmentKey(null);
+                    setMicrophoneCaptureNotice(stopped.error || stopped.finalFrameIssue
+                      ? `采样已保留；${stopped.error ?? stopped.finalFrameIssue}。以下分析基于已采集的数据。`
+                      : null);
+                    setMicrophoneCaptureAnalysis(analysis);
+                    setIsMicrophoneAnalysisDialogOpen(true);
+                  })();
+                } else {
+                  setMicrophoneCaptureAnalysis(null);
+                  setMicrophoneCaptureNotice(null);
+                  setExpandedCandidateSegmentKey(null);
+                  setIsMicrophoneAnalysisDialogOpen(false);
+                  practiceMicrophone.startCapture();
+                }
+              }}
+            >
+              {practiceMicrophone.captureRecording ? <Square fill="currentColor" size={13} /> : <Play size={14} />}
+              {practiceMicrophone.captureRecording ? "结束采集" : practiceMicrophone.captureFrameCount > 0 ? "重新采集" : "开始采集"}
+            </button>
+            <button
+              className="primary practice-microphone-analysis-trigger"
+              type="button"
+              disabled={practiceMicrophone.captureFrameCount === 0 || practiceMicrophone.captureRecording ||
+                practiceMicrophone.captureAnalysisPending ||
+                expectedMicrophoneSequence === null}
+              onClick={() => {
+                if (microphoneCaptureAnalysis) {
+                  setIsMicrophoneAnalysisDialogOpen(true);
+                  return;
+                }
+                const analysis = practiceMicrophone.analyzeCapture(expectedMicrophoneSequence);
+                if (analysis) {
+                  setMicrophoneCaptureNotice(null);
+                  setExpandedCandidateSegmentKey(null);
+                  setMicrophoneCaptureAnalysis(analysis);
+                  setIsMicrophoneAnalysisDialogOpen(true);
+                }
+              }}
+            >
+              <BarChart3 size={14} />
+              {microphoneCaptureAnalysis ? "查看分析" : "分析采样"}
+            </button>
+              <button
+                type="button"
+                disabled={practiceMicrophone.captureFrameCount === 0 || practiceMicrophone.captureRecording ||
+                  practiceMicrophone.captureAnalysisPending}
+              onClick={() => void practiceMicrophone.saveRecentCapture(microphoneCaptureAnalysis ?? undefined)}
+            >
+              <Download size={14} />
+              分享采样和分析
+            </button>
+            {practiceMicrophone.captureRecording || practiceMicrophone.captureFrameCount > 0 ? (
+              <span>
+                {practiceMicrophone.captureRecording
+                  ? `正在采集 ${Math.ceil(practiceMicrophone.captureDurationMs / 1000)} 秒 · ${microphoneConfiguration.analysisGain}× · 最长 30 秒`
+                  : `已采集 ${Math.ceil(practiceMicrophone.captureDurationMs / 1000)} 秒 · ${microphoneConfiguration.analysisGain}× · ${practiceMicrophone.captureFrameCount} 帧`}
+              </span>
+            ) : null}
+            <div className="practice-microphone-capture-guidance">
+              <p>
+                <strong>当前详细配置：</strong>
+                {practiceMicrophoneAlgorithmLabel(microphoneConfiguration.algorithm)} · {microphoneConfiguration.debugMode
+                  ? "调试参数"
+                  : practiceMicrophoneSensitivityLevelLabel(microphoneConfiguration.sensitivityLevel)} ·
+                {" "}{microphoneConfiguration.analysisGain}× · {microphoneConfiguration.requiredStableFrames} 帧 /
+                {" "}{microphoneConfiguration.requiredStableMs} ms · 分析间隔 {microphoneAnalysisIntervalMs} ms ·
+                {" "}置信度 {microphoneConfiguration.confidenceThreshold.toFixed(3)} ·
+                {" "}RMS {microphoneConfiguration.inputRmsThreshold.toFixed(5)}
+              </p>
+              <div className="practice-microphone-diagnostic-flow">
+                <strong>诊断流程：</strong>
+                <ol>
+                  <li>点击“开始采集”按钮。</li>
+                  <li>依次从左往右弹奏中央 C 的七个白键（可快可慢，可轻可重）。</li>
+                  <li>点击“分析采样”，查看识别结果是否符合预期。</li>
+                  <li>结果不符合预期时，点击“分享采样和分析”，把数据发给 AI 分析问题。</li>
+                </ol>
+              </div>
+            </div>
+            {practiceMicrophone.captureStatus ? <span role="status">{practiceMicrophone.captureStatus}</span> : null}
+          </div>
+          ) : null}
         </div>
       ) : null}
 
       <div
         className={promptDisplayMode === "staff-page" ? "prompt-stage staff-page-stage" : "prompt-stage"}
-        ref={isMobileStaffPage ? mobileStaffPageStageRef : undefined}
       >
         {promptDisplayMode === "staff-page" ? (
           <div className={isMobileStaffPage ? "staff-page-mobile-view" : undefined}>
@@ -2402,7 +2861,7 @@ export function PracticeView({
         ) : null}
       </div>
 
-      {!isMobileViewport || answerPitchMode === "note-name" ? (
+      {showPracticeKeyboard ? (
         <PianoKeyboard
           ariaLabel="答案琴键"
           className="practice-piano-keyboard"
@@ -2455,10 +2914,10 @@ export function PracticeView({
                   : practiceMicrophone.error
                     ? isMobileViewport
                       ? `麦克风重连失败：${practiceMicrophone.error} 点击空白处重试`
-                      : `麦克风重连失败：${practiceMicrophone.error} 点击空白处或按 P 重试；按 Esc 退出练习`
+                      : `麦克风重连失败：${practiceMicrophone.error} 点击空白处或按空格重试；按 Esc 退出练习`
                     : isMobileViewport
                       ? "暂停期间麦克风已释放；点击空白处重新连接"
-                      : "暂停期间麦克风已释放；点击空白处或按 P 重新连接"
+                      : "暂停期间麦克风已释放；点击空白处或按空格重新连接"
               : undefined
           }
           onToggleRemainingPlayback={toggleRemainingPlayback}
@@ -2466,6 +2925,751 @@ export function PracticeView({
           showKeyboardShortcuts={!isMobileViewport}
           showRemainingPlayback={promptDisplayMode === "staff-page" && answerPitchMode !== "microphone"}
         />
+      ) : null}
+      {isMicrophoneDebugDialogOpen && practiceMicrophonePreferences.debugMode ? (
+        <dialog
+          aria-labelledby="practice-microphone-debug-title"
+          className="practice-microphone-debug-dialog"
+          onClickCapture={(event) => {
+            const clickTarget = event.target;
+            if (!(clickTarget instanceof Element)) return;
+            const clickedHelp = clickTarget.closest(".debug-parameter-help");
+            microphoneDebugDialogRef.current
+              ?.querySelectorAll<HTMLDetailsElement>("details.debug-parameter-help[open]")
+              .forEach((openHelp) => {
+                if (openHelp !== clickedHelp && !openHelp.contains(clickTarget)) {
+                  openHelp.open = false;
+                }
+              });
+          }}
+          onCancel={(event) => {
+            event.preventDefault();
+            setIsMicrophoneDebugDialogOpen(false);
+          }}
+          onClick={(event) => {
+            if (event.currentTarget === event.target) {
+              setIsMicrophoneDebugDialogOpen(false);
+            }
+          }}
+          ref={microphoneDebugDialogRef}
+        >
+          <div className="practice-microphone-analysis-dialog-header">
+            <div>
+              <h2 id="practice-microphone-debug-title">麦克风调试</h2>
+              {microphoneDebugFeedback ? (
+                <div aria-live="polite" className="practice-microphone-feedback-banner is-success" role="status">
+                  {microphoneDebugFeedback}
+                </div>
+              ) : null}
+            </div>
+            <button
+              aria-label="关闭麦克风调试"
+              className="practice-microphone-analysis-dialog-close"
+              onClick={() => setIsMicrophoneDebugDialogOpen(false)}
+              ref={microphoneDebugDialogCloseRef}
+              title="关闭"
+              type="button"
+            >
+              <X aria-hidden="true" size={18} />
+            </button>
+          </div>
+          <div className="practice-microphone-debug-dialog-body">
+            <fieldset
+              className="practice-microphone-debug-fields"
+                disabled={practiceMicrophone.captureRecording}
+            >
+              <legend>详细参数（调试专用）</legend>
+              <label>
+                <span className="debug-parameter-label">识别算法
+                  <DebugParameterHelp
+                    label="识别算法"
+                    description="选择从麦克风声音估算音高的算法。不同算法对设备、琴声和环境的表现可能不同。"
+                    recommendation="先使用设置页当前选择的算法；手机和平板不推荐 Pitchy。"
+                  />
+                </span>
+                <select
+                  aria-label="麦克风调试识别算法"
+                  disabled={isLoadingMicrophoneAlgorithm || practiceMicrophone.status === "listening" ||
+                    practiceMicrophone.status === "requesting"}
+                  value={practiceMicrophonePreferences.algorithm}
+                  onChange={(event) => void selectMicrophoneAlgorithm(event.target.value as PracticeMicrophoneAlgorithm)}
+                >
+                  <option value="mpm-c">{practiceMicrophoneAlgorithmLabel("mpm-c")}</option>
+                  <option value="swiftf0">{practiceMicrophoneAlgorithmLabel("swiftf0")}</option>
+                  <option value="yin">{practiceMicrophoneAlgorithmLabel("yin")}</option>
+                </select>
+                {practiceMicrophone.status === "listening" || practiceMicrophone.status === "requesting"
+                  ? <small>请先暂停练习并释放麦克风，再切换算法或恢复默认配置。</small>
+                  : null}
+              </label>
+              <label>
+                <span className="debug-parameter-label">输入放大
+                  <DebugParameterHelp label="输入放大" description="在软件分析前放大麦克风信号；琴声和环境噪声都会一起变大。" recommendation="1×。只有调试采样较弱时再尝试提高。" />
+                </span>
+                <select
+                  value={practiceMicrophonePreferences.debugParameters.analysisGain}
+                  onChange={(event) => updateMicrophoneDebugParameters({
+                    analysisGain: Number(event.target.value) as PracticeMicrophoneDebugParameters["analysisGain"],
+                  })}
+                >
+                  {PRACTICE_MICROPHONE_ANALYSIS_GAINS.map((gain) => (
+                    <option key={gain} value={gain}>{gain}×</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="debug-parameter-label">识别分析间隔
+                  <DebugParameterHelp label="识别分析间隔" description="两次音高分析之间的时间。间隔越短，反应可能更快，但设备计算量更大。" recommendation="自动；MPM-C/SwiftF0 为 30 ms，YIN 为 50 ms。" />
+                </span>
+                <select
+                  value={practiceMicrophonePreferences.debugParameters.frameIntervalMs}
+                  onChange={(event) => updateMicrophoneDebugParameters({
+                    frameIntervalMs: event.target.value === "auto"
+                      ? "auto"
+                      : Number(event.target.value) as PracticeMicrophoneDebugParameters["frameIntervalMs"],
+                  })}
+                >
+                  <option value="auto">自动</option>
+                  {PRACTICE_MICROPHONE_FRAME_INTERVALS.map((interval) => (
+                    <option key={interval} value={interval}>{interval} ms</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="debug-parameter-label">连续稳定帧数
+                  <DebugParameterHelp label="连续稳定帧数" description="候选音高需要连续出现多少次才作为一次答题。要求更多帧可减少短暂误识别，也会增加延迟。" recommendation="默认 4 帧；1 级敏感档使用 2 帧。" />
+                </span>
+                <select
+                  value={practiceMicrophonePreferences.debugParameters.requiredStableFrames}
+                  onChange={(event) => updateMicrophoneDebugParameters({
+                    requiredStableFrames: Number(event.target.value) as PracticeMicrophoneDebugParameters["requiredStableFrames"],
+                  })}
+                >
+                  {PRACTICE_MICROPHONE_STABLE_FRAME_COUNTS.map((count) => (
+                    <option key={count} value={count}>{count} 帧</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="debug-parameter-label">最短稳定时长
+                  <DebugParameterHelp label="最短稳定时长" description="候选音高至少持续多久才确认。时间越短，短音更容易识别，但误触发风险会增加。" recommendation="默认 80 ms；1 级敏感档使用 50 ms。" />
+                </span>
+                <select
+                  value={practiceMicrophonePreferences.debugParameters.requiredStableMs}
+                  onChange={(event) => updateMicrophoneDebugParameters({
+                    requiredStableMs: Number(event.target.value) as PracticeMicrophoneDebugParameters["requiredStableMs"],
+                  })}
+                >
+                  {PRACTICE_MICROPHONE_STABLE_DURATIONS.map((duration) => (
+                    <option key={duration} value={duration}>{duration} ms</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="debug-parameter-label">置信度门槛
+                  <DebugParameterHelp label="置信度门槛" description="音高算法对候选结果的把握程度要求；提高门槛会更谨慎，也更容易漏掉弱音。" recommendation="标准档为 0.75（SwiftF0 为 0.60）；实际值随算法和敏感度档位变化。" />
+                </span>
+                <input
+                  max={1}
+                  min={0}
+                  onChange={(event) => {
+                    if (event.target.value !== "") {
+                      updateMicrophoneDebugParameters({ confidenceThreshold: Number(event.target.value) });
+                    }
+                  }}
+                  step={0.001}
+                  type="number"
+                  value={practiceMicrophonePreferences.debugParameters.confidenceThreshold}
+                />
+              </label>
+              <label>
+                <span className="debug-parameter-label">输入 RMS 门槛
+                  <DebugParameterHelp label="输入 RMS 门槛" description="声音强度下限。低于此值的帧不参与答题；调低能接收更轻的声音，也可能接收更多噪声。" recommendation="标准档为 0.0018，1 级敏感档为 0.0009。" />
+                </span>
+                <input
+                  max={0.01}
+                  min={0}
+                  onChange={(event) => {
+                    if (event.target.value !== "") {
+                      updateMicrophoneDebugParameters({ inputRmsThreshold: Number(event.target.value) });
+                    }
+                  }}
+                  step={0.00001}
+                  type="number"
+                  value={practiceMicrophonePreferences.debugParameters.inputRmsThreshold}
+                />
+              </label>
+              {microphoneConfiguration.algorithm === "mpm-c" ? (
+                <label>
+                  <span className="debug-parameter-label">主候选清晰度门槛
+                    <DebugParameterHelp label="主候选清晰度门槛" description="Pitchy 主候选相对其他音高候选需要有多清晰；提高门槛会减少模糊候选，也可能漏掉弱音。" recommendation="0.80。" />
+                  </span>
+                  <input
+                    max={1}
+                    min={0}
+                    onChange={(event) => {
+                      if (event.target.value !== "") {
+                        updateMicrophoneDebugParameters({ primaryClarityThreshold: Number(event.target.value) });
+                      }
+                    }}
+                    step={0.001}
+                    type="number"
+                    value={practiceMicrophonePreferences.debugParameters.primaryClarityThreshold}
+                  />
+                </label>
+              ) : null}
+              {microphoneConfiguration.algorithm === "yin" ? (
+                <label>
+                  <span className="debug-parameter-label">YIN 阈值
+                    <DebugParameterHelp label="YIN 阈值" description="YIN 用波形周期寻找基频。阈值决定接受周期候选的宽松程度；值越高越容易接受候选，值越低越严格。" recommendation="标准档为 0.15；1 级敏感档为 0.25，5 级不敏感档为 0.10。" />
+                  </span>
+                  <input
+                    max={1}
+                    min={0.01}
+                    onChange={(event) => {
+                      if (event.target.value !== "") {
+                        updateMicrophoneDebugParameters({ yinThreshold: Number(event.target.value) });
+                      }
+                    }}
+                    step={0.001}
+                    type="number"
+                    value={practiceMicrophonePreferences.debugParameters.yinThreshold}
+                  />
+                </label>
+              ) : null}
+            </fieldset>
+            {isLoadingMicrophoneAlgorithm ? <span role="status">正在加载 SwiftF0 算法资源…</span> : null}
+            {microphoneAlgorithmError ? <span role="alert">{microphoneAlgorithmError}</span> : null}
+            <div aria-live="polite" className="practice-microphone-diagnostics-values">
+              {practiceMicrophone.diagnostics ? (
+                <>
+                  <span>
+                    Web Audio：{practiceMicrophone.diagnostics.audioContextState}
+                    {" · "}{practiceMicrophone.diagnostics.audioContextSampleRate} Hz
+                    {practiceMicrophone.diagnostics.trackSampleRate === null
+                      ? " · 音轨未报告"
+                      : ` · 音轨 ${practiceMicrophone.diagnostics.trackSampleRate} Hz`}
+                  </span>
+                  <span>
+                    浏览器报告：{practiceMicrophone.diagnostics.channelCount ?? "声道未报告"} 声道
+                    {" · AGC "}{practiceMicrophone.diagnostics.autoGainControl === null
+                      ? "未报告"
+                      : practiceMicrophone.diagnostics.autoGainControl ? "开" : "关"}
+                    {" · 回声消除 "}{practiceMicrophone.diagnostics.echoCancellation === null
+                      ? "未报告"
+                      : practiceMicrophone.diagnostics.echoCancellation ? "开" : "关"}
+                    {" · 降噪 "}{practiceMicrophone.diagnostics.noiseSuppression === null
+                      ? "未报告"
+                      : practiceMicrophone.diagnostics.noiseSuppression ? "开" : "关"}
+                  </span>
+                  <span>
+                    原始 RMS：{practiceMicrophone.diagnostics.inputRms.toFixed(5)}
+                    {microphoneConfiguration.analysisGain > 1
+                      ? ` · 算法 RMS ${practiceMicrophone.diagnostics.analysisRms.toFixed(5)} (${microphoneConfiguration.analysisGain}×)`
+                      : ""}
+                    {" · 门槛 "}{practiceMicrophone.diagnostics.inputRmsThreshold.toFixed(5)}
+                  </span>
+                  <span>
+                    算法候选：{practiceMicrophone.diagnostics.candidateNote ?? "无标准音名"}
+                    {practiceMicrophone.diagnostics.candidateFrequencyHz === null
+                      ? ""
+                      : ` (${practiceMicrophone.diagnostics.candidateFrequencyHz.toFixed(1)} Hz)`}
+                    {" · 置信度 "}{practiceMicrophone.diagnostics.candidateConfidence === null
+                      ? "--"
+                      : practiceMicrophone.diagnostics.candidateConfidence.toFixed(3)}
+                    {` / ${practiceMicrophone.diagnostics.confidenceThreshold.toFixed(2)}`}
+                  </span>
+                  <strong>{practiceMicrophone.diagnostics.outcome}</strong>
+                </>
+              ) : (
+                <span>连接麦克风后显示实时诊断。</span>
+              )}
+            </div>
+            {practiceMicrophone.captureStatus ? <p role="status">{practiceMicrophone.captureStatus}</p> : null}
+            <div className="practice-microphone-debug-actions">
+              <button
+                disabled={practiceMicrophone.captureRecording || isLoadingMicrophoneAlgorithm ||
+                  practiceMicrophone.status === "listening" || practiceMicrophone.status === "requesting"}
+                onClick={restoreMicrophoneDebugDefaults}
+                type="button"
+              >
+                <RotateCcw size={14} />
+                恢复默认配置
+              </button>
+              <button
+                className="practice-microphone-copy-summary"
+                disabled={practiceMicrophone.status !== "listening"}
+                onClick={() => void practiceMicrophone.copyDiagnosticSummary(microphoneCaptureAnalysis ?? undefined)}
+                type="button"
+              >
+                <Copy size={14} />
+                复制诊断摘要
+              </button>
+            </div>
+          </div>
+        </dialog>
+      ) : null}
+      {isMicrophoneAnalysisDialogOpen && practiceMicrophonePreferences.debugMode && microphoneCaptureAnalysis ? (
+        <dialog
+          aria-labelledby="practice-microphone-analysis-title"
+          className="practice-microphone-analysis-dialog"
+          onCancel={(event) => {
+            event.preventDefault();
+            setIsMicrophoneAnalysisDialogOpen(false);
+          }}
+          onClick={(event) => {
+            if (event.currentTarget === event.target) {
+              setIsMicrophoneAnalysisDialogOpen(false);
+            }
+          }}
+          ref={microphoneAnalysisDialogRef}
+        >
+          <div className="practice-microphone-analysis-dialog-header">
+            <div>
+              <h2 id="practice-microphone-analysis-title">采样分析结果</h2>
+              <span>逐音列出稳定识别结果，并统计错音、漏音和多报。</span>
+              {microphoneCaptureNotice ? (
+                <div aria-live="polite" className="practice-microphone-feedback-banner" role="status">
+                  {microphoneCaptureNotice}
+                </div>
+              ) : null}
+            </div>
+            <button
+              aria-label="关闭采样分析"
+              className="practice-microphone-analysis-dialog-close"
+              onClick={() => setIsMicrophoneAnalysisDialogOpen(false)}
+              ref={microphoneAnalysisDialogCloseRef}
+              title="关闭"
+              type="button"
+            >
+              <X aria-hidden="true" size={18} />
+            </button>
+          </div>
+          <div className="practice-microphone-analysis-dialog-body">
+            <div className="practice-microphone-analysis-result">
+              <section className="practice-microphone-analysis-conclusion">
+                <h3>结论</h3>
+                <p className={microphoneCaptureAnalysis.counts.extra || microphoneCaptureAnalysis.counts.wrong ||
+                  microphoneCaptureAnalysis.counts.missed ? "is-attention" : "is-clear"}>
+                  {microphoneCaptureAnalysis.counts.expected === null
+                    ? `检测到 ${microphoneCaptureAnalysis.counts.detected} 个稳定音符，未与预期音序比较。`
+                    : `预期 ${microphoneCaptureAnalysis.counts.expected} 音，识别 ${microphoneCaptureAnalysis.counts.detected} 音；` +
+                      `正确 ${microphoneCaptureAnalysis.counts.correct}，错音 ${microphoneCaptureAnalysis.counts.wrong}，` +
+                      `漏音 ${microphoneCaptureAnalysis.counts.missed}，多报 ${microphoneCaptureAnalysis.counts.extra}。` +
+                      (microphoneCaptureAnalysis.counts.extra
+                        ? `多报 ${microphoneCaptureAnalysis.counts.extra} 音可能造成额外误答。`
+                        : "")}
+                </p>
+                {microphoneCaptureAnalysis.missedNotes.length > 0 ? (
+                  <p className="practice-microphone-missed-notes">
+                    漏音位置：{microphoneCaptureAnalysis.missedNotes.map((item) =>
+                      `第 ${item.sequenceIndex + 1} 个白键 ${formatMidiNote(item.midiNoteNumber)}`
+                    ).join("、")}。
+                  </p>
+                ) : null}
+                <div className="practice-microphone-analysis-counts">
+                  <span>
+                    配置 {microphoneCaptureAnalysis.parameters.frameIntervalSelection === "auto"
+                      ? "自动"
+                      : `${microphoneCaptureAnalysis.parameters.frameIntervalSelection} ms`}
+                    {" · 实测帧间隔 "}{microphoneCaptureAnalysis.medianFrameIntervalMs === null
+                      ? "--"
+                      : `${microphoneCaptureAnalysis.medianFrameIntervalMs.toFixed(0)} ms`}
+                  </span>
+                  <span>
+                    稳定条件 {microphoneCaptureAnalysis.parameters.requiredStableFrames} 帧 /
+                    {microphoneCaptureAnalysis.parameters.requiredStableMs} ms
+                  </span>
+                  <span>
+                    {practiceMicrophoneAlgorithmLabel(microphoneCaptureAnalysis.parameters.algorithm)} ·
+                    {microphoneCaptureAnalysis.parameters.debugMode
+                      ? "调试参数"
+                      : practiceMicrophoneSensitivityLevelLabel(microphoneCaptureAnalysis.parameters.sensitivityLevel)} ·
+                    {microphoneCaptureAnalysis.parameters.analysisGain}× · RMS ≥
+                    {microphoneCaptureAnalysis.parameters.inputRmsThreshold.toFixed(6)} · 置信度 ≥
+                    {microphoneCaptureAnalysis.parameters.confidenceThreshold.toFixed(3)}
+                    {microphoneCaptureAnalysis.parameters.algorithm === "mpm-c"
+                      ? ` · 相邻音衔接 ≥${PRACTICE_NOTE_CONTINUITY_CONFIDENCE.toFixed(3)}（±2 半音、500 ms）`
+                      : ""}
+                    {microphoneCaptureAnalysis.parameters.algorithm === "mpm-c"
+                      ? ` · 清晰度 ≥${microphoneCaptureAnalysis.parameters.primaryClarityThreshold.toFixed(3)}`
+                      : ""}
+                    {microphoneCaptureAnalysis.parameters.algorithm === "yin"
+                      ? ` · YIN 阈值 ${microphoneCaptureAnalysis.parameters.yinThreshold.toFixed(3)}`
+                      : ""}
+                  </span>
+                </div>
+              </section>
+
+              <section className="practice-microphone-analysis-section">
+                <div className="practice-microphone-analysis-section-heading">
+                  <h3>稳定识别结果</h3>
+                  <span aria-label={`稳定识别 ${microphoneCaptureAnalysis.counts.detected} / ${microphoneCaptureAnalysis.expectedSequence?.length ?? 7}`}>
+                    {microphoneCaptureAnalysis.counts.detected}/{microphoneCaptureAnalysis.expectedSequence?.length ?? 7}
+                  </span>
+                </div>
+                {microphoneCaptureAnalysis.expectedSequence !== null || microphoneCaptureAnalysis.events.length > 0 ? (
+                  <ResponsiveDataTable
+                    ariaLabel="稳定识别结果表格"
+                    className="practice-microphone-analysis-table"
+                    columns={[
+                      {
+                        header: "#",
+                        id: "row-number",
+                        renderCell: (row) => row.rowNumber,
+                        width: "44px",
+                      },
+                      {
+                        header: "音符",
+                        id: "note",
+                        renderCell: (row) => row.event?.note ?? formatMidiNote(row.expectedMidiNoteNumber),
+                        rowHeader: true,
+                        width: "90px",
+                      },
+                      {
+                        header: "判定",
+                        id: "classification",
+                        renderCell: (row) => {
+                          const event = row.event;
+                          if (!event) return "缺失";
+                          if (event.classification === "correct") return "正确";
+                          if (event.classification === "wrong") {
+                            return `错音 · 预期 ${formatMidiNote(event.expectedMidiNoteNumber ?? 0)}`;
+                          }
+                          return event.classification === "extra" ? "多报" : "未对照";
+                        },
+                        width: "140px",
+                      },
+                      {
+                        header: "时间 / 间隔",
+                        id: "time",
+                        renderCell: (row) => row.event
+                          ? <>{(row.event.offsetMs / 1000).toFixed(2)} 秒
+                            {row.event.intervalFromPreviousMs === null
+                              ? " · 首音"
+                              : ` · 间隔 ${(row.event.intervalFromPreviousMs / 1000).toFixed(2)} 秒`}</>
+                          : "-",
+                        width: "200px",
+                      },
+                      {
+                        header: "置信度",
+                        id: "confidence",
+                        renderCell: (row) => row.event?.confidence.toFixed(3) ?? "-",
+                        width: "90px",
+                      },
+                      {
+                        header: "原始 RMS",
+                        id: "input-rms",
+                        renderCell: (row) => row.event?.rms.toFixed(6) ?? "-",
+                        width: "110px",
+                      },
+                      {
+                        header: "处理后 RMS",
+                        id: "analysis-rms",
+                        renderCell: (row) => row.event?.analysisRms.toFixed(6) ?? "-",
+                        width: "110px",
+                      },
+                      {
+                        header: "原始峰值",
+                        id: "input-peak",
+                        renderCell: (row) => row.event?.peak.toFixed(6) ?? "-",
+                        width: "110px",
+                      },
+                      {
+                        header: "处理后峰值",
+                        id: "analysis-peak",
+                        renderCell: (row) => row.event?.analysisPeak.toFixed(6) ?? "-",
+                        width: "110px",
+                      },
+                      {
+                        header: "频率",
+                        id: "frequency",
+                        renderCell: (row) => row.event ? `${row.event.frequencyHz.toFixed(1)} Hz` : "-",
+                        width: "100px",
+                      },
+                    ] satisfies readonly ResponsiveDataTableColumn<StableResultDisplayRow>[]}
+                    getRowKey={(row, index) => row.event
+                      ? `${row.event.offsetMs}-${index}`
+                      : `missing-${row.expectedMidiNoteNumber}-${index}`}
+                    minWidth="1120px"
+                    rows={buildStableResultDisplayRows(microphoneCaptureAnalysis)}
+                    rowClassName={(row) => row.isMissing
+                      ? "is-missed-note"
+                      : row.event ? `is-${row.event.classification}` : undefined}
+                    tableLayout="fixed"
+                    viewportClassName="practice-microphone-analysis-table-scroll"
+                  />
+                ) : (
+                  <p className="practice-microphone-analysis-empty">没有形成稳定识别事件。</p>
+                )}
+              </section>
+
+              <section className="practice-microphone-analysis-section">
+                <h3>
+                  未触发答题的候选片段 · {microphoneCaptureAnalysis.candidateSegments.filter((segment) =>
+                    segment.stableEventCount === 0
+                  ).length}
+                </h3>
+                {microphoneCaptureAnalysis.candidateSegments.some((segment) => segment.stableEventCount === 0) ? (
+                  <ResponsiveDataTable
+                    ariaLabel="未触发答题的候选片段表格"
+                    className="practice-microphone-analysis-table practice-microphone-candidate-table"
+                    columns={[
+                      {
+                        header: "音符",
+                        id: "note",
+                        minWidth: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.note,
+                        renderCell: (segment) => segment.note,
+                        rowHeader: true,
+                        width: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.note,
+                      },
+                      {
+                        getCellClassName: (segment) => {
+                          const displayInfo = getCandidateSegmentDisplayInfo(segment, microphoneCaptureAnalysis);
+                          return displayInfo.isMissedNote && displayInfo.isDurationBelowThreshold
+                            ? "is-below-threshold"
+                            : undefined;
+                        },
+                        header: "时间范围 / 连续时长门槛",
+                        id: "time",
+                        minWidth: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.time,
+                        renderCell: (segment) => {
+                          const { durationMs } = getCandidateSegmentDisplayInfo(segment, microphoneCaptureAnalysis);
+                          return (
+                            <>
+                              {(segment.startOffsetMs / 1000).toFixed(2)}–{(segment.endOffsetMs / 1000).toFixed(2)} 秒
+                              <span className="practice-microphone-threshold-comparison">
+                                连续有效 {durationMs}/{microphoneCaptureAnalysis.parameters.requiredStableMs} ms
+                              </span>
+                            </>
+                          );
+                        },
+                        width: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.time,
+                      },
+                      {
+                        header: "状态",
+                        id: "status",
+                        minWidth: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.status,
+                        renderCell: (segment) => segment.stableThresholdMet ? "达到门槛，未触发" : "未达到门槛",
+                        width: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.status,
+                      },
+                      {
+                        getCellClassName: (segment) => {
+                          const displayInfo = getCandidateSegmentDisplayInfo(segment, microphoneCaptureAnalysis);
+                          return displayInfo.isMissedNote && segment.lowConfidenceFrameCount > 0
+                            ? "is-below-threshold"
+                            : undefined;
+                        },
+                        header: "置信度 均值 / 峰值",
+                        id: "confidence",
+                        minWidth: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.confidence,
+                        renderCell: (segment) => {
+                          const threshold = microphoneCaptureAnalysis.parameters.confidenceThreshold;
+                          return (
+                            <>
+                              <span className="practice-microphone-threshold-comparison">
+                                均值 {segment.confidenceAverage === null ? "--" : segment.confidenceAverage.toFixed(3)} / {threshold.toFixed(3)}
+                              </span>
+                              <span className="practice-microphone-threshold-comparison">
+                                峰值 {segment.confidenceMaximum === null ? "--" : segment.confidenceMaximum.toFixed(3)} / {threshold.toFixed(3)}
+                              </span>
+                            </>
+                          );
+                        },
+                        width: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.confidence,
+                      },
+                      {
+                        header: "原始 RMS（参考）均值 / 峰值",
+                        id: "input-rms",
+                        minWidth: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.inputRms,
+                        renderCell: (segment) => (
+                          <>
+                            <span className="practice-microphone-threshold-comparison">均值 {segment.inputRmsAverage.toFixed(6)}</span>
+                            <span className="practice-microphone-threshold-comparison">峰值 {segment.inputRmsMaximum.toFixed(6)}</span>
+                          </>
+                        ),
+                        width: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.inputRms,
+                      },
+                      {
+                        getCellClassName: (segment) => {
+                          const displayInfo = getCandidateSegmentDisplayInfo(segment, microphoneCaptureAnalysis);
+                          return displayInfo.isMissedNote && segment.lowRmsFrameCount > 0
+                            ? "is-below-threshold"
+                            : undefined;
+                        },
+                        header: "处理后 RMS 均值 / 峰值",
+                        id: "analysis-rms",
+                        minWidth: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.analysisRms,
+                        renderCell: (segment) => {
+                          const threshold = microphoneCaptureAnalysis.parameters.inputRmsThreshold;
+                          return (
+                            <>
+                              <span className="practice-microphone-threshold-comparison">
+                                均值 {segment.analysisRmsAverage.toFixed(6)} / {threshold.toFixed(6)}
+                              </span>
+                              <span className="practice-microphone-threshold-comparison">
+                                峰值 {segment.analysisRmsMaximum.toFixed(6)} / {threshold.toFixed(6)}
+                              </span>
+                            </>
+                          );
+                        },
+                        width: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.analysisRms,
+                      },
+                      {
+                        getCellClassName: (segment) => {
+                          const displayInfo = getCandidateSegmentDisplayInfo(segment, microphoneCaptureAnalysis);
+                          return displayInfo.isMissedNote && displayInfo.isFrameCountBelowThreshold
+                            ? "is-below-threshold"
+                            : undefined;
+                        },
+                        header: "连续有效帧 / 门槛",
+                        id: "eligible-frames",
+                        minWidth: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.eligibleFrames,
+                        renderCell: (segment) => `${segment.maxConsecutiveEligibleFrameCount}/${microphoneCaptureAnalysis.parameters.requiredStableFrames}`,
+                        width: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.eligibleFrames,
+                      },
+                      {
+                        header: "门槛说明",
+                        id: "gate-reasons",
+                        maxWidth: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.gateReasons,
+                        minWidth: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.gateReasons,
+                        renderCell: (segment) => {
+                          const { failureReasons } = getCandidateSegmentDisplayInfo(segment, microphoneCaptureAnalysis);
+                          return failureReasons.length > 0 ? (
+                            <ul className="practice-microphone-gate-reasons">
+                              {failureReasons.map((reason) => <li key={reason}>{reason}</li>)}
+                            </ul>
+                          ) : "稳定门槛已满足";
+                        },
+                        width: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.gateReasons,
+                      },
+                      {
+                        header: "逐帧数据",
+                        id: "frames",
+                        minWidth: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.frames,
+                        renderCell: (segment, index) => {
+                          const segmentKey = `${segment.startOffsetMs}-${index}`;
+                          const isExpanded = expandedCandidateSegmentKey === segmentKey;
+                          return (
+                            <button
+                              aria-controls={`microphone-candidate-frames-${segment.startOffsetMs}-${index}`}
+                              aria-expanded={isExpanded}
+                              className="practice-microphone-frame-toggle"
+                              onClick={() => setExpandedCandidateSegmentKey((current) =>
+                                current === segmentKey ? null : segmentKey)}
+                              type="button"
+                            >
+                              {isExpanded ? "收起" : `查看 ${segment.frames.length} 帧`}
+                            </button>
+                          );
+                        },
+                        width: MICROPHONE_CANDIDATE_COLUMN_WIDTHS.frames,
+                      },
+                    ] satisfies readonly ResponsiveDataTableColumn<PracticeMicrophoneCandidateSegment>[]}
+                    getRowKey={(segment, index) => `${segment.startOffsetMs}-${index}`}
+                    minWidth={MICROPHONE_CANDIDATE_TABLE_MIN_WIDTH}
+                    rows={sortCandidateSegmentsMissedFirst(
+                      microphoneCaptureAnalysis.candidateSegments.filter((segment) => segment.stableEventCount === 0),
+                      microphoneCaptureAnalysis,
+                    )}
+                    renderRowDetails={(segment, index) => {
+                      const segmentKey = `${segment.startOffsetMs}-${index}`;
+                      if (expandedCandidateSegmentKey !== segmentKey) return null;
+                      const detailsId = `microphone-candidate-frames-${segment.startOffsetMs}-${index}`;
+                      return (
+                        <ResponsiveDataTable
+                          ariaLabel="候选音符逐帧数据"
+                          className="practice-microphone-analysis-table practice-microphone-frame-table"
+                          columns={[
+                            {
+                              header: "时间",
+                              id: "time",
+                              renderCell: (frame) => `${(frame.offsetMs / 1000).toFixed(3)} 秒`,
+                              width: "100px",
+                            },
+                            {
+                              header: "频率",
+                              id: "frequency",
+                              renderCell: (frame) => frame.frequencyHz === null ? "--" : `${frame.frequencyHz.toFixed(1)} Hz`,
+                              width: "90px",
+                            },
+                            {
+                              header: "置信度",
+                              id: "confidence",
+                              renderCell: (frame) => frame.confidence === null ? "--" : frame.confidence.toFixed(3),
+                              width: "90px",
+                            },
+                            {
+                              header: "原始 RMS",
+                              id: "input-rms",
+                              renderCell: (frame) => frame.rms.toFixed(6),
+                              width: "100px",
+                            },
+                            {
+                              header: "处理后 RMS",
+                              id: "analysis-rms",
+                              renderCell: (frame) => frame.analysisRms.toFixed(6),
+                              width: "110px",
+                            },
+                            {
+                              header: "原始峰值",
+                              id: "input-peak",
+                              renderCell: (frame) => frame.peak.toFixed(6),
+                              width: "100px",
+                            },
+                            {
+                              header: "处理后峰值",
+                              id: "analysis-peak",
+                              renderCell: (frame) => frame.analysisPeak.toFixed(6),
+                              width: "110px",
+                            },
+                            {
+                              header: "原始削波",
+                              id: "input-clipping",
+                              renderCell: (frame) => `${(frame.clippedSampleRatio * 100).toFixed(2)}%`,
+                              width: "100px",
+                            },
+                            {
+                              header: "处理后削波",
+                              id: "analysis-clipping",
+                              renderCell: (frame) => `${(frame.analysisClippedSampleRatio * 100).toFixed(2)}%`,
+                              width: "110px",
+                            },
+                            {
+                              header: "判定",
+                              id: "eligibility",
+                              renderCell: (frame) => frame.eligible ? "达标" : frame.ambiguous ? "歧义" : "未达标",
+                              width: "100px",
+                            },
+                          ] satisfies readonly ResponsiveDataTableColumn<typeof segment.frames[number]>[]}
+                          getRowKey={(frame, frameIndex) => `${frame.offsetMs}-${frameIndex}`}
+                          id={detailsId}
+                          minWidth="1060px"
+                          rows={segment.frames}
+                          rowClassName={(frame) => frame.eligible ? "is-eligible" : "is-ineligible"}
+                          tableLayout="fixed"
+                          viewportClassName="practice-microphone-analysis-frame-scroll"
+                        />
+                      );
+                    }}
+                    rowClassName={(segment) => {
+                      const { isMissedNote } = getCandidateSegmentDisplayInfo(segment, microphoneCaptureAnalysis);
+                      return [
+                        isMissedNote ? "is-missed-note" : "",
+                        segment.stableThresholdMet ? "is-threshold-met" : "",
+                      ].filter(Boolean).join(" ") || undefined;
+                    }}
+                    detailsRowClassName="practice-microphone-frame-details-row"
+                    tableLayout="fixed"
+                    viewportClassName="practice-microphone-analysis-table-scroll"
+                  />
+                ) : (
+                  <p className="practice-microphone-analysis-empty">没有未触发答题的音高候选片段。</p>
+                )}
+              </section>
+            </div>
+          </div>
+        </dialog>
       ) : null}
     </section>
   );

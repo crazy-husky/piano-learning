@@ -28,6 +28,7 @@ import {
 import type { PracticeNavigationExitRequest, PracticeNavigationExitTarget } from "../PracticeView";
 import { isInteractiveShortcutTarget } from "../keyboardShortcuts";
 import { useLocalStorageState } from "../useLocalStorageState";
+import { useConfirmDialog } from "../ui/ConfirmDialog";
 import { PitchPreview } from "./PitchPreview";
 import { VocalPitchSidebar } from "./VocalPitchSidebar";
 import { useAudioPlayback } from "./useAudioPlayback";
@@ -132,6 +133,7 @@ export function VocalPitchView({
   onBeforeLibraryChange,
   onNavigationExit,
 }: VocalPitchViewProps): JSX.Element {
+  const confirmDialog = useConfirmDialog();
   const [material, setMaterial] = useState<VocalAudioMaterial | null>(null);
   const [displayedFrames, setDisplayedFrames] = useState<VocalPitchFrame[]>([]);
   const [config, setConfig] = useState<VocalPitchAnalysisConfig>(DEFAULT_VOCAL_PITCH_CONFIG);
@@ -493,11 +495,14 @@ export function VocalPitchView({
   const saveCurrentMaterial = useCallback(async (promptRename = false): Promise<VocalAudioMaterial | null> => {
     if (!material) return null;
     if (!(await runLibraryMutationPreflight())) return null;
-    if (
-      materialLibraryOutdated &&
-      !window.confirm("备份中的这条素材已经更新。继续保存会用当前未保存内容覆盖刚导入的版本，是否继续？")
-    ) {
-      return null;
+    if (materialLibraryOutdated) {
+      const confirmed = await confirmDialog({
+        title: "覆盖已更新的素材？",
+        description: "备份中的这条素材已经更新。继续保存会用当前未保存内容覆盖刚导入的版本。",
+        confirmLabel: "覆盖并保存",
+        destructive: true,
+      });
+      if (!confirmed) return null;
     }
     const next = { ...material, config, updatedAt: new Date().toISOString() };
     await saveLibraryMaterialLocal(next);
@@ -511,7 +516,7 @@ export function VocalPitchView({
     }
     void syncLibraryBackup().catch(() => undefined);
     return next;
-  }, [config, material, materialLibraryOutdated, runLibraryMutationPreflight, saveLibraryMaterialLocal, setSidebarOpen, syncLibraryBackup]);
+  }, [config, confirmDialog, material, materialLibraryOutdated, runLibraryMutationPreflight, saveLibraryMaterialLocal, setSidebarOpen, syncLibraryBackup]);
 
   const runWithReplacementGuard = useCallback((after: () => void | Promise<void>) => {
     if (dirty && material) {

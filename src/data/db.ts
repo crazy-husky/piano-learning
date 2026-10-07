@@ -166,6 +166,24 @@ export async function ensureSettings(): Promise<AppSettings> {
   return settings;
 }
 
+export async function restoreDefaultConfiguration(currentSettings: AppSettings): Promise<AppSettings> {
+  const defaults = makeDefaultSettings();
+  const settings: AppSettings = {
+    ...defaults,
+    dataSetId: currentSettings.dataSetId,
+    createdAt: currentSettings.createdAt,
+    ...(currentSettings.firstReviewAt ? { firstReviewAt: currentSettings.firstReviewAt } : {}),
+  };
+
+  await db.transaction("rw", db.settings, db.backupStates, async () => {
+    await db.settings.put(settings);
+    await db.backupStates.clear();
+    await db.backupStates.put({ id: "default", schemaVersion: 1 });
+  });
+
+  return settings;
+}
+
 export async function getBackupState(): Promise<BackupState> {
   const existing = await db.backupStates.get("default");
   if (existing) {

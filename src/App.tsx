@@ -1,5 +1,6 @@
 import { AudioLines, BarChart3, BellOff, BookOpen, Dumbbell, FolderOpen, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Toaster, toast } from "sonner";
 import { preloadPianoSamples, setPianoVolume } from "./audio/piano";
 import {
   type BackupPreflightResult,
@@ -10,7 +11,7 @@ import {
   syncBackupBeforeActivity,
   type BackupConflictResolution,
 } from "./data/backup";
-import { db, getBackupState, loadAllData, recoverAbandonedSessions } from "./data/db";
+import { db, getBackupState, loadAllData, recoverAbandonedSessions, restoreDefaultConfiguration } from "./data/db";
 import { IndexedDbMaintenancePanel } from "./debug/IndexedDbMaintenancePanel";
 import { installIndexedDbMaintenanceDebug } from "./debug/indexedDbMaintenance";
 import { shouldRunBackupEntryPreflight } from "./domain/backupSync";
@@ -35,6 +36,16 @@ import {
 import { useBlurButtonAfterPointerClick } from "./components/useBlurButtonAfterPointerClick";
 import { useLocalStorageState } from "./components/useLocalStorageState";
 import {
+  clearLocalPreferenceStorage,
+  LOCAL_STORAGE_PREFERENCE_CHANGE_EVENT,
+  LOCAL_STORAGE_PREFERENCES_RESET_EVENT,
+} from "./storage/localPreferenceEvents";
+import {
+  DEFAULT_PRACTICE_PAGE_PREFERENCES,
+  parsePracticePagePreferences,
+  PRACTICE_PAGE_PREFERENCES_KEY,
+} from "./components/practicePagePreferences";
+import {
   DEFAULT_PAGE_APPEARANCE_PREFERENCES,
   PAGE_APPEARANCE_PREFERENCES_KEY,
   PageAppearanceProvider,
@@ -43,11 +54,48 @@ import {
 } from "./components/pageAppearance";
 import { useMidiInput } from "./midi/useMidiInput";
 import { ENHANCED_PITCH_MODEL_CACHE } from "./vocal-pitch/enhancedPitchModels";
+import {
+  DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
+  createDefaultPracticeMicrophonePreferences,
+  isTouchPracticeDevice,
+  parsePracticeMicrophonePreferences,
+  PRACTICE_MICROPHONE_PREFERENCES_KEY,
+} from "./vocal-pitch/practiceMicrophonePreferences";
 
 type View = PracticeNavigationExitTarget;
+type SettingsSaveOptions = { feedback?: boolean };
 
 const BACKUP_REMINDER_SUPPRESSED_DATE_KEY = "anki-note.backupReminderSuppressedDate";
+const BACKUP_REMINDER_SUPPRESSED_WEEK_KEY = "anki-note.backupReminderSuppressedWeek";
 const RELOAD_VIEW_SESSION_KEY = "anki-note.reloadView";
+const INITIAL_PRACTICE_MICROPHONE_PREFERENCES = (() => {
+  if (typeof navigator === "undefined") return DEFAULT_PRACTICE_MICROPHONE_PREFERENCES;
+  const sensitivityLevel = isTouchPracticeDevice(
+    navigator.userAgent,
+    navigator.platform,
+    navigator.maxTouchPoints,
+  ) ? 1 : 3;
+  return createDefaultPracticeMicrophonePreferences(sensitivityLevel);
+})();
+
+const LOCAL_PREFERENCE_FEEDBACK_KEYS = new Set([
+  "anki-note.pageAppearancePreferences",
+  "anki-note.practiceMicrophonePreferences",
+  "anki-note.practicePagePreferences",
+  "anki-note.practiceSetupUiPreferences",
+  "anki-note.sessionProgressUiPreferences",
+  "anki-note.staffPageUiPreferences",
+  "anki-note.statsUiPreferences",
+  "anki-note.studyUiPreferences",
+  "anki-note.staffRecallUiPreferences",
+  "anki-note.vocalPitch.microphoneId",
+  "anki-note.vocalPitch.allowBackgroundRecording",
+  "anki-note.vocalPitch.playbackVolume",
+  "anki-note.vocalPitch.sidebarOpen",
+  "anki-note.vocalPitch.parametersOpen",
+  "anki-note.vocalPitch.materialsOpen",
+  "anki-note.midiInputId",
+]);
 
 interface AppData {
   settings: AppSettings;
@@ -77,9 +125,19 @@ function todayKey(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-function isBackupReminderSuppressedToday(): boolean {
+function weekStartKey(): string {
+  const monday = new Date();
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const month = String(monday.getMonth() + 1).padStart(2, "0");
+  const day = String(monday.getDate()).padStart(2, "0");
+  return `${monday.getFullYear()}-${month}-${day}`;
+}
+
+function isBackupReminderSuppressed(): boolean {
   try {
-    return localStorage.getItem(BACKUP_REMINDER_SUPPRESSED_DATE_KEY) === todayKey();
+    const suppressedToday = localStorage.getItem(BACKUP_REMINDER_SUPPRESSED_DATE_KEY) === todayKey();
+    const suppressedThisWeek = localStorage.getItem(BACKUP_REMINDER_SUPPRESSED_WEEK_KEY) === weekStartKey();
+    return suppressedToday || suppressedThisWeek;
   } catch {
     return false;
   }
@@ -139,7 +197,7 @@ function getBackupReminderState(data: AppData): BackupReminderState {
     return { kind: "data-conflict", showReminder: true };
   }
   if (!data.backupState.directoryHandle) {
-    return { kind: "needs-directory", showReminder: !isBackupReminderSuppressedToday() };
+    return { kind: "needs-directory", showReminder: !isBackupReminderSuppressed() };
   }
   return { kind: "none", showReminder: false };
 }
@@ -159,9 +217,23 @@ export function App(): JSX.Element {
     DEFAULT_PAGE_APPEARANCE_PREFERENCES,
     { parse: parsePageAppearancePreferences },
   );
+  const [practiceMicrophonePreferences, setPracticeMicrophonePreferences] = useLocalStorageState(
+    PRACTICE_MICROPHONE_PREFERENCES_KEY,
+    INITIAL_PRACTICE_MICROPHONE_PREFERENCES,
+    { parse: parsePracticeMicrophonePreferences },
+  );
+  const [practicePagePreferences, setPracticePagePreferences] = useLocalStorageState(
+    PRACTICE_PAGE_PREFERENCES_KEY,
+    DEFAULT_PRACTICE_PAGE_PREFERENCES,
+    { parse: parsePracticePagePreferences },
+  );
   const [appearanceTimestamp, setAppearanceTimestamp] = useState(() => Date.now());
   const isNightMode = resolveNightMode(pageAppearancePreferences, new Date(appearanceTimestamp));
   const [data, setData] = useState<AppData | null>(null);
+  const currentSettingsRef = useRef<AppSettings | undefined>(undefined);
+  currentSettingsRef.current = data?.settings;
+  const settingsMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const configurationRestoreInProgressRef = useRef(false);
   const [practiceRunning, setPracticeRunning] = useState(false);
   const [backupReminderBusy, setBackupReminderBusy] = useState(false);
   const [backupReminderMessage, setBackupReminderMessage] = useState<{ detail: string; title: string } | null>(null);
@@ -174,14 +246,91 @@ export function App(): JSX.Element {
   const backupToastMessageTimerRef = useRef<number | null>(null);
   const backupCheckInFlightRef = useRef<Promise<BackupCheckResult> | null>(null);
 
+  const showConfigurationFeedback = useCallback((
+    detail: string,
+    options: { requiresRefresh?: boolean; title?: string; error?: boolean } = {},
+  ): void => {
+    const requiresRefresh = options.requiresRefresh ?? false;
+    const title = options.title ?? (requiresRefresh ? "需要刷新页面" : "设置已生效");
+    if (requiresRefresh) {
+      toast.warning(title, {
+        description: detail,
+        duration: 30_000,
+        action: { label: "刷新页面", onClick: () => window.location.reload() },
+      });
+    } else if (options.error) {
+      toast.error(title, { description: detail });
+    } else {
+      toast.success("设置已保存并生效");
+    }
+  }, []);
+
   const refresh = useCallback(async (): Promise<void> => {
     setData(await loadFreshAppData());
   }, []);
 
-  const saveSettings = useCallback(async (settings: AppSettings): Promise<void> => {
+  const saveSettings = useCallback(async (
+    settings: AppSettings,
+    options: SettingsSaveOptions = {},
+  ): Promise<void> => {
+    if (configurationRestoreInProgressRef.current) return;
+    const previousSettings = currentSettingsRef.current;
+    const changedKeys = previousSettings
+      ? Object.keys(settings).filter((key) => !Object.is(
+          (settings as unknown as Record<string, unknown>)[key],
+          (previousSettings as unknown as Record<string, unknown>)[key],
+        ))
+      : [];
+    if (changedKeys.length === 0) return;
+    currentSettingsRef.current = settings;
     setData((current) => (current ? { ...current, settings } : current));
-    await db.settings.put(settings);
-  }, []);
+    const writePromise = settingsMutationQueueRef.current.then(() => db.settings.put(settings));
+    settingsMutationQueueRef.current = writePromise.then(() => undefined, () => undefined);
+    await writePromise;
+    if (options.feedback === false) return;
+    showConfigurationFeedback("设置已保存并生效");
+  }, [showConfigurationFeedback]);
+
+  const restoreAllConfiguration = useCallback(async (): Promise<void> => {
+    if (!data || configurationRestoreInProgressRef.current) return;
+    configurationRestoreInProgressRef.current = true;
+    const restorePromise = settingsMutationQueueRef.current.then(async () => {
+      const settings = await restoreDefaultConfiguration(currentSettingsRef.current ?? data.settings);
+      let storageResult: ReturnType<typeof clearLocalPreferenceStorage>;
+      try {
+        storageResult = clearLocalPreferenceStorage(window.localStorage);
+      } catch {
+        storageResult = { clearedKeys: [], failedKeys: ["<localStorage access>"] };
+      }
+      window.dispatchEvent(new Event(LOCAL_STORAGE_PREFERENCES_RESET_EVENT));
+      currentSettingsRef.current = settings;
+      setData((current) => current
+        ? { ...current, settings, backupState: { id: "default", schemaVersion: 1 } }
+        : current);
+      if (storageResult.failedKeys.length > 0) {
+        showConfigurationFeedback(
+          `默认配置已恢复，页面偏好已同步。未能清理：${storageResult.failedKeys.join("、")}；刷新后这些项目可能重新加载。`,
+          { title: "本地偏好部分未清理", error: true },
+        );
+      } else {
+        showConfigurationFeedback(
+          "默认配置已恢复，学习数据和备份文件均已保留。刷新页面以重新初始化 MIDI 设备。",
+          { requiresRefresh: true },
+        );
+      }
+    });
+    settingsMutationQueueRef.current = restorePromise.then(() => undefined, () => undefined);
+    try {
+      await restorePromise;
+    } catch (error) {
+      showConfigurationFeedback(
+        `恢复配置失败：${error instanceof Error ? error.message : String(error)}`,
+        { title: "配置未能完整恢复", error: true },
+      );
+    } finally {
+      configurationRestoreInProgressRef.current = false;
+    }
+  }, [data, showConfigurationFeedback]);
 
   const refreshBackupState = useCallback(async (): Promise<void> => {
     const backupState = await getBackupState();
@@ -282,6 +431,18 @@ export function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    function onLocalPreferenceChange(event: Event): void {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (view === "settings" && key && LOCAL_PREFERENCE_FEEDBACK_KEYS.has(key)) {
+        showConfigurationFeedback("设置已保存并生效");
+      }
+    }
+
+    window.addEventListener(LOCAL_STORAGE_PREFERENCE_CHANGE_EVENT, onLocalPreferenceChange);
+    return () => window.removeEventListener(LOCAL_STORAGE_PREFERENCE_CHANGE_EVENT, onLocalPreferenceChange);
+  }, [showConfigurationFeedback, view]);
+
+  useEffect(() => {
     if (!import.meta.env.DEV) {
       return undefined;
     }
@@ -341,6 +502,15 @@ export function App(): JSX.Element {
   const suppressBackupReminderToday = useCallback((): void => {
     try {
       localStorage.setItem(BACKUP_REMINDER_SUPPRESSED_DATE_KEY, todayKey());
+    } catch {
+      // The current page can still hide the reminder even when storage is blocked.
+    }
+    setBackupReminderVisible(false);
+  }, []);
+
+  const suppressBackupReminderThisWeek = useCallback((): void => {
+    try {
+      localStorage.setItem(BACKUP_REMINDER_SUPPRESSED_WEEK_KEY, weekStartKey());
     } catch {
       // The current page can still hide the reminder even when storage is blocked.
     }
@@ -607,6 +777,7 @@ export function App(): JSX.Element {
     (view !== "vocal" || backupReminderState.kind === "data-conflict");
   return (
     <PageAppearanceProvider isNightMode={isNightMode}>
+    <Toaster closeButton position="top-center" theme={isNightMode ? "dark" : "light"} />
     <div className={practiceRunning ? "app-shell app-shell-practice-running" : "app-shell"}>
       {backupToastMessage ? (
         <div className="backup-toast" role="status" aria-live="polite">
@@ -685,6 +856,12 @@ export function App(): JSX.Element {
                   {backupText.labels.suppressToday}
                 </button>
               ) : null}
+              {backupReminderState.kind === "needs-directory" ? (
+                <button onClick={suppressBackupReminderThisWeek}>
+                  <BellOff size={18} />
+                  {backupText.labels.suppressWeek}
+                </button>
+              ) : null}
               <button title={backupText.labels.close} onClick={() => setBackupReminderVisible(false)}>
                 <X size={18} />
                 {backupText.labels.dismiss}
@@ -695,6 +872,9 @@ export function App(): JSX.Element {
         {view === "practice" ? (
           <PracticeView
             midi={midi}
+            practiceMicrophonePreferences={practiceMicrophonePreferences}
+            onPracticeMicrophonePreferencesChange={setPracticeMicrophonePreferences}
+            practicePagePreferences={practicePagePreferences}
             settings={data.settings}
             sessions={data.sessions}
             reviews={data.reviews}
@@ -706,7 +886,7 @@ export function App(): JSX.Element {
             onBeforePracticeStart={preflightBeforePracticeStart}
             onPracticeFinished={showBackupReminderAfterActivity}
             onRunningChange={setPracticeRunning}
-            onSettingsSaved={saveSettings}
+            onSettingsSaved={(settings, options) => saveSettings(settings, { ...options, feedback: false })}
           />
         ) : null}
         {view === "stats" ? (
@@ -714,14 +894,14 @@ export function App(): JSX.Element {
             settings={data.settings}
             reviews={data.reviews}
             sessions={data.sessions}
-            onSettingsSaved={saveSettings}
+            onSettingsSaved={(settings) => saveSettings(settings, { feedback: false })}
           />
         ) : null}
         {view === "study" ? (
           <StudyView
             onBeforeStaffRecallStart={preflightBeforeStaffRecallStart}
             onDataChanged={refresh}
-            onSettingsSaved={saveSettings}
+            onSettingsSaved={(settings) => saveSettings(settings, { feedback: false })}
             onStaffRecallFinished={showBackupReminderAfterActivity}
             settings={data.settings}
             staffRecallRuns={data.staffRecallRuns}
@@ -731,10 +911,15 @@ export function App(): JSX.Element {
           <SettingsView
             backupState={data.backupState}
             pageAppearancePreferences={pageAppearancePreferences}
+            practiceMicrophonePreferences={practiceMicrophonePreferences}
+            practicePagePreferences={practicePagePreferences}
             settings={data.settings}
             midi={midi}
             onDataChanged={refresh}
             onPageAppearancePreferencesChange={setPageAppearancePreferences}
+            onPracticeMicrophonePreferencesChange={setPracticeMicrophonePreferences}
+            onPracticePagePreferencesChange={setPracticePagePreferences}
+            onRestoreDefaultConfiguration={restoreAllConfiguration}
             onSettingsSaved={saveSettings}
           />
         ) : null}

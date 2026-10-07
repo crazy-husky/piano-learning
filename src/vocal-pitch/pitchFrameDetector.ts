@@ -7,6 +7,11 @@ export const VOCAL_PITCH_DETECTOR_VERSION = 4;
 const FALLBACK_PEAK_THRESHOLD = 0.9;
 const PRIMARY_PEAK_THRESHOLD = 0.95;
 
+export interface PitchFrameDetectorOptions {
+  fallbackPeakThreshold?: number;
+  primaryPeakThreshold?: number;
+}
+
 export interface PitchFrameCandidate {
   clarity: number;
   frequencyHz: number;
@@ -33,11 +38,11 @@ export function getPitchFrameSize(
   return Math.min(16384, Math.max(2048, nextPowerOfTwo((sampleRate / minFrequencyHz) * periods)));
 }
 
-export function createPitchFrameDetector(frameSize: number): PitchFrameDetector {
+export function createPitchFrameDetector(frameSize: number, options: PitchFrameDetectorOptions = {}): PitchFrameDetector {
   const primaryDetector = PitchDetector.forFloat32Array(frameSize);
   const fallbackDetector = PitchDetector.forFloat32Array(frameSize);
-  primaryDetector.clarityThreshold = PRIMARY_PEAK_THRESHOLD;
-  fallbackDetector.clarityThreshold = FALLBACK_PEAK_THRESHOLD;
+  primaryDetector.clarityThreshold = options.primaryPeakThreshold ?? PRIMARY_PEAK_THRESHOLD;
+  fallbackDetector.clarityThreshold = options.fallbackPeakThreshold ?? FALLBACK_PEAK_THRESHOLD;
   return {
     detect: (samples, sampleRate) => {
       const [frequencyHz, clarity] = primaryDetector.findPitch(samples, sampleRate);

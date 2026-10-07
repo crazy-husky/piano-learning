@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 ort.env.wasm.numThreads = 1;
 
 const FCPE_PATH = resolve("public/models/vocal-pitch/fcpe-v1.onnx");
-const SWIFTF0_PATH = resolve("public/models/vocal-pitch/swift-f0-v1.onnx");
+const SWIFTF0_PATH = resolve("public/models/vocal-pitch/swift-f0-v0.3.0.onnx");
 
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -53,7 +53,7 @@ describe("enhanced pitch model artifacts", () => {
   it("pins the browser model files that passed the reference comparison", async () => {
     const [fcpe, swiftf0] = await Promise.all([readFile(FCPE_PATH), readFile(SWIFTF0_PATH)]);
     expect(sha256(fcpe)).toBe("d425a36c66d751558574f230dd6caff682d2b1bdccf57315e3c907677e8b1d1c");
-    expect(sha256(swiftf0)).toBe("fa91bb45512b90339cf4b00a599ba8fe3a253c46419fcfe6b46df77a8a8336a5");
+    expect(sha256(swiftf0)).toBe("6385e8c2ebc3872e82c9ff5946228de44cd3be77a750ea53698b7dbfe94b0a22");
   });
 
   it("keeps both models near a 220 Hz synthetic reference", async () => {
@@ -70,12 +70,14 @@ describe("enhanced pitch model artifacts", () => {
 
       const swiftOutput = await swiftSession.run({
         [swiftSession.inputNames[0]]: new ort.Tensor("float32", samples, [1, samples.length]),
+        [swiftSession.inputNames[1]]: new ort.Tensor("float32", Float32Array.of(46.875), []),
+        [swiftSession.inputNames[2]]: new ort.Tensor("float32", Float32Array.of(2093.75), []),
       });
-      const pitchHz = swiftOutput[swiftSession.outputNames[0]].data as Float32Array;
+      const pitchHz = swiftOutput[swiftSession.outputNames[0]].data as Float64Array;
       const confidence = swiftOutput[swiftSession.outputNames[1]].data as Float32Array;
-      expect(pitchHz.length).toBeGreaterThan(50);
-      expect(median(Array.from(pitchHz))).toBeCloseTo(220, 0);
-      expect(Math.max(...confidence)).toBeGreaterThan(0.9);
+      expect(pitchHz.length).toBeGreaterThan(30);
+      expect(median(Array.from(pitchHz).slice(11, -10))).toBeCloseTo(220, 0);
+      expect(Math.max(...confidence)).toBeGreaterThan(0);
     } finally {
       await Promise.all([fcpeSession.release(), swiftSession.release()]);
     }

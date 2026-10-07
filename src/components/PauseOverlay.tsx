@@ -44,9 +44,9 @@ export function PauseOverlay({
         <span>已暂停</span>
         {showRemainingPlayback ? (
           <div className="pause-playback-controls">
-            <button aria-keyshortcuts="Space" onClick={onToggleRemainingPlayback} type="button">
+            <button onClick={onToggleRemainingPlayback} type="button">
               {playbackState === "playing" ? <Pause size={18} /> : <Play size={18} />}
-              {playbackLabel}<kbd>空格</kbd>
+              {playbackLabel}
             </button>
             <label>
               BPM
@@ -56,7 +56,9 @@ export function PauseOverlay({
         ) : null}
         <small>
           {resumeBlockedMessage ?? resumeMessage ?? (
-            showKeyboardShortcuts ? "按 P 或点击空白处继续练习 · 按 Esc 退出练习" : "点击空白处继续练习"
+            showKeyboardShortcuts
+              ? "按空格或点击空白处继续练习 · 按 Esc 退出练习"
+              : "点击空白处继续练习"
           )}
         </small>
       </div>

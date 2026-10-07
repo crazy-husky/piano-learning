@@ -1,5 +1,9 @@
+import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
-import { makeDefaultSettings, normalizeAppSettings } from "./db";
+import { DEFAULT_VOCAL_PITCH_CONFIG, type VocalAudioMaterial } from "../domain/vocalPitch";
+import { makeReview } from "../domain/testFactories";
+import type { PracticeSessionRecordV1, StaffRecallRunRecordV1 } from "../domain/types";
+import { db, makeDefaultSettings, normalizeAppSettings, restoreDefaultConfiguration } from "./db";
 
 describe("makeDefaultSettings", () => {
   it("uses the cold-start practice defaults", () => {
@@ -94,5 +98,80 @@ describe("makeDefaultSettings", () => {
 
     expect(normalized.queueStrategy).toBe("adaptive");
     expect(normalized.focusedTraining).toBe(false);
+  });
+});
+
+describe("restoreDefaultConfiguration", () => {
+  it("resets configuration and backup binding while preserving learning data and dataset identity", async () => {
+    const currentSettings = {
+      ...makeDefaultSettings(),
+      dataSetId: "dataset-keep",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      firstReviewAt: "2026-01-02T00:00:00.000Z",
+      answerPitchMode: "microphone" as const,
+      pianoVolume: 0.3,
+    };
+    await db.settings.put(currentSettings);
+    await db.backupStates.put({
+      id: "default",
+      schemaVersion: 1,
+      directoryName: "piano-backups",
+      lastBackupAt: "2026-01-03T00:00:00.000Z",
+    });
+    const session: PracticeSessionRecordV1 = {
+      id: "session-kept",
+      schemaVersion: 1,
+      mode: "fixed-duration",
+      enabledGroupIds: ["G3-F4"],
+      startedAt: "2026-01-03T00:00:00.000Z",
+      completedCount: 0,
+      interruptedCount: 0,
+    };
+    const review = makeReview({ id: "review-kept", targetNoteId: "C4" });
+    const recallRun: StaffRecallRunRecordV1 = {
+      id: "recall-kept",
+      schemaVersion: 1,
+      answerSetKey: "recall-set",
+      targetNoteIds: ["C4"],
+      columnOrder: ["C"],
+      columnActiveMs: { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0, G: 0 },
+      startedAt: "2026-01-03T00:00:00.000Z",
+      endedAt: "2026-01-03T00:01:00.000Z",
+    };
+    const material: VocalAudioMaterial = {
+      audioBlob: new Blob(["audio"]),
+      config: DEFAULT_VOCAL_PITCH_CONFIG,
+      contentDigest: "digest",
+      createdAt: "2026-01-03T00:00:00.000Z",
+      durationSeconds: 1,
+      id: "material-kept",
+      mimeType: "audio/wav",
+      name: "recording",
+      schemaVersion: 1,
+      size: 5,
+      source: "upload",
+      updatedAt: "2026-01-03T00:00:00.000Z",
+    };
+    await db.practiceSessions.put(session);
+    await db.reviews.put(review);
+    await db.staffRecallRuns.put(recallRun);
+    await db.vocalAudioMaterials.put(material);
+
+    const restored = await restoreDefaultConfiguration(currentSettings);
+
+    expect(restored).toMatchObject({
+      dataSetId: "dataset-keep",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      firstReviewAt: "2026-01-02T00:00:00.000Z",
+      answerPitchMode: "note-name",
+      pianoVolume: 0.8,
+    });
+    expect(await db.backupStates.get("default")).toEqual({ id: "default", schemaVersion: 1 });
+    expect(await db.practiceSessions.get("session-kept")).toBeTruthy();
+    expect(await db.reviews.get("review-kept")).toBeTruthy();
+    expect(await db.staffRecallRuns.get("recall-kept")).toBeTruthy();
+    expect(await db.vocalAudioMaterials.get("material-kept")).toBeTruthy();
+
+    await Promise.all(db.tables.map((table) => table.clear()));
   });
 });

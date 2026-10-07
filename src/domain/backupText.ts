@@ -13,6 +13,7 @@ export const backupText = {
     learningDomain: "学习域",
     dismiss: "稍后",
     suppressToday: "今日不再提醒",
+    suppressWeek: "这周不再提醒",
     vocalAudioDomain: "清唱素材域",
   },
   titles: {
