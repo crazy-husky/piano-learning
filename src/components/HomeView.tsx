@@ -16,6 +16,7 @@ const menuItems: Array<{
   { label: "学习", description: "按谱面熟悉音符位置", icon: BookOpen, path: "/study", tone: "mint" },
   { label: "自由练习", description: "沿用现有练习流程", icon: Dumbbell, path: "/practice", tone: "blue" },
   { label: "五线谱闯关", description: "听音作答，支持跳级", icon: Music2, isNew: true, path: "/practice/game", tone: "orange" },
+  { label: "游戏歌曲模式", description: "跟随旋律连续弹奏", icon: Music2, isNew: true, path: "/practice/game/songs", tone: "pink" },
   { label: "统计", description: "查看练习与识别表现", icon: BarChart3, path: "/stats", tone: "violet" },
   { label: "清唱", description: "查看音高与音域", icon: AudioLines, path: "/vocal", tone: "pink" },
   { label: "设置", description: "调整显示和输入设备", icon: Settings, path: "/settings", tone: "slate" },

@@ -31,7 +31,9 @@ export default defineConfig({
     allowedHosts: tailscaleAllowedHosts,
   },
   build: {
+    target: ["chrome108", "edge108", "firefox101", "safari16.4"],
     chunkSizeWarningLimit: 1500,
+    sourcemap: "hidden",
     rollupOptions: {
       output: {
         manualChunks: {

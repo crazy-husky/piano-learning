@@ -29,6 +29,20 @@
 
 </details>
 
+<details name="screenshots">
+<summary>五线谱闯关（PC）</summary>
+
+![五线谱闯关 PC 端](docs/assets/staff-game-desktop.webp)
+
+</details>
+
+<details name="screenshots">
+<summary>五线谱闯关（手机）</summary>
+
+![五线谱闯关手机端](docs/assets/staff-game-mobile.webp)
+
+</details>
+
 ## 本地运行
 
 ### Windows

@@ -2,7 +2,7 @@
 
 > 当前已登记素材、来源和提示词归档情况见 [五线谱闯关素材目录](asset-catalog.md)。本文只包含仓库里可追溯的提示词；目录中标注“未归档”的历史提示词不能从成品素材可靠还原。
 
-按核对结果只补了不合格或不足的视觉素材；随后单独生成了关卡音效。已有角色、HUD、按钮、弹窗、星粒子、云朵、谱号、奖章和宽屏场景继续沿用。
+按核对结果补充了不合格或不足的视觉素材，并单独生成了关卡音效。已有场景、HUD、按钮、弹窗、星粒子、云朵、谱号和奖章继续沿用；角色静态图保留作造型参考，运行时使用下文登记的逐帧动作图集。
 
 ## 1. 空心蓝色气泡边框
 
@@ -57,10 +57,84 @@ Negative prompt: Voice, speech, harsh alarm, electronic beep, metal scraping, he
 
 本机 MCP 密钥配置单独保存在 `/Users/husky/.config/piano-learning/vss-mcp.json`，不加入素材目录或版本控制。
 
+## 4. 角色动作帧图集
+
+每组图集均为 3×3 网格、共 9 帧，按从左到右、从上到下的顺序播放。生成画布为 1024×1024；接入游戏前压缩到 768×768、保留透明通道并转换为 WebP（质量 82、透明度质量 90），每帧仍有 256×256 像素。角色固定在每格中央，方便 CSS 使用 `background-size: 300% 300%` 切帧。参考图均使用项目中登记的静态角色图或难过表情参考图。
+
+### 待机呼吸与眨眼
+
+参考图：`src/assets/staff-game/characters/mascot-idle.webp`。
+
+```text
+Use case: stylized-concept
+Asset type: transparent 3-by-3 sprite sheet for a polished children's music game mascot idle loop.
+Input images: Image 1 is the exact character identity and rendering reference.
+Primary request: Create a clean 3x3 sprite sheet, exactly nine equal square cells, read left-to-right then top-to-bottom. Each cell contains one full-body frame of the same blue water-drop music mascot from Image 1. Animate a subtle idle cycle: neutral, breathe in, body gently rises, peak, breathe out, settles, blink begins, eyes closed, eyes open back to neutral. Keep the movements small, calm, and loopable.
+Composition: 3 columns by 3 rows, no gutters or borders, same character scale and centered position in every cell, feet on the same baseline, full head and feet inside every cell. Square 1024x1024 canvas; genuine transparent background in every cell.
+Constraints: preserve exact silhouette, face proportions, blue glossy jelly material, eyes, yellow musical-note ornament, short limbs and soft 3D cartoon style. The pose/expression may change only as required by the sequence. No ground shadow.
+Avoid: panels, grid lines, cell dividers, overlapping characters, crop, scale changes between cells, text, numbers, labels, props, extra characters, background, watermark, extra accessories.
+```
+
+### 答对欢呼
+
+参考图：`src/assets/staff-game/characters/mascot-cheer.webp`、`src/assets/staff-game/characters/mascot-idle.webp`。
+
+```text
+Use case: stylized-concept
+Asset type: transparent 3-by-3 sprite sheet for a short correct-answer cheer animation in a children's music game.
+Input images: Image 1 is the exact happy mascot identity reference. Image 2 is the same mascot's neutral identity reference.
+Primary request: Create a clean 3x3 sprite sheet, exactly nine equal square cells, read left-to-right then top-to-bottom. Each cell contains one full-body frame of the same blue water-drop music mascot. Animate one complete cheerful hop: ready pose, crouch slightly, begin takeoff, rise with arms lifting, joyful peak with eyes happily closed, hold the peak, begin descending, land with a soft squash, spring back to the neutral standing pose.
+Composition: 3 columns by 3 rows, no gutters or borders, same character scale and centered position in every cell, feet aligned to the same baseline except while airborne, full head and feet inside each cell. Square 1024x1024 canvas; genuine transparent background in every cell.
+Constraints: preserve the exact face, water-drop silhouette, blue glossy jelly material, yellow musical-note ornament, small limbs, and soft 3D cartoon style from the references. Motion is compact and readable at small on-screen size. No ground shadow.
+Avoid: panels, grid lines, cell dividers, overlapping characters, crop, character redesign, text, numbers, labels, trophy, props, extra characters, background, watermark, extra sparkles.
+```
+
+### 答错难过与恢复
+
+参考图：`source/mascot-sad-expression-reference.webp`、`src/assets/staff-game/characters/mascot-idle.webp`。
+
+```text
+Use case: stylized-concept
+Asset type: transparent 3-by-3 sprite sheet for a gentle wrong-answer reaction in a children's music game.
+Input images: Image 1 is the exact sad-expression design reference for the mascot. Image 2 is the same mascot's exact neutral identity reference.
+Primary request: Create a clean 3x3 sprite sheet, exactly nine equal square cells, read left-to-right then top-to-bottom. Each cell contains one full-body frame of the same blue water-drop music mascot. Animate a gentle reaction: neutral, small sympathetic flinch, eyebrows turn concerned, shoulders and arms lower, gaze dips, hold a mild sad frown, take a small breath, lift gaze, return to a warm neutral expression. The emotion is “oops, try again”; never make the character cry or look frightened.
+Composition: 3 columns by 3 rows, no gutters or borders, same character scale and centered position in every cell, feet on the same baseline, full head and feet inside each cell. Square 1024x1024 canvas; genuine transparent background in every cell.
+Constraints: preserve exact silhouette, face proportions, large blue eyes, bright blue glossy jelly material, yellow musical-note ornament, and soft 3D cartoon rendering. Only expression and small body posture change.
+Avoid: tears, sobbing, anger, fear, harsh failure symbols, speech bubble, props, extra sparkles, extra characters, crop, scale changes, panels, grid lines, dividers, text, labels, background, watermark.
+```
+
+### 暂停眨眼
+
+参考图：`src/assets/staff-game/characters/mascot-wink.webp`、`src/assets/staff-game/characters/mascot-idle.webp`。
+
+```text
+Use case: stylized-concept
+Asset type: transparent 3-by-3 sprite sheet for a subtle pause/wink animation in a children's music game.
+Input images: Image 1 is the exact winking mascot identity reference. Image 2 is the same mascot's neutral identity reference.
+Primary request: Create a clean 3x3 sprite sheet, exactly nine equal square cells, read left-to-right then top-to-bottom. Each cell contains one full-body frame of the same blue water-drop music mascot. Animate one gentle wink: relaxed neutral, one eyelid starts closing, wink nearly closed, full friendly wink, hold briefly with a tiny head tilt, eyelid opens, return to relaxed neutral. Keep the mood calm and reassuring, appropriate for a paused game.
+Composition: 3 columns by 3 rows, no gutters or borders, same character scale and centered position in every cell, feet on the same baseline, full head and feet inside each cell. Square 1024x1024 canvas; genuine transparent background in every cell.
+Constraints: preserve exact silhouette, face proportions, glossy blue material, yellow musical-note ornament, and soft 3D cartoon style from the references. Small expression changes only.
+Avoid: panels, grid lines, dividers, crop, scale changes, tears, exaggerated expressions, extra characters, props, text, labels, background, watermark.
+```
+
+### 通关庆祝
+
+参考图：`src/assets/staff-game/characters/mascot-level-celebration.webp`、`src/assets/staff-game/characters/mascot-cheer.webp`。
+
+```text
+Use case: stylized-concept
+Asset type: transparent 3-by-3 sprite sheet for a short level-clear celebration animation in a children's music game.
+Input images: Image 1 is the exact mascot identity and celebration-style reference. Image 2 is the same mascot's joyful style reference.
+Primary request: Create a clean 3x3 sprite sheet, exactly nine equal square cells, read left-to-right then top-to-bottom. Each cell contains one full-body frame of the same blue water-drop music mascot. Animate one celebratory jump: anticipatory smile, bends knees, starts jumping, rises with arms up, reaches a joyful peak, holds the peak with eyes closed, begins to descend, lands with a soft squash, returns to a happy standing pose. Make it feel more special than the regular answer cheer but keep the character simple.
+Composition: 3 columns by 3 rows, no gutters or borders, same character scale and centered position in every cell, feet aligned to the same baseline except while airborne, full head and feet inside each cell. Square 1024x1024 canvas; genuine transparent background in every cell.
+Constraints: preserve exact water-drop silhouette, face proportions, bright glossy blue jelly material, yellow musical-note ornament, and polished soft 3D cartoon rendering. No cloud, no star, no extra object; those can be drawn by the game.
+Avoid: panels, grid lines, dividers, overlapping/cropped character, inconsistent proportions, character redesign, text, numbers, props, extra characters, background, watermark, multiple poses outside the cells.
+```
+
 ## 共用交付要求
 
-- 每个需求单独生成一张图；一个 PNG 只包含一个静态主体/帧，不交付多格图集、展示板或拼图。
+- 静态素材每个需求单独生成一张图，一个 PNG 只包含一个主体，不交付展示板或拼图。角色动作图集是例外：每组动作按本节提示交付一张 3×3 九帧透明图集，不要额外把多组动作拼在一起。
 - 需要抠图的角色、道具、特效必须输出真实透明 alpha；“透明棋盘格”不能画进像素里。不得带图注、尺寸字样、分隔线、水印或界面文字。
 - 游戏风格统一为清新、明亮、柔和的卡通 3D；蓝色水滴角色和青蓝色玻璃质感为主要视觉锚点，黄色高光作点缀。
 - 场景背景单独出图，不附带 UI。手机背景按 9:19 狭长竖屏构图，为落下的音符留出低细节空间。
-- 音效已在首版生成并接入；没有逐帧角色动作，也没有单独的麦克风故障音。
+- 角色动作通过上述五组逐帧图集实现；音效已在首版生成并接入，目前没有单独的麦克风故障音。

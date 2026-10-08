@@ -279,6 +279,13 @@ interface PracticeViewProps {
   onOpenStats: () => void;
   onOpenSettings: () => void;
   isStaffGameRoute: boolean;
+  initialStaffGameMode?: "levels" | "songs";
+  initialSongSelectionStep?: "list" | "detail";
+  initialSongId?: string;
+  isStaffGameSongPlayRoute?: boolean;
+  onStaffGameModeChange: (mode: "levels" | "songs") => void;
+  onStaffGameSongStart: (songId: string) => void;
+  onStaffGameSongSelectionExit: () => void;
   onStaffGameRouteChange: (isGame: boolean) => void;
   onBeforePracticeStart: () => Promise<PracticeStartPreflightResult>;
   onPracticeFinished: () => void;
@@ -524,6 +531,13 @@ export function PracticeView({
   onOpenStats,
   onOpenSettings,
   isStaffGameRoute,
+  initialStaffGameMode = "levels",
+  initialSongSelectionStep = "list",
+  initialSongId,
+  isStaffGameSongPlayRoute = false,
+  onStaffGameModeChange,
+  onStaffGameSongStart,
+  onStaffGameSongSelectionExit,
   onStaffGameRouteChange,
   onBeforePracticeStart,
   onPracticeFinished,
@@ -2271,8 +2285,16 @@ export function PracticeView({
   if (phase === "setup" && practiceExperienceMode === "game") {
     return (
       <StaffGameView
+        key={initialStaffGameMode}
         microphone={practiceMicrophone}
         midi={midi}
+        initialMode={initialStaffGameMode}
+        initialSongSelectionStep={initialSongSelectionStep}
+        initialSongId={initialSongId}
+        isSongPlayRoute={isStaffGameSongPlayRoute}
+        onModeChange={onStaffGameModeChange}
+        onSongStart={onStaffGameSongStart}
+        onSongSelectionExit={onStaffGameSongSelectionExit}
         onExit={exitStaffGame}
         onRegisterAnswerHandler={registerStaffGameAnswerHandler}
         onSessionActiveChange={setStaffGameSessionActive}

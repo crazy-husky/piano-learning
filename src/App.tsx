@@ -56,7 +56,7 @@ import {
 import { useMidiInput } from "./midi/useMidiInput";
 import { ENHANCED_PITCH_MODEL_CACHE } from "./vocal-pitch/enhancedPitchModels";
 import { useAppUpdateNotice } from "./useAppUpdateNotice";
-import { appRouteFromHash, appRoutePathForPage, appRouteUrl, type AppRoute, type AppRoutePath } from "./routing/appRoutes";
+import { appRouteFromHash, appRoutePathForPage, appRouteUrl, isStaffGameRoutePath, isStaffGameSongRoutePath, type AppRoute, type AppRoutePath } from "./routing/appRoutes";
 import {
   DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
   createDefaultPracticeMicrophonePreferences,
@@ -192,6 +192,9 @@ export function App(): JSX.Element {
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
   const routeRef = useRef(route);
   routeRef.current = route;
+  const staffGameSelectionReturnPathRef = useRef<AppRoutePath>("/");
+  const staffGameSelectionRoutePushedRef = useRef(false);
+  const staffGamePlayRoutePushedRef = useRef(false);
   const [pageAppearancePreferences, setPageAppearancePreferences] = useLocalStorageState(
     PAGE_APPEARANCE_PREFERENCES_KEY,
     DEFAULT_PAGE_APPEARANCE_PREFERENCES,
@@ -322,10 +325,16 @@ export function App(): JSX.Element {
   }, []);
   const hasBackupDirectory = Boolean(data?.backupState.directoryHandle);
 
-  const navigateToRoute = useCallback((path: AppRoutePath, options: { replace?: boolean } = {}): void => {
-    const nextRoute = appRouteFromHash(`#${path}`);
-    if (routeRef.current.path === nextRoute.path) return;
-    const url = appRouteUrl(nextRoute.path);
+  const navigateToRoute = useCallback((path: AppRoutePath, options: { query?: Record<string, string>; replace?: boolean } = {}): void => {
+    const queryString = options.query ? new URLSearchParams(options.query).toString() : "";
+    const nextRoute = appRouteFromHash(`#${path}${queryString ? `?${queryString}` : ""}`);
+    const currentRoute = routeRef.current;
+    if (path === "/practice/game/songs" && !isStaffGameSongRoutePath(currentRoute.path)) {
+      staffGameSelectionReturnPathRef.current = currentRoute.path;
+      staffGameSelectionRoutePushedRef.current = !options.replace;
+    }
+    if (currentRoute.path === nextRoute.path && currentRoute.songId === nextRoute.songId) return;
+    const url = appRouteUrl(nextRoute.path, options.query);
     if (options.replace) {
       window.history.replaceState(window.history.state, "", url);
     } else {
@@ -337,27 +346,41 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const normalizedRoute = appRouteFromHash(window.location.hash);
-    if (!window.location.hash || normalizedRoute.path !== window.location.hash.slice(1)) {
-      window.history.replaceState(window.history.state, "", appRouteUrl(normalizedRoute.path));
+    const normalizedHash = `${normalizedRoute.path}${normalizedRoute.songId ? `?songId=${encodeURIComponent(normalizedRoute.songId)}` : ""}`;
+    if (!window.location.hash || normalizedHash !== window.location.hash.slice(1)) {
+      window.history.replaceState(window.history.state, "", appRouteUrl(normalizedRoute.path, normalizedRoute.songId ? { songId: normalizedRoute.songId } : undefined));
     }
     const synchronizeRoute = (): void => {
       const incomingRoute = appRouteFromHash(window.location.hash);
       const currentRoute = routeRef.current;
-      if (incomingRoute.path === currentRoute.path) return;
+      if (incomingRoute.path === currentRoute.path && incomingRoute.songId === currentRoute.songId) return;
+      if (!isStaffGameSongRoutePath(currentRoute.path) && incomingRoute.path === "/practice/game/songs") {
+        staffGameSelectionReturnPathRef.current = currentRoute.path;
+        staffGameSelectionRoutePushedRef.current = true;
+      }
+      if (currentRoute.path === "/practice/game/songs" && incomingRoute.path === "/practice/game/songs/play") {
+        staffGamePlayRoutePushedRef.current = staffGameSelectionRoutePushedRef.current;
+      }
+      if (currentRoute.path === "/practice/game/songs/play" && incomingRoute.path === "/practice/game/songs") {
+        staffGamePlayRoutePushedRef.current = false;
+      }
+      if (isStaffGameSongRoutePath(currentRoute.path) && !isStaffGameSongRoutePath(incomingRoute.path)) {
+        staffGameSelectionRoutePushedRef.current = false;
+      }
       if (currentRoute.page === "vocal" && incomingRoute.page !== "vocal") {
         pendingRoutePathRef.current = incomingRoute.path;
         vocalExitRequestIdRef.current += 1;
         setVocalExitRequest({ id: vocalExitRequestIdRef.current, targetView: incomingRoute.page });
-        window.history.pushState(window.history.state, "", appRouteUrl(currentRoute.path));
+        window.history.pushState(window.history.state, "", appRouteUrl(currentRoute.path, currentRoute.songId ? { songId: currentRoute.songId } : undefined));
         return;
       }
       const isLeavingPractice = currentRoute.page === "practice" && incomingRoute.page !== "practice";
-      const isLeavingStaffGame = currentRoute.path === "/practice/game" && incomingRoute.path !== "/practice/game";
+      const isLeavingStaffGame = isStaffGameRoutePath(currentRoute.path) && !isStaffGameRoutePath(incomingRoute.path);
       if (practiceRunningRef.current && (isLeavingPractice || isLeavingStaffGame)) {
         pendingRoutePathRef.current = incomingRoute.path;
         practiceExitRequestIdRef.current += 1;
         setPracticeExitRequest({ id: practiceExitRequestIdRef.current, targetView: incomingRoute.page });
-        window.history.pushState(window.history.state, "", appRouteUrl(currentRoute.path));
+        window.history.pushState(window.history.state, "", appRouteUrl(currentRoute.path, currentRoute.songId ? { songId: currentRoute.songId } : undefined));
         return;
       }
       routeRef.current = incomingRoute;
@@ -521,6 +544,36 @@ export function App(): JSX.Element {
 
   const selectPracticeGameRoute = useCallback((isGame: boolean): void => {
     navigateToRoute(isGame ? "/practice/game" : "/practice", { replace: !isGame });
+  }, [navigateToRoute]);
+
+  const selectStaffGameMode = useCallback((mode: "levels" | "songs"): void => {
+    if (mode === "songs" && routeRef.current.path === "/practice/game/songs/play" && staffGamePlayRoutePushedRef.current) {
+      staffGamePlayRoutePushedRef.current = false;
+      window.history.back();
+      return;
+    }
+    const returningFromSongGame = mode === "songs" && routeRef.current.path === "/practice/game/songs/play";
+    navigateToRoute(mode === "songs" ? "/practice/game/songs" : "/practice/game", {
+      replace: returningFromSongGame,
+    });
+  }, [navigateToRoute]);
+
+  const startStaffGameSong = useCallback((songId: string): void => {
+    const isAlreadyOnSongPlayRoute = routeRef.current.path === "/practice/game/songs/play";
+    navigateToRoute("/practice/game/songs/play", {
+      query: { songId },
+      replace: isAlreadyOnSongPlayRoute,
+    });
+    if (!isAlreadyOnSongPlayRoute) staffGamePlayRoutePushedRef.current = true;
+  }, [navigateToRoute]);
+
+  const returnFromStaffGameSongSelection = useCallback((): void => {
+    if (staffGameSelectionRoutePushedRef.current) {
+      staffGameSelectionRoutePushedRef.current = false;
+      window.history.back();
+      return;
+    }
+    navigateToRoute(staffGameSelectionReturnPathRef.current, { replace: true });
   }, [navigateToRoute]);
 
   const showBackupReminderMessage = useCallback((title: string, detail: string, autoHide: boolean): void => {
@@ -816,7 +869,7 @@ export function App(): JSX.Element {
   const displayBackupReminder =
     showBackupReminder &&
     !practiceRunning &&
-    route.path !== "/practice/game" &&
+    !isStaffGameRoutePath(route.path) &&
     (view !== "vocal" || backupReminderState.kind === "data-conflict");
   const shellClassName = [
     "app-shell",
@@ -824,7 +877,7 @@ export function App(): JSX.Element {
     view === "practice" ? "app-shell-practice-page" : "",
     view === "home" ? "app-shell-home" : "",
   ].filter(Boolean).join(" ");
-  const showMobileBackButton = view !== "home" && !(view === "practice" && route.path === "/practice/game") && !practiceRunning;
+  const showMobileBackButton = view !== "home" && !(view === "practice" && isStaffGameRoutePath(route.path)) && !practiceRunning;
   return (
     <PageAppearanceProvider isNightMode={isNightMode}>
     <Toaster closeButton position="top-center" theme={isNightMode ? "dark" : "light"} />
@@ -907,8 +960,15 @@ export function App(): JSX.Element {
             sessions={data.sessions}
             reviews={data.reviews}
             navigationExitRequest={practiceExitRequest}
-            isStaffGameRoute={route.path === "/practice/game"}
+            isStaffGameRoute={isStaffGameRoutePath(route.path)}
+            initialStaffGameMode={isStaffGameSongRoutePath(route.path) ? "songs" : "levels"}
+            initialSongSelectionStep={route.path === "/practice/game/songs/play" ? "detail" : "list"}
+            initialSongId={route.songId}
+            isStaffGameSongPlayRoute={route.path === "/practice/game/songs/play"}
             onStaffGameRouteChange={selectPracticeGameRoute}
+            onStaffGameModeChange={selectStaffGameMode}
+            onStaffGameSongStart={startStaffGameSong}
+            onStaffGameSongSelectionExit={returnFromStaffGameSongSelection}
             onDataChanged={refresh}
             onNavigationExit={handleNavigationExit}
             onOpenStats={() => selectView("stats")}

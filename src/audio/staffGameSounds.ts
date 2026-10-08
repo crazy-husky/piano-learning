@@ -23,11 +23,38 @@ const soundSources: Record<SampledStaffGameSound, { url: string; volumeDb: numbe
 
 const soundPlayers = new Map<SampledStaffGameSound, SoundPlayer>();
 let soundEffectsEnabled = true;
+let audioSuppressed = false;
 let starRevealSynth: Tone.Synth | null = null;
 let buttonBounceSynth: Tone.MembraneSynth | null = null;
 
+function canPlayAudio(): boolean {
+  return soundEffectsEnabled && !audioSuppressed;
+}
+
+function stopPlayingAudio(): void {
+  soundPlayers.forEach(({ player }) => {
+    try {
+      player.stop();
+    } catch {
+      // Stopping an idle player is best-effort.
+    }
+  });
+  try {
+    starRevealSynth?.triggerRelease();
+    buttonBounceSynth?.triggerRelease();
+  } catch {
+    // Synths may have no active voice when a mute setting changes.
+  }
+}
+
 export function setStaffGameSoundsEnabled(enabled: boolean): void {
   soundEffectsEnabled = enabled;
+  if (!enabled) stopPlayingAudio();
+}
+
+export function setStaffGameAudioSuppressed(suppressed: boolean): void {
+  audioSuppressed = suppressed;
+  if (suppressed) stopPlayingAudio();
 }
 
 function getSoundPlayer(sound: SampledStaffGameSound): SoundPlayer {
@@ -62,10 +89,11 @@ export function preloadStaffGameSounds(): void {
 }
 
 export function playStaffGameSound(sound: StaffGameSound): void {
-  if (typeof window === "undefined" || !soundEffectsEnabled) return;
+  if (typeof window === "undefined" || !canPlayAudio()) return;
   if (sound === "buttonBounce") {
     void Tone.start()
       .then(() => {
+        if (!canPlayAudio()) return;
         buttonBounceSynth ??= new Tone.MembraneSynth({
           pitchDecay: 0.07,
           octaves: 2.2,
@@ -81,17 +109,20 @@ export function playStaffGameSound(sound: StaffGameSound): void {
   const { player, ready } = getSoundPlayer(sound);
   void Tone.start()
     .then(() => ready)
-    .then(() => player.start())
+    .then(() => {
+      if (canPlayAudio()) player.start();
+    })
     .catch(() => undefined);
 }
 
 export function playStaffGameStarReveal(starIndex: number, enabled = soundEffectsEnabled): void {
-  if (typeof window === "undefined" || !enabled) return;
+  if (typeof window === "undefined" || !enabled || !canPlayAudio()) return;
   const notes = ["C6", "E6", "G6"] as const;
   const note = notes[Math.max(0, Math.min(notes.length - 1, Math.floor(starIndex)))];
 
   void Tone.start()
     .then(() => {
+      if (!canPlayAudio()) return;
       starRevealSynth ??= new Tone.Synth({
         oscillator: { type: "sine" },
         envelope: { attack: 0.005, decay: 0.22, sustain: 0, release: 0.12 },
