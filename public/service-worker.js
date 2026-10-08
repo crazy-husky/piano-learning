@@ -1,8 +1,8 @@
-const CACHE_NAME = "anki-note-v2";
+const CACHE_NAME = "anki-note-v3";
 const RETAINED_CACHE_NAMES = new Set([CACHE_NAME, "anki-note-vocal-pitch-models-v1"]);
 const scopeUrl = new URL(self.registration.scope);
 const indexUrl = new URL("index.html", scopeUrl).toString();
-const APP_SHELL = ["", "index.html", "manifest.webmanifest", "icons/icon.svg"].map((path) =>
+const APP_SHELL = ["", "index.html", "manifest.webmanifest", "icons/icon.svg?v=2"].map((path) =>
   new URL(path, scopeUrl).toString(),
 );
 

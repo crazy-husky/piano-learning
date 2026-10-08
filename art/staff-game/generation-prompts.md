@@ -38,7 +38,7 @@ Constraints: no UI, no cards, no buttons, no HUD, no score, no note bubbles, no 
 
 ## 3. 游戏音效
 
-游戏音效保存在 `src/assets/staff-game/audio/`，并由 `src/audio/staffGameSounds.ts` 统一预载与播放。原有 4 个 WAV 由 VSS Sound Studio 制作（44.1 kHz、16-bit、单声道）；`note-missed-soft.wav` 后按下方的新提示重新合成（48 kHz、24-bit、单声道）。
+游戏音效保存在 `src/assets/staff-game/audio/`，并由 `src/audio/staffGameSounds.ts` 统一预载与播放。原有 4 个 WAV 由 VSS Sound Studio 制作（44.1 kHz、16-bit、单声道）；`note-missed-soft.wav` 后按下方的新提示重新合成（48 kHz、24-bit、单声道）。之后用户提供了菜单点击音、三条连击鼓励语音和一条背景音乐，经过裁静音、响度平衡或压缩后接入；素材来源和处理后的规格记录在 [音频素材清单](asset-catalog.md#音频素材)。
 
 - `bubble-pop.wav`：答对目标音符时的清脆水泡破裂和星光散开声。
 - `combo-streak.wav`：每 3 次连续答对时的渐升连击提示，VSS 候选评分 89/100。
@@ -73,6 +73,14 @@ Primary request: Create a clean 3x3 sprite sheet, exactly nine equal square cell
 Composition: 3 columns by 3 rows, no gutters or borders, same character scale and centered position in every cell, feet on the same baseline, full head and feet inside every cell. Square 1024x1024 canvas; genuine transparent background in every cell.
 Constraints: preserve exact silhouette, face proportions, blue glossy jelly material, eyes, yellow musical-note ornament, short limbs and soft 3D cartoon style. The pose/expression may change only as required by the sequence. No ground shadow.
 Avoid: panels, grid lines, cell dividers, overlapping characters, crop, scale changes between cells, text, numbers, labels, props, extra characters, background, watermark, extra accessories.
+```
+
+### 待机动作扩帧版
+
+本轮用内置 ImageGen 以旧待机图集为角色参考，生成更连续的 4×4 待机动作。以下是根据实际生成目标整理、便于复用的提示词；**不是逐字保存的生成调用文本**。生成后统一帧内比例和脚底基线，末帧复用首帧姿势，再压缩为 WebP。
+
+```text
+Use the supplied idle sprite sheet as the exact identity and rendering reference. Create a transparent 4-by-4 sprite sheet with sixteen frames of the same blue water-drop music mascot, read left-to-right then top-to-bottom. Keep the body silhouette, scale, pose, and foot baseline identical in every frame. Animate only a natural, friendly blink using small eyelid changes; do not breathe, sway, squash, stretch, or resize the body. Keep the mascot centered and fully inside every square cell. Preserve the exact blue glossy jelly silhouette, face proportions, yellow musical-note ornament, and soft 3D cartoon style. Genuine transparent background; no ground shadow, text, labels, dividers, extra characters, props, or stray pixels.
 ```
 
 ### 答对欢呼
@@ -130,6 +138,34 @@ Composition: 3 columns by 3 rows, no gutters or borders, same character scale an
 Constraints: preserve exact water-drop silhouette, face proportions, bright glossy blue jelly material, yellow musical-note ornament, and polished soft 3D cartoon rendering. No cloud, no star, no extra object; those can be drawn by the game.
 Avoid: panels, grid lines, dividers, overlapping/cropped character, inconsistent proportions, character redesign, text, numbers, props, extra characters, background, watermark, multiple poses outside the cells.
 ```
+
+## 5. 中性待机角色
+
+参考图：`src/assets/staff-game/characters/mascot-sad-frames.webp` 的难过帧。生成参数：`transparent_background: true`。生成后只取眉毛和嘴部，合成到原图集第 6 帧；眼睛、身体和轮廓继续使用原始帧。此第 6 帧同时用于待机，保证动画结束后不再切换素材。
+
+```text
+Use case: calm neutral face variant for the exact same mascot pose. Image 1 is the last frame of the game's sad animation. Preserve its precise character silhouette, body proportions, pose, framing, scale, position, arms, hands, feet, eyes, eye size, iris size, eye positions, colors, highlights, shading, and 3D material. Change only the eyebrows to relaxed, nearly level brows and replace the sad mouth with a tiny closed neutral line. Do not redraw, shrink, move, or reshape either eye. No smile, frown, tears, or excited expression. Keep the original transparent background. Do not redraw or resize the body, move any feature outside the face, or add any objects.
+```
+
+最终素材：`src/assets/staff-game/characters/mascot-neutral-idle.webp`。以难过图集索引 6 的 260×260 原图为底，只合成生成结果中的眉毛和嘴部，原眼睛像素保持不变；质量 100 的透明 WebP，约 17 KiB。该图已合入 `mascot-sad-frames.webp` 索引 6，运行时动画尾帧和待机共用同一格。当前难过序列只使用索引 1–6；原本带笑脸的索引 0、7、8 没有运行时用途，现已用这张中性帧覆盖并保留原坐标，避免后续误引用时再次出现笑脸。
+
+## 6. 帮助弹窗提示标题
+
+参考图：用户提供的帮助弹窗截图用于确定标题位置；橙色粗描边字样用于字体质感参考。使用 ImageGen 生成透明标题图，清理透明区游离像素并转换为 WebP。
+
+```text
+Use case: stylized-concept
+Asset type: transparent UI title graphic for a children's music-learning game help dialog
+Input images: Image 1 is a help-dialog screenshot for layout context only. Image 2 is a reference for the playful orange cartoon lettering style.
+Primary request: create only the Chinese title text “提示”, inspired by Image 2's playful orange cartoon lettering. Image 1 is layout context only: the title will sit centered near the top of a cream-and-cyan framed help panel.
+Style/medium: chunky hand-drawn display lettering, warm orange fill, thick dark brown outline, a thin pale cream outer keyline, subtle dimensional highlights and a soft restrained shadow. Friendly, energetic, polished game UI lettering.
+Composition/framing: the two Chinese characters “提示” centered, compact horizontal wordmark, generous transparent padding, legible at small UI size.
+Color palette: vivid orange, golden yellow highlights, dark cocoa outline, pale cream keyline.
+Text (verbatim): “提示”
+Constraints: render the exact Chinese characters “提示” only, correctly formed and readable. Transparent background. No stars, sparkles, icons, symbols, panels, scenery, extra text, watermark, or background. Keep edges clean.
+```
+
+最终素材：`src/assets/staff-game/ui/help-title-tip.webp`，1345×724，119,264 字节（约 117 KiB）；接入帮助弹窗标题，替换原有文字标题和顶部星星装饰。
 
 ## 共用交付要求
 

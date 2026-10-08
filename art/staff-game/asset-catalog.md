@@ -26,9 +26,11 @@
 | `src/assets/staff-game/characters/mascot-idle.webp` | 445×475 WebP | 静态待机参考图；当前代码未引用 | `source/01-characters-and-bubble.png` 切图；来源图集生成提示词未归档 |
 | `src/assets/staff-game/characters/mascot-cheer.webp` | 432×450 WebP | 静态欢呼参考图；当前代码未引用 | `source/01-characters-and-bubble.png` 切图；来源图集生成提示词未归档 |
 | `src/assets/staff-game/characters/mascot-wink.webp` | 423×459 WebP | 静态眨眼参考图；当前代码未引用 | `source/01-characters-and-bubble.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/characters/mascot-idle-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 待机呼吸与眨眼动画；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考待机角色 |
+| `src/assets/staff-game/characters/mascot-idle-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 保留未接入；旧待机图集所有帧都是张嘴笑脸；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考待机角色 |
+| `src/assets/staff-game/characters/mascot-neutral-idle.webp` | 260×260 WebP；约 17 KiB | 中性表情源图；眉毛和嘴部改为中性，保留原眼睛大小；已合入难过图集第 6 帧，运行时不单独加载 | [中性待机角色提示词](generation-prompts.md#5-中性待机角色)；参考难过末帧 |
+| `src/assets/staff-game/characters/mascot-idle-frames-16.webp` | 1024×1024 WebP；4×4；228,550 字节 | 扩帧候选图集；保留但当前未接入，因与难过图集的色调和角色比例不匹配，切换时可见跳变 | ImageGen 以旧待机图集为角色参考；[本轮整理版提示词](generation-prompts.md#待机动作扩帧版)注明不是逐字保存的生成调用文本 |
 | `src/assets/staff-game/characters/mascot-cheer-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 答对时跳起欢呼；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考欢呼与待机角色 |
-| `src/assets/staff-game/characters/mascot-sad-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 答错或漏音时难过并恢复；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考难过表情和待机角色 |
+| `src/assets/staff-game/characters/mascot-sad-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 答错或漏音时使用索引 1–6，从收敛表情过渡到难过并恢复为中性；待机共用索引 6；零分结算停在难过帧；未使用的微笑索引 0、7、8 已替换为中性表情，避免误引用时出现笑脸；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考难过表情和待机角色 |
 | `src/assets/staff-game/characters/mascot-pause-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 暂停时眨眼；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考眨眼与待机角色 |
 | `src/assets/staff-game/characters/mascot-celebration-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 结算时庆祝；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考通关庆祝与欢呼角色 |
 | `src/assets/staff-game/characters/mascot-level-celebration.webp` | 483×509 WebP | 静态通关庆祝参考图；当前代码未引用 | `source/03-notation-level-and-backgrounds.png` 切图；来源图集生成提示词未归档 |
@@ -47,6 +49,7 @@
 | `src/assets/staff-game/ui/action-resume.webp` | 256×256 WebP | 继续按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
 | `src/assets/staff-game/ui/action-return.webp` | 256×256 WebP | 返回按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
 | `src/assets/staff-game/ui/action-settings.webp` | 256×256 WebP | 设置按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
+| `src/assets/staff-game/ui/help-title-tip.webp` | 1345×724 WebP；约 117 KiB | 帮助弹窗“提示”标题图；透明背景，运行中 | [帮助弹窗标题提示词](generation-prompts.md#6-帮助弹窗提示标题)；参考用户提供的橙色描边字样 |
 | `src/assets/staff-game/ui/button-primary-base.webp` | 663×191 WebP | 主按钮底图；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
 | `src/assets/staff-game/ui/button-secondary-base.webp` | 499×153 WebP | 次按钮底图；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
 | `src/assets/staff-game/ui/hud-frame.webp` | 872×246 WebP | 游戏顶部 HUD 底图；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
@@ -64,10 +67,14 @@
 | --- | --- | --- | --- |
 | `src/assets/staff-game/audio/bubble-pop.wav` | 0.67 秒；44.1 kHz、16-bit、单声道 | 答对气泡反馈；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
 | `src/assets/staff-game/audio/combo-streak.wav` | 0.89 秒；44.1 kHz、16-bit、单声道 | 连击反馈；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
+| `src/assets/staff-game/audio/combo-excellent.mp3` | 0.75 秒；22.05 kHz、48 kbps、单声道 | 10 连击语音鼓励；响度平衡后接入，受音效开关控制 | 用户提供 `/Users/husky/Downloads/excellent.wav`；转 MP3 并统一到约 -20 LUFS |
+| `src/assets/staff-game/audio/combo-amazing.mp3` | 0.98 秒；22.05 kHz、48 kbps、单声道 | 25 连击语音鼓励；响度平衡后接入，受音效开关控制 | 用户提供 `/Users/husky/Downloads/amazing.wav`；转 MP3 并统一到约 -20 LUFS |
+| `src/assets/staff-game/audio/combo-unbelievable.mp3` | 1.15 秒；22.05 kHz、48 kbps、单声道 | 50 连击及之后每增加 20 连击时播放；响度平衡后接入，受音效开关控制 | 用户提供 `/Users/husky/Downloads/unbelivable.wav`；转 MP3 并统一到约 -20 LUFS |
+| `src/assets/staff-game/audio/menu-click.mp3` | 0.40 秒；22.05 kHz、48 kbps、单声道 | 菜单与按钮点击音；替换原合成弹动音；运行中 | 用户提供 `/Users/husky/Downloads/operateMenu.wav`；裁去前后静音后转 MP3 |
 | `src/assets/staff-game/audio/level-clear.wav` | 1.22 秒；44.1 kHz、16-bit、单声道 | 通关反馈；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
 | `src/assets/staff-game/audio/microphone-ready.wav` | 0.87 秒；44.1 kHz、16-bit、单声道 | 麦克风连接或恢复提示；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
 | `src/assets/staff-game/audio/note-missed-soft.wav` | 0.32 秒；48 kHz、24-bit、单声道 | 答错或气泡超时反馈；运行中 | [答错/漏答提示词](generation-prompts.md#答错漏答提示音) |
-| `src/assets/staff-game/audio/relaxed-game-bgm.mp3` | 20 秒；44.1 kHz、双声道 MP3 | 闯关背景音乐；运行中 | 后续生成素材；完整音乐生成提示词未归档，已有需求描述可回溯对话 |
+| `src/assets/staff-game/audio/relaxed-game-bgm.mp3` | 56.24 秒；22.05 kHz、48 kbps、双声道 MP3；约 330 KB | 闯关背景音乐；循环播放；运行中 | 用户提供 `/Users/husky/Downloads/bg.wav`；从约 2.4 MB WAV 压缩并做响度处理 |
 
 ## 程序绘制的游戏效果
 

@@ -1,4 +1,4 @@
-import { BarChart3, CircleHelp, Copy, Download, Pause, Play, RotateCcw, SlidersHorizontal, Square, Volume2, X } from "lucide-react";
+import { ArrowLeft, BarChart3, CircleHelp, Copy, Download, Pause, Play, RotateCcw, SlidersHorizontal, Square, Volume2, X } from "lucide-react";
 import {
   Fragment,
   useCallback,
@@ -274,6 +274,7 @@ interface PracticeViewProps {
   reviews: ReviewRecord[];
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   onNavigationExit?: (targetView: PracticeNavigationExitTarget) => void;
+  onRequestNavigationExit: (targetView: PracticeNavigationExitTarget) => void;
   onSettingsSaved: (settings: AppSettings, options?: { feedback?: boolean }) => void | Promise<void>;
   onDataChanged: () => Promise<void>;
   onOpenStats: () => void;
@@ -526,6 +527,7 @@ export function PracticeView({
   reviews,
   navigationExitRequest,
   onNavigationExit,
+  onRequestNavigationExit,
   onSettingsSaved,
   onDataChanged,
   onOpenStats,
@@ -571,7 +573,6 @@ export function PracticeView({
   const [wrongAnswerCount, setWrongAnswerCount] = useState(0);
   const [microphoneCaptureAnalysis, setMicrophoneCaptureAnalysis] = useState<PracticeMicrophoneAnalysis | null>(null);
   const [microphoneCaptureNotice, setMicrophoneCaptureNotice] = useState<string | null>(null);
-  const [microphoneDebugFeedback, setMicrophoneDebugFeedback] = useState<string | null>(null);
   const [expandedCandidateSegmentKey, setExpandedCandidateSegmentKey] = useState<string | null>(null);
   const [isMicrophoneAnalysisDialogOpen, setIsMicrophoneAnalysisDialogOpen] = useState(false);
   const [isMicrophoneDebugDialogOpen, setIsMicrophoneDebugDialogOpen] = useState(false);
@@ -739,7 +740,7 @@ export function PracticeView({
       ...current,
       debugParameters: normalizePracticeMicrophoneDebugParameters({ ...current.debugParameters, ...patch }),
     }));
-    setMicrophoneDebugFeedback("设置已保存并生效");
+    toast.success("设置已保存并生效", { duration: 1_800, id: "practice-microphone-settings-saved" });
   }
 
   function restoreMicrophoneDebugDefaults(): void {
@@ -756,7 +757,7 @@ export function PracticeView({
       algorithm: defaultPreferences.algorithm,
       debugParameters: { ...defaultPreferences.debugParameters },
     }));
-    setMicrophoneDebugFeedback("设置已保存并生效");
+    toast.success("设置已保存并生效", { duration: 1_800, id: "practice-microphone-settings-saved" });
   }
 
   async function selectMicrophoneAlgorithm(algorithm: PracticeMicrophoneAlgorithm): Promise<void> {
@@ -782,7 +783,7 @@ export function PracticeView({
       releaseSwiftF0PracticeRuntime();
     }
     onPracticeMicrophonePreferencesChange((current) => withPracticeMicrophoneAlgorithm(current, algorithm));
-    setMicrophoneDebugFeedback("设置已保存并生效");
+    toast.success("设置已保存并生效", { duration: 1_800, id: "practice-microphone-settings-saved" });
   }
 
   useLayoutEffect(() => {
@@ -2309,7 +2310,7 @@ export function PracticeView({
         <div className="setup-grid">
           <div className="panel setup-panel">
             <div className="panel-heading">
-              <h1>单音识谱</h1>
+              <h1>识谱视奏</h1>
               <div className="practice-setup-heading-meta">
                 <div className="practice-midi-heading-status">
                   <span title={midi.selectedInput?.name}>
@@ -2715,6 +2716,16 @@ export function PracticeView({
           )}
         </div>
         <div className="topline-actions">
+          <button
+            aria-label="返回首页"
+            className="practice-return-home"
+            title="返回首页"
+            onClick={() => onRequestNavigationExit("home")}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={18} />
+            返回
+          </button>
           {answerPitchMode !== "microphone" ? (
             <button title="重播目标音" onClick={() => void replayTarget()}>
               <Volume2 size={18} />
@@ -3029,11 +3040,6 @@ export function PracticeView({
           <div className="practice-microphone-analysis-dialog-header">
             <div>
               <h2 id="practice-microphone-debug-title">麦克风调试</h2>
-              {microphoneDebugFeedback ? (
-                <div aria-live="polite" className="practice-microphone-feedback-banner is-success" role="status">
-                  {microphoneDebugFeedback}
-                </div>
-              ) : null}
             </div>
             <button
               aria-label="关闭麦克风调试"

@@ -1,5 +1,6 @@
 import { DatabaseBackup, FolderOpen, RotateCcw, Upload } from "lucide-react";
 import { type Dispatch, type RefObject, type SetStateAction, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   chooseBackupDirectory,
   resolveBackupConflict,
@@ -42,6 +43,7 @@ import {
 import { useLocalStorageState } from "./useLocalStorageState";
 
 type StoredBackupState = BackupState & { restoreRequiredBeforeBackup?: boolean };
+type SettingsActionFeedback = { description?: string; kind?: "danger"; title: string };
 const PIANO_VOLUME_STEP = 0.05;
 const ANSWER_KEYBOARD_SCALE_STEP = 0.05;
 
@@ -110,7 +112,6 @@ export function SettingsView({
   const confirmDialog = useConfirmDialog();
   const [busy, setBusy] = useState(false);
   const [isRestoringConfiguration, setIsRestoringConfiguration] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [selectedMicrophoneAlgorithm, setSelectedMicrophoneAlgorithm] = useState(
     practiceMicrophonePreferences.algorithm,
   );
@@ -230,29 +231,39 @@ export function SettingsView({
     saveAnswerKeyboardScale(answerKeyboardScaleRef.current + direction * ANSWER_KEYBOARD_SCALE_STEP);
   });
 
-  function describeDirectorySelection(result: BackupDirectorySelectionResult, selectedBackupState: BackupState): string {
+  function describeDirectorySelection(result: BackupDirectorySelectionResult, selectedBackupState: BackupState): SettingsActionFeedback {
     if (result === "diverged") {
-      return formatBackupConflictDetail(selectedBackupState);
+      return {
+        kind: "danger",
+        title: backupText.titles.dataConflict,
+        description: formatBackupConflictDetail(selectedBackupState),
+      };
     }
     if (result === "synced-up") {
-      return backupText.messages.importSuccessDetail;
+      return {
+        title: backupText.titles.importSuccess,
+        description: backupText.messages.importSuccessDetail,
+      };
     }
-    return backupText.messages.directorySelected;
+    return { title: backupText.messages.directorySelected };
   }
 
-  async function runBusy(action: () => Promise<string | void>, doneMessage: string): Promise<void> {
+  async function runBusy(action: () => Promise<SettingsActionFeedback | void>, doneMessage: string): Promise<void> {
     setBusy(true);
-    setMessage(null);
     try {
-      const resultMessage = await action();
-      setMessage(resultMessage ?? doneMessage);
+      const result = await action();
       await onDataChanged();
+      const feedback = typeof result === "object" && result !== null ? result : undefined;
+      if (feedback?.kind === "danger") {
+        toast.error(feedback.title, { description: feedback.description });
+      } else {
+        toast.success(feedback?.title ?? doneMessage, { description: feedback?.description });
+      }
     } catch (error) {
       if (isUserAbort(error)) {
-        setMessage(null);
         return;
       }
-      setMessage(error instanceof Error ? error.message : String(error));
+      toast.error("操作失败", { description: error instanceof Error ? error.message : String(error) });
     } finally {
       setBusy(false);
     }
@@ -677,7 +688,7 @@ export function SettingsView({
         </div>
         {backupBlockedUntilSync ? (
           <>
-            <div className="status-line warning">{formatBackupConflictDetail(backupState)}</div>
+            <div className="status-line danger">{formatBackupConflictDetail(backupState)}</div>
             <BackupConflictResolver backupState={backupState} disabled={busy} onResolve={resolveConflict} />
           </>
         ) : backupState.directoryHandle && !hasBackupSnapshot ? (
@@ -685,7 +696,6 @@ export function SettingsView({
         ) : backupState.directoryHandle ? (
           <div className="status-line">{backupText.messages.backupEnabled}</div>
         ) : null}
-        {message ? <div className="status-line">{message}</div> : null}
         {!supportsFileBackups() ? <div className="status-line">{backupText.status.unsupportedFileSystemAccess}</div> : null}
       </div>
 

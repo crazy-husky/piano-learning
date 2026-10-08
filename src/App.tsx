@@ -1,4 +1,4 @@
-import { ArrowLeft, BellOff, FolderOpen, X } from "lucide-react";
+import { ArrowLeft, AudioLines, BarChart3, BellOff, BookOpen, Dumbbell, FolderOpen, House, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { preloadPianoSamples, setPianoVolume } from "./audio/piano";
@@ -223,14 +223,12 @@ export function App(): JSX.Element {
   const pendingRoutePathRef = useRef<AppRoutePath | null>(null);
   const view = route.page;
   const [backupReminderBusy, setBackupReminderBusy] = useState(false);
-  const [backupReminderMessage, setBackupReminderMessage] = useState<{ detail: string; title: string } | null>(null);
-  const [backupToastMessage, setBackupToastMessage] = useState<{ detail: string; title: string } | null>(null);
+  const [backupReminderMessage, setBackupReminderMessage] = useState<{ dangerous?: boolean; detail: string; title: string } | null>(null);
   const [backupReminderVisible, setBackupReminderVisible] = useState(false);
   const [practiceExitRequest, setPracticeExitRequest] = useState<PracticeNavigationExitRequest | null>(null);
   const [vocalExitRequest, setVocalExitRequest] = useState<PracticeNavigationExitRequest | null>(null);
   const practiceExitRequestIdRef = useRef(0);
   const vocalExitRequestIdRef = useRef(0);
-  const backupToastMessageTimerRef = useRef<number | null>(null);
   const backupCheckInFlightRef = useRef<Promise<BackupCheckResult> | null>(null);
 
   const showConfigurationFeedback = useCallback((
@@ -475,14 +473,6 @@ export function App(): JSX.Element {
   ]);
 
   useEffect(() => {
-    return () => {
-      if (backupToastMessageTimerRef.current !== null) {
-        window.clearTimeout(backupToastMessageTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     function onLocalPreferenceChange(event: Event): void {
       const key = (event as CustomEvent<{ key?: string }>).detail?.key;
       if (view === "settings" && key && LOCAL_PREFERENCE_FEEDBACK_KEYS.has(key)) {
@@ -543,7 +533,7 @@ export function App(): JSX.Element {
   }, [navigateToRoute]);
 
   const selectPracticeGameRoute = useCallback((isGame: boolean): void => {
-    navigateToRoute(isGame ? "/practice/game" : "/practice", { replace: !isGame });
+    navigateToRoute(isGame ? "/practice/game" : "/", { replace: !isGame });
   }, [navigateToRoute]);
 
   const selectStaffGameMode = useCallback((mode: "levels" | "songs"): void => {
@@ -578,19 +568,13 @@ export function App(): JSX.Element {
 
   const showBackupReminderMessage = useCallback((title: string, detail: string, autoHide: boolean): void => {
     if (autoHide) {
-      if (backupToastMessageTimerRef.current !== null) {
-        window.clearTimeout(backupToastMessageTimerRef.current);
-      }
       setBackupReminderMessage(null);
       setBackupReminderVisible(false);
-      setBackupToastMessage({ detail, title });
-      backupToastMessageTimerRef.current = window.setTimeout(() => {
-        setBackupToastMessage(null);
-        backupToastMessageTimerRef.current = null;
-      }, 2500);
+      toast.success(title, { description: detail, duration: 2_500 });
       return;
     }
-    setBackupReminderMessage({ detail, title });
+    toast.error(title, { description: detail });
+    setBackupReminderMessage({ dangerous: true, detail, title });
     setBackupReminderVisible(true);
   }, []);
 
@@ -877,22 +861,46 @@ export function App(): JSX.Element {
     view === "practice" ? "app-shell-practice-page" : "",
     view === "home" ? "app-shell-home" : "",
   ].filter(Boolean).join(" ");
-  const showMobileBackButton = view !== "home" && !(view === "practice" && isStaffGameRoutePath(route.path)) && !practiceRunning;
+  const showMobileBackButton = view !== "home" && !(view === "practice" && isStaffGameRoutePath(route.path)) && (!practiceRunning || view === "practice");
   return (
     <PageAppearanceProvider isNightMode={isNightMode}>
-    <Toaster closeButton position="top-center" theme={isNightMode ? "dark" : "light"} />
+    <Toaster closeButton position="top-center" richColors theme={isNightMode ? "dark" : "light"} />
     <div className={shellClassName}>
-      {backupToastMessage ? (
-        <div className="backup-toast" role="status" aria-live="polite">
-          <strong>{backupToastMessage.title}</strong>
-          <span>{backupToastMessage.detail}</span>
-        </div>
-      ) : null}
+      <nav aria-label="主导航" className="app-nav">
+        <button aria-label="首页" aria-current={view === "home" ? "page" : undefined} className={view === "home" ? "active" : ""} onClick={() => selectView("home")} type="button">
+          <House aria-hidden="true" size={18} />
+          首页
+        </button>
+        <button aria-current={view === "study" ? "page" : undefined} className={view === "study" ? "active" : ""} onClick={() => selectView("study")} type="button">
+          <BookOpen aria-hidden="true" size={18} />
+          学习
+        </button>
+        <button aria-current={view === "practice" ? "page" : undefined} className={view === "practice" ? "active" : ""} onClick={() => selectView("practice")} type="button">
+          <Dumbbell aria-hidden="true" size={18} />
+          练习
+        </button>
+        <button aria-current={view === "stats" ? "page" : undefined} className={view === "stats" ? "active" : ""} onClick={() => selectView("stats")} type="button">
+          <BarChart3 aria-hidden="true" size={18} />
+          统计
+        </button>
+        <button aria-current={view === "vocal" ? "page" : undefined} className={view === "vocal" ? "active" : ""} onClick={() => selectView("vocal")} type="button">
+          <AudioLines aria-hidden="true" size={18} />
+          清唱
+        </button>
+        <button aria-current={view === "settings" ? "page" : undefined} className={view === "settings" ? "active" : ""} onClick={() => selectView("settings")} type="button">
+          <Settings aria-hidden="true" size={18} />
+          设置
+        </button>
+      </nav>
       <main className={displayBackupReminder && view !== "vocal" ? "has-backup-reminder" : undefined}>
         {displayBackupReminder ? (
           <div
             aria-label={backupReminderTitle}
-            className={`backup-reminder${view === "vocal" ? " vocal-backup-reminder" : ""}`}
+            className={[
+              "backup-reminder",
+              view === "vocal" ? "vocal-backup-reminder" : "",
+              backupReminderMessage?.dangerous || backupReminderState.kind === "data-conflict" ? "is-dangerous" : "",
+            ].filter(Boolean).join(" ")}
             role="region"
           >
             <div>
@@ -960,6 +968,7 @@ export function App(): JSX.Element {
             sessions={data.sessions}
             reviews={data.reviews}
             navigationExitRequest={practiceExitRequest}
+            onRequestNavigationExit={selectView}
             isStaffGameRoute={isStaffGameRoutePath(route.path)}
             initialStaffGameMode={isStaffGameSongRoutePath(route.path) ? "songs" : "levels"}
             initialSongSelectionStep={route.path === "/practice/game/songs/play" ? "detail" : "list"}

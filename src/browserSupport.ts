@@ -146,7 +146,7 @@ export function renderBrowserUpgradeNotice(root: HTMLElement, result: BrowserSup
   card.appendChild(title);
 
   const explanation = document.createElement("p");
-  explanation.textContent = "当前浏览器或设备系统版本过低，暂时无法运行单音识谱。";
+  explanation.textContent = "当前浏览器或设备系统版本过低，暂时无法运行识谱视奏。";
   card.appendChild(explanation);
 
   if (result.versionIssue) {
