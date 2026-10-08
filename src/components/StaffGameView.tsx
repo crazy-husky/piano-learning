@@ -11,7 +11,7 @@ import type { MidiAccessStatus } from "../midi/midiInput";
 import type { usePracticeMicrophoneInput } from "../vocal-pitch/usePracticeMicrophoneInput";
 import gameBackgroundDesktop from "../assets/staff-game/backgrounds/meadow-desktop.webp";
 import gameBackgroundMobile from "../assets/staff-game/backgrounds/meadow-mobile.webp";
-import gameBackgroundMusic from "../assets/staff-game/audio/match-three-bgm.mp3";
+import gameBackgroundMusic from "../assets/staff-game/audio/relaxed-game-bgm.mp3";
 import mascotCheer from "../assets/staff-game/characters/mascot-cheer.webp";
 import mascotIdle from "../assets/staff-game/characters/mascot-idle.webp";
 import mascotWink from "../assets/staff-game/characters/mascot-wink.webp";
@@ -30,10 +30,11 @@ import actionSettingsArt from "../assets/staff-game/ui/action-settings.webp";
 import hudFrameArt from "../assets/staff-game/ui/hud-frame.webp";
 import modalFrameArt from "../assets/staff-game/ui/modal-frame.webp";
 import starParticleArt from "../assets/staff-game/ui/star-particle.webp";
-import settingsBowArt from "../assets/staff-game/ui/settings-bow.webp";
+import settingsPawArt from "../assets/staff-game/ui/settings-paw.webp";
 import levelJumpDecorationArt from "../assets/staff-game/ui/level-jump-decoration.webp";
 import summaryLevelBannerArt from "../assets/staff-game/ui/summary-level-banner.webp";
 import summaryFireworksArt from "../assets/staff-game/ui/summary-fireworks.webp";
+import { StaffGameFireworks } from "./StaffGameFireworks";
 
 const STAFF_GAME_IMAGE_ASSETS = [
   gameBackgroundDesktop,
@@ -56,7 +57,7 @@ const STAFF_GAME_IMAGE_ASSETS = [
   hudFrameArt,
   modalFrameArt,
   starParticleArt,
-  settingsBowArt,
+  settingsPawArt,
   levelJumpDecorationArt,
   summaryLevelBannerArt,
   summaryFireworksArt,
@@ -64,7 +65,6 @@ const STAFF_GAME_IMAGE_ASSETS = [
 
 const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v1";
 const GAME_SETTINGS_KEY = "anki-note.staffGameSettings.v1";
-const GAME_DURATION_MS = 25_000;
 const BURST_STAR_COUNT = 14;
 const GAME_LEVEL_COUNT = 60;
 const NOTE_NAMES: NoteName[] = ["C", "D", "E", "F", "G", "A", "B"];
@@ -89,12 +89,19 @@ const GAME_NOTE_PROGRESSION: Array<{ midi: number; name: PianoKeyName; octave: n
     ...blackNotes.filter((note) => note.midi < 60).reverse(),
   ];
 })();
+
+function gameDurationMsForLevel(level: number): number {
+  if (level <= 3) return 30_000;
+  if (level <= 6) return 60_000;
+  if (level <= 9) return 120_000;
+  return 140_000;
+}
 const SOLFEGE_NAMES = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"] as const;
-const DISPLAY_MODES: Array<{ id: GameDisplayMode; label: string; shortLabel: string }> = [
-  { id: "note", label: "音名", shortLabel: "音" },
-  { id: "solfege", label: "唱名", shortLabel: "唱" },
-  { id: "number", label: "简谱", shortLabel: "简" },
-  { id: "none", label: "无", shortLabel: "无" },
+const DISPLAY_MODES: Array<{ id: GameDisplayMode; label: string }> = [
+  { id: "note", label: "音名" },
+  { id: "solfege", label: "唱名" },
+  { id: "number", label: "简谱" },
+  { id: "none", label: "无" },
 ];
 const GAME_DIFFICULTIES: Array<{
   id: GameDifficulty;
@@ -110,6 +117,7 @@ const GAME_DIFFICULTIES: Array<{
   { id: "nightmare", label: "噩梦", bubbleDurationMs: 2_200, comboWindowMs: 1_000, correctPoints: 15, comboBonusPoints: 4 },
 ];
 const STAR_THRESHOLDS = [36, 70, 110] as const;
+const STAR_BASE_DURATION_MS = 30_000;
 
 type GameInputMode = "physical" | "virtual" | "midi";
 type GameDisplayMode = "note" | "solfege" | "number" | "none";
@@ -173,6 +181,143 @@ function defaultProgress(): StaffGameProgress {
     maxCombos: Array(GAME_LEVEL_COUNT).fill(0),
     unlockedLevel: 1,
   };
+}
+
+interface FireflyParticle {
+  id: number;
+  left: string;
+  top: string;
+  size: string;
+  opacity: string;
+  duration: string;
+  delay: string;
+  driftX: string;
+  driftY: string;
+  midX: string;
+  midY: string;
+  moving: boolean;
+}
+
+function StaffGameParticles(): JSX.Element {
+  const [particles] = useState<FireflyParticle[]>(() => {
+    const clusters = Array.from({ length: 14 }, () => ({
+      x: 2 + Math.random() * 96,
+      y: 2 + Math.random() * 96,
+      radiusX: 8 + Math.random() * 20,
+      radiusY: 8 + Math.random() * 18,
+    }));
+    const pickCluster = (): (typeof clusters)[number] => {
+      return clusters[Math.floor(Math.random() * clusters.length)];
+    };
+    const spreadAround = (center: number, radius: number): number => center + ((Math.random() + Math.random() + Math.random()) / 3 - 0.5) * radius * 2;
+    const clampPercent = (value: number): number => Math.max(1, Math.min(99, value));
+
+    return Array.from({ length: 112 }, (_, id) => {
+      const clustered = Math.random() < 0.68;
+      const cluster = clustered ? pickCluster() : null;
+      const left = cluster ? clampPercent(spreadAround(cluster.x, cluster.radiusX)) : 2 + Math.random() * 96;
+      const top = cluster ? clampPercent(spreadAround(cluster.y, cluster.radiusY)) : 2 + Math.random() * 96;
+      const driftX = (Math.random() - 0.5) * 54;
+      const driftY = (Math.random() - 0.5) * 42;
+      return {
+        id,
+        left: `${left}%`,
+        top: `${top}%`,
+        size: `${id % 13 === 0 ? 3.8 + Math.random() * 1.8 : 1.5 + Math.random() * 3.2}px`,
+        opacity: `${id % 13 === 0 ? 0.46 + Math.random() * 0.24 : 0.28 + Math.random() * 0.32}`,
+        duration: `${11 + Math.random() * 13}s`,
+        delay: `${-Math.random() * 22}s`,
+        driftX: `${driftX}vw`,
+        driftY: `${driftY}vh`,
+        midX: `${driftX * 0.52}vw`,
+        midY: `${driftY * 0.52}vh`,
+        moving: Math.random() > 0.28,
+      };
+    });
+  });
+
+  return (
+    <div aria-hidden="true" className="staff-game-fireflies">
+      {particles.map((particle) => (
+        <i
+          className={`staff-game-firefly${particle.moving ? " is-moving" : ""}`}
+          key={particle.id}
+          style={{
+            left: particle.left,
+            top: particle.top,
+            width: particle.size,
+            height: particle.size,
+            opacity: particle.moving ? undefined : particle.opacity,
+            "--firefly-opacity": particle.opacity,
+            "--firefly-duration": particle.duration,
+            "--firefly-delay": particle.delay,
+            "--firefly-drift-x": particle.driftX,
+            "--firefly-drift-y": particle.driftY,
+            "--firefly-mid-x": particle.midX,
+            "--firefly-mid-y": particle.midY,
+          } as CSSProperties}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface ShootingStar {
+  id: number;
+  left: string;
+  top: string;
+  width: string;
+  angle: string;
+  travelX: string;
+  travelY: string;
+  duration: string;
+}
+
+function StaffGameShootingStar(): JSX.Element {
+  const [meteor, setMeteor] = useState<ShootingStar | null>(null);
+  const nextIdRef = useRef(0);
+
+  useEffect(() => {
+    const launch = (): void => {
+      const travelX = (Math.random() < 0.5 ? -1 : 1) * window.innerWidth * (0.22 + Math.random() * 0.3);
+      const travelY = (Math.random() < 0.5 ? -1 : 1) * window.innerHeight * (0.04 + Math.random() * 0.08);
+      const angle = Math.atan2(travelY, travelX) * (180 / Math.PI);
+      setMeteor({
+        id: nextIdRef.current++,
+        left: `${Math.random() * 100}%`,
+        top: `${3 + Math.random() * 34}%`,
+        width: `${130 + Math.random() * 110}px`,
+        angle: `${angle}deg`,
+        travelX: `${travelX}px`,
+        travelY: `${travelY}px`,
+        duration: `${2300 + Math.random() * 850}ms`,
+      });
+    };
+
+    const intervalId = window.setInterval(launch, 4_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  return (
+    <div aria-hidden="true" className="staff-game-shooting-star-layer">
+      {meteor ? (
+        <i
+          className="staff-game-shooting-star"
+          key={meteor.id}
+          onAnimationEnd={() => setMeteor((current) => current?.id === meteor.id ? null : current)}
+          style={{
+            left: meteor.left,
+            top: meteor.top,
+            width: meteor.width,
+            animationDuration: meteor.duration,
+            "--meteor-angle": meteor.angle,
+            "--meteor-travel-x": meteor.travelX,
+            "--meteor-travel-y": meteor.travelY,
+          } as CSSProperties}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 function canUseVirtualKeyboard(): boolean {
@@ -278,9 +423,10 @@ function readProgress(): StaffGameProgress {
       const item = Array.isArray(value) ? Number(value[index]) : 0;
       return Number.isFinite(item) ? Math.max(0, Math.floor(item)) : 0;
     });
+    const bestScores = readArray(parsed.bestScores);
     return {
-      bestScores: readArray(parsed.bestScores),
-      bestStars: readArray(parsed.bestStars).map((stars) => Math.min(3, stars)),
+      bestScores,
+      bestStars: bestScores.map((score, index) => starsForScore(score, index + 1)),
       maxCombos: readArray(parsed.maxCombos),
       unlockedLevel: Math.max(1, Math.min(GAME_LEVEL_COUNT, Math.floor(Number(parsed.unlockedLevel) || base.unlockedLevel))),
     };
@@ -297,21 +443,109 @@ function saveProgress(progress: StaffGameProgress): void {
   }
 }
 
-function starsForScore(score: number): number {
-  return STAR_THRESHOLDS.filter((threshold) => score >= threshold).length;
+function starsForScore(score: number, level: number): number {
+  const durationScale = gameDurationMsForLevel(level) / STAR_BASE_DURATION_MS;
+  return STAR_THRESHOLDS.filter((threshold) => score >= Math.ceil(threshold * durationScale)).length;
 }
 
-function shuffledNoteBag(level: number, previousMidi: number | null): Array<{ midi: number; name: PianoKeyName; octave: number }> {
-  const bag = GAME_NOTE_PROGRESSION.slice(0, level).map((note) => ({ ...note }));
-  for (let index = bag.length - 1; index > 0; index -= 1) {
+function shuffledItems<T>(items: T[]): T[] {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
-    [bag[index], bag[swapIndex]] = [bag[swapIndex], bag[index]];
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
   }
-  if (bag.length > 1 && bag[bag.length - 1].midi === previousMidi) {
-    const nonRepeatingIndex = bag.findIndex((note) => note.midi !== previousMidi);
-    [bag[nonRepeatingIndex], bag[bag.length - 1]] = [bag[bag.length - 1], bag[nonRepeatingIndex]];
+  return shuffled;
+}
+
+function shuffledNoteBag(
+  level: number,
+  previousMidi: number | null,
+  previousFocusStreak: number,
+): Array<{ midi: number; name: PianoKeyName; octave: number }> {
+  const unlockedNotes = GAME_NOTE_PROGRESSION.slice(0, level);
+  const focusNote = unlockedNotes[unlockedNotes.length - 1];
+  if (!focusNote) return [];
+
+  const bag: typeof GAME_NOTE_PROGRESSION = [];
+  const addCopies = (note: (typeof GAME_NOTE_PROGRESSION)[number], count: number): void => {
+    for (let index = 0; index < count; index += 1) bag.push({ ...note });
+  };
+  const addReviewNotes = (pool: typeof GAME_NOTE_PROGRESSION, count: number): void => {
+    let remaining = count;
+    while (pool.length > 0 && remaining > 0) {
+      const cycle = shuffledItems(pool);
+      const selected = cycle.slice(0, remaining);
+      bag.push(...selected.map((note) => ({ ...note })));
+      remaining -= selected.length;
+    }
+  };
+
+  if (level === 1) {
+    addCopies(focusNote, 1);
+  } else if (level <= 5) {
+    // A 20-note bag keeps the new focus note at 40%, with the rest reviewing earlier notes.
+    addCopies(focusNote, 8);
+    addReviewNotes(unlockedNotes.slice(0, -1), 12);
+  } else {
+    // Keep the focus note at 30%; distribute review slots across the newest five and older notes.
+    addCopies(focusNote, 6);
+    const earlierNotes = unlockedNotes.slice(0, -1);
+    const recentNotes = earlierNotes.slice(-5);
+    const olderNotes = earlierNotes.slice(0, -5);
+    if (olderNotes.length === 0) {
+      addReviewNotes(recentNotes, 14);
+    } else {
+      // Let the older-note share grow with its pool so one very old note is not overrepresented early on.
+      const olderSlots = Math.min(7, olderNotes.length);
+      addReviewNotes(recentNotes, 14 - olderSlots);
+      addReviewNotes(olderNotes, olderSlots);
+    }
   }
-  return bag;
+
+  if (level <= 2) return shuffledItems(bag);
+
+  // Re-shuffle until the current level's focus note never forms a run longer than two.
+  for (let attempt = 0; attempt < 256; attempt += 1) {
+    const candidate = shuffledItems(bag);
+    let previous = previousMidi;
+    let focusStreak = previousMidi === focusNote.midi ? previousFocusStreak : 0;
+    let valid = true;
+    for (const note of candidate.slice().reverse()) {
+      focusStreak = note.midi === focusNote.midi
+        ? previous === focusNote.midi ? focusStreak + 1 : 1
+        : 0;
+      if (focusStreak > 2) {
+        valid = false;
+        break;
+      }
+      previous = note.midi;
+    }
+    if (valid) return candidate;
+  }
+
+  // A constructive fallback guarantees the focus cap even if random shuffles keep clustering it.
+  const reviewNotes = shuffledItems(bag.filter((note) => note.midi !== focusNote.midi));
+  const focusNotes = bag.filter((note) => note.midi === focusNote.midi);
+  const gaps = Array.from({ length: reviewNotes.length + 1 }, () => 0);
+  let focusRemaining = focusNotes.length;
+  for (let gapIndex = 0; gapIndex < gaps.length && focusRemaining > 0; gapIndex += 1) {
+    const capacity = gapIndex === 0 && previousMidi === focusNote.midi
+      ? Math.max(0, 2 - previousFocusStreak)
+      : 2;
+    const laterCapacity = (gaps.length - gapIndex - 1) * 2;
+    const minimumHere = Math.max(0, focusRemaining - laterCapacity);
+    const maximumHere = Math.min(capacity, focusRemaining);
+    const countHere = minimumHere + Math.floor(Math.random() * (maximumHere - minimumHere + 1));
+    gaps[gapIndex] = countHere;
+    focusRemaining -= countHere;
+  }
+  const arranged: typeof GAME_NOTE_PROGRESSION = [];
+  let focusIndex = 0;
+  for (let gapIndex = 0; gapIndex < gaps.length; gapIndex += 1) {
+    for (let count = 0; count < gaps[gapIndex]; count += 1) arranged.push(focusNotes[focusIndex++]);
+    if (gapIndex < reviewNotes.length) arranged.push(reviewNotes[gapIndex]);
+  }
+  return arranged.reverse();
 }
 
 function randomBubbleCenterX(playfield: HTMLDivElement | null): number {
@@ -334,25 +568,29 @@ function noteLabel(note: GameNote): string {
 function NoteStaff({ note }: { note: GameNote }): JSX.Element {
   const noteLetter = note.name[0] as NoteName;
   const diatonicStep = (note.octave - 4) * 7 + NOTE_NAMES.indexOf(noteLetter);
-  const staffBottomStep = 2;
-  const staffCenterStep = 6;
-  const stepSpacing = 10.5;
+  const clef = note.midi < 60 ? "bass" : "treble";
+  const staffBottomStep = clef === "bass" ? -10 : 2;
+  const staffTopStep = staffBottomStep + 8;
+  const staffCenterStep = staffBottomStep + 4;
   let displayStep = diatonicStep;
-  while (displayStep < 0) displayStep += 7;
-  while (displayStep > 12) displayStep -= 7;
+  if (clef === "treble") {
+    while (displayStep < 0) displayStep += 7;
+    while (displayStep > 12) displayStep -= 7;
+  }
   const octaveShift = Math.round((diatonicStep - displayStep) / 7);
-  const octaveLabel = octaveShift === 0
+  const octaveLabel = clef === "bass" || octaveShift === 0
     ? null
     : Math.abs(octaveShift) === 1
       ? octaveShift > 0 ? "8va" : "8vb"
       : `${Math.abs(octaveShift) * 7 + 1}${octaveShift > 0 ? "ma" : "mb"}`;
+  const stepSpacing = Math.min(10.5, 88 / Math.max(8, Math.abs(displayStep - staffCenterStep)));
   const yForStep = (step: number): number => 100 + (staffCenterStep - step) * stepSpacing;
   const noteY = yForStep(displayStep);
   const ledgerSteps: number[] = [];
-  if (displayStep <= 0) {
-    for (let step = 0; step >= displayStep; step -= 2) ledgerSteps.push(step);
-  } else if (displayStep > 11) {
-    for (let step = 12; step <= displayStep; step += 2) ledgerSteps.push(step);
+  if (displayStep < staffBottomStep) {
+    for (let step = staffBottomStep - 2; step >= displayStep; step -= 2) ledgerSteps.push(step);
+  } else if (displayStep > staffTopStep) {
+    for (let step = staffTopStep + 2; step <= displayStep; step += 2) ledgerSteps.push(step);
   }
   const stemGoesUp = displayStep <= staffCenterStep;
   const noteX = 132;
@@ -360,16 +598,25 @@ function NoteStaff({ note }: { note: GameNote }): JSX.Element {
   const stemEndY = yForStep(displayStep + (stemGoesUp ? 6 : -6));
   const accidental = note.name.includes("#") ? "♯" : note.name.includes("b") ? "♭" : null;
   const clefFontSize = stepSpacing * 8;
-  const staffLines = [2, 4, 6, 8, 10];
+  const staffLines = Array.from({ length: 5 }, (_, index) => staffBottomStep + index * 2);
+  const clefGlyph = clef === "bass" ? "𝄢" : "𝄞";
   return (
     <svg aria-label={`${noteLabel(note)} 音符`} className="staff-game-note-staff" role="img" viewBox="0 0 190 200">
       {staffLines.map((step) => {
         const lineY = yForStep(step);
         return <line key={step} x1="18" x2="172" y1={lineY} y2={lineY} />;
       })}
-      <line x1="18" x2="18" y1={yForStep(10)} y2={yForStep(2)} />
-      <line x1="172" x2="172" y1={yForStep(10)} y2={yForStep(2)} />
-      <text className="staff-game-clef" style={{ fontSize: clefFontSize }} x="18" y={yForStep(staffBottomStep) + clefFontSize * 0.22}>𝄞</text>
+      <line x1="18" x2="18" y1={yForStep(staffTopStep)} y2={yForStep(staffBottomStep)} />
+      <line x1="172" x2="172" y1={yForStep(staffTopStep)} y2={yForStep(staffBottomStep)} />
+      <text
+        className="staff-game-clef"
+        dominantBaseline={clef === "bass" ? "central" : undefined}
+        style={{ fontSize: clefFontSize }}
+        x="18"
+        y={clef === "bass" ? 100 : yForStep(staffBottomStep) + clefFontSize * 0.22}
+      >
+        {clefGlyph}
+      </text>
       {ledgerSteps.map((step) => {
         const ledgerY = yForStep(step);
         return <line className="staff-game-ledger" key={step} x1="108" x2="156" y1={ledgerY} y2={ledgerY} />;
@@ -394,8 +641,10 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
     supportsMidi(midi.status, canUseVirtualKeyboard()),
   ));
   const [settingsDraft, setSettingsDraft] = useState<StaffGameSettings>(settings);
+  const [isSettingsDialogShaking, setIsSettingsDialogShaking] = useState(false);
   const [dialog, setDialog] = useState<GameDialog>(null);
   const backgroundMusicRef = useRef<HTMLAudioElement>(null);
+  const settingsDialogShakeLockRef = useRef(false);
   const [target, setTarget] = useState<GameNote | null>(null);
   const [targetPopped, setTargetPopped] = useState(false);
   const [targetWrong, setTargetWrong] = useState(false);
@@ -420,12 +669,18 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
   const comboTimerRemainingRef = useRef(0);
   const scoreRef = useRef(0);
   const maxComboRef = useRef(0);
+  const triggerSettingsDialogShake = useCallback(() => {
+    if (settingsDialogShakeLockRef.current) return;
+    settingsDialogShakeLockRef.current = true;
+    setIsSettingsDialogShaking(true);
+  }, []);
   const levelRef = useRef(level);
   const phaseRef = useRef(phase);
   const progressRef = useRef(progress);
   const settingsRef = useRef(settings);
   const midiRef = useRef(midi);
   const previousMidiRef = useRef<number | null>(null);
+  const focusNoteStreakRef = useRef(0);
   const noteBagRef = useRef<Array<{ midi: number; name: PianoKeyName; octave: number }>>([]);
   const targetTokenRef = useRef(0);
   const elapsedBeforeRunRef = useRef(0);
@@ -436,6 +691,39 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
   const nextTargetTimeoutRef = useRef<number | null>(null);
   const roundFinishedRef = useRef(false);
   const waitingForNextTargetRef = useRef(false);
+
+  useEffect(() => {
+    if (dialog === "settings") return;
+    settingsDialogShakeLockRef.current = false;
+    setIsSettingsDialogShaking(false);
+  }, [dialog]);
+
+  useEffect(() => {
+    const getGameButton = (target: EventTarget | null): HTMLButtonElement | null => {
+      if (!(target instanceof Element)) return null;
+      const button = target.closest<HTMLButtonElement>("button");
+      if (!button || button.disabled || button.classList.contains("staff-game-virtual-key")) return null;
+      return button.closest(".staff-game-scene, .staff-game-summary-backdrop") ? button : null;
+    };
+    const playButtonBounce = (button: HTMLButtonElement | null): void => {
+      if (button) playStaffGameSound("buttonBounce");
+    };
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (event.button !== 0) return;
+      playButtonBounce(getGameButton(event.target));
+    };
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.repeat || (event.key !== "Enter" && event.key !== " ")) return;
+      playButtonBounce(getGameButton(event.target));
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -459,12 +747,13 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
 
   const difficulty = GAME_DIFFICULTIES.find((item) => item.id === settings.difficulty) ?? GAME_DIFFICULTIES[1];
   const bubbleDurationMs = difficulty.bubbleDurationMs;
+  const gameDurationMs = gameDurationMsForLevel(level);
   const draftDifficulty = GAME_DIFFICULTIES.find((item) => item.id === settingsDraft.difficulty) ?? GAME_DIFFICULTIES[1];
 
   const spawnTarget = useCallback((atGameMs: number): void => {
     if (phaseRef.current !== "running") return;
     if (noteBagRef.current.length === 0) {
-      noteBagRef.current = shuffledNoteBag(levelRef.current, previousMidiRef.current);
+      noteBagRef.current = shuffledNoteBag(levelRef.current, previousMidiRef.current, focusNoteStreakRef.current);
     }
     targetTokenRef.current += 1;
     const next = {
@@ -473,6 +762,8 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
       centerX: randomBubbleCenterX(playfieldRef.current),
     };
     previousMidiRef.current = next.midi;
+    const focusMidi = GAME_NOTE_PROGRESSION[levelRef.current - 1]?.midi;
+    focusNoteStreakRef.current = next.midi === focusMidi ? focusNoteStreakRef.current + 1 : 0;
     targetSpawnGameMsRef.current = atGameMs;
     targetRef.current = next;
     targetPoppedRef.current = false;
@@ -523,7 +814,7 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
   const finishRound = useCallback((): void => {
     if (roundFinishedRef.current) return;
     roundFinishedRef.current = true;
-    const finalStars = starsForScore(scoreRef.current);
+    const finalStars = starsForScore(scoreRef.current, levelRef.current);
     if (finalStars > 0 && settingsRef.current.soundEffectsEnabled && settingsRef.current.inputMode !== "physical") {
       playStaffGameSound("levelClear");
     }
@@ -573,17 +864,17 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
       const fieldWidth = fieldBounds?.width ?? window.innerWidth;
       const fieldHeight = fieldBounds?.height ?? window.innerHeight;
       const desiredLeft = fieldBounds && bubbleBounds
-        ? bubbleBounds.left - fieldBounds.left - 126
-        : currentTarget.centerX - 126;
+        ? bubbleBounds.left - fieldBounds.left - 78
+        : currentTarget.centerX - 78;
       const desiredTop = fieldBounds && bubbleBounds
-        ? bubbleBounds.top - fieldBounds.top - 50
+        ? bubbleBounds.top - fieldBounds.top - 76
         : 10;
       setComboIndicator({
         token: currentTarget.token,
         count: comboRef.current + 1,
         durationMs: GAME_DIFFICULTIES.find((item) => item.id === settingsRef.current.difficulty)?.comboWindowMs ?? 2_200,
-        left: Math.max(8, Math.min(Math.max(8, fieldWidth - 132), desiredLeft)),
-        top: Math.max(8, Math.min(Math.max(8, fieldHeight - 52), desiredTop)),
+        left: Math.max(8, Math.min(Math.max(8, fieldWidth - 82), desiredLeft)),
+        top: Math.max(8, Math.min(Math.max(8, fieldHeight - 80), desiredTop)),
       });
       restartComboTimer();
       if (fieldBounds && bubbleBounds) {
@@ -670,7 +961,7 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
   useEffect(() => {
     const audio = backgroundMusicRef.current;
     if (!audio) return undefined;
-    audio.volume = 0.16;
+    audio.volume = 0.06;
     const shouldPlay = imageLoadState === "ready" && phase === "running" && settings.backgroundMusicEnabled && settings.inputMode !== "physical";
 
     const removeUnlockListeners = (): void => {
@@ -754,10 +1045,10 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
       const gameTime = elapsedBeforeRunRef.current + now - runSegmentStartedAtRef.current;
       if (now - lastUiUpdateAt >= 100) {
         lastUiUpdateAt = now;
-        setElapsedMs(Math.min(GAME_DURATION_MS, gameTime));
+        setElapsedMs(Math.min(gameDurationMs, gameTime));
       }
-      if (gameTime >= GAME_DURATION_MS) {
-        setElapsedMs(GAME_DURATION_MS);
+      if (gameTime >= gameDurationMs) {
+        setElapsedMs(gameDurationMs);
         finishRound();
         return;
       }
@@ -782,7 +1073,7 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [bubbleDurationMs, finishRound, phase, resetComboDisplay, spawnTarget]);
+  }, [bubbleDurationMs, finishRound, gameDurationMs, phase, resetComboDisplay, spawnTarget]);
 
   const resetRoundState = useCallback((): void => {
     if (nextTargetTimeoutRef.current !== null) window.clearTimeout(nextTargetTimeoutRef.current);
@@ -796,6 +1087,7 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
     targetPoppedRef.current = false;
     noteBagRef.current = [];
     previousMidiRef.current = null;
+    focusNoteStreakRef.current = 0;
     roundFinishedRef.current = false;
     setTarget(null);
     setBubbleBurst(null);
@@ -876,7 +1168,7 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
   const pauseRound = useCallback((): void => {
     if (phaseRef.current !== "running") return;
     elapsedBeforeRunRef.current = Math.min(
-      GAME_DURATION_MS,
+      gameDurationMs,
       elapsedBeforeRunRef.current + performance.now() - runSegmentStartedAtRef.current,
     );
     setElapsedMs(elapsedBeforeRunRef.current);
@@ -884,7 +1176,7 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
     setPhase("paused");
     setFeedback("闯关已暂停");
     microphone.stop();
-  }, [microphone.stop]);
+  }, [gameDurationMs, microphone.stop]);
 
   useEffect(() => {
     const unavailableMode = settings.inputMode === "virtual" && !virtualKeyboardAvailable
@@ -927,8 +1219,15 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
     const pauseWhenHidden = (): void => {
       if (document.hidden) pauseRound();
     };
+    const pauseWhenWindowLosesFocus = (): void => pauseRound();
     document.addEventListener("visibilitychange", pauseWhenHidden);
-    return () => document.removeEventListener("visibilitychange", pauseWhenHidden);
+    window.addEventListener("blur", pauseWhenWindowLosesFocus);
+    window.addEventListener("pagehide", pauseWhenWindowLosesFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", pauseWhenHidden);
+      window.removeEventListener("blur", pauseWhenWindowLosesFocus);
+      window.removeEventListener("pagehide", pauseWhenWindowLosesFocus);
+    };
   }, [pauseRound, phase]);
 
   const resumeRound = useCallback(async (): Promise<void> => {
@@ -1044,10 +1343,11 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
       } else if (event.code === "Escape" && !event.repeat && phaseRef.current === "running") {
         event.preventDefault();
         pauseRound();
-      } else if (event.code === "Space" && !event.repeat && !dialog && window.matchMedia("(min-width: 821px)").matches) {
+      } else if (event.code === "Space" && settingsRef.current.inputMode !== "virtual" && !event.repeat && !dialog) {
         const target = event.target;
         if (target instanceof HTMLElement && target.isContentEditable) return;
-        if (target instanceof Element && target.closest("button, input, select, textarea, [role='dialog']")) return;
+        const isPauseBackdrop = target instanceof Element && target.closest(".staff-game-pause-backdrop");
+        if (!isPauseBackdrop && target instanceof Element && target.closest("button, input, select, textarea, [role='button'], [role='dialog']")) return;
         if (phaseRef.current === "running") {
           event.preventDefault();
           pauseRound();
@@ -1064,7 +1364,7 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
   const focusPitch = GAME_NOTE_PROGRESSION[level - 1];
   const focusNote = `${focusPitch.name}${focusPitch.octave}`;
   const midiOptionAvailable = supportsMidi(midi.status, virtualKeyboardAvailable);
-  const remainingSeconds = Math.max(0, Math.ceil((GAME_DURATION_MS - elapsedMs) / 1000));
+  const remainingSeconds = Math.max(0, Math.ceil((gameDurationMs - elapsedMs) / 1000));
   const gameArtStyle = {
     "--staff-game-bg-desktop": `url("${gameBackgroundDesktop}")`,
     "--staff-game-bg-mobile": `url("${gameBackgroundMobile}")`,
@@ -1115,23 +1415,14 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
         <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-a" draggable="false" src={cloudDecorationOne} />
         <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-b" draggable="false" src={cloudDecorationTwo} />
         <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-c" draggable="false" src={cloudDecorationThree} />
+        <StaffGameParticles />
+        <StaffGameShootingStar />
         <header className="staff-game-hud">
           <div className="staff-game-hud-card staff-game-display-card">
-            <span>显示</span>
-            <div aria-label="琴键显示方式" className="staff-game-display-options" role="group">
-              {DISPLAY_MODES.map((mode) => (
-                <button
-                  aria-label={`琴键显示${mode.label}`}
-                  aria-pressed={settings.displayMode === mode.id}
-                  className={settings.displayMode === mode.id ? "is-selected" : ""}
-                  key={mode.id}
-                  onClick={() => setSettings((current) => ({ ...current, displayMode: mode.id }))}
-                  title={`琴键显示：${mode.label}`}
-                  type="button"
-                ><span className="is-wide-label">{mode.label}</span><span className="is-compact-label">{mode.shortLabel}</span></button>
-              ))}
-            </div>
-            {phase === "summary" ? <small>本关结算</small> : null}
+            <span>历史最高</span>
+            <strong aria-label={`${progress.bestStars[level - 1]} 颗星`} className="staff-game-history-stars">
+              {[1, 2, 3].map((star) => <img alt="" className={progress.bestStars[level - 1] >= star ? "earned" : ""} key={star} src={starParticleArt} />)}
+            </strong>
           </div>
           <div aria-label={`第 ${level} 关`} className="staff-game-level-medal">
             <span>LEVEL</span>
@@ -1192,12 +1483,14 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
                 "--combo-duration": `${comboIndicator.durationMs}ms`,
               } as CSSProperties}
             >
-              <span className="staff-game-combo-label">连击</span>
-              <span className="staff-game-combo-count">
-                <svg aria-hidden="true" className="staff-game-combo-ring" viewBox="0 0 52 52">
-                  <circle cx="26" cy="26" r="22" />
-                </svg>
-                <strong>{comboIndicator.count}</strong>
+              <span className="staff-game-combo-pulse">
+                <span className="staff-game-combo-label">连击</span>
+                <span className="staff-game-combo-count">
+                  <svg aria-hidden="true" className="staff-game-combo-ring" viewBox="0 0 52 52">
+                    <circle cx="26" cy="26" r="22" />
+                  </svg>
+                  <strong>{comboIndicator.count}</strong>
+                </span>
               </span>
             </div>
           ) : null}
@@ -1256,18 +1549,10 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
             </div>
           ) : null}
 
-          {phase === "paused" ? (
-            <div className="staff-game-card staff-game-message-card">
-              <h2>已暂停</h2>
-              <p>计时和音符都会停在当前进度。</p>
-              {gameError || microphone.error ? <p className="staff-game-error" role="alert">{gameError || microphone.error}</p> : null}
-            </div>
-          ) : null}
-
           {phase === "summary" && typeof document !== "undefined" ? createPortal(
             <div aria-label={`第 ${level} 关结算`} aria-modal="true" className="staff-game-summary-backdrop" role="dialog" style={gameArtStyle}>
-              <div aria-hidden="true" className="staff-game-summary-aura" />
               <div aria-label={`${revealedSummaryStars} 颗星依次出现，获得 ${earnedStars} 颗星`} className="staff-game-summary-stars" role="img">
+                <div aria-hidden="true" className="staff-game-summary-aura" />
                 {[1, 2, 3].map((star) => (
                   <img
                     alt=""
@@ -1283,9 +1568,7 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
                   <strong>LEVEL {level}</strong>
                 </div>
                 <div className="staff-game-summary-content">
-                  <div aria-hidden="true" className="staff-game-result-fireworks">
-                    <img alt="" draggable="false" src={summaryFireworksArt} />
-                  </div>
+                  <StaffGameFireworks image={summaryFireworksArt} />
                   {earnedStars > 0 ? <h2>闯关成功！</h2> : null}
                   <div className="staff-game-result-stats">
                     <div><span>最大连击数</span><strong>{maxCombo} 次</strong></div>
@@ -1367,20 +1650,24 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
             <section
               aria-labelledby="staff-game-dialog-title"
               aria-modal="true"
-              className={`staff-game-dialog staff-game-${dialog}-dialog`}
+              className={`staff-game-dialog staff-game-${dialog}-dialog${dialog === "settings" && isSettingsDialogShaking ? " is-wobbling" : ""}`}
+              onAnimationEnd={(event) => {
+                if (event.animationName !== "staff-game-settings-dialog-wobble") return;
+                settingsDialogShakeLockRef.current = false;
+                setIsSettingsDialogShaking(false);
+              }}
               onClick={(event) => event.stopPropagation()}
               role="dialog"
             >
               {dialog === "help" ? (
                 <>
                   <button aria-label="关闭弹窗" className="staff-game-dialog-close" onClick={closeGameDialog} type="button"><X size={23} /></button>
-                  <h2 id="staff-game-dialog-title">游戏提示</h2>
+                  <h2 id="staff-game-dialog-title">提示</h2>
                   <div className="staff-game-help-copy">
-                    <h3>五线谱闯关说明</h3>
-                    <p>共有 60 关：前 35 关逐步加入白键，后 25 关加入黑键。从中央 C4 开始，答对后解锁下一关。</p>
-                    <p>观察气泡中的五线谱音符，用麦克风或 MIDI 键盘弹奏；手机和平板也可以点击虚拟琴键作答。</p>
-                    <p>虚拟琴键的七个音名键可匹配任意八度；遇到升号时点击对应字母键。</p>
-                    <p>连续答对会累积连击并提高单次得分。闯关结束后，分数会换算成星级；获得星星即可解锁下一关。</p>
+                    <h3>单音练习说明</h3>
+                    <p>共有 60 关：从中央 C4 开始，前 35 关逐步加入白键，后 25 关加入黑键。可通过「跳级」直接选择任意关卡。</p>
+                    <p>观察气泡里的五线谱音符，用麦克风或 MIDI 键盘作为输入弹奏；手机和平板也可以点击虚拟琴键作答。</p>
+                    <p>答对可得分，连续答对会增加连击奖励；本局结束后按总分结算星级。星级记录成绩，不限制进入下一关；结算页可直接开始下一级。</p>
                   </div>
                 </>
               ) : dialog === "levels" ? (
@@ -1435,7 +1722,13 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
                 </>
               ) : (
                 <>
-                  <img alt="" aria-hidden="true" className="staff-game-settings-decoration" draggable="false" src={settingsBowArt} />
+                  <button
+                    aria-label="熊掌，悬停或点击可让弹窗颤动"
+                    className="staff-game-settings-decoration"
+                    onClick={triggerSettingsDialogShake}
+                    onPointerEnter={triggerSettingsDialogShake}
+                    type="button"
+                  ><img alt="" aria-hidden="true" draggable="false" src={settingsPawArt} /></button>
                   <button aria-label="关闭弹窗" className="staff-game-dialog-close" onClick={closeGameDialog} type="button"><X size={23} /></button>
                   <div className="staff-game-settings-content">
                     <h2 id="staff-game-dialog-title">游戏设置</h2>
@@ -1458,6 +1751,18 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
                         ) : null}
                       </div>
                     </section>
+                    {settingsDraft.inputMode === "virtual" ? (
+                      <section className="staff-game-settings-section staff-game-display-setting">
+                        <label htmlFor="staff-game-display-mode">显示</label>
+                        <select
+                          id="staff-game-display-mode"
+                          onChange={(event) => setSettingsDraft((current) => ({ ...current, displayMode: event.currentTarget.value as GameDisplayMode }))}
+                          value={settingsDraft.displayMode}
+                        >
+                          {DISPLAY_MODES.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
+                        </select>
+                      </section>
+                    ) : null}
                     <section className="staff-game-settings-section staff-game-settings-row">
                       <div><h3>音效</h3><p>答对、连击和关卡反馈</p></div>
                       <button aria-label={settingsDraft.soundEffectsEnabled ? "关闭音效" : "开启音效"} aria-pressed={settingsDraft.soundEffectsEnabled} className={`staff-game-sound-switch${settingsDraft.soundEffectsEnabled ? " is-on" : ""}`} onClick={() => setSettingsDraft((current) => ({ ...current, soundEffectsEnabled: !current.soundEffectsEnabled }))} type="button">
@@ -1514,6 +1819,24 @@ export function StaffGameView({ microphone, midi, onExit, onSessionActiveChange,
           </div>
         ) : null}
       </div>
+      {phase === "paused" && dialog === null && !gameError && typeof document !== "undefined" ? createPortal(
+        <div
+          aria-label="已暂停，点击屏幕或按空格继续闯关"
+          className="staff-game-pause-backdrop"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void resumeRound();
+            }
+          }}
+          onClick={() => void resumeRound()}
+          role="button"
+          tabIndex={0}
+        >
+          <div aria-live="polite" className="staff-game-pause-label"><strong>已暂停</strong><span>点击屏幕或按空格继续</span></div>
+        </div>,
+        document.body,
+      ) : null}
     </section>
   );
 }

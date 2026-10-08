@@ -1,9 +1,11 @@
 # 五线谱游戏素材核对与切图
 
+> 素材总目录和提示词归档状态见 [素材目录](asset-catalog.md)；本文保留切图核对与整理细节。
+
 ## 核对结论
 
 - 收到 3 张图集；原图保存在 `art/staff-game/source/`，切好的独立素材保存在 `src/assets/staff-game/`。
-- 闯关运行素材统一压缩为 WebP（图像质量 88、透明度质量 100）；设置蝴蝶结按 68×43 CSS 像素显示，缩至 272×181，约 13 KB。其余高像素气泡与操作图标也按游戏显示尺寸缩小。
+- 闯关运行素材统一压缩为 WebP；设置熊掌按 48×48 CSS 像素显示，素材缩至 144×144，约 5.8 KB。其余高像素气泡与操作图标也按游戏显示尺寸缩小。
 - 第 2、3 张图集带真实 PNG 透明通道，已拆分并排除了图集中的标题、分隔线和标注。
 - 第 1 张图集是 RGB 图片，棋盘格只是画面内容，并非透明背景。三个角色已清理外围棋盘格；原气泡不可用，因此重新生成了空心玻璃气泡，真正透明的中心孔可以叠加谱面音符。问题样本见 `art/staff-game/review/rejected-bubble-checkerboard-baked.png`。
 - 新增了独立的 9:19 手机场景图；闯关页在窄屏切换到竖版场景，桌面使用横版场景。
@@ -24,7 +26,7 @@
 | UI | `ui/button-primary-base.webp` | 663×191 | 可用；主操作按钮底图 |
 | UI | `ui/button-secondary-base.webp` | 499×153 | 可用；次操作按钮底图 |
 | UI | `ui/modal-frame.webp` | 393×353 | 可用；弹窗面板底图 |
-| UI | `ui/settings-bow.webp` | 272×181 | 可用；设置弹窗顶部装饰，约 13 KB |
+| UI | `ui/settings-paw.webp` | 144×144 | 可用；设置弹窗顶部熊掌装饰，约 5.8 KB |
 | UI | `ui/level-medal-frame.webp` | 432×470 | 可用；结算/关卡奖章框，内部可叠加星级或文字 |
 | 特效 | `ui/star-particle.webp` | 289×266 | 可用；单颗发光五角星及自带小光点，可复制后做散开、缩放和淡出 |
 | 特效 | `effects/bubble-shell-empty-center.webp` | 512×512 | 可用；空心玻璃圆环，WebP 透明中心孔保留，可叠加音符 |
@@ -41,11 +43,11 @@
 | --- | ---: | --- | --- |
 | `audio/bubble-pop.wav` | 0.67 秒 | 答对音符，气泡破裂 | VSS 生成成功；基础 WAV 检查通过 |
 | `audio/combo-streak.wav` | 0.89 秒 | 每 3 连击播放一次 | 89/100 |
-| `audio/note-missed-soft.wav` | 0.87 秒 | 音符气泡超时飘走 | 82/100 |
+| `audio/note-missed-soft.wav` | 0.32 秒 | 答错或气泡超时；低音木琴后接短促下行合成音 | 定制合成；48 kHz、24-bit、单声道 |
 | `audio/level-clear.wav` | 1.22 秒 | 本局达到至少 1 星 | 85/100 |
 | `audio/microphone-ready.wav` | 0.87 秒 | 麦克风连接成功或恢复 | 85/100 |
 
-五个 WAV 均为 44.1 kHz、16-bit、单声道。单次峰值约 -0.3 dBFS，游戏播放层会按不同用途降音量；连击只在第 3、6、9…次连续答对时播放，避免音效叠得太密。
+`bubble-pop.wav`、`combo-streak.wav`、`level-clear.wav` 和 `microphone-ready.wav` 为 44.1 kHz、16-bit、单声道；`note-missed-soft.wav` 按新提示制作成 48 kHz、24-bit、单声道，峰值约 -1.2 dBFS。游戏播放层会按用途调整音量；连击只在第 3、6、9…次连续答对时播放，避免音效叠得太密。
 
 VSS MCP 的本机 JSON 配置位于 `/Users/husky/.config/piano-learning/vss-mcp.json`，权限为当前用户可读写；密钥没有放入仓库。初始免费余额 50 token，本次生成 5 个音效后显示余额 25。
 

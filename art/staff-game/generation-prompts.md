@@ -1,5 +1,7 @@
 # 补充美术素材：生图提示词
 
+> 当前已登记素材、来源和提示词归档情况见 [五线谱闯关素材目录](asset-catalog.md)。本文只包含仓库里可追溯的提示词；目录中标注“未归档”的历史提示词不能从成品素材可靠还原。
+
 按核对结果只补了不合格或不足的视觉素材；随后单独生成了关卡音效。已有角色、HUD、按钮、弹窗、星粒子、云朵、谱号、奖章和宽屏场景继续沿用。
 
 ## 1. 空心蓝色气泡边框
@@ -36,13 +38,22 @@ Constraints: no UI, no cards, no buttons, no HUD, no score, no note bubbles, no 
 
 ## 3. 游戏音效
 
-使用 VSS Sound Studio 生成 5 个独立 WAV；均为 44.1 kHz、16-bit、单声道。以“轻、短、明亮、动画游戏反馈”为共同锚点，AI 设计四层后自动混音。各音效保存在 `src/assets/staff-game/audio/`，并由 `src/audio/staffGameSounds.ts` 统一预载与播放。
+游戏音效保存在 `src/assets/staff-game/audio/`，并由 `src/audio/staffGameSounds.ts` 统一预载与播放。原有 4 个 WAV 由 VSS Sound Studio 制作（44.1 kHz、16-bit、单声道）；`note-missed-soft.wav` 后按下方的新提示重新合成（48 kHz、24-bit、单声道）。
 
 - `bubble-pop.wav`：答对目标音符时的清脆水泡破裂和星光散开声。
 - `combo-streak.wav`：每 3 次连续答对时的渐升连击提示，VSS 候选评分 89/100。
-- `note-missed-soft.wav`：气泡超时飘走时轻柔下行的漏答提示，VSS 候选评分 82/100。
+- `note-missed-soft.wav`：答错或气泡超时提示；按下方提示定制合成，48 kHz、24-bit、单声道，约 0.32 秒。
 - `level-clear.wav`：至少获得 1 星时的短暂通关闪耀声，VSS 候选评分 85/100。
 - `microphone-ready.wav`：麦克风连接成功或暂停后恢复时的轻柔双闪提示，VSS 候选评分 85/100。
+
+### 答错/漏答提示音
+
+```text
+Prompt: Cartoon game wrong input sound effect, about 0.3 seconds. A soft, round low marimba note followed by a very short descending muted synth tone (a gentle "doo-doot" going down). Slight jelly bubble muffled texture. Gentle, clean, playful, non-threatening, signaling "oops, try again". 48kHz, 24-bit WAV.
+Negative prompt: Voice, speech, harsh alarm, electronic beep, metal scraping, heavy bass impact, sad failure chord, long reverb, background music, sharp high frequencies, disturbing.
+```
+
+成品替换 `src/assets/staff-game/audio/note-missed-soft.wav`，同时供错误作答和气泡超时播放。
 
 本机 MCP 密钥配置单独保存在 `/Users/husky/.config/piano-learning/vss-mcp.json`，不加入素材目录或版本控制。
 

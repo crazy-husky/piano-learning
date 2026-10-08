@@ -1,4 +1,4 @@
-import { ArrowLeft, AudioLines, BarChart3, BellOff, BookOpen, Dumbbell, FolderOpen, House, Settings, X } from "lucide-react";
+import { ArrowLeft, BellOff, FolderOpen, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { preloadPianoSamples, setPianoVolume } from "./audio/piano";
@@ -835,33 +835,6 @@ export function App(): JSX.Element {
           <span>{backupToastMessage.detail}</span>
         </div>
       ) : null}
-      <nav className="app-nav" aria-label="主导航">
-        <button aria-label="首页" className={view === "home" ? "active" : ""} onClick={() => selectView("home")}>
-          <House size={18} />
-          首页
-        </button>
-        <button className={view === "study" ? "active" : ""} onClick={() => selectView("study")}>
-          <BookOpen size={18} />
-          学习
-        </button>
-        <button className={view === "practice" ? "active" : ""} onClick={() => selectView("practice")}>
-          <Dumbbell size={18} />
-          练习
-        </button>
-        <button className={view === "stats" ? "active" : ""} onClick={() => selectView("stats")}>
-          <BarChart3 size={18} />
-          统计
-        </button>
-        <button className={view === "vocal" ? "active" : ""} onClick={() => selectView("vocal")}>
-          <AudioLines size={18} />
-          清唱
-        </button>
-        <button className={view === "settings" ? "active" : ""} onClick={() => selectView("settings")}>
-          <Settings size={18} />
-          设置
-        </button>
-      </nav>
-
       <main className={displayBackupReminder && view !== "vocal" ? "has-backup-reminder" : undefined}>
         {displayBackupReminder ? (
           <div

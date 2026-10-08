@@ -5,14 +5,15 @@ import levelClearUrl from "../assets/staff-game/audio/level-clear.wav";
 import microphoneReadyUrl from "../assets/staff-game/audio/microphone-ready.wav";
 import noteMissedUrl from "../assets/staff-game/audio/note-missed-soft.wav";
 
-export type StaffGameSound = "bubblePop" | "comboStreak" | "levelClear" | "microphoneReady" | "noteMissed";
+export type StaffGameSound = "bubblePop" | "buttonBounce" | "comboStreak" | "levelClear" | "microphoneReady" | "noteMissed";
+type SampledStaffGameSound = Exclude<StaffGameSound, "buttonBounce">;
 
 interface SoundPlayer {
   player: Tone.Player;
   ready: Promise<void>;
 }
 
-const soundSources: Record<StaffGameSound, { url: string; volumeDb: number }> = {
+const soundSources: Record<SampledStaffGameSound, { url: string; volumeDb: number }> = {
   bubblePop: { url: bubblePopUrl, volumeDb: -13 },
   comboStreak: { url: comboStreakUrl, volumeDb: -17 },
   levelClear: { url: levelClearUrl, volumeDb: -13 },
@@ -20,15 +21,16 @@ const soundSources: Record<StaffGameSound, { url: string; volumeDb: number }> = 
   noteMissed: { url: noteMissedUrl, volumeDb: -18 },
 };
 
-const soundPlayers = new Map<StaffGameSound, SoundPlayer>();
+const soundPlayers = new Map<SampledStaffGameSound, SoundPlayer>();
 let soundEffectsEnabled = true;
 let starRevealSynth: Tone.Synth | null = null;
+let buttonBounceSynth: Tone.MembraneSynth | null = null;
 
 export function setStaffGameSoundsEnabled(enabled: boolean): void {
   soundEffectsEnabled = enabled;
 }
 
-function getSoundPlayer(sound: StaffGameSound): SoundPlayer {
+function getSoundPlayer(sound: SampledStaffGameSound): SoundPlayer {
   const cached = soundPlayers.get(sound);
   if (cached) return cached;
 
@@ -56,11 +58,26 @@ function getSoundPlayer(sound: StaffGameSound): SoundPlayer {
 
 export function preloadStaffGameSounds(): void {
   if (typeof window === "undefined") return;
-  (Object.keys(soundSources) as StaffGameSound[]).forEach(getSoundPlayer);
+  (Object.keys(soundSources) as SampledStaffGameSound[]).forEach(getSoundPlayer);
 }
 
 export function playStaffGameSound(sound: StaffGameSound): void {
   if (typeof window === "undefined" || !soundEffectsEnabled) return;
+  if (sound === "buttonBounce") {
+    void Tone.start()
+      .then(() => {
+        buttonBounceSynth ??= new Tone.MembraneSynth({
+          pitchDecay: 0.07,
+          octaves: 2.2,
+          oscillator: { type: "sine" },
+          envelope: { attack: 0.001, decay: 0.16, sustain: 0, release: 0.02 },
+        }).toDestination();
+        buttonBounceSynth.volume.value = -22;
+        buttonBounceSynth.triggerAttackRelease("C5", "16n");
+      })
+      .catch(() => undefined);
+    return;
+  }
   const { player, ready } = getSoundPlayer(sound);
   void Tone.start()
     .then(() => ready)

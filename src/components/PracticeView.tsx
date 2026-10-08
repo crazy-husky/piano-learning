@@ -2298,33 +2298,6 @@ export function PracticeView({
               </div>
             </div>
 
-            <div className="control-block practice-experience-block">
-              <span className="control-label">练习模式</span>
-              <div aria-label="练习模式选择" className="segmented practice-experience-selector" role="group">
-                <button
-                  aria-pressed={practiceExperienceMode === "free"}
-                  className={practiceExperienceMode === "free" ? "active" : ""}
-                  onClick={() => onStaffGameRouteChange(false)}
-                  type="button"
-                >
-                  自由模式
-                </button>
-                <button
-                  aria-pressed={practiceExperienceMode === "game"}
-                  className={practiceExperienceMode === "game" ? "active" : ""}
-                  onClick={() => onStaffGameRouteChange(true)}
-                  type="button"
-                >
-                  游戏闯关模式
-                </button>
-              </div>
-              <span className="practice-answer-mode-description">
-                {practiceExperienceMode === "free"
-                  ? "按原有设置自由练习"
-                  : "读谱识音，逐关解锁新的中央 C 音阶音符"}
-              </span>
-            </div>
-
             <div className="control-block">
               <span className="control-label">模式</span>
               <div className="segmented">
