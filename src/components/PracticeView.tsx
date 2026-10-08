@@ -119,6 +119,7 @@ import { useLocalStorageState } from "./useLocalStorageState";
 import { useDelayedBusy } from "./useDelayedBusy";
 import { useRemainingNotePlayback } from "./useRemainingNotePlayback";
 import { usePracticeMicrophoneInput } from "../vocal-pitch/usePracticeMicrophoneInput";
+import { StaffGameView } from "./StaffGameView";
 import { PRACTICE_NOTE_CONTINUITY_CONFIDENCE } from "../vocal-pitch/practiceNoteRecognizer";
 import {
   parseExpectedPracticeNoteSequence,
@@ -277,12 +278,14 @@ interface PracticeViewProps {
   onDataChanged: () => Promise<void>;
   onOpenStats: () => void;
   onOpenSettings: () => void;
+  isStaffGameRoute: boolean;
+  onStaffGameRouteChange: (isGame: boolean) => void;
   onBeforePracticeStart: () => Promise<PracticeStartPreflightResult>;
   onPracticeFinished: () => void;
   onRunningChange: (running: boolean) => void;
 }
 
-export type PracticeNavigationExitTarget = "practice" | "stats" | "settings" | "study" | "vocal";
+export type PracticeNavigationExitTarget = "home" | "practice" | "stats" | "settings" | "study" | "vocal";
 
 export interface PracticeStartPreflightResult {
   proceed: boolean;
@@ -520,10 +523,14 @@ export function PracticeView({
   onDataChanged,
   onOpenStats,
   onOpenSettings,
+  isStaffGameRoute,
+  onStaffGameRouteChange,
   onBeforePracticeStart,
   onPracticeFinished,
   onRunningChange,
 }: PracticeViewProps): JSX.Element {
+  const practiceExperienceMode = isStaffGameRoute ? "game" : "free";
+  const [staffGameSessionActive, setStaffGameSessionActive] = useState(false);
   const defaultPracticeSetupUiPreferences = useMemo(
     () => makeDefaultPracticeSetupUiPreferences(settings),
     [settings],
@@ -682,8 +689,21 @@ export function PracticeView({
   const pendingMidiPressDiagnosticSampleIdRef = useRef<number | undefined>(undefined);
   const startSessionRef = useRef<() => void>(() => undefined);
   const submitAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => undefined);
+  const staffGameAnswerHandlerRef = useRef<((answer: PracticeAnswerInput) => void) | null>(null);
+  const registerStaffGameAnswerHandler = useCallback((handler: ((answer: PracticeAnswerInput) => void) | null): void => {
+    staffGameAnswerHandlerRef.current = handler;
+  }, []);
+  const exitStaffGame = useCallback((): void => {
+    onStaffGameRouteChange(false);
+  }, [onStaffGameRouteChange]);
   const practiceMicrophone = usePracticeMicrophoneInput(
-    (answer) => submitAnswerRef.current(answer),
+    (answer) => {
+      if (staffGameAnswerHandlerRef.current) {
+        staffGameAnswerHandlerRef.current(answer);
+      } else {
+        submitAnswerRef.current(answer);
+      }
+    },
     practiceMicrophonePreferences,
   );
   const microphoneConfiguration = useMemo(
@@ -816,9 +836,9 @@ export function PracticeView({
   }, []);
 
   useEffect(() => {
-    onRunningChange(phase === "running");
+    onRunningChange(phase === "running" || staffGameSessionActive);
     return () => onRunningChange(false);
-  }, [onRunningChange, phase]);
+  }, [onRunningChange, phase, staffGameSessionActive]);
 
   const applySettingsSnapshot = useCallback((nextSettings: AppSettings): void => {
     setPracticeSetupPreferences(makeDefaultPracticeSetupUiPreferences(nextSettings));
@@ -1520,6 +1540,21 @@ export function PracticeView({
     void backgroundExit.catch(() => undefined);
   }, [completeSession, navigationExitRequest, onNavigationExit, phase]);
 
+  useEffect(() => {
+    if (
+      practiceExperienceMode !== "game" ||
+      !staffGameSessionActive ||
+      !navigationExitRequest ||
+      handledNavigationExitRequestIdRef.current === navigationExitRequest.id
+    ) {
+      return;
+    }
+    handledNavigationExitRequestIdRef.current = navigationExitRequest.id;
+    practiceMicrophone.stop();
+    setStaffGameSessionActive(false);
+    onNavigationExit?.(navigationExitRequest.targetView);
+  }, [navigationExitRequest, onNavigationExit, practiceExperienceMode, practiceMicrophone.stop, staffGameSessionActive]);
+
   const startSession = useCallback(async (): Promise<void> => {
     if (queueNotes.length === 0 || (answerPitchMode === "exact-pitch" && !midi.isConnected)) {
       return;
@@ -1850,7 +1885,11 @@ export function PracticeView({
         });
         return;
       }
-      if (event.note.midiNoteNumber === MIDI_START_NOTE_NUMBER && answerPitchMode !== "microphone") {
+      if (
+        practiceExperienceMode === "free" &&
+        event.note.midiNoteNumber === MIDI_START_NOTE_NUMBER &&
+        answerPitchMode !== "microphone"
+      ) {
         startSessionRef.current();
       }
     });
@@ -1860,7 +1899,7 @@ export function PracticeView({
       heldMidiInputsRef.current.clear();
       setHeldMidiAnswerKeys(new Set());
     };
-  }, [answerPitchMode, midi.subscribe, phase]);
+  }, [answerPitchMode, midi.subscribe, phase, practiceExperienceMode]);
 
   useEffect(() => {
     if (phase !== "running") {
@@ -2130,7 +2169,7 @@ export function PracticeView({
   const setupDisabled = setupDisabledReason !== undefined;
 
   useEffect(() => {
-    if (phase === "running") {
+    if (phase === "running" || practiceExperienceMode === "game") {
       return;
     }
 
@@ -2147,7 +2186,7 @@ export function PracticeView({
 
     window.addEventListener("keydown", handleEnter);
     return () => window.removeEventListener("keydown", handleEnter);
-  }, [phase, setupDisabled, startSession]);
+  }, [phase, practiceExperienceMode, setupDisabled, startSession]);
 
   const remainingMs = mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
   const mobileStaffPageRowCount = 1;
@@ -2229,6 +2268,18 @@ export function PracticeView({
     [reviews, sessions, summary],
   );
 
+  if (phase === "setup" && practiceExperienceMode === "game") {
+    return (
+      <StaffGameView
+        microphone={practiceMicrophone}
+        midi={midi}
+        onExit={exitStaffGame}
+        onRegisterAnswerHandler={registerStaffGameAnswerHandler}
+        onSessionActiveChange={setStaffGameSessionActive}
+      />
+    );
+  }
+
   if (phase === "setup") {
     return (
       <section className="practice-shell practice-setup-shell">
@@ -2245,6 +2296,33 @@ export function PracticeView({
                   <button onClick={onOpenSettings}>设备设置</button>
                 </div>
               </div>
+            </div>
+
+            <div className="control-block practice-experience-block">
+              <span className="control-label">练习模式</span>
+              <div aria-label="练习模式选择" className="segmented practice-experience-selector" role="group">
+                <button
+                  aria-pressed={practiceExperienceMode === "free"}
+                  className={practiceExperienceMode === "free" ? "active" : ""}
+                  onClick={() => onStaffGameRouteChange(false)}
+                  type="button"
+                >
+                  自由模式
+                </button>
+                <button
+                  aria-pressed={practiceExperienceMode === "game"}
+                  className={practiceExperienceMode === "game" ? "active" : ""}
+                  onClick={() => onStaffGameRouteChange(true)}
+                  type="button"
+                >
+                  游戏闯关模式
+                </button>
+              </div>
+              <span className="practice-answer-mode-description">
+                {practiceExperienceMode === "free"
+                  ? "按原有设置自由练习"
+                  : "读谱识音，逐关解锁新的中央 C 音阶音符"}
+              </span>
             </div>
 
             <div className="control-block">

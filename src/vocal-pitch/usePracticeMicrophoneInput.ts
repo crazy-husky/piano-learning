@@ -10,6 +10,7 @@ import {
   PRACTICE_NOTE_FREQUENCY_RANGE,
   PRACTICE_NOTE_CONTINUITY_CONFIDENCE,
   createPracticeNoteRecognizer,
+  frequencyToChromaticPracticeNote,
   frequencyToNaturalPracticeNote,
   type PracticeNoteRecognizer,
 } from "./practiceNoteRecognizer";
@@ -222,12 +223,13 @@ function createDetectorForConfiguration(
   return null;
 }
 
-function createRecognizerForConfiguration(configuration: PracticeMicrophoneConfiguration): PracticeNoteRecognizer {
+function createRecognizerForConfiguration(configuration: PracticeMicrophoneConfiguration, includeAccidentals = false): PracticeNoteRecognizer {
   const continuityConfidence = configuration.algorithm === "mpm-c"
     ? PRACTICE_NOTE_CONTINUITY_CONFIDENCE
     : configuration.confidenceThreshold;
   return createPracticeNoteRecognizer(configuration.confidenceThreshold, {
     continuityConfidence,
+    includeAccidentals,
     requiredFrames: configuration.requiredStableFrames,
     requiredMs: configuration.requiredStableMs,
   });
@@ -292,6 +294,7 @@ export function usePracticeMicrophoneInput(
   const analysisTimeoutRef = useRef<number | null>(null);
   const captureStopWaitersRef = useRef<Array<() => void>>([]);
   const finalCaptureFrameIssueRef = useRef<string | null>(null);
+  const includeAccidentalsRef = useRef(false);
   const recognizerRef = useRef<PracticeNoteRecognizer>(createRecognizerForConfiguration(initialConfiguration));
   const sampleBufferRef = useRef(new Float32Array(0));
   const captureFramesRef = useRef<PracticeMicrophoneCaptureFrame[]>([]);
@@ -486,8 +489,9 @@ export function usePracticeMicrophoneInput(
       (isVoiced || mayUsePitchContinuity)
       ? frequencyHz
       : null;
-    const candidateNote = frequencyToNaturalPracticeNote(frequencyHz ?? 0);
-    const liveNote = acceptedFrequency === null ? null : frequencyToNaturalPracticeNote(acceptedFrequency);
+    const convertFrequency = includeAccidentalsRef.current ? frequencyToChromaticPracticeNote : frequencyToNaturalPracticeNote;
+    const candidateNote = convertFrequency(frequencyHz ?? 0);
+    const liveNote = acceptedFrequency === null ? null : convertFrequency(acceptedFrequency);
     const recognized = recognizerRef.current.process({
       ambiguous,
       confidence,
@@ -515,7 +519,7 @@ export function usePracticeMicrophoneInput(
     if (recognized) {
       callbacksRef.current.onAnswer({
         midiNoteNumber: recognized.midiNoteNumber,
-        noteName: recognized.noteName,
+        noteName: recognized.noteName[0] as PracticeAnswerInput["noteName"],
         octave: recognized.octave,
         source: "microphone",
       });
@@ -754,8 +758,12 @@ export function usePracticeMicrophoneInput(
     animationRef.current = requestAnimationFrame(runLiveAnalysis);
   }, [postAnalysisFrame, processObservation, recordInputFrame]);
 
-  const start = useCallback((): Promise<boolean> => {
-    if (stateRef.current === "listening") return Promise.resolve(true);
+  const start = useCallback((options: { includeAccidentals?: boolean } = {}): Promise<boolean> => {
+    includeAccidentalsRef.current = options.includeAccidentals === true;
+    if (stateRef.current === "listening") {
+      recognizerRef.current = createRecognizerForConfiguration(activeConfigurationRef.current, includeAccidentalsRef.current);
+      return Promise.resolve(true);
+    }
     if (startPromiseRef.current) return startPromiseRef.current;
     if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
       updateStatus("error", "当前浏览器不支持麦克风音频输入。请使用 HTTPS 或 localhost。");
@@ -769,7 +777,7 @@ export function usePracticeMicrophoneInput(
     activeAlgorithmRef.current = configuration.algorithm;
     activeThresholdsRef.current = thresholds;
     activeFrameIntervalRef.current = frameIntervalMs;
-    recognizerRef.current = createRecognizerForConfiguration(configuration);
+    recognizerRef.current = createRecognizerForConfiguration(configuration, includeAccidentalsRef.current);
     updateStatus("requesting");
     const generation = ++startGenerationRef.current;
     const pending = (async (): Promise<boolean> => {
@@ -799,7 +807,7 @@ export function usePracticeMicrophoneInput(
         activeAlgorithmRef.current = configuration.algorithm;
         activeThresholdsRef.current = thresholds;
         activeFrameIntervalRef.current = frameIntervalMs;
-        recognizerRef.current = createRecognizerForConfiguration(configuration);
+        recognizerRef.current = createRecognizerForConfiguration(configuration, includeAccidentalsRef.current);
 
         const source = context.createMediaStreamSource(stream);
         const sampleRate = context.sampleRate;
@@ -955,7 +963,7 @@ export function usePracticeMicrophoneInput(
     activeThresholdsRef.current = thresholds;
     activeFrameIntervalRef.current = resolvePracticeMicrophoneFrameIntervalMs(configuration);
     detectorRef.current = createDetectorForConfiguration(configuration, analyser.fftSize, context.sampleRate);
-    recognizerRef.current = createRecognizerForConfiguration(configuration);
+    recognizerRef.current = createRecognizerForConfiguration(configuration, includeAccidentalsRef.current);
     inputGenerationRef.current += 1;
     if (analysisTimeoutRef.current !== null) {
       window.clearTimeout(analysisTimeoutRef.current);

@@ -1,5 +1,5 @@
 import { frequencyToMidi, midiToFrequency } from "../domain/vocalPitch";
-import type { NoteName, Octave } from "../domain/types";
+import type { NoteName, Octave, PianoKeyName } from "../domain/types";
 
 export const PRACTICE_NOTE_MIN_MIDI = 29;
 export const PRACTICE_NOTE_MAX_MIDI = 91;
@@ -40,7 +40,7 @@ export interface PracticeNoteObservation {
 
 export interface RecognizedPracticeNote {
   midiNoteNumber: number;
-  noteName: NoteName;
+  noteName: PianoKeyName;
   octave: Octave;
 }
 
@@ -52,6 +52,8 @@ export interface PracticeNoteRecognizer {
 export interface PracticeNoteRecognizerStabilityOptions {
   /** Allows low-clarity adjacent notes to be stabilized from a recently confirmed pitch. */
   continuityConfidence?: number;
+  /** Include sharp notes for the staff game without changing standard practice recognition. */
+  includeAccidentals?: boolean;
   requiredFrames?: number;
   requiredMs?: number;
 }
@@ -86,6 +88,23 @@ export function frequencyToNaturalPracticeNote(frequencyHz: number): RecognizedP
   };
 }
 
+export function frequencyToChromaticPracticeNote(frequencyHz: number): RecognizedPracticeNote | null {
+  if (!Number.isFinite(frequencyHz) || frequencyHz <= 0) return null;
+  const midiValue = frequencyToMidi(frequencyHz);
+  const midiNoteNumber = Math.round(midiValue);
+  if (
+    midiNoteNumber < PRACTICE_NOTE_MIN_MIDI ||
+    midiNoteNumber > PRACTICE_NOTE_MAX_MIDI ||
+    Math.abs(midiValue - midiNoteNumber) * 100 > MAX_NOTE_DEVIATION_CENTS
+  ) return null;
+  const noteName = (["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const)[((midiNoteNumber % 12) + 12) % 12];
+  return {
+    midiNoteNumber,
+    noteName,
+    octave: (Math.floor(midiNoteNumber / 12) - 1) as Octave,
+  };
+}
+
 export function createPracticeNoteRecognizer(
   minConfidence = DEFAULT_MIN_NOTE_CONFIDENCE,
   stability: PracticeNoteRecognizerStabilityOptions = {},
@@ -93,6 +112,7 @@ export function createPracticeNoteRecognizer(
   const requiredStableFrames = stability.requiredFrames ?? REQUIRED_STABLE_FRAMES;
   const requiredStableMs = stability.requiredMs ?? REQUIRED_STABLE_MS;
   const continuityConfidence = stability.continuityConfidence ?? minConfidence;
+  const convertFrequency = stability.includeAccidentals ? frequencyToChromaticPracticeNote : frequencyToNaturalPracticeNote;
   let candidateMidi: number | null = null;
   let candidateFrames = 0;
   let candidateStartedAt = 0;
@@ -118,7 +138,7 @@ export function createPracticeNoteRecognizer(
   const process = (observation: PracticeNoteObservation): RecognizedPracticeNote | null => {
     const detectedCandidate = observation.frequencyHz === null || observation.ambiguous
       ? null
-      : frequencyToNaturalPracticeNote(observation.frequencyHz);
+      : convertFrequency(observation.frequencyHz);
     const isConfidentCandidate = observation.confidence >= minConfidence;
     const continuityReferenceAgeMs = observation.timeMs - continuityReferenceAt;
     const hasRecentContinuityReference = continuityReferenceMidi !== null &&

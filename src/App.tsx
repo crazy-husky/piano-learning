@@ -1,4 +1,4 @@
-import { AudioLines, BarChart3, BellOff, BookOpen, Dumbbell, FolderOpen, Settings, X } from "lucide-react";
+import { ArrowLeft, AudioLines, BarChart3, BellOff, BookOpen, Dumbbell, FolderOpen, House, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { preloadPianoSamples, setPianoVolume } from "./audio/piano";
@@ -20,6 +20,7 @@ import type { AppSettings, BackupState, PracticeSessionRecord, ReviewRecord, Sta
 import { MidiLatencyDiagnosticsPanel } from "./diagnostics/MidiLatencyDiagnosticsPanel";
 import { MIDI_LATENCY_DIAGNOSTICS_ENABLED } from "./diagnostics/midiLatencyDiagnostics";
 import { BackupConflictResolver } from "./components/BackupConflictResolver";
+import { HomeView } from "./components/HomeView";
 import {
   PracticeView,
   type PracticeNavigationExitRequest,
@@ -55,6 +56,7 @@ import {
 import { useMidiInput } from "./midi/useMidiInput";
 import { ENHANCED_PITCH_MODEL_CACHE } from "./vocal-pitch/enhancedPitchModels";
 import { useAppUpdateNotice } from "./useAppUpdateNotice";
+import { appRouteFromHash, appRoutePathForPage, appRouteUrl, type AppRoute, type AppRoutePath } from "./routing/appRoutes";
 import {
   DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
   createDefaultPracticeMicrophonePreferences,
@@ -68,7 +70,6 @@ type SettingsSaveOptions = { feedback?: boolean };
 
 const BACKUP_REMINDER_SUPPRESSED_DATE_KEY = "anki-note.backupReminderSuppressedDate";
 const BACKUP_REMINDER_SUPPRESSED_WEEK_KEY = "anki-note.backupReminderSuppressedWeek";
-const RELOAD_VIEW_SESSION_KEY = "anki-note.reloadView";
 const INITIAL_PRACTICE_MICROPHONE_PREFERENCES = (() => {
   if (typeof navigator === "undefined") return DEFAULT_PRACTICE_MICROPHONE_PREFERENCES;
   const sensitivityLevel = isTouchPracticeDevice(
@@ -144,31 +145,6 @@ function isBackupReminderSuppressed(): boolean {
   }
 }
 
-function readInitialView(): View {
-  const [navigation] = window.performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
-  // 只在刷新时恢复上次页面；直接打开应用仍默认进入练习页。
-  if (navigation?.type !== "reload") {
-    return "practice";
-  }
-
-  try {
-    const storedView = window.sessionStorage.getItem(RELOAD_VIEW_SESSION_KEY);
-    return storedView === "stats" || storedView === "study" || storedView === "settings" || storedView === "vocal"
-      ? storedView
-      : "practice";
-  } catch {
-    return "practice";
-  }
-}
-
-function rememberReloadView(view: View): void {
-  try {
-    window.sessionStorage.setItem(RELOAD_VIEW_SESSION_KEY, view);
-  } catch {
-    return;
-  }
-}
-
 function backupSyncRequired(backupState: BackupState): boolean {
   const stored = backupState as StoredBackupState;
   return Boolean(backupState.dataConflictBeforeBackup ?? backupState.syncRequiredBeforeBackup ?? stored.restoreRequiredBeforeBackup);
@@ -213,7 +189,9 @@ export function App(): JSX.Element {
   useAppUpdateNotice();
   const midi = useMidiInput();
 
-  const [view, setView] = useState<View>(readInitialView);
+  const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
+  const routeRef = useRef(route);
+  routeRef.current = route;
   const [pageAppearancePreferences, setPageAppearancePreferences] = useLocalStorageState(
     PAGE_APPEARANCE_PREFERENCES_KEY,
     DEFAULT_PAGE_APPEARANCE_PREFERENCES,
@@ -237,6 +215,10 @@ export function App(): JSX.Element {
   const settingsMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const configurationRestoreInProgressRef = useRef(false);
   const [practiceRunning, setPracticeRunning] = useState(false);
+  const practiceRunningRef = useRef(false);
+  practiceRunningRef.current = practiceRunning;
+  const pendingRoutePathRef = useRef<AppRoutePath | null>(null);
+  const view = route.page;
   const [backupReminderBusy, setBackupReminderBusy] = useState(false);
   const [backupReminderMessage, setBackupReminderMessage] = useState<{ detail: string; title: string } | null>(null);
   const [backupToastMessage, setBackupToastMessage] = useState<{ detail: string; title: string } | null>(null);
@@ -340,9 +322,54 @@ export function App(): JSX.Element {
   }, []);
   const hasBackupDirectory = Boolean(data?.backupState.directoryHandle);
 
+  const navigateToRoute = useCallback((path: AppRoutePath, options: { replace?: boolean } = {}): void => {
+    const nextRoute = appRouteFromHash(`#${path}`);
+    if (routeRef.current.path === nextRoute.path) return;
+    const url = appRouteUrl(nextRoute.path);
+    if (options.replace) {
+      window.history.replaceState(window.history.state, "", url);
+    } else {
+      window.history.pushState(window.history.state, "", url);
+    }
+    routeRef.current = nextRoute;
+    setRoute(nextRoute);
+  }, []);
+
   useEffect(() => {
-    rememberReloadView(view);
-  }, [view]);
+    const normalizedRoute = appRouteFromHash(window.location.hash);
+    if (!window.location.hash || normalizedRoute.path !== window.location.hash.slice(1)) {
+      window.history.replaceState(window.history.state, "", appRouteUrl(normalizedRoute.path));
+    }
+    const synchronizeRoute = (): void => {
+      const incomingRoute = appRouteFromHash(window.location.hash);
+      const currentRoute = routeRef.current;
+      if (incomingRoute.path === currentRoute.path) return;
+      if (currentRoute.page === "vocal" && incomingRoute.page !== "vocal") {
+        pendingRoutePathRef.current = incomingRoute.path;
+        vocalExitRequestIdRef.current += 1;
+        setVocalExitRequest({ id: vocalExitRequestIdRef.current, targetView: incomingRoute.page });
+        window.history.pushState(window.history.state, "", appRouteUrl(currentRoute.path));
+        return;
+      }
+      const isLeavingPractice = currentRoute.page === "practice" && incomingRoute.page !== "practice";
+      const isLeavingStaffGame = currentRoute.path === "/practice/game" && incomingRoute.path !== "/practice/game";
+      if (practiceRunningRef.current && (isLeavingPractice || isLeavingStaffGame)) {
+        pendingRoutePathRef.current = incomingRoute.path;
+        practiceExitRequestIdRef.current += 1;
+        setPracticeExitRequest({ id: practiceExitRequestIdRef.current, targetView: incomingRoute.page });
+        window.history.pushState(window.history.state, "", appRouteUrl(currentRoute.path));
+        return;
+      }
+      routeRef.current = incomingRoute;
+      setRoute(incomingRoute);
+    };
+    window.addEventListener("hashchange", synchronizeRoute);
+    window.addEventListener("popstate", synchronizeRoute);
+    return () => {
+      window.removeEventListener("hashchange", synchronizeRoute);
+      window.removeEventListener("popstate", synchronizeRoute);
+    };
+  }, []);
 
   useEffect(() => {
     let timeoutId = 0;
@@ -453,7 +480,9 @@ export function App(): JSX.Element {
 
   const selectView = useCallback(
     (nextView: View): void => {
-      if (practiceRunning && view === "practice" && nextView !== view) {
+      const nextPath = appRoutePathForPage(nextView);
+      if (practiceRunning && view === "practice" && nextPath !== route.path) {
+        pendingRoutePathRef.current = nextPath;
         if (!practiceExitRequest) {
           practiceExitRequestIdRef.current += 1;
           setPracticeExitRequest({
@@ -463,25 +492,36 @@ export function App(): JSX.Element {
         }
         return;
       }
-      if (view === "vocal" && nextView !== view) {
+      if (view === "vocal" && nextPath !== route.path) {
+        pendingRoutePathRef.current = nextPath;
         vocalExitRequestIdRef.current += 1;
         setVocalExitRequest({ id: vocalExitRequestIdRef.current, targetView: nextView });
         return;
       }
-      setView(nextView);
+      navigateToRoute(nextPath);
     },
-    [practiceExitRequest, practiceRunning, view, vocalExitRequest],
+    [navigateToRoute, practiceExitRequest, practiceRunning, route.path, view, vocalExitRequest],
   );
 
   const handleNavigationExit = useCallback((targetView: PracticeNavigationExitTarget): void => {
     setPracticeExitRequest(null);
-    setView(targetView);
-  }, []);
+    const path = pendingRoutePathRef.current ?? appRoutePathForPage(targetView);
+    const replace = pendingRoutePathRef.current !== null;
+    pendingRoutePathRef.current = null;
+    navigateToRoute(path, { replace });
+  }, [navigateToRoute]);
 
   const handleVocalNavigationExit = useCallback((targetView: PracticeNavigationExitTarget): void => {
     setVocalExitRequest(null);
-    setView(targetView);
-  }, []);
+    const path = pendingRoutePathRef.current ?? appRoutePathForPage(targetView);
+    const replace = pendingRoutePathRef.current !== null;
+    pendingRoutePathRef.current = null;
+    navigateToRoute(path, { replace });
+  }, [navigateToRoute]);
+
+  const selectPracticeGameRoute = useCallback((isGame: boolean): void => {
+    navigateToRoute(isGame ? "/practice/game" : "/practice", { replace: !isGame });
+  }, [navigateToRoute]);
 
   const showBackupReminderMessage = useCallback((title: string, detail: string, autoHide: boolean): void => {
     if (autoHide) {
@@ -776,11 +816,19 @@ export function App(): JSX.Element {
   const displayBackupReminder =
     showBackupReminder &&
     !practiceRunning &&
+    route.path !== "/practice/game" &&
     (view !== "vocal" || backupReminderState.kind === "data-conflict");
+  const shellClassName = [
+    "app-shell",
+    practiceRunning ? "app-shell-practice-running" : "",
+    view === "practice" ? "app-shell-practice-page" : "",
+    view === "home" ? "app-shell-home" : "",
+  ].filter(Boolean).join(" ");
+  const showMobileBackButton = view !== "home" && !(view === "practice" && route.path === "/practice/game") && !practiceRunning;
   return (
     <PageAppearanceProvider isNightMode={isNightMode}>
     <Toaster closeButton position="top-center" theme={isNightMode ? "dark" : "light"} />
-    <div className={practiceRunning ? "app-shell app-shell-practice-running" : "app-shell"}>
+    <div className={shellClassName}>
       {backupToastMessage ? (
         <div className="backup-toast" role="status" aria-live="polite">
           <strong>{backupToastMessage.title}</strong>
@@ -788,6 +836,10 @@ export function App(): JSX.Element {
         </div>
       ) : null}
       <nav className="app-nav" aria-label="主导航">
+        <button aria-label="首页" className={view === "home" ? "active" : ""} onClick={() => selectView("home")}>
+          <House size={18} />
+          首页
+        </button>
         <button className={view === "study" ? "active" : ""} onClick={() => selectView("study")}>
           <BookOpen size={18} />
           学习
@@ -871,6 +923,7 @@ export function App(): JSX.Element {
             </div>
           </div>
         ) : null}
+        {view === "home" ? <HomeView onNavigate={navigateToRoute} /> : null}
         {view === "practice" ? (
           <PracticeView
             midi={midi}
@@ -881,10 +934,12 @@ export function App(): JSX.Element {
             sessions={data.sessions}
             reviews={data.reviews}
             navigationExitRequest={practiceExitRequest}
+            isStaffGameRoute={route.path === "/practice/game"}
+            onStaffGameRouteChange={selectPracticeGameRoute}
             onDataChanged={refresh}
             onNavigationExit={handleNavigationExit}
-            onOpenStats={() => setView("stats")}
-            onOpenSettings={() => setView("settings")}
+            onOpenStats={() => selectView("stats")}
+            onOpenSettings={() => selectView("settings")}
             onBeforePracticeStart={preflightBeforePracticeStart}
             onPracticeFinished={showBackupReminderAfterActivity}
             onRunningChange={setPracticeRunning}
@@ -936,6 +991,12 @@ export function App(): JSX.Element {
           />
         ) : null}
       </main>
+      {showMobileBackButton ? (
+        <button aria-label="返回首页" className="mobile-route-back" onClick={() => selectView("home")} type="button">
+          <ArrowLeft aria-hidden="true" size={19} />
+          返回
+        </button>
+      ) : null}
       {MIDI_LATENCY_DIAGNOSTICS_ENABLED ? (
         <MidiLatencyDiagnosticsPanel correctDelayMs={data.settings.correctDelayMs} />
       ) : null}
