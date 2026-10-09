@@ -1,6 +1,5 @@
 import { ArrowLeft, BarChart3, Download, Pause, Play, SlidersHorizontal, Square, Volume2 } from "lucide-react";
 import {
-  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -12,7 +11,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { playTargetNote } from "../../../audio/piano";
-import { db, resolveDrillNoteNames, resolveQueueStrategy } from "../../../data/db";
+import { resolveDrillNoteNames, resolveQueueStrategy } from "../../../data/db";
 import { writeBackupIfSafe } from "../../../data/backup";
 import {
   markMidiLatencyStage,
@@ -31,7 +30,7 @@ import {
   PRACTICE_GROUPS,
 } from "../../../domain/notes";
 import { getEffectivePracticeNotes } from "../../../domain/practiceComparison";
-import { createAdaptiveNoteScheduler, selectNextNote, selectNotePage, type AdaptiveNoteScheduler } from "../../../domain/scheduler";
+import { selectNextNote, selectNotePage, type AdaptiveNoteScheduler } from "../../../domain/scheduler";
 import type { SessionProgressMode } from "../../../domain/sessionProgress";
 import { filterLongTermReviews } from "../../../domain/stats";
 import type {
@@ -65,7 +64,6 @@ import { StaffPagePrompt } from "./StaffPagePrompt";
 import { StaffPrompt } from "./StaffPrompt";
 import {
   MOBILE_PRACTICE_PAGE_STAFF_LAYOUT,
-  PRACTICE_PAGE_STAFF_LAYOUT,
 } from "../../../shared/staff/staffLayoutProfiles";
 import {
   buildMobileStaffPageView,

@@ -10,7 +10,6 @@ import type {
   PracticeSessionRecord,
   PracticeSessionRecordV1,
   ReviewRecord,
-  StaffRecallRunRecord,
   StaffRecallRunRecordV1,
 } from "../domain/types";
 import { backupText } from "../domain/backupText";

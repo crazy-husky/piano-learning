@@ -8,7 +8,7 @@ import {
   buildPracticeSessionRecordV5,
   buildPracticeSessionStartSnapshot,
 } from "../../../domain/practiceSessionStartSnapshot";
-import { createAdaptiveNoteScheduler, selectNextNote, selectNotePage, type AdaptiveNoteScheduler } from "../../../domain/scheduler";
+import { createAdaptiveNoteScheduler, selectNextNote, type AdaptiveNoteScheduler } from "../../../domain/scheduler";
 import { filterLongTermReviews } from "../../../domain/stats";
 import type {
   AppSettings,

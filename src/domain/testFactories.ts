@@ -1,6 +1,6 @@
 import { createUuid } from "./id";
 import { DEFAULT_ENABLED_GROUPS, findNoteById } from "./notes";
-import type { NoteName, PracticeGroupId, ReviewRecord, TargetNoteId } from "./types";
+import type { NoteName, ReviewRecord, TargetNoteId } from "./types";
 
 export function makeReview(overrides: Partial<ReviewRecord> & { targetNoteId: TargetNoteId }): ReviewRecord {
   const note = findNoteById(overrides.targetNoteId);

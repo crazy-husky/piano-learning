@@ -230,7 +230,6 @@ export function StatsView({
   };
 
   const {
-    activeNotes,
     dailyStats,
     errorStaffNotes,
     errorTertileThresholds,

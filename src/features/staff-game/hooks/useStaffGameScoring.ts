@@ -1,6 +1,5 @@
 import { useCallback, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
-import type { PianoKeyName } from "../../../domain/types";
 import { STAFF_GAME_SONGS } from "../data/staffGameSongs";
 import {
   ERROR_FLASH_DURATION_MS,

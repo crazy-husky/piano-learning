@@ -1,9 +1,7 @@
 import { Keyboard, Mic, Music2, Play, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import type { StaffGameSong, StaffGameSongProgress, StaffGameSongRecord } from "../data/staffGameSongs";
-import bubbleShell from "../assets/effects/bubble-shell-empty-center.webp";
 import notationC4Preview from "../assets/notation/treble-staff-c4-note.webp";
-import starParticleArt from "../assets/ui/star-particle.webp";
 
 interface SharedArtwork {
   bubbleImage: string;

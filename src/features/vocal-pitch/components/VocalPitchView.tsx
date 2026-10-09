@@ -527,7 +527,6 @@ export function VocalPitchView({
     fileDragActive,
     fileInputRef,
     handleFileChange,
-    importFile,
     openUploadPicker,
   } = useVocalFileImport({
     analysisRequestGenerationRef,

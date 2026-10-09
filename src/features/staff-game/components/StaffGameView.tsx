@@ -1,6 +1,5 @@
-import { Keyboard, Mic, Music2, Play, RotateCcw, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
+import { Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { NoteName, PianoKeyName } from "../../../domain/types";
@@ -48,7 +47,6 @@ import {
   STAR_THRESHOLDS,
   gameDurationMsForLevel,
   gameNoteFromMidi,
-  shuffledNoteBag,
   starsForStarCredit,
 } from "../logic/staffGameRules";
 import type { GameDifficulty } from "../logic/staffGameRules";
@@ -60,7 +58,6 @@ const {
   cloudDecorationOne,
   cloudDecorationTwo,
   cloudDecorationThree,
-  notationC4Preview,
   buttonPrimaryArt,
   buttonSecondaryArt,
   actionHelpArt,

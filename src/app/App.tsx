@@ -6,7 +6,6 @@ import {
   db,
   ensureSettings,
   getBackupState,
-  loadAllData,
   loadPracticeHistory,
   loadStaffRecallHistory,
   recoverAbandonedSessions,

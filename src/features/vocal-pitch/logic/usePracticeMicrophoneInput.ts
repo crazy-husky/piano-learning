@@ -729,7 +729,6 @@ export function usePracticeMicrophoneInput(
   }, []);
 
   const postAnalysisFrame = useCallback((
-    samples: Float32Array,
     analysisSamples: Float32Array,
     sampleRate: number,
     timeMs: number,
@@ -858,7 +857,7 @@ export function usePracticeMicrophoneInput(
         recordInputFrame(samples, rms, now, analysisSamples, analysisRms, gain);
       }
       if (activeAlgorithmRef.current === "swiftf0") {
-        postAnalysisFrame(samples, analysisSamples, analyser.context.sampleRate, now, rms, analysisRms, gain);
+        postAnalysisFrame(analysisSamples, analyser.context.sampleRate, now, rms, analysisRms, gain);
       } else {
         const thresholds = activeThresholdsRef.current;
         const workerResult = pitchWorkerRef.current
