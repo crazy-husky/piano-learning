@@ -419,6 +419,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
   const settingsDialogShakeLockRef = useRef(false);
   const [target, setTarget] = useState<GameNote | null>(null);
+  const [rushBubbleSpeedLineLane, setRushBubbleSpeedLineLane] = useState<{ centerPercent: number; halfWidthPercent: number } | null>(null);
   const [rushBubbleScreenTopStart, setRushBubbleScreenTopStart] = useState<{ token: number; top: number } | null>(null);
   const rushBubbleScreenTopStartRef = useRef<{ token: number; top: number } | null>(null);
   const [targetPopped, setTargetPopped] = useState(false);
@@ -650,6 +651,32 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   const comboIndicatorIsRush = (comboIndicator?.count ?? 0) >= RUSH_MODE_COMBO_THRESHOLD;
   const rushVisualsActive = rushModeActive && settings.gameEffectsEnabled;
   const activeBubbleDurationMs = rushModeActive ? Math.round(bubbleDurationMs * RUSH_FALL_SPEED_MULTIPLIER) : bubbleDurationMs;
+
+  useLayoutEffect(() => {
+    if (!rushVisualsActive || !target) {
+      setRushBubbleSpeedLineLane(null);
+      return;
+    }
+
+    const scene = sceneRef.current;
+    const bubble = targetElementRef.current;
+    if (!scene || !bubble) {
+      setRushBubbleSpeedLineLane(null);
+      return;
+    }
+
+    const sceneBounds = scene.getBoundingClientRect();
+    const bubbleBounds = bubble.getBoundingClientRect();
+    if (sceneBounds.width <= 0) {
+      setRushBubbleSpeedLineLane(null);
+      return;
+    }
+
+    setRushBubbleSpeedLineLane({
+      centerPercent: ((bubbleBounds.left + bubbleBounds.width / 2 - sceneBounds.left) / sceneBounds.width) * 100,
+      halfWidthPercent: ((bubbleBounds.width / 2 + 8) / sceneBounds.width) * 100,
+    });
+  }, [rushVisualsActive, target?.token]);
 
   useLayoutEffect(() => {
     if (!target) {
@@ -1680,11 +1707,11 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
       <section aria-busy={resourceLoadState === "loading"} className="practice-shell staff-game-shell staff-game-loading-shell" aria-label="正在准备五线谱闯关">
         <div className="staff-game-loading-card" role={resourceLoadState === "loading" ? "status" : undefined} aria-live="polite">
           {resourceLoadState === "loading" ? <span aria-hidden="true" className="staff-game-loading-spinner" /> : null}
-          <strong>{resourceLoadState === "loading" ? "正在加载游戏素材" : "部分游戏图片、字体、音效、背景音乐或钢琴采样没有加载成功"}</strong>
+          <strong>{resourceLoadState === "loading" ? "正在加载游戏素材" : "部分游戏素材未能加载"}</strong>
           <span>{resourceLoadState === "loading"
             ? resourceLoadRetryCount > 0
               ? `部分素材未就绪，正在自动重试（${resourceLoadRetryCount}/${STAFF_GAME_RESOURCE_MAX_RETRIES}）`
-              : "正在准备游戏图片、字体、音效、背景音乐和钢琴采样，全部就绪后即可开始"
+              : "素材加载完成后即可开始"
             : `已自动重试 ${STAFF_GAME_RESOURCE_MAX_RETRIES} 次，请检查网络连接后重试`}</span>
           {resourceLoadState === "error" ? (
             <button className="staff-game-loading-retry" onClick={() => setResourceLoadAttempt((attempt) => attempt + 1)} type="button">重新加载</button>
@@ -1710,7 +1737,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
               <img className="staff-game-waiting-cloud cloud-e" draggable="false" src={cloudDecorationTwo} />
             </div>
           ) : null}
-          {settings.gameEffectsEnabled ? <StaffGameRushSpeedLines /> : null}
+          {settings.gameEffectsEnabled ? <StaffGameRushSpeedLines bubbleLane={rushBubbleSpeedLineLane} /> : null}
         {settings.gameEffectsEnabled ? <div aria-hidden="true" className="staff-game-rush-vignette" /> : null}
         {settings.gameEffectsEnabled ? <StaffGameParticles /> : null}
         {settings.gameEffectsEnabled ? <StaffGameShootingStar /> : null}

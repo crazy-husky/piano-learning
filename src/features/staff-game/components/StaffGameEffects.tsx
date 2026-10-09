@@ -306,6 +306,7 @@ export function StaffGameParticles(): JSX.Element {
 interface RushSpeedLine {
   id: number;
   left: string;
+  centerPercent: number;
   width: string;
   height: string;
   opacity: string;
@@ -313,13 +314,19 @@ interface RushSpeedLine {
   delay: string;
 }
 
-export function StaffGameRushSpeedLines(): JSX.Element {
+interface StaffGameRushSpeedLinesProps {
+  bubbleLane?: { centerPercent: number; halfWidthPercent: number } | null;
+}
+
+export function StaffGameRushSpeedLines({ bubbleLane }: StaffGameRushSpeedLinesProps): JSX.Element {
   const [lines] = useState<RushSpeedLine[]>(() => Array.from({ length: 16 }, (_, id) => {
     const durationSeconds = 0.2 + Math.random() * 0.4;
+    const centerPercent = Math.random() * 100;
     return {
       id,
-      left: `${Math.random() * 100}%`,
-      width: `${1.5 + Math.random()}px`,
+      left: `${centerPercent}%`,
+      centerPercent,
+      width: `${2.5 + Math.random()}px`,
       height: `${30 + Math.random() * 150}px`,
       opacity: `${0.2 + Math.random() * 0.6}`,
       duration: `${durationSeconds}s`,
@@ -335,12 +342,14 @@ export function StaffGameRushSpeedLines(): JSX.Element {
           key={line.id}
           style={{
             left: line.left,
-            width: line.width,
+            "--staff-game-speed-line-width": line.width,
             height: line.height,
-            opacity: line.opacity,
+            opacity: bubbleLane && Math.abs(line.centerPercent - bubbleLane.centerPercent) <= bubbleLane.halfWidthPercent
+              ? 0
+              : line.opacity,
             animationDuration: line.duration,
             animationDelay: line.delay,
-          }}
+          } as CSSProperties}
         />
       ))}
     </div>

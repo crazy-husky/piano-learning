@@ -909,9 +909,11 @@
   position: absolute;
   bottom: -200px;
   display: block;
+  width: var(--staff-game-speed-line-width);
   border-radius: 2px;
   background: linear-gradient(to top, transparent, rgba(255, 255, 255, 0.9), transparent);
   animation: staff-game-speed-line-rise 400ms linear infinite paused;
+  transition: opacity 160ms ease;
   will-change: transform;
 }
 
