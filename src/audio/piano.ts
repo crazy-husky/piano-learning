@@ -4,6 +4,7 @@ import { DEFAULT_PIANO_VOLUME, normalizePianoVolume } from "../domain/settings";
 import type { Octave, PianoKeyName, TargetNote } from "../domain/types";
 
 const PIANO_SAMPLE_BASE_URL = "https://tonejs.github.io/audio/salamander/";
+const PIANO_SAMPLE_LOAD_TIMEOUT_MS = 30_000;
 const PIANO_SAMPLE_URLS = {
   A0: "A0.mp3",
   C1: "C1.mp3",
@@ -80,14 +81,22 @@ function getSampler({ retryFailed = false }: GetSamplerOptions = {}): Tone.Sampl
 
   samplerStatus = "loading";
   samplerLoadPromise = new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let timeout: number | undefined;
+    const clearLoadTimeout = (): void => {
+      if (timeout !== undefined && typeof window !== "undefined") window.clearTimeout(timeout);
+    };
     const markLoaded = (): void => {
-      if (samplerStatus === "failed") {
-        return;
-      }
+      if (settled) return;
+      settled = true;
+      clearLoadTimeout();
       samplerStatus = "loaded";
       resolve();
     };
     const markFailed = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      clearLoadTimeout();
       samplerStatus = "failed";
       sampler?.dispose();
       sampler = undefined;
@@ -96,6 +105,12 @@ function getSampler({ retryFailed = false }: GetSamplerOptions = {}): Tone.Sampl
 
     try {
       // Salamander Grand Piano samples by Alexander Holm, CC BY 3.0. See THIRD_PARTY_AUDIO.md.
+      if (typeof window !== "undefined") {
+        timeout = window.setTimeout(
+          () => markFailed(new Error("Timed out while loading piano samples")),
+          PIANO_SAMPLE_LOAD_TIMEOUT_MS,
+        );
+      }
       sampler = new Tone.Sampler({
         urls: PIANO_SAMPLE_URLS,
         baseUrl: PIANO_SAMPLE_BASE_URL,

@@ -69,6 +69,7 @@ const STAFF_GAME_IMAGE_ASSETS = [
 ];
 const STAFF_GAME_RESOURCE_MAX_RETRIES = 3;
 const STAFF_GAME_RESOURCE_RETRY_DELAY_MS = 500;
+const STAFF_GAME_IMAGE_TIMEOUT_MS = 15_000;
 const STAFF_GAME_BACKGROUND_AUDIO_TIMEOUT_MS = 15_000;
 // Keep decoded images alive across route re-entry; failed loads are removed so retries can fetch them again.
 const staffGameImageCache = new Map<string, HTMLImageElement>();
@@ -762,9 +763,17 @@ function loadGameImage(source: string): Promise<void> {
   const image = new Image();
   const loadPromise = new Promise<void>((resolve, reject) => {
     let settled = false;
+    let timeout: number | undefined;
+    const handleError = (): void => settle(new Error(`Failed to load ${source}`));
+    const cleanup = (): void => {
+      image.removeEventListener("load", finishLoading);
+      image.removeEventListener("error", handleError);
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
     const settle = (error?: Error): void => {
       if (settled) return;
       settled = true;
+      cleanup();
       if (error) {
         reject(error);
       } else {
@@ -783,8 +792,12 @@ function loadGameImage(source: string): Promise<void> {
       );
     };
 
+    timeout = window.setTimeout(() => {
+      settle(new Error(`Timed out while loading ${source}`));
+      image.removeAttribute("src");
+    }, STAFF_GAME_IMAGE_TIMEOUT_MS);
     image.addEventListener("load", finishLoading, { once: true });
-    image.addEventListener("error", () => settle(new Error(`Failed to load ${source}`)), { once: true });
+    image.addEventListener("error", handleError, { once: true });
     image.src = source;
     if (image.complete) {
       if (image.naturalWidth > 0) finishLoading();
@@ -805,7 +818,7 @@ function playGameMusic(audio: HTMLAudioElement): void {
     const result = audio.play() as Promise<void> | undefined;
     if (result && typeof result.catch === "function") void result.catch(() => undefined);
   } catch {
-    // Audio playback is optional; a blocked or unsupported player must not stop the game.
+    // Autoplay may wait for a user gesture even after the track has loaded.
   }
 }
 
@@ -814,9 +827,14 @@ async function preloadStaffGameImages(): Promise<number> {
   return results.filter((result) => result.status === "rejected").length;
 }
 
-function preloadGameBackgroundMusic(audio: HTMLAudioElement, signal: AbortSignal): Promise<void> {
+function preloadGameBackgroundMusic(audio: HTMLAudioElement, signal: AbortSignal, retry: boolean): Promise<void> {
   if (signal.aborted) return Promise.resolve();
   if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return Promise.resolve();
+  if (retry && audio.error) {
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+  }
 
   return new Promise<void>((resolve, reject) => {
     let settled = false;
@@ -852,12 +870,18 @@ function preloadGameBackgroundMusic(audio: HTMLAudioElement, signal: AbortSignal
   });
 }
 
-async function preloadStaffGameResources(): Promise<number> {
-  const [imageFailures, soundFailures] = await Promise.all([
+async function preloadStaffGameResources(
+  backgroundMusic: HTMLAudioElement,
+  signal: AbortSignal,
+  retry: boolean,
+): Promise<number> {
+  const [imageFailures, soundFailures, backgroundMusicFailures, pianoSampleFailures] = await Promise.all([
     preloadStaffGameImages(),
     preloadStaffGameSounds(),
+    preloadGameBackgroundMusic(backgroundMusic, signal, retry).then(() => 0, () => 1),
+    preloadPianoSamples().then((loaded) => loaded ? 0 : 1, () => 1),
   ]);
-  return imageFailures + soundFailures;
+  return imageFailures + soundFailures + backgroundMusicFailures + pianoSampleFailures;
 }
 
 function readProgress(): StaffGameProgress {
@@ -1248,14 +1272,14 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     backgroundMusic.loop = true;
     backgroundMusic.preload = "auto";
     backgroundMusicRef.current = backgroundMusic;
-    // Background music is optional; a slow or unavailable track must not block game entry.
-    void preloadGameBackgroundMusic(backgroundMusic, backgroundMusicPreloadController.signal).catch(() => undefined);
-    // Piano samples are optional too; the synth remains available until they finish loading.
-    void preloadPianoSamples().catch(() => false);
     setResourceLoadState("loading");
     setResourceLoadRetryCount(0);
     const loadResources = async (): Promise<void> => {
-      const failureCount = await preloadStaffGameResources();
+      const failureCount = await preloadStaffGameResources(
+        backgroundMusic,
+        backgroundMusicPreloadController.signal,
+        retryCount > 0,
+      );
       if (!active) return;
       if (failureCount === 0) {
         setResourceLoadState("ready");
@@ -2453,11 +2477,11 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
       <section aria-busy={resourceLoadState === "loading"} className="practice-shell staff-game-shell staff-game-loading-shell" aria-label="正在准备五线谱闯关">
         <div className="staff-game-loading-card" role={resourceLoadState === "loading" ? "status" : undefined} aria-live="polite">
           {resourceLoadState === "loading" ? <span aria-hidden="true" className="staff-game-loading-spinner" /> : null}
-          <strong>{resourceLoadState === "loading" ? "正在加载游戏素材" : "部分游戏图片或声音没有加载成功"}</strong>
+          <strong>{resourceLoadState === "loading" ? "正在加载游戏素材" : "部分游戏图片、音效、背景音乐或钢琴采样没有加载成功"}</strong>
           <span>{resourceLoadState === "loading"
             ? resourceLoadRetryCount > 0
               ? `部分素材未就绪，正在自动重试（${resourceLoadRetryCount}/${STAFF_GAME_RESOURCE_MAX_RETRIES}）`
-              : "正在准备图片、音效和背景音乐；钢琴采样未就绪时会使用合成音色"
+              : "正在准备游戏图片、音效、背景音乐和钢琴采样，全部就绪后即可开始"
             : `已自动重试 ${STAFF_GAME_RESOURCE_MAX_RETRIES} 次，请检查网络连接后重试`}</span>
           {resourceLoadState === "error" ? (
             <button className="staff-game-loading-retry" onClick={() => setResourceLoadAttempt((attempt) => attempt + 1)} type="button">重新加载</button>
