@@ -32,6 +32,7 @@ function makePromptNote(note: TargetNote, noteDuration: PromptNoteDuration, colo
     ...(stemDirection === undefined ? {} : { stemDirection }),
   });
   staveNote.setStyle({ fillStyle: color, strokeStyle: color });
+  staveNote.setKeyStyle(0, { fillStyle: color, strokeStyle: color });
   staveNote.setLedgerLineStyle({ fillStyle: color, strokeStyle: color });
   return staveNote;
 }

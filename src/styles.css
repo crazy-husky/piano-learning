@@ -4984,6 +4984,107 @@ button.danger:hover:not(:disabled) {
   user-select: text;
 }
 
+.app-global-error-notice {
+  position: fixed;
+  z-index: 15000;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  width: min(480px, calc(100vw - 24px));
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  border: 1px solid var(--warning-border);
+  border-radius: 14px;
+  background: var(--warning-surface);
+  color: var(--text);
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+
+.app-global-error-notice-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-global-error-notice-header > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.app-global-error-notice-header strong {
+  color: var(--warning-text);
+}
+
+.app-global-error-notice-header span,
+.app-global-error-notice-copy-status {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.app-global-error-notice-header button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent-fill);
+  color: #fff;
+  padding: 0 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.app-global-error-notice-header button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.app-global-error-notice-copy-status {
+  margin: 8px 0;
+}
+
+.app-global-error-notice details {
+  border-top: 1px solid var(--warning-border);
+  padding-top: 8px;
+}
+
+.app-global-error-notice summary {
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.app-global-error-notice pre {
+  max-height: 42vh;
+  overflow: auto;
+  margin: 8px 0 0;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+@media (max-width: 560px) {
+  .app-global-error-notice {
+    left: max(12px, env(safe-area-inset-left));
+    width: auto;
+    max-height: min(60vh, 420px);
+  }
+
+  .app-global-error-notice-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 @keyframes staff-game-loading-spin {
   to { transform: rotate(360deg); }
 }
@@ -5079,6 +5180,80 @@ body.rush-mode .staff-game-scene::before {
   width: clamp(115px, 19vw, 260px);
   opacity: 0.64;
   animation-duration: 74s;
+}
+
+.staff-game-waiting-cloud-layer {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.staff-game-waiting-cloud {
+  position: absolute;
+  left: 0;
+  display: block;
+  height: auto;
+  opacity: var(--waiting-cloud-opacity, 0.3);
+  pointer-events: none;
+  animation: staff-game-waiting-cloud-cross var(--waiting-cloud-duration, 48s) linear var(--waiting-cloud-delay, 0s) infinite;
+}
+
+.staff-game-waiting-cloud.cloud-a {
+  top: 12%;
+  width: clamp(130px, 22vw, 300px);
+  --waiting-cloud-opacity: 0.2;
+  --waiting-cloud-duration: 54s;
+  --waiting-cloud-delay: 0s;
+}
+
+.staff-game-waiting-cloud.cloud-b {
+  top: 25%;
+  right: 0;
+  left: auto;
+  width: clamp(96px, 16vw, 220px);
+  --waiting-cloud-opacity: 0.15;
+  --waiting-cloud-duration: 54s;
+  --waiting-cloud-delay: -27s;
+}
+
+.staff-game-waiting-cloud.cloud-c {
+  top: 41%;
+  width: clamp(150px, 27vw, 370px);
+  --waiting-cloud-opacity: 0.16;
+  --waiting-cloud-duration: 91s;
+  --waiting-cloud-delay: -36s;
+}
+
+.staff-game-waiting-cloud.cloud-d {
+  top: 57%;
+  right: 0;
+  left: auto;
+  width: clamp(110px, 19vw, 250px);
+  --waiting-cloud-opacity: 0.13;
+  --waiting-cloud-duration: 73s;
+  --waiting-cloud-delay: -6s;
+}
+
+.staff-game-waiting-cloud.cloud-e {
+  top: 71%;
+  width: clamp(82px, 14vw, 190px);
+  --waiting-cloud-opacity: 0.12;
+  --waiting-cloud-duration: 103s;
+  --waiting-cloud-delay: -82s;
+}
+
+.staff-game-waiting-cloud.is-reversed {
+  animation-name: staff-game-waiting-cloud-cross-reverse;
+}
+
+.staff-game-waiting-cloud.cloud-a {
+  animation-name: staff-game-waiting-cloud-continuous;
+}
+
+.staff-game-waiting-cloud.cloud-b {
+  animation-name: staff-game-waiting-cloud-continuous-reverse;
 }
 
 .staff-game-fireflies {
@@ -5313,10 +5488,18 @@ body.rush-mode .staff-game-scene::before {
 }
 
 @media (min-width: 821px) {
+  .staff-game-playfield:not(.is-rush-mode) {
+    transform: translateY(-20px);
+  }
+
   .staff-game-playfield > .staff-game-bubble {
     --staff-game-bubble-start-top: -13px;
     --staff-game-bubble-end-offset: 170px;
     width: clamp(112px, 11vw, 150px);
+  }
+
+  .staff-game-playfield:not(.is-rush-mode) > .staff-game-bubble {
+    --staff-game-bubble-start-top: -8px;
   }
 
 }
@@ -5766,13 +5949,13 @@ body.rush-mode .staff-game-scene::before {
 }
 
 @keyframes staff-game-pause-clock-bob {
-  0%, 100% { transform: translateY(0) rotate(-1deg); }
-  50% { transform: translateY(-5px) rotate(1deg); }
+  0%, 100% { transform: translateY(0) rotate(-1.5deg) scale(0.98); }
+  50% { transform: translateY(-8px) rotate(1.5deg) scale(1.06); }
 }
 
 @keyframes staff-game-pause-clock-glow {
-  0%, 100% { opacity: 0.72; transform: scale(0.94); }
-  50% { opacity: 1; transform: scale(1.04); }
+  0%, 100% { opacity: 0.64; transform: scale(0.88); }
+  50% { opacity: 1; transform: scale(1.14); }
 }
 
 .staff-game-pause-label {
@@ -6332,6 +6515,66 @@ body.rush-mode .staff-game-scene::before {
   to { transform: translateX(9%); }
 }
 
+@keyframes staff-game-waiting-cloud-cross {
+  0%, 14% {
+    opacity: 0;
+    transform: translate3d(calc(-100% - 6vw), 0, 0);
+  }
+  18% {
+    opacity: var(--waiting-cloud-opacity, 0.2);
+    transform: translate3d(calc(-100% - 6vw), 0, 0);
+  }
+  53% {
+    opacity: var(--waiting-cloud-opacity, 0.2);
+    transform: translate3d(calc(100vw + 6vw), 0, 0);
+  }
+  58%, 100% {
+    opacity: 0;
+    transform: translate3d(calc(100vw + 6vw), 0, 0);
+  }
+}
+
+@keyframes staff-game-waiting-cloud-cross-reverse {
+  0%, 14% {
+    opacity: 0;
+    transform: translate3d(calc(100% + 6vw), 0, 0);
+  }
+  18% {
+    opacity: var(--waiting-cloud-opacity, 0.2);
+    transform: translate3d(calc(100% + 6vw), 0, 0);
+  }
+  53% {
+    opacity: var(--waiting-cloud-opacity, 0.2);
+    transform: translate3d(calc(-100vw - 6vw), 0, 0);
+  }
+  58%, 100% {
+    opacity: 0;
+    transform: translate3d(calc(-100vw - 6vw), 0, 0);
+  }
+}
+
+@keyframes staff-game-waiting-cloud-continuous {
+  from {
+    opacity: var(--waiting-cloud-opacity, 0.2);
+    transform: translate3d(calc(-100% - 6vw), 0, 0);
+  }
+  to {
+    opacity: var(--waiting-cloud-opacity, 0.2);
+    transform: translate3d(calc(100vw + 6vw), 0, 0);
+  }
+}
+
+@keyframes staff-game-waiting-cloud-continuous-reverse {
+  from {
+    opacity: var(--waiting-cloud-opacity, 0.2);
+    transform: translate3d(calc(100% + 6vw), 0, 0);
+  }
+  to {
+    opacity: var(--waiting-cloud-opacity, 0.2);
+    transform: translate3d(calc(-100vw - 6vw), 0, 0);
+  }
+}
+
 @keyframes staff-game-mic-pulse {
   0% { box-shadow: 0 0 0 0 rgba(230, 160, 58, 0.34); }
   75%, 100% { box-shadow: 0 0 0 10px rgba(230, 160, 58, 0); }
@@ -6485,6 +6728,10 @@ body.rush-mode .staff-game-scene::before {
 
   .staff-game-cloud-drift {
     animation: none;
+  }
+
+  .staff-game-waiting-cloud-layer {
+    display: none;
   }
 
   .staff-game-burst-star {
@@ -11315,12 +11562,9 @@ body.rush-mode .staff-game-rush-vignette {
   color: #2b829c;
 }
 
-.staff-game-summary-backdrop.effects-disabled .staff-game-summary-star {
+.staff-game-summary-backdrop.effects-disabled .staff-game-summary-star.is-revealed {
   opacity: 1;
   transform: none;
-}
-
-.staff-game-summary-backdrop.effects-disabled .staff-game-summary-star.is-revealed {
   animation: none;
 }
 
@@ -12613,12 +12857,12 @@ body.rush-mode .staff-game-rush-vignette {
 
 .staff-game-combo-ring circle {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.94);
+  stroke: rgba(255, 255, 255, 0.72);
   stroke-width: 5.2;
   stroke-linecap: round;
   stroke-dasharray: 175.93 1;
   stroke-dashoffset: 0;
-  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 7px rgba(236, 250, 255, 0.56));
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.72)) drop-shadow(0 0 7px rgba(236, 250, 255, 0.4));
   animation: staff-game-combo-fuse var(--combo-duration, 2200ms) linear forwards;
 }
 

@@ -648,6 +648,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   const threeStarCredit = Math.ceil(STAR_THRESHOLDS[STAR_THRESHOLDS.length - 1] * gameDurationMs / STAR_BASE_DURATION_MS);
   const levelProgress = threeStarCredit > 0 ? Math.min(1, starCredit / threeStarCredit) : 0;
   const rushModeActive = combo >= RUSH_MODE_COMBO_THRESHOLD && phase === "running";
+  // Keep the rush playfield geometry fixed while paused so a frozen bubble cannot jump.
   const preserveRushBubbleScreenTop = combo >= RUSH_MODE_COMBO_THRESHOLD && (phase === "running" || phase === "paused");
   const comboIndicatorIsRush = (comboIndicator?.count ?? 0) >= RUSH_MODE_COMBO_THRESHOLD;
   const rushVisualsActive = rushModeActive && settings.gameEffectsEnabled;
@@ -952,7 +953,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
 
     setRevealedSummaryStars(0);
     let cancelled = false;
-    const revealTimeouts = [260, 760, 1260].map((delay, index) => window.setTimeout(() => {
+    const revealTimeouts = [700, 1200, 1700].map((delay, index) => window.setTimeout(() => {
       if (cancelled) return;
       setRevealedSummaryStars(index + 1);
       void playStarReveal(index, activeAudioSettings.soundEffectsEnabled);
@@ -1697,12 +1698,21 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
 
   return (
     <section className="practice-shell staff-game-shell" aria-label="五线谱闯关游戏">
-      <div className="staff-game-scene" ref={sceneRef} style={gameArtStyle}>
-        <StaffGameErrorFlash active={errorFlashActive} />
-        <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-a" draggable="false" src={cloudDecorationOne} />
-        <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-b" draggable="false" src={cloudDecorationTwo} />
-        <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-c" draggable="false" src={cloudDecorationThree} />
-        {settings.gameEffectsEnabled ? <StaffGameRushSpeedLines /> : null}
+        <div className="staff-game-scene" ref={sceneRef} style={gameArtStyle}>
+          <StaffGameErrorFlash active={errorFlashActive} />
+          <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-a" draggable="false" src={cloudDecorationOne} />
+          <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-b" draggable="false" src={cloudDecorationTwo} />
+          <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-c" draggable="false" src={cloudDecorationThree} />
+          {phase === "ready" && !isSongMode && settings.gameEffectsEnabled ? (
+            <div aria-hidden="true" className="staff-game-waiting-cloud-layer">
+              <img className="staff-game-waiting-cloud cloud-a" draggable="false" src={cloudDecorationOne} />
+              <img className="staff-game-waiting-cloud cloud-b is-reversed" draggable="false" src={cloudDecorationTwo} />
+              <img className="staff-game-waiting-cloud cloud-c" draggable="false" src={cloudDecorationThree} />
+              <img className="staff-game-waiting-cloud cloud-d is-reversed" draggable="false" src={cloudDecorationOne} />
+              <img className="staff-game-waiting-cloud cloud-e" draggable="false" src={cloudDecorationTwo} />
+            </div>
+          ) : null}
+          {settings.gameEffectsEnabled ? <StaffGameRushSpeedLines /> : null}
         {settings.gameEffectsEnabled ? <div aria-hidden="true" className="staff-game-rush-vignette" /> : null}
         {settings.gameEffectsEnabled ? <StaffGameParticles /> : null}
         {settings.gameEffectsEnabled ? <StaffGameShootingStar /> : null}
@@ -1748,7 +1758,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
           starImage={starParticleArt}
         />
 
-        <div className={`staff-game-playfield${phase === "paused" ? " is-paused" : ""}${rushBubbleScreenTopStart?.token === target?.token ? " has-screen-top-rush-bubble" : ""}`} ref={playfieldRef}>
+        <div className={`staff-game-playfield${phase === "paused" ? " is-paused" : ""}${preserveRushBubbleScreenTop ? " is-rush-mode" : ""}${rushBubbleScreenTopStart?.token === target?.token ? " has-screen-top-rush-bubble" : ""}`} ref={playfieldRef}>
           <div aria-hidden="true" className="staff-game-scene-glow" />
           {(!songSelectionStep && (phase === "ready" || phase === "running" || phase === "paused")) ? (
             <div className={`staff-game-mascot-anchor${settings.gameEffectsEnabled ? " effects-enabled" : ""}${phase === "ready" && !isSongMode ? " has-greeting" : ""}`}>

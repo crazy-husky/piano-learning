@@ -67,11 +67,59 @@
         color: #fff;
         font: inherit;
         font-weight: 600;
+        cursor: pointer;
+      }
+
+      .browser-support-card button:focus-visible {
+        outline: 3px solid rgba(36, 120, 110, 0.42);
+        outline-offset: 3px;
       }
     </style>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function () {
+        function showStartupFailure(event) {
+          var root = document.getElementById("root");
+          if (!root || root.childElementCount > 0 || root.dataset.startupErrorShown === "true") return;
+
+          root.dataset.startupErrorShown = "true";
+          var main = document.createElement("main");
+          main.className = "browser-support-gate";
+          main.setAttribute("role", "alert");
+          var card = document.createElement("section");
+          card.className = "browser-support-card";
+          var title = document.createElement("h1");
+          title.textContent = "页面启动失败";
+          var message = document.createElement("p");
+          message.textContent = "应用暂时无法启动，可能是入口资源加载失败或启动代码出错。请检查网络后重试。";
+          var details = document.createElement("p");
+          details.className = "browser-support-requirements";
+          if (event instanceof ErrorEvent && event.message) {
+            details.textContent = `错误信息：${event.message}`;
+          } else {
+            details.textContent = "可以重新加载页面再次尝试。";
+          }
+          var reload = document.createElement("button");
+          reload.type = "button";
+          reload.textContent = "重新加载页面";
+          reload.addEventListener("click", function () {
+            window.location.reload();
+          });
+          card.append(title, message, details, reload);
+          main.append(card);
+          root.replaceChildren(main);
+        }
+
+        window.addEventListener("error", function (event) {
+          if (event instanceof ErrorEvent || event.target instanceof HTMLScriptElement) {
+            showStartupFailure(event);
+          }
+        }, true);
+        window.addEventListener("unhandledrejection", showStartupFailure);
+      })();
+    </script>
     <script nomodule>
       (function () {
         var root = document.getElementById("root");

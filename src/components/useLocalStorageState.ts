@@ -40,7 +40,11 @@ function writeLocalStorageState<T>(
   }
 
   try {
-    window.localStorage.setItem(key, JSON.stringify(serialize ? serialize(value) : value));
+    const serialized = JSON.stringify(serialize ? serialize(value) : value);
+    if (window.localStorage.getItem(key) === serialized) {
+      return;
+    }
+    window.localStorage.setItem(key, serialized);
   } catch {
     // UI preferences should not block the page when browser storage is unavailable.
   }

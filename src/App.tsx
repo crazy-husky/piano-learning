@@ -149,6 +149,25 @@ export function App(): JSX.Element {
   );
   const [appearanceTimestamp, setAppearanceTimestamp] = useState(() => Date.now());
   const isNightMode = resolveNightMode(pageAppearancePreferences, new Date(appearanceTimestamp));
+  useEffect(() => {
+    // A background tab can otherwise reuse an old auto-mode setting when it becomes visible again.
+    const synchronizeAppearancePreferences = (event: StorageEvent): void => {
+      if (event.key !== PAGE_APPEARANCE_PREFERENCES_KEY && event.key !== null) return;
+      try {
+        const storedValue = event.key === null
+          ? window.localStorage.getItem(PAGE_APPEARANCE_PREFERENCES_KEY)
+          : event.newValue;
+        setPageAppearancePreferences(parsePageAppearancePreferences(
+          storedValue ? JSON.parse(storedValue) : null,
+          DEFAULT_PAGE_APPEARANCE_PREFERENCES,
+        ));
+      } catch {
+        setPageAppearancePreferences(DEFAULT_PAGE_APPEARANCE_PREFERENCES);
+      }
+    };
+    window.addEventListener("storage", synchronizeAppearancePreferences);
+    return () => window.removeEventListener("storage", synchronizeAppearancePreferences);
+  }, [setPageAppearancePreferences]);
   const [data, setData] = useState<AppData | null>(null);
   const [historyLoadErrors, setHistoryLoadErrors] = useState<{ practice: string | null; staffRecall: string | null }>({
     practice: null,

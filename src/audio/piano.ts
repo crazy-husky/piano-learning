@@ -3,7 +3,7 @@ import { noteToToneName } from "../domain/notes";
 import { DEFAULT_PIANO_VOLUME, normalizePianoVolume } from "../domain/settings";
 import type { Octave, PianoKeyName, TargetNote } from "../domain/types";
 
-const PIANO_SAMPLE_BASE_URL = "https://tonejs.github.io/audio/salamander/";
+const PIANO_SAMPLE_BASE_URL = `${import.meta.env.BASE_URL}audio/salamander/`;
 const PIANO_SAMPLE_LOAD_TIMEOUT_MS = 30_000;
 const PIANO_SAMPLE_URLS = {
   A0: "A0.mp3",
@@ -145,7 +145,7 @@ export async function preloadPianoSamples(): Promise<boolean> {
     await samplerLoadPromise;
     return samplerStatus === "loaded";
   } catch {
-    // A basic synth remains available when the remote sample bank cannot load.
+    // A basic synth remains available when the local sample bank cannot load.
     return false;
   }
 }
