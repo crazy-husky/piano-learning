@@ -1160,6 +1160,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   }, []);
 
   const beginRound = useCallback(async (): Promise<boolean> => {
+    if (resourceLoadState !== "ready") return false;
     if (isStartingRef.current) return false;
     const attemptId = startAttemptRef.current + 1;
     startAttemptRef.current = attemptId;
@@ -1229,7 +1230,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
         setIsStarting(false);
       }
     }
-  }, [connectMidiForRound, microphone.error, microphone.start, microphone.stop, resetRoundState, spawnTarget, startRunSegment]);
+  }, [connectMidiForRound, microphone.error, microphone.start, microphone.stop, resetRoundState, resourceLoadState, spawnTarget, startRunSegment]);
 
   const cancelPendingStart = useCallback((): void => {
     if (!isStartingRef.current) return;
@@ -1679,11 +1680,11 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
       <section aria-busy={resourceLoadState === "loading"} className="practice-shell staff-game-shell staff-game-loading-shell" aria-label="正在准备五线谱闯关">
         <div className="staff-game-loading-card" role={resourceLoadState === "loading" ? "status" : undefined} aria-live="polite">
           {resourceLoadState === "loading" ? <span aria-hidden="true" className="staff-game-loading-spinner" /> : null}
-          <strong>{resourceLoadState === "loading" ? "正在加载游戏素材" : "部分游戏图片、音效、背景音乐或钢琴采样没有加载成功"}</strong>
+          <strong>{resourceLoadState === "loading" ? "正在加载游戏素材" : "部分游戏图片、字体、音效、背景音乐或钢琴采样没有加载成功"}</strong>
           <span>{resourceLoadState === "loading"
             ? resourceLoadRetryCount > 0
               ? `部分素材未就绪，正在自动重试（${resourceLoadRetryCount}/${STAFF_GAME_RESOURCE_MAX_RETRIES}）`
-              : "正在准备游戏图片、音效、背景音乐和钢琴采样，全部就绪后即可开始"
+              : "正在准备游戏图片、字体、音效、背景音乐和钢琴采样，全部就绪后即可开始"
             : `已自动重试 ${STAFF_GAME_RESOURCE_MAX_RETRIES} 次，请检查网络连接后重试`}</span>
           {resourceLoadState === "error" ? (
             <button className="staff-game-loading-retry" onClick={() => setResourceLoadAttempt((attempt) => attempt + 1)} type="button">重新加载</button>

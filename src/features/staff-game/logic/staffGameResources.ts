@@ -199,16 +199,31 @@ function preloadGameBackgroundMusic(audio: HTMLAudioElement, signal: AbortSignal
   });
 }
 
+async function preloadStaffGameFonts(): Promise<number> {
+  if (typeof document === "undefined" || !document.fonts) return 0;
+
+  try {
+    await Promise.all([
+      document.fonts.load('700 48px "Fredoka Rush Score"', "0123456789+"),
+      document.fonts.load("700 16px FredokaSystemDigits", "0123456789"),
+    ]);
+    return 0;
+  } catch {
+    return 1;
+  }
+}
+
 export async function preloadStaffGameResources(
   backgroundMusic: HTMLAudioElement,
   signal: AbortSignal,
   retry: boolean,
 ): Promise<number> {
-  const [imageFailures, soundFailures, backgroundMusicFailures, pianoSampleFailures] = await Promise.all([
+  const [imageFailures, soundFailures, backgroundMusicFailures, pianoSampleFailures, fontFailures] = await Promise.all([
     preloadStaffGameImages(),
     preloadStaffGameSounds(),
     preloadGameBackgroundMusic(backgroundMusic, signal, retry).then(() => 0, () => 1),
     preloadPianoSamples().then((loaded) => loaded ? 0 : 1, () => 1),
+    preloadStaffGameFonts(),
   ]);
-  return imageFailures + soundFailures + backgroundMusicFailures + pianoSampleFailures;
+  return imageFailures + soundFailures + backgroundMusicFailures + pianoSampleFailures + fontFailures;
 }

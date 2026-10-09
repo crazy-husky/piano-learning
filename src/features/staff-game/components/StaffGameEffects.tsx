@@ -314,12 +314,12 @@ interface RushSpeedLine {
 }
 
 export function StaffGameRushSpeedLines(): JSX.Element {
-  const [lines] = useState<RushSpeedLine[]>(() => Array.from({ length: 30 }, (_, id) => {
+  const [lines] = useState<RushSpeedLine[]>(() => Array.from({ length: 16 }, (_, id) => {
     const durationSeconds = 0.2 + Math.random() * 0.4;
     return {
       id,
       left: `${Math.random() * 100}%`,
-      width: `${3 + Math.random() * 2}px`,
+      width: `${1.5 + Math.random()}px`,
       height: `${30 + Math.random() * 150}px`,
       opacity: `${0.2 + Math.random() * 0.6}`,
       duration: `${durationSeconds}s`,
