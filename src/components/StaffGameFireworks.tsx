@@ -50,7 +50,8 @@ export function StaffGameFireworks({ image }: { image: string }): JSX.Element {
     };
 
     const launchRocket = (): void => {
-      const x = width * (0.05 + Math.random() * 0.9);
+      const edgeInset = width * 0.05 + 20;
+      const x = edgeInset + Math.random() * Math.max(0, width - edgeInset * 2);
       rockets.push({
         x,
         y: height + 3,
@@ -92,7 +93,7 @@ export function StaffGameFireworks({ image }: { image: string }): JSX.Element {
 
       if (elapsed >= nextLaunchAt) {
         launchRocket();
-        nextLaunchAt = elapsed + 500 + Math.random() * 340;
+        nextLaunchAt = elapsed + 350 + Math.random() * 250;
       }
 
       for (let index = rockets.length - 1; index >= 0; index -= 1) {

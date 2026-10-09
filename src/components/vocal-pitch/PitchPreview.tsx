@@ -377,7 +377,7 @@ export function PitchPreview({
       context.strokeRect(0, top, keyboardWidth, bottom - top);
       if (midi % 12 === 0 && bottom - top >= 12) {
         context.fillStyle = "#675d53";
-        context.font = "11px Inter, sans-serif";
+        context.font = "11px FredokaSystemDigits, Inter, sans-serif";
         context.textAlign = "right";
         context.textBaseline = "middle";
         context.fillText(formatMidiNote(midi), keyboardWidth - 5, (top + bottom) / 2);
@@ -408,7 +408,7 @@ export function PitchPreview({
     context.strokeStyle = "rgba(188, 174, 154, 0.32)";
     context.lineWidth = 1;
     context.fillStyle = "#675d53";
-    context.font = "11px Inter, sans-serif";
+    context.font = "11px FredokaSystemDigits, Inter, sans-serif";
     context.textAlign = "left";
     context.textBaseline = "top";
     for (

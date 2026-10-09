@@ -306,13 +306,13 @@ export function StatsRangeStaff({ label, notes, staffNotationMode, tone }: Stats
       }
 
       context
-        .setFont("Inter", logicalPx(STATS_RANGE_STAFF_LAYOUT.labels.noteNameFontSizePx, surface.scale), 800)
+        .setFont("FredokaSystemDigits, Inter", logicalPx(STATS_RANGE_STAFF_LAYOUT.labels.noteNameFontSizePx, surface.scale), 800)
         .setFillStyle(palette.ink);
       columns.forEach((column, index) => {
         drawCenteredText(context, column.noteName, staveNoteCenterX(layoutTickables[index]), metrics.noteNameY);
       });
       context
-        .setFont("Inter", logicalPx(STATS_RANGE_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale), 700)
+        .setFont("FredokaSystemDigits, Inter", logicalPx(STATS_RANGE_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale), 700)
         .setFillStyle(palette.muted);
       columns.forEach((column, index) => {
         drawCenteredText(context, column.answerNumber, staveNoteCenterX(layoutTickables[index]), metrics.fixedDoNumberY);

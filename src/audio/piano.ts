@@ -123,8 +123,16 @@ function getLoadedSampler(): Tone.Sampler | undefined {
   return undefined;
 }
 
-export function preloadPianoSamples(): void {
-  getSampler();
+export async function preloadPianoSamples(): Promise<boolean> {
+  const currentSampler = getSampler({ retryFailed: true });
+  if (!currentSampler || !samplerLoadPromise) return false;
+  try {
+    await samplerLoadPromise;
+    return samplerStatus === "loaded";
+  } catch {
+    // A basic synth remains available when the remote sample bank cannot load.
+    return false;
+  }
 }
 
 export function setPianoVolume(volume: number): void {

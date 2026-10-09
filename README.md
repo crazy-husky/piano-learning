@@ -2,7 +2,7 @@
 
 钢琴五线谱识谱视奏练习工具。练习记录保存在浏览器本地，可按音区、谱表间加线写法和训练策略安排练习；学习页还支持按音名默写全部谱位并比较历次完成时间。
 
-本项目基于 [coolermzb3/anki-note](https://github.com/coolermzb3/anki-note) 二次开发。
+本项目基于anki-note二次开发。
 
 在线演示：[https://gohusky.cn/piano-learning/](https://gohusky.cn/piano-learning/)
 

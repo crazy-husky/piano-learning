@@ -548,14 +548,14 @@ function StudyNoteMap({
 
       if (showLabels) {
         context
-          .setFont("Inter", logicalPx(STUDY_STAFF_LAYOUT.labels.noteNameFontSizePx, surface.scale), 800)
+          .setFont("FredokaSystemDigits, Inter", logicalPx(STUDY_STAFF_LAYOUT.labels.noteNameFontSizePx, surface.scale), 800)
           .setFillStyle(colors.ink);
         columns.forEach((column, index) => {
           const centerX = columnLayouts[index].centerX;
           drawCenteredText(context, column.noteName, centerX, metrics.noteNameY);
         });
         context
-          .setFont("Inter", logicalPx(STUDY_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale), 700)
+          .setFont("FredokaSystemDigits, Inter", logicalPx(STUDY_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale), 700)
           .setFillStyle(colors.muted);
         columns.forEach((column, index) => {
           const centerX = columnLayouts[index].centerX;

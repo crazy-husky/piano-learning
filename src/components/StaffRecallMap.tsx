@@ -508,7 +508,7 @@ export function StaffRecallMap({
         });
       });
       context
-        .setFont("Inter", logicalPx(STAFF_RECALL_LAYOUT.labels.noteNameFontSizePx, surface.scale), 800)
+        .setFont("FredokaSystemDigits, Inter", logicalPx(STAFF_RECALL_LAYOUT.labels.noteNameFontSizePx, surface.scale), 800)
         .setFillStyle(palette.ink);
       columnGeometry.forEach((geometry) => {
         drawCenteredText(
@@ -519,7 +519,7 @@ export function StaffRecallMap({
         );
       });
       context
-        .setFont("Inter", logicalPx(STAFF_RECALL_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale), 700)
+        .setFont("FredokaSystemDigits, Inter", logicalPx(STAFF_RECALL_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale), 700)
         .setFillStyle(palette.muted);
       columnGeometry.forEach((geometry, index) => {
         drawCenteredText(

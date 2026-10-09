@@ -20,6 +20,7 @@ export type StaffGameSound =
   | "microphoneReady"
   | "noteMissed";
 type SampledStaffGameSound = StaffGameSound;
+const STAFF_GAME_SOUND_LOAD_TIMEOUT_MS = 8_000;
 
 interface SoundPlayer {
   player: Tone.Player;
@@ -40,11 +41,10 @@ const soundSources: Record<SampledStaffGameSound, { url: string; volumeDb: numbe
 
 const soundPlayers = new Map<SampledStaffGameSound, SoundPlayer>();
 let soundEffectsEnabled = true;
-let audioSuppressed = false;
 let starRevealSynth: Tone.Synth | null = null;
 
 function canPlayAudio(): boolean {
-  return soundEffectsEnabled && !audioSuppressed;
+  return soundEffectsEnabled;
 }
 
 function stopPlayingAudio(): void {
@@ -67,11 +67,6 @@ export function setStaffGameSoundsEnabled(enabled: boolean): void {
   if (!enabled) stopPlayingAudio();
 }
 
-export function setStaffGameAudioSuppressed(suppressed: boolean): void {
-  audioSuppressed = suppressed;
-  if (suppressed) stopPlayingAudio();
-}
-
 function getSoundPlayer(sound: SampledStaffGameSound): SoundPlayer {
   const cached = soundPlayers.get(sound);
   if (cached) return cached;
@@ -79,8 +74,23 @@ function getSoundPlayer(sound: SampledStaffGameSound): SoundPlayer {
   let markReady: (() => void) | undefined;
   let markFailed: ((error: Error) => void) | undefined;
   const ready = new Promise<void>((resolve, reject) => {
-    markReady = resolve;
-    markFailed = reject;
+    let settled = false;
+    let timeout: number | undefined;
+    const settle = (error?: Error): void => {
+      if (settled) return;
+      settled = true;
+      if (timeout !== undefined && typeof window !== "undefined") window.clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve();
+    };
+    markReady = () => settle();
+    markFailed = (error) => settle(error);
+    if (typeof window !== "undefined") {
+      timeout = window.setTimeout(
+        () => settle(new Error(`Timed out while loading staff game sound: ${sound}`)),
+        STAFF_GAME_SOUND_LOAD_TIMEOUT_MS,
+      );
+    }
   });
   void ready.catch(() => undefined);
 
@@ -95,12 +105,20 @@ function getSoundPlayer(sound: SampledStaffGameSound): SoundPlayer {
 
   const result = { player, ready };
   soundPlayers.set(sound, result);
+  void ready.catch(() => {
+    if (soundPlayers.get(sound) !== result) return;
+    soundPlayers.delete(sound);
+    player.dispose();
+  });
   return result;
 }
 
-export function preloadStaffGameSounds(): void {
-  if (typeof window === "undefined") return;
-  (Object.keys(soundSources) as SampledStaffGameSound[]).forEach(getSoundPlayer);
+export async function preloadStaffGameSounds(): Promise<number> {
+  if (typeof window === "undefined") return 0;
+  const results = await Promise.allSettled(
+    (Object.keys(soundSources) as SampledStaffGameSound[]).map((sound) => getSoundPlayer(sound).ready),
+  );
+  return results.filter((result) => result.status === "rejected").length;
 }
 
 export function playStaffGameSound(sound: StaffGameSound): void {
