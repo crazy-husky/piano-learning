@@ -1,0 +1,1043 @@
+.practice-microphone-capture {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  flex: 1 0 100%;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.practice-microphone-capture button {
+  flex: 0 0 auto;
+}
+
+.practice-microphone-capture .practice-microphone-analysis-trigger {
+  min-width: 112px;
+}
+
+.practice-microphone-capture span {
+  font-size: 12px;
+}
+
+.practice-microphone-capture .practice-microphone-capture-notice {
+  flex-basis: 100%;
+  line-height: 1.45;
+}
+
+.practice-microphone-capture-guidance {
+  border-top: 1px solid var(--border);
+  display: grid;
+  flex: 1 0 100%;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.practice-microphone-capture-guidance p {
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.practice-microphone-diagnostic-flow ol {
+  margin: 4px 0 0;
+  padding-left: 22px;
+}
+
+.practice-microphone-diagnostic-flow li {
+  line-height: 1.45;
+  padding-left: 2px;
+}
+
+.practice-microphone-analysis {
+  align-items: flex-start;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.practice-microphone-analysis > label {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.practice-microphone-analysis input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  min-width: 0;
+  padding: 6px 8px;
+  width: min(100%, 360px);
+}
+
+.practice-microphone-analysis-hint,
+.practice-microphone-analysis-error {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+
+.practice-microphone-analysis-error {
+  color: var(--danger);
+}
+
+.practice-microphone-analysis-result {
+  display: grid;
+  flex-basis: 100%;
+  gap: 8px;
+  min-width: 0;
+}
+
+.practice-microphone-analysis-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+  display: grid;
+  gap: 12px;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: min(820px, 88dvh);
+  margin: auto;
+  max-height: calc(100dvh - 24px);
+  max-width: min(2380px, calc(100vw - 44px));
+  overflow: hidden;
+  padding: 16px;
+  width: min(2380px, calc(100vw - 44px));
+}
+
+.practice-microphone-analysis-dialog::backdrop {
+  background: var(--modal-overlay);
+}
+
+.practice-microphone-analysis-dialog-header {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding-bottom: 10px;
+}
+
+.practice-microphone-analysis-dialog-header > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.practice-microphone-analysis-dialog-header h2 {
+  font-size: 18px;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.practice-microphone-analysis-dialog-header span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.practice-microphone-analysis-dialog-close {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0;
+  width: 36px;
+}
+
+.practice-microphone-analysis-dialog-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 2px 2px 8px 0;
+}
+
+.practice-microphone-analysis-counts {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.practice-microphone-analysis-conclusion,
+.practice-microphone-analysis-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.practice-microphone-analysis-conclusion {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.practice-microphone-analysis-conclusion h3,
+.practice-microphone-analysis-section h3 {
+  font-size: 14px;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.practice-microphone-analysis-section-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 20px;
+}
+
+.practice-microphone-analysis-section-heading > span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.practice-microphone-analysis-conclusion p {
+  line-height: 1.5;
+  margin: 0;
+}
+
+.practice-microphone-analysis-conclusion p.is-attention,
+.practice-microphone-missed-notes,
+.practice-microphone-analysis-table .is-wrong,
+.practice-microphone-analysis-table .is-extra,
+.practice-microphone-analysis-table tr.is-missed-note {
+  color: var(--danger);
+}
+
+.practice-microphone-analysis-conclusion p.is-clear,
+.practice-microphone-analysis-table .is-correct,
+.practice-microphone-analysis-table tr.is-eligible {
+  color: var(--success);
+}
+
+.ui-data-table-scroll,
+.practice-microphone-analysis-table-scroll {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ui-data-table,
+.practice-microphone-analysis-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 940px;
+  text-align: left;
+  width: 100%;
+}
+
+.ui-data-table th,
+.ui-data-table td,
+.practice-microphone-analysis-table th,
+.practice-microphone-analysis-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 7px 9px;
+  white-space: nowrap;
+}
+
+.ui-data-table thead th,
+.practice-microphone-analysis-table thead th {
+  background: var(--surface-soft);
+  color: var(--text);
+  font-weight: 650;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ui-data-table tbody tr:last-child > *,
+.practice-microphone-analysis-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.practice-microphone-analysis-table tbody tr.is-missed-note {
+  background: var(--danger-surface);
+}
+
+.practice-microphone-analysis-table.practice-microphone-candidate-table tbody tr.is-missed-note {
+  background: transparent;
+  color: var(--text);
+}
+
+.practice-microphone-analysis-table.practice-microphone-candidate-table tbody tr.is-missed-note > * {
+  border-bottom: 1px solid var(--danger);
+  border-top: 2px solid var(--danger);
+}
+
+.practice-microphone-analysis-table.practice-microphone-candidate-table tbody tr.is-missed-note > :first-child {
+  border-left: 1px solid var(--danger);
+}
+
+.practice-microphone-analysis-table.practice-microphone-candidate-table tbody tr.is-missed-note > :last-child {
+  border-right: 1px solid var(--danger);
+}
+
+.practice-microphone-candidate-table td.is-below-threshold {
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-weight: 650;
+}
+
+.practice-microphone-threshold-comparison {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.practice-microphone-threshold-separator {
+  color: var(--muted);
+}
+
+.practice-microphone-analysis-table tbody tr.is-threshold-met {
+  color: var(--warning-text);
+}
+
+.practice-microphone-analysis-table tbody tr.is-eligible {
+  color: var(--success);
+}
+
+.practice-microphone-analysis-table tbody tr.is-ineligible {
+  color: var(--danger);
+}
+
+.practice-microphone-candidate-table th,
+.practice-microphone-candidate-table td {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  vertical-align: top;
+}
+
+.practice-microphone-gate-reasons {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.practice-microphone-frame-toggle {
+  min-height: 30px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.practice-microphone-frame-details-row > td {
+  background: var(--panel-surface);
+  padding: 8px 10px;
+  white-space: normal;
+}
+
+.practice-microphone-analysis-frame-scroll {
+  max-height: 320px;
+  max-width: min(640px, calc(100vw - 88px));
+  overflow: auto;
+}
+
+.practice-microphone-frame-table {
+  min-width: 1060px;
+}
+
+.practice-microphone-analysis-empty {
+  color: var(--muted);
+  margin: 0;
+}
+
+@media (max-width: 520px) {
+  .practice-microphone-analysis-dialog {
+    gap: 10px;
+    height: min(88dvh, 760px);
+    padding: 12px;
+  }
+
+  .practice-microphone-analysis-dialog-header h2 {
+    font-size: 16px;
+  }
+
+  .practice-microphone-analysis-table {
+    font-size: 11px;
+  }
+}
+
+.practice-microphone-diagnostics-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding-top: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.practice-microphone-diagnostics-values strong {
+  color: var(--text);
+}
+
+.practice-microphone-debug-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+  display: grid;
+  gap: 12px;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: min(760px, 88dvh);
+  margin: auto;
+  max-height: calc(100dvh - 24px);
+  max-width: min(760px, calc(100vw - 24px));
+  overflow: hidden;
+  padding: 16px;
+  width: min(760px, calc(100vw - 24px));
+}
+
+.practice-microphone-debug-dialog::backdrop {
+  background: var(--modal-overlay);
+}
+
+.practice-microphone-debug-dialog-body {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 2px 2px 8px 0;
+}
+
+.practice-microphone-feedback-banner {
+  background: var(--surface-soft);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+  padding: 9px 11px;
+}
+
+.practice-microphone-feedback-banner.is-success {
+  background: color-mix(in srgb, var(--accent-fill) 18%, var(--surface));
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
+}
+
+.practice-microphone-debug-toggle {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  text-align: left;
+  width: 100%;
+}
+
+.practice-microphone-debug-toggle[aria-checked="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.practice-microphone-debug-toggle strong {
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.practice-microphone-debug-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: -6px 0 0;
+}
+
+.practice-microphone-debug-fields {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  display: grid;
+  gap: 10px 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  min-width: 0;
+  padding: 12px;
+}
+
+.practice-microphone-debug-fields:disabled {
+  opacity: 0.58;
+}
+
+.practice-microphone-debug-fields legend {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 0 4px;
+}
+
+.practice-microphone-debug-fields label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.practice-microphone-debug-fields label > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.practice-microphone-debug-fields input,
+.practice-microphone-debug-fields select {
+  min-width: 0;
+  width: 100%;
+}
+
+.practice-microphone-debug-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.practice-microphone-sensitivity-warning {
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.settings-switch-row > div:first-child {
+  max-width: 720px;
+}
+
+.settings-switch-control {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: row;
+  gap: 10px;
+}
+
+.settings-switch-control > span {
+  color: var(--muted);
+  font-size: 13px;
+  min-width: 28px;
+  text-align: right;
+}
+
+.ui-switch {
+  appearance: none;
+  align-items: center;
+  background: var(--border-strong);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 44px;
+  height: 26px;
+  justify-content: flex-start;
+  line-height: 0;
+  max-height: 26px;
+  max-width: 44px;
+  min-height: 26px;
+  min-width: 44px;
+  overflow: hidden;
+  padding: 2px;
+  width: 44px;
+}
+
+.settings-restore-lock {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.settings-restore-lock:disabled {
+  opacity: 1;
+}
+
+[data-sonner-toast][data-styled="true"] [data-close-button] {
+  box-sizing: border-box;
+  flex: 0 0 20px;
+  height: 20px;
+  min-height: 20px;
+  min-width: 20px;
+  max-height: 20px;
+  max-width: 20px;
+  padding: 0;
+  width: 20px;
+}
+
+.ui-switch[data-state="checked"] {
+  background: var(--accent-strong);
+}
+
+.ui-switch:hover:not(:disabled) {
+  background: var(--border-strong);
+  box-shadow: none;
+}
+
+.ui-switch[data-state="checked"]:hover:not(:disabled) {
+  background: var(--accent-fill-hover);
+}
+
+.ui-switch:focus-visible,
+.ui-confirm-content button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.ui-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ui-switch-thumb {
+  background: var(--surface);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  display: block;
+  height: 18px;
+  transform: translateX(0);
+  transition: transform 140ms ease;
+  width: 18px;
+}
+
+.ui-switch[data-state="checked"] .ui-switch-thumb {
+  transform: translateX(18px);
+}
+
+.debug-parameter-label {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+}
+
+.debug-parameter-help {
+  display: inline-flex;
+  position: relative;
+  vertical-align: middle;
+}
+
+.debug-parameter-help > summary {
+  align-items: center;
+  border-radius: 50%;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 20px;
+  justify-content: center;
+  list-style: none;
+  width: 20px;
+}
+
+.debug-parameter-help > summary::-webkit-details-marker {
+  display: none;
+}
+
+.debug-parameter-help > summary:hover,
+.debug-parameter-help[open] > summary,
+.debug-parameter-help > summary:focus-visible {
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.debug-parameter-help-popover {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+  display: grid;
+  gap: 6px;
+  left: 0;
+  min-width: min(280px, calc(100vw - 56px));
+  padding: 10px 12px;
+  position: absolute;
+  top: calc(100% + 5px);
+  z-index: 20;
+}
+
+.debug-parameter-help-popover span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.debug-parameter-help-popover b {
+  color: var(--text);
+}
+
+.ui-confirm-overlay {
+  animation: ui-confirm-fade-in 140ms ease-out;
+  background: var(--modal-overlay);
+  inset: 0;
+  position: fixed;
+  z-index: 1000;
+}
+
+.ui-confirm-content {
+  animation: ui-confirm-fade-in 140ms ease-out;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+  display: grid;
+  gap: 12px;
+  left: 50%;
+  max-height: min(82dvh, 560px);
+  overflow: auto;
+  padding: 20px;
+  position: fixed;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(480px, calc(100vw - 32px));
+  z-index: 1001;
+}
+
+.ui-confirm-title {
+  font-size: 17px;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.ui-confirm-description {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0;
+  white-space: pre-line;
+}
+
+.ui-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.ui-confirm-actions button {
+  min-height: 42px;
+  min-width: 92px;
+}
+
+.ui-confirm-action.is-destructive {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: white;
+}
+
+.ui-confirm-action.is-destructive:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+@keyframes ui-confirm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.settings-reset-panel {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.settings-reset-panel > div {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-reset-panel > div > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-reset-panel .danger-action {
+  border-color: var(--danger);
+  color: var(--danger);
+  flex: 0 0 auto;
+}
+
+.settings-reset-panel .danger-action:hover:not(:disabled) {
+  background: var(--danger-surface);
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+  .practice-microphone-copy-summary {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .practice-microphone-debug-dialog {
+    gap: 10px;
+    height: min(88dvh, 760px);
+    padding: 12px;
+  }
+
+  .practice-microphone-debug-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.practice-microphone-indicator {
+  background: var(--border);
+  border-radius: 50%;
+  flex: 0 0 9px;
+  height: 9px;
+  width: 9px;
+}
+
+.practice-microphone-indicator.listening {
+  background: var(--success);
+}
+
+.practice-microphone-indicator.requesting {
+  background: var(--warning);
+}
+
+.practice-microphone-indicator.error {
+  background: var(--danger);
+}
+
+.practice-setup-heading-meta {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  min-width: 0;
+  max-width: calc(100% - 140px);
+  text-align: right;
+}
+
+.practice-midi-heading-status {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.practice-midi-heading-status button {
+  min-height: 30px;
+  padding: 4px 10px;
+}
+
+.practice-midi-heading-status span {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-name-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 8px;
+}
+
+.note-name-options {
+  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+}
+
+.practice-checkbox-options {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+
+.practice-checkbox-option {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 8px;
+  min-height: var(--control-height);
+  width: fit-content;
+}
+
+.practice-checkbox-option.is-disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.practice-checkbox-option input {
+  accent-color: var(--accent);
+  height: 16px;
+  margin: 0;
+  min-height: 0;
+  width: 16px;
+}
+
+.practice-checkbox-option input:disabled {
+  cursor: not-allowed;
+}
+
+.practice-microphone-sound-note {
+  color: var(--danger);
+}
+
+.strategy-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.choice {
+  min-height: var(--control-height);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.choice:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-soft);
+}
+
+.choice input[type="checkbox"],
+.choice input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+  min-height: auto;
+  margin: 0;
+}
+
+.choice-detail {
+  min-height: 62px;
+  padding: 10px 12px;
+}
+
+.choice-body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.choice-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.global-range-group-choice.choice-active:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.segmented,
+.number-row,
+.toolbar,
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.display-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.segmented.prompt-note-duration-options button {
+  min-width: 88px;
+}
+
+.segmented {
+  min-height: var(--segmented-control-height);
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  width: fit-content;
+}
+
+.segmented button {
+  height: var(--control-height-compact);
+  min-height: var(--control-height-compact);
+  min-width: 96px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.segmented button:hover:not(:disabled) {
+  box-shadow: none;
+}
+
+.number-row input {
+  width: 110px;
+}
+
+.practice-duration-row {
+  gap: 4px;
+}
+
+.practice-duration-row input {
+  width: 64px;
+}
+
+.action-row {
+  margin-top: 20px;
+}
+
+.practice-start-action {
+  display: inline-flex;
+  position: relative;
+}
+
+.practice-start-action:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid rgba(37, 111, 103, 0.34);
+  outline-offset: 2px;
+}
+
+.practice-start-tooltip {
+  background: var(--ink);
+  border-radius: 7px;
+  bottom: calc(100% + 8px);
+  color: white;
+  font-size: 11px;
+  left: 50%;
+  opacity: 0;
+  padding: 6px 9px;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(-50%, 3px);
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
+  visibility: hidden;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.practice-start-action:hover .practice-start-tooltip,
+.practice-start-action:focus-visible .practice-start-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+}

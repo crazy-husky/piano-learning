@@ -1,0 +1,491 @@
+.practice-topline {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topline-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.practice-return-home {
+  flex: 0 0 auto;
+}
+
+.progress-readout {
+  min-width: 118px;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  font-weight: 800;
+  box-shadow: 0 10px 28px rgba(66, 50, 34, 0.06);
+}
+
+.prompt-stage {
+  position: relative;
+  min-height: 318px;
+  display: grid;
+  place-items: center;
+  padding: 18px 0 12px;
+}
+
+.staff {
+  width: min(720px, 100%);
+  min-height: 250px;
+  display: grid;
+  place-items: center;
+}
+
+.staff-renderer {
+  width: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.staff svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 10px 18px rgba(66, 50, 34, 0.08));
+}
+
+.staff-page-stage {
+  min-height: 590px;
+  padding-top: 12px;
+}
+
+.staff-page {
+  width: min(980px, 100%);
+  min-height: 184px;
+  display: grid;
+  align-items: start;
+  overflow: hidden;
+}
+
+.staff-page-renderer {
+  width: 100%;
+  display: grid;
+  place-items: center;
+  transform: translateY(0);
+  transition: none;
+}
+
+.staff-page-renderer-scrolling {
+  transform: translateY(calc(-1 * var(--staff-page-scroll-distance, 0px)));
+  transition: transform var(--staff-page-scroll-duration, 0ms) ease-in-out;
+}
+
+.staff-page svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 10px 18px rgba(66, 50, 34, 0.08));
+}
+
+.practice-running-shell {
+  --practice-available-height: 100dvh;
+  --piano-fit-reserve: 364px;
+  height: var(--practice-available-height);
+  min-height: 562px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.practice-running-shell.practice-staff-page {
+  --piano-fit-reserve: 344px;
+  min-height: 542px;
+}
+
+.practice-running-shell.practice-staff-page-rows-2 {
+  --piano-fit-reserve: 594px;
+  min-height: 792px;
+}
+
+.practice-running-shell .prompt-stage,
+.practice-running-shell .staff-page-stage {
+  min-height: 0;
+  padding-block: 0;
+}
+
+.piano-keyboard {
+  --piano-white-key-width: var(--piano-preferred-white-key-width);
+  width: 100%;
+  min-width: 0;
+  position: relative;
+  display: grid;
+  justify-items: stretch;
+  user-select: none;
+}
+
+.practice-piano-keyboard {
+  --piano-white-key-width: max(
+    44px,
+    min(
+      var(--piano-preferred-white-key-width),
+      calc((var(--practice-available-height) - var(--piano-fit-reserve)) * 0.222222)
+    )
+  );
+  align-self: center;
+}
+
+.piano-keyboard-drag-handle {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 3;
+  width: 100%;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--muted);
+  cursor: grab;
+  font-size: 13px;
+  font-weight: 700;
+  touch-action: none;
+}
+
+.piano-keyboard-drag-handle span {
+  color: var(--accent);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.piano-keyboard-dragging .piano-keyboard-drag-handle {
+  cursor: grabbing;
+}
+
+.piano-keyboard-viewport {
+  position: relative;
+  width: 100%;
+  height: calc(var(--piano-white-key-width) * 4.5);
+  overflow: hidden;
+  touch-action: none;
+}
+
+.piano-keyboard-keybed {
+  position: relative;
+  width: calc(var(--piano-white-key-width) * var(--piano-white-key-count));
+  height: calc(var(--piano-white-key-width) * 4.5);
+  transform-origin: left top;
+}
+
+.piano-key {
+  position: absolute;
+  top: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0 0 5px 5px;
+  transition:
+    background 0.08s ease,
+    border-color 0.08s ease,
+    box-shadow 0.08s ease,
+    transform 0.08s ease;
+  touch-action: none;
+}
+
+.piano-key-white {
+  z-index: 1;
+  width: var(--piano-white-key-width);
+  height: calc(var(--piano-white-key-width) * 4.5);
+  border: 1px solid #8d8984;
+  border-top-color: #bbb7b1;
+  background: linear-gradient(90deg, #f4f2ec 0, #fff 12%, #fff 84%, #e8e5df 100%);
+  color: #403a34;
+  align-items: flex-end;
+  padding-bottom: max(10px, calc(var(--piano-white-key-width) * 0.22));
+  font-size: clamp(16px, calc(var(--piano-white-key-width) * 0.3), 24px);
+  font-weight: 800;
+  box-shadow:
+    inset 0 -7px 10px rgba(71, 63, 53, 0.1),
+    0 2px 2px rgba(40, 34, 29, 0.16);
+}
+
+.piano-key-white:hover:not(:disabled) {
+  border-color: #8d8984;
+  background: linear-gradient(90deg, #f4f2ec 0, #fff 12%, #fff 84%, #e8e5df 100%);
+  box-shadow:
+    inset 0 -7px 10px rgba(71, 63, 53, 0.1),
+    0 2px 2px rgba(40, 34, 29, 0.16);
+}
+
+.piano-key-white:active:not(:disabled) {
+  transform: none;
+}
+
+.piano-key-black {
+  z-index: 2;
+  width: calc(var(--piano-white-key-width) * 0.62);
+  height: calc(var(--piano-white-key-width) * 2.925);
+  border: 1px solid #090908;
+  border-top-color: #353330;
+  background: linear-gradient(90deg, #080807 0, #272522 64%, #050504 100%);
+  color: #fff;
+  box-shadow:
+    inset 0 -8px 8px rgba(255, 255, 255, 0.05),
+    2px 5px 7px rgba(31, 26, 22, 0.36);
+  transform: translateX(-50%);
+}
+
+.piano-keyboard-touch-labels .piano-touch-note-label {
+  position: absolute;
+  bottom: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(9px, calc(var(--piano-white-key-width) * 0.17), 12px);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.piano-keyboard-touch-labels .piano-key-black .piano-touch-note-label {
+  bottom: 6px;
+  font-size: 9px;
+}
+
+.piano-key-black:hover:not(:disabled) {
+  border-color: #090908;
+  border-top-color: #353330;
+  background: linear-gradient(90deg, #080807 0, #272522 64%, #050504 100%);
+  box-shadow:
+    inset 0 -8px 8px rgba(255, 255, 255, 0.05),
+    2px 5px 7px rgba(31, 26, 22, 0.36);
+  transform: translateX(-50%);
+}
+
+.piano-key-black:active:not(:disabled) {
+  transform: translate(-50%, 2px);
+}
+
+.piano-key-black:disabled {
+  background: linear-gradient(90deg, #080807 0, #272522 64%, #050504 100%);
+  color: #fff;
+  cursor: default;
+}
+
+.piano-key-white.piano-key-pressed,
+.piano-key-white.piano-key-pressed:hover:not(:disabled) {
+  background: linear-gradient(90deg, #e7e4dc 0, #f7f5ef 16%, #ece9e2 100%);
+  box-shadow:
+    inset 0 7px 12px rgba(66, 56, 45, 0.2),
+    inset 0 -3px 5px rgba(71, 63, 53, 0.08);
+  transform: none;
+}
+
+.piano-key-black.piano-key-pressed,
+.piano-key-black.piano-key-pressed:hover:not(:disabled) {
+  background: linear-gradient(90deg, #050504 0, #171614 70%, #020202 100%);
+  border-bottom-color: #77716a;
+  box-shadow:
+    inset 0 5px 9px rgba(0, 0, 0, 0.8),
+    inset 0 -2px 2px rgba(255, 255, 255, 0.15),
+    1px 2px 3px rgba(31, 26, 22, 0.3);
+  transform: translate(-50%, 2px);
+}
+
+.piano-key-white.piano-key-wrong,
+.piano-key-white.piano-key-wrong:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: linear-gradient(90deg, #f7dcd6, #fff0ed 18%, #f4d1ca 100%);
+  color: #9a2d22;
+}
+
+.piano-key-white.piano-key-correct,
+.piano-key-white.piano-key-correct:hover:not(:disabled) {
+  border-color: var(--success);
+  background: linear-gradient(90deg, #d9eee2, #ecf8f1 18%, #cce7d8 100%);
+  color: #22653c;
+}
+
+.pause-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  width: 100%;
+  min-height: 100vh;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.pause-overlay-content {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  cursor: default;
+}
+
+.pause-overlay-content > span {
+  font-size: 42px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  text-shadow: 0 1px 0 var(--surface);
+}
+
+.pause-overlay small {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.pause-playback-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.pause-playback-controls label {
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pause-playback-controls input,
+.setting-number-input {
+  width: 88px;
+  min-height: 34px;
+  padding: 5px 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.metric span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.metric strong {
+  font-size: 24px;
+}
+
+.summary-section {
+  margin-top: 16px;
+}
+
+.summary-section-heading {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.summary-section-heading h2 {
+  font-size: 18px;
+}
+
+.note-list {
+  display: grid;
+  gap: 8px;
+}
+
+.note-row {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 0.6fr;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  background: var(--surface);
+}
+
+.note-row-header {
+  min-height: 30px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.session-progress-heading {
+  align-items: flex-start;
+}
+
+.session-progress-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (min-width: 821px) {
+  .session-progress-card-heading > h2 {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .session-progress-card-heading .chart-panel-actions {
+    flex: 1 1 auto;
+  }
+
+  .session-progress-card-heading .session-progress-benchmark {
+    gap: 8px;
+    padding-inline: 8px;
+  }
+
+  .session-progress-card-heading .session-progress-controls .segmented {
+    gap: 4px;
+  }
+
+  .session-progress-card-heading .session-progress-controls .segmented button {
+    min-width: 80px;
+    padding-inline: 10px;
+  }
+
+  .session-progress-card-heading .session-progress-history-limit {
+    gap: 4px;
+    padding-inline: 6px;
+  }
+
+  .session-progress-card-heading .session-progress-history-limit input[type="number"] {
+    width: 56px;
+    padding-inline: 6px;
+  }
+}

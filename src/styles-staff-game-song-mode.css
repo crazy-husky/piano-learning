@@ -1,0 +1,858 @@
+/* Song mode, unified gameplay backdrop, and compact virtual-keyboard feedback. */
+.staff-game-scene {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.staff-game-hud,
+.staff-game-playfield {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.staff-game-hud,
+.staff-game-song-hud {
+  position: relative;
+  z-index: 100;
+}
+
+.staff-game-song-hud {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: clamp(12px, 2vw, 22px) clamp(16px, 3vw, 34px);
+  color: #245f6e;
+}
+
+.staff-game-song-hud > div {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  grid-column: 2;
+  color: #fff7d8;
+  text-align: center;
+  text-shadow: 0 2px 0 rgba(25, 81, 111, 0.88), 0 4px 11px rgba(9, 52, 87, 0.56);
+}
+
+.staff-game-song-hud > div strong {
+  color: #fff4c6;
+  font-size: clamp(18px, 2.3vw, 27px);
+  font-weight: 950;
+}
+
+.staff-game-song-hud > div span {
+  color: #f4fbff;
+  font-size: clamp(12px, 1.4vw, 16px);
+  font-weight: 800;
+}
+
+.staff-game-song-inline-back {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 3px 10px rgba(32, 93, 109, 0.12);
+  color: #327d91;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 850;
+  padding: 8px 13px;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.staff-game-song-detail-card button.staff-game-song-inline-back:hover:not(:disabled) {
+  border-color: rgba(74, 184, 201, 0.68);
+  background: rgba(224, 248, 245, 0.96);
+  box-shadow: 0 4px 12px rgba(32, 111, 123, 0.16);
+  color: #28778b;
+  transform: translateY(-1px);
+}
+
+.staff-game-song-detail-card button.staff-game-song-inline-back:focus-visible {
+  outline: 3px solid rgba(45, 174, 202, 0.52);
+  outline-offset: 3px;
+}
+
+.staff-game-song-card {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  width: min(760px, calc(100% - 48px));
+  max-height: min(760px, calc(100% - 24px));
+  flex-direction: column;
+  gap: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 3px solid rgba(63, 187, 208, 0.92);
+  border-radius: 28px;
+  background: linear-gradient(165deg, rgba(255, 255, 250, 0.97), rgba(255, 249, 226, 0.96) 56%, rgba(239, 251, 250, 0.97));
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.88), inset 0 0 0 6px rgba(255, 213, 104, 0.2), 0 10px 24px rgba(29, 108, 128, 0.2);
+  filter: none;
+  padding: 55px clamp(25px, 3.6vw, 38px) clamp(20px, 3vh, 28px);
+  text-align: left;
+  scrollbar-color: rgba(58, 152, 174, 0.42) transparent;
+  scrollbar-width: thin;
+}
+
+.staff-game-song-card-ornament {
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 2px solid rgba(255, 255, 255, 0.94);
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 26%, #fff8c6 0 15%, #ffd64f 47%, #f4aa32 100%);
+  box-shadow: 0 2px 7px rgba(190, 120, 31, 0.25), 0 0 0 3px rgba(255, 216, 105, 0.28);
+  color: #fffdf2;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.staff-game-song-card-ornament svg {
+  filter: drop-shadow(0 1px 1px rgba(157, 106, 31, 0.4));
+}
+
+.staff-game-song-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.staff-game-song-list-heading h1,
+.staff-game-song-detail-hero h1 {
+  margin: 0;
+  color: #267d98;
+  font-size: clamp(23px, 4vw, 32px);
+  font-weight: 950;
+  line-height: 1.15;
+}
+
+.staff-game-song-list-heading p,
+.staff-game-song-detail-hero p {
+  margin: 3px 0 0;
+  color: #698188;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.staff-game-song-list-heading > span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #e0f3f2;
+  color: #347d8d;
+  font-size: 13px;
+  font-weight: 850;
+  padding: 7px 11px;
+}
+
+.staff-game-song-list {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 7px;
+  padding: 2px 4px 4px 1px;
+}
+
+.staff-game-song-choice {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(88, 174, 190, 0.24);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #315c67;
+  cursor: pointer;
+  padding: 9px 12px;
+  text-align: left;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.staff-game-song-choice:hover:not(:disabled),
+.staff-game-song-choice:focus-visible {
+  border-color: rgba(49, 165, 188, 0.58);
+  background: #e9f7f5;
+  box-shadow: 0 5px 14px rgba(32, 112, 125, 0.12);
+  transform: translateY(-1px);
+}
+
+.staff-game-song-choice-note {
+  display: grid;
+  width: 39px;
+  height: 39px;
+  flex: 0 0 39px;
+  place-items: center;
+  border-radius: 12px;
+  background: #e4f5f1;
+  color: #2d9384;
+  font-size: 23px;
+  font-weight: 900;
+}
+
+.staff-game-song-choice-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 1px;
+}
+
+.staff-game-song-choice-copy > strong {
+  overflow: hidden;
+  color: #285f71;
+  font-size: 16px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-game-song-choice-copy small,
+.staff-game-song-choice-copy > span {
+  overflow: hidden;
+  color: #72888c;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-game-song-choice > .staff-game-history-stars {
+  flex: 0 0 auto;
+}
+
+.staff-game-song-choice > .staff-game-history-stars img {
+  width: 17px;
+}
+
+.staff-game-song-detail-card {
+  align-items: stretch;
+  gap: 9px;
+  text-align: center;
+}
+
+.staff-game-song-inline-back {
+  align-self: center;
+  margin-top: 1px;
+  padding: 6px 11px;
+}
+
+@media (min-width: 821px) {
+  .staff-game-controls.is-song-mode:not(.is-touch-layout) .staff-game-toolbar.is-desktop-control {
+    margin-left: auto;
+  }
+}
+
+.staff-game-song-detail-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 3vw, 22px);
+}
+
+.staff-game-song-detail-hero .staff-game-preview-bubble {
+  width: clamp(72px, 10vw, 88px);
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.staff-game-song-detail-hero h1 {
+  text-align: left;
+}
+
+.staff-game-song-detail-hero p {
+  text-align: left;
+}
+
+.staff-game-song-description,
+.staff-game-song-howto {
+  margin: 0 !important;
+  color: #55747a;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.staff-game-song-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+}
+
+.staff-game-song-facts span {
+  border-radius: 999px;
+  background: #e3f4f3;
+  color: #357c8b;
+  font-size: 12px;
+  font-weight: 850;
+  padding: 6px 10px;
+}
+
+.staff-game-song-record {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 3px 12px;
+  border-radius: 13px;
+  background: rgba(226, 247, 248, 0.9);
+  color: #52737a;
+  padding: 9px 13px;
+  text-align: left;
+}
+
+.staff-game-song-record > span {
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.staff-game-song-record > small {
+  grid-column: 1 / -1;
+  color: #698288;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.staff-game-song-record .staff-game-history-stars img {
+  width: 18px;
+}
+
+.staff-game-song-card > .staff-game-primary {
+  align-self: center;
+  min-height: 46px;
+  font-size: 18px;
+  flex: 0 0 auto;
+}
+
+.staff-game-summary-actions button {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.staff-game-summary-list-button {
+  min-height: 41px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(224, 243, 244, 0.9);
+  color: #347d8d;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 850;
+  padding: 0 15px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.staff-game-level-medal.is-song-progress > strong.staff-game-song-progress-value {
+  font-family: FredokaSystemDigits, Arial, "Helvetica Neue", "Segoe UI", sans-serif;
+  font-weight: 900;
+  paint-order: stroke fill;
+  font-size: clamp(18px, 2.4vw, 30px);
+}
+
+@media (min-width: 821px) {
+  .staff-game-level-medal.is-song-progress > strong.staff-game-song-progress-value {
+    top: 45%;
+    font-size: clamp(16px, 2vw, 20px);
+  }
+}
+
+@media (max-width: 820px) {
+  .staff-game-level-medal.is-song-progress > strong.staff-game-song-progress-value {
+    top: 43%;
+  }
+}
+
+.staff-game-summary-level-badge strong.is-song-title {
+  font-size: clamp(13px, 2.6vw, 19px);
+  letter-spacing: 0;
+}
+
+.staff-game-error-flash {
+  background: radial-gradient(ellipse at center, transparent 0 52%, rgba(247, 54, 63, 0.16) 69%, rgba(226, 30, 45, 0.46) 100%);
+  box-shadow: inset 0 0 105px rgba(221, 27, 43, 0.46), inset 0 0 24px rgba(255, 77, 75, 0.42);
+}
+
+@media (max-width: 820px) {
+  .staff-game-song-hud {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 10px 12px 6px;
+  }
+
+  .staff-game-song-hud > div {
+    min-width: 0;
+  }
+
+  .staff-game-song-hud > div strong {
+    font-size: 17px;
+  }
+
+  .staff-game-song-card {
+    width: calc(100% - 28px);
+    max-height: min(640px, calc(100% - 16px));
+    gap: 8px;
+    padding: 51px 21px 18px;
+  }
+
+  .staff-game-song-list {
+    gap: 6px;
+  }
+
+  .staff-game-song-choice {
+    gap: 8px;
+    padding: 7px 8px;
+  }
+
+  .staff-game-song-choice-note {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+  }
+
+  .staff-game-song-choice-copy > strong {
+    font-size: 14px;
+  }
+
+  .staff-game-song-choice-copy small,
+  .staff-game-song-choice-copy > span {
+    font-size: 10px;
+  }
+
+  .staff-game-song-choice > .staff-game-history-stars img {
+    width: 14px;
+  }
+
+}
+
+@media (max-width: 380px) {
+  .staff-game-song-card {
+    padding-inline: 13px;
+  }
+
+  .staff-game-song-choice > .staff-game-history-stars {
+    display: none;
+  }
+}
+
+/* Improve score spacing and unearned-star contrast in the top HUD. */
+.staff-game-score-card > span {
+  transform: translateY(5px);
+}
+
+.staff-game-score-card small {
+  transform: translateY(-2px);
+}
+
+.staff-game-display-card .staff-game-history-stars img:not(.earned) {
+  opacity: 1;
+  filter: grayscale(0.82) brightness(1.08)
+    drop-shadow(0 0 1px rgba(77, 83, 76, 0.95))
+    drop-shadow(0 1px 2px rgba(58, 73, 78, 0.72));
+}
+
+.staff-game-display-card .staff-game-history-stars img.earned {
+  opacity: 1;
+  filter: sepia(1) saturate(4.2) hue-rotate(350deg) brightness(1.12) contrast(1.14)
+    drop-shadow(0 0 1.2px rgba(155, 94, 8, 0.98))
+    drop-shadow(0 1px 2px rgba(145, 87, 7, 0.82));
+}
+
+.staff-game-level-medal:not(.is-song-progress) > strong {
+  font-family: FredokaSystemDigits, Arial, "Helvetica Neue", "Segoe UI", sans-serif;
+  font-weight: 900;
+  paint-order: stroke fill;
+}
+
+@media (min-width: 821px) {
+  .staff-game-ready-card::before {
+    inset-block: -18px;
+  }
+}
+
+/* Keep a color-matched star glow behind the result dialog and its contents. */
+.staff-game-summary-stars.has-star-halo::before {
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  left: 50%;
+  width: min(340px, 92vw);
+  height: clamp(100px, 14vh, 150px);
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse,
+    rgba(255, 250, 220, 0.8) 0%,
+    rgba(255, 220, 126, 0.52) 30%,
+    rgba(255, 184, 106, 0.24) 54%,
+    rgba(255, 150, 131, 0.08) 70%,
+    transparent 83%
+  );
+  content: "";
+  filter: blur(13px);
+  opacity: 0.86;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.staff-game-summary-stars.is-white-star-halo::before {
+  background: radial-gradient(
+    ellipse,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(245, 250, 255, 0.72) 34%,
+    rgba(225, 240, 255, 0.34) 58%,
+    rgba(225, 240, 255, 0.08) 74%,
+    transparent 84%
+  );
+}
+
+.staff-game-summary-stars.has-star-halo.is-animated::before {
+  animation: staff-game-summary-star-halo 2.2s ease-in-out infinite;
+}
+
+@keyframes staff-game-summary-star-halo {
+  0%,
+  100% {
+    opacity: 0.68;
+    transform: translate(-50%, -50%) scale(0.94);
+  }
+
+  50% {
+    opacity: 0.98;
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staff-game-summary-stars.has-star-halo.is-animated::before {
+    animation: none;
+  }
+}
+
+.staff-game-summary-backdrop,
+.staff-game-summary-backdrop * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* On phones, give the level medal more of the HUD's visual and layout weight. */
+@media (max-width: 820px) {
+  .staff-game-hud:not(.is-song-mode),
+  .staff-game-hud.is-song-mode {
+    grid-template-columns: minmax(0, 1fr) clamp(88px, 26vw, 112px) minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-hud-card {
+    min-height: 76px;
+    padding: 15px 4px 5px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-score-card {
+    row-gap: 1px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-score-card > span {
+    margin-bottom: 5px;
+    font-size: 11px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-display-card .staff-game-history-stars {
+    min-height: 22px;
+    gap: 2px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-display-card .staff-game-history-stars img {
+    width: 18px;
+    height: 18px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-score-card strong {
+    font-size: 24px;
+    line-height: 1.05;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-score-card small {
+    margin-top: -1px;
+    transform: none;
+    font-size: 8px;
+    line-height: 1;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-level-medal {
+    z-index: 1;
+    width: clamp(88px, 26vw, 112px);
+    filter: drop-shadow(0 6px 10px rgba(86, 57, 38, 0.3));
+  }
+
+  .staff-game-hud.is-song-mode .staff-game-level-medal {
+    width: clamp(88px, 26vw, 112px);
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-level-medal > span {
+    font-size: 9px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-level-medal > strong {
+    font-size: clamp(38px, 10vw, 48px);
+  }
+}
+
+@media (max-width: 460px) {
+  .staff-game-hud:not(.is-song-mode),
+  .staff-game-hud.is-song-mode {
+    grid-template-columns: minmax(0, 1fr) clamp(88px, 26vw, 104px) minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-hud-card {
+    min-height: 72px;
+    padding: 14px 3px 4px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-display-card > span,
+  .staff-game-hud:not(.is-song-mode) .staff-game-score-card > span {
+    font-size: 9px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-score-card > span {
+    font-size: 10px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-display-card .staff-game-history-stars img {
+    width: 16px;
+    height: 16px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-score-card strong {
+    font-size: 22px;
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-level-medal {
+    width: clamp(88px, 26vw, 104px);
+  }
+
+  .staff-game-hud.is-song-mode .staff-game-level-medal {
+    width: clamp(88px, 26vw, 104px);
+  }
+
+  .staff-game-hud:not(.is-song-mode) .staff-game-level-medal > strong {
+    font-size: clamp(37px, 10vw, 44px);
+  }
+}
+
+@media (min-width: 700px) {
+  /* Product choice: keep the global sidebar visible during desktop gameplay; the game occupies the main column. */
+  .app-shell {
+    grid-template-columns: 86px minmax(0, 1fr);
+  }
+
+  .app-shell::before {
+    position: fixed;
+    z-index: 0;
+    inset: 0 auto auto 0;
+    width: 86px;
+    height: 100vh;
+    border-right: 1px solid var(--border);
+    background: var(--nav-surface);
+    content: "";
+    pointer-events: none;
+  }
+
+  .app-nav {
+    position: sticky;
+    z-index: 1;
+    top: 0;
+    display: flex;
+    height: 100vh;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  .app-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .app-nav button {
+    width: 100%;
+    min-height: 58px;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px 4px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .app-nav-game-group {
+    display: grid;
+    gap: 4px;
+  }
+
+  .app-nav .app-nav-game-toggle {
+    position: relative;
+  }
+
+  .app-nav-game-chevron {
+    position: absolute;
+    top: 4px;
+    right: 3px;
+    opacity: 0.72;
+    transition: transform 0.16s ease;
+  }
+
+  .app-nav-game-toggle[aria-expanded="true"] .app-nav-game-chevron {
+    transform: rotate(180deg);
+  }
+
+  .app-nav-game-submenu {
+    display: grid;
+    gap: 4px;
+    margin-left: 5px;
+    padding-left: 4px;
+    border-left: 1px solid var(--border-strong);
+  }
+
+  .app-nav .app-nav-game-submenu button {
+    min-height: 36px;
+    flex-direction: row;
+    gap: 0;
+    padding: 6px 2px;
+    border-color: transparent;
+    background: transparent;
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .app-nav .app-nav-game-submenu button:hover:not(:disabled) {
+    border-color: var(--border);
+    background: var(--surface-soft);
+    color: var(--text);
+  }
+
+  .app-nav .app-nav-game-submenu button.active {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: white;
+  }
+
+  .app-nav button.active {
+    color: white;
+  }
+
+  .app-nav button.active:hover:not(:disabled) {
+    border-color: var(--ink);
+    background: var(--ink);
+    box-shadow: none;
+    color: white;
+  }
+
+  .mobile-route-back {
+    display: none;
+  }
+
+  .backup-reminder {
+    width: min(1120px, calc(100% - 48px));
+  }
+
+  .backup-toast {
+    left: calc(86px + (100vw - 86px) / 2);
+    width: min(420px, calc(100vw - 126px));
+  }
+
+  .practice-shell:not(.staff-game-shell),
+  .study-shell,
+  .settings-shell {
+    width: min(1320px, calc(100% - 48px));
+  }
+
+  .stats-shell {
+    width: min(1640px, calc(100% - 48px));
+  }
+}
+
+@media (max-width: 699px) {
+  .app-shell::before,
+  .app-nav {
+    display: none;
+  }
+
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .backup-reminder {
+    width: min(1120px, calc(100% - 48px));
+  }
+
+  .backup-toast {
+    left: 50%;
+    width: min(420px, calc(100vw - 40px));
+  }
+}
+
+@media (min-width: 821px) {
+  .staff-game-result-stats > div {
+    grid-template-columns: minmax(120px, 160px) minmax(112px, max-content);
+  }
+
+  .staff-game-result-stats > div strong {
+    font-size: 28px;
+  }
+}
+
+@media (min-width: 821px) {
+  .staff-game-level-medal:not(.is-song-progress) > strong {
+    top: 39%;
+    font-size: clamp(34px, 3.4vw, 44px);
+  }
+}
+
+@media (max-width: 820px) {
+  .staff-game-hud.is-song-mode .staff-game-score-group {
+    padding-top: 0;
+  }
+
+  .staff-game-hud.is-song-mode .staff-game-hud-card {
+    box-sizing: border-box;
+    height: 76px;
+    min-height: 76px;
+  }
+
+  .staff-game-result-stats > div:nth-child(-n + 2) {
+    font-size: 16px;
+  }
+
+  .staff-game-result-stats > div:nth-child(-n + 2) strong {
+    font-size: 21px;
+  }
+}
+
+@media (max-width: 460px) {
+  .staff-game-hud.is-song-mode .staff-game-hud-card {
+    height: 72px;
+    min-height: 72px;
+  }
+}
+
+@media (max-width: 820px) {
+  .staff-game-ready-card {
+    padding-top: calc(clamp(34px, 4vh, 48px) + 17px);
+    padding-bottom: calc(clamp(18px, 2.8vh, 28px) + 12px);
+  }
+}
