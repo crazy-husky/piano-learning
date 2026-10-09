@@ -1,6 +1,6 @@
 # UI 手调位置速查
 
-所有谱表调参集中在 [`staffLayoutProfiles.ts`](../src/components/staffLayoutProfiles.ts)，并按页面分成五个 profile。共有接口提供中文字段说明和 `satisfies` 结构检查；页面特有参数在对应 profile 内单独注释。学习页、默写页、统计页、练习单音和谱页共用 [`staffGeometry.ts`](../src/components/staffGeometry.ts) 的坐标换算、谱表与连接线创建、谱表锚点和音符区域算法。
+所有谱表调参集中在 [`staffLayoutProfiles.ts`](../src/shared/staff/staffLayoutProfiles.ts)，并按页面分成五个 profile。共有接口提供中文字段说明和 `satisfies` 结构检查；页面特有参数在对应 profile 内单独注释。学习页、默写页、统计页、练习单音和谱页共用 [`staffGeometry.ts`](../src/shared/staff/staffGeometry.ts) 的坐标换算、谱表与连接线创建、谱表锚点和音符区域算法。
 
 代码分层如下：
 
@@ -19,15 +19,15 @@
 
 | 页面 / 区域 | 主要调整内容 | 代码入口 |
 | --- | --- | --- |
-| 共用谱表几何 | 缩放坐标、谱表外框、谱号后音符区域和均匀列中心 | [`staffGeometry.ts`](../src/components/staffGeometry.ts) |
-| 学习页音位图 | 谱表左右留白、列距、高低谱表间距、Label 位置与字号 | [`STUDY_STAFF_LAYOUT`](../src/components/staffLayoutProfiles.ts) |
+| 共用谱表几何 | 缩放坐标、谱表外框、谱号后音符区域和均匀列中心 | [`staffGeometry.ts`](../src/shared/staff/staffGeometry.ts) |
+| 学习页音位图 | 谱表左右留白、列距、高低谱表间距、Label 位置与字号 | [`STUDY_STAFF_LAYOUT`](../src/shared/staff/staffLayoutProfiles.ts) |
 | 学习页与默写页谱表外框 | 卡片上留白、边框、背景与裁切 | [`.study-figure`](../src/styles.css) |
-| 默写页大谱表 | 显式缩放与固定高度、横向压缩、谱表中点与间距、Label、列底状态和按谱线间距计算的命中范围 | [`STAFF_RECALL_LAYOUT`](../src/components/staffLayoutProfiles.ts) |
+| 默写页大谱表 | 显式缩放与固定高度、横向压缩、谱表中点与间距、Label、列底状态和按谱线间距计算的命中范围 | [`STAFF_RECALL_LAYOUT`](../src/shared/staff/staffLayoutProfiles.ts) |
 | 默写页谱表样式 | 加线、列底文字、遮罩和当前列高亮 | [`.staff-recall-*`](../src/styles.css) |
 | 默写完成区 | 结果面板与趋势图尺寸、间距和线条 | [`.staff-recall-summary` / `.staff-recall-trend-*`](../src/styles.css) |
-| 练习页单音谱表 | 固定高度、谱表宽度、高低音谱表位置和内容留白 | [`PRACTICE_SINGLE_STAFF_LAYOUT`](../src/components/staffLayoutProfiles.ts) |
+| 练习页单音谱表 | 固定高度、谱表宽度、高低音谱表位置和内容留白 | [`PRACTICE_SINGLE_STAFF_LAYOUT`](../src/shared/staff/staffLayoutProfiles.ts) |
 | 练习页单音区域 | 舞台高度、谱表容器尺寸与阴影 | [`.prompt-stage` / `.staff`](../src/styles.css) |
-| 练习页谱页 | 最大行数、每行音符数、单行固定高度、时值分组、连梁和小节线 | [`PRACTICE_PAGE_STAFF_LAYOUT`](../src/components/staffLayoutProfiles.ts)、[`staffPageNotation.ts`](../src/components/staffPageNotation.ts) |
+| 练习页谱页 | 最大行数、每行音符数、单行固定高度、时值分组、连梁和小节线 | [`PRACTICE_PAGE_STAFF_LAYOUT`](../src/shared/staff/staffLayoutProfiles.ts)、[`staffPageNotation.ts`](../src/features/practice/logic/staffPageNotation.ts) |
 | 练习页多音区域 | 页面谱表舞台和容器尺寸 | [`.staff-page-stage`](../src/styles.css) |
-| 统计页音域谱表 | 列距、谱表留白、Label 位置与字号 | [`STATS_RANGE_STAFF_LAYOUT`](../src/components/staffLayoutProfiles.ts) |
-| 统计页颜色 | 热力图、音域着色和识别曲线配色 | [`STATS_COLORS`](../src/components/stats/statsColors.ts) |
+| 统计页音域谱表 | 列距、谱表留白、Label 位置与字号 | [`STATS_RANGE_STAFF_LAYOUT`](../src/shared/staff/staffLayoutProfiles.ts) |
+| 统计页颜色 | 热力图、音域着色和识别曲线配色 | [`STATS_COLORS`](../src/features/stats/components/statsColors.ts) |

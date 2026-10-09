@@ -1,10 +1,10 @@
-import { createPitchFrameDetector } from "../../src/vocal-pitch/pitchFrameDetector";
-import { PRACTICE_NOTE_FREQUENCY_RANGE } from "../../src/vocal-pitch/practiceNoteRecognizer";
+import { createPitchFrameDetector } from "../../src/features/vocal-pitch/logic/pitchFrameDetector";
+import { PRACTICE_NOTE_FREQUENCY_RANGE } from "../../src/features/vocal-pitch/logic/practiceNoteRecognizer";
 import {
   SWIFTF0_CONFIDENCE_THRESHOLD,
   SWIFTF0_FRAME_INTERVAL_MS,
   SWIFTF0_INPUT_FRAME_SIZE,
-} from "../../src/vocal-pitch/swiftF0Config";
+} from "../../src/features/vocal-pitch/logic/swiftF0Config";
 import "./swiftf0-live-test.css";
 
 const NATURAL_AND_ACCIDENTAL_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];

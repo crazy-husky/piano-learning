@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import { analyzeSwiftF0, createSwiftF0Runtime } from "../../src/vocal-pitch/swiftF0Inference";
+import { analyzeSwiftF0, createSwiftF0Runtime } from "../../src/features/vocal-pitch/logic/swiftF0Inference";
 
 let runtimePromise: ReturnType<typeof createSwiftF0Runtime> | null = null;
 

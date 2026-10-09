@@ -21,60 +21,60 @@
 
 | 文件 | 尺寸 / 格式 | 用途与接入状态 | 来源 / 提示词状态 |
 | --- | --- | --- | --- |
-| `src/assets/staff-game/backgrounds/meadow-desktop.webp` | 1095×492 WebP | 桌面游戏背景；运行中 | `source/03-notation-level-and-backgrounds.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/backgrounds/meadow-mobile.webp` | 863×1822 WebP | 手机竖屏背景；运行中 | [手机竖屏场景提示词](generation-prompts.md#2-手机竖屏场景候选图) |
-| `src/assets/staff-game/characters/mascot-idle.webp` | 445×475 WebP | 静态待机参考图；当前代码未引用 | `source/01-characters-and-bubble.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/characters/mascot-cheer.webp` | 432×450 WebP | 静态欢呼参考图；当前代码未引用 | `source/01-characters-and-bubble.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/characters/mascot-wink.webp` | 423×459 WebP | 静态眨眼参考图；当前代码未引用 | `source/01-characters-and-bubble.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/characters/mascot-idle-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 保留未接入；旧待机图集所有帧都是张嘴笑脸；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考待机角色 |
-| `src/assets/staff-game/characters/mascot-neutral-idle.webp` | 260×260 WebP；约 17 KiB | 中性表情源图；眉毛和嘴部改为中性，保留原眼睛大小；已合入难过图集第 6 帧，运行时不单独加载 | [中性待机角色提示词](generation-prompts.md#5-中性待机角色)；参考难过末帧 |
-| `src/assets/staff-game/characters/mascot-idle-frames-16.webp` | 1024×1024 WebP；4×4；228,550 字节 | 扩帧候选图集；保留但当前未接入，因与难过图集的色调和角色比例不匹配，切换时可见跳变 | ImageGen 以旧待机图集为角色参考；[本轮整理版提示词](generation-prompts.md#待机动作扩帧版)注明不是逐字保存的生成调用文本 |
-| `src/assets/staff-game/characters/mascot-cheer-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 答对时跳起欢呼；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考欢呼与待机角色 |
-| `src/assets/staff-game/characters/mascot-sad-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 答错或漏音时使用索引 1–6，从收敛表情过渡到难过并恢复为中性；待机共用索引 6；零分结算停在难过帧；未使用的微笑索引 0、7、8 已替换为中性表情，避免误引用时出现笑脸；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考难过表情和待机角色 |
-| `src/assets/staff-game/characters/mascot-pause-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 暂停时眨眼；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考眨眼与待机角色 |
-| `src/assets/staff-game/characters/mascot-celebration-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 结算时庆祝；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考通关庆祝与欢呼角色 |
-| `src/assets/staff-game/characters/mascot-level-celebration.webp` | 483×509 WebP | 静态通关庆祝参考图；当前代码未引用 | `source/03-notation-level-and-backgrounds.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/notation/treble-staff-c4-note.webp` | 451×284 WebP | 高音谱号与中央 C 参考图；运行中 | `source/03-notation-level-and-backgrounds.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/effects/bubble-shell-empty-center.webp` | 512×512 WebP | 气泡透明外壳；运行中 | [空心气泡提示词](generation-prompts.md#1-空心蓝色气泡边框) |
-| `src/assets/staff-game/effects/cloud-decoration-1.webp` | 495×171 WebP | 云朵装饰；运行中 | `source/02-ui-and-clouds.png` 切图；没有单独的生成提示词 |
-| `src/assets/staff-game/effects/cloud-decoration-2.webp` | 510×177 WebP | 云朵装饰；运行中 | `source/02-ui-and-clouds.png` 切图；没有单独的生成提示词 |
-| `src/assets/staff-game/effects/cloud-decoration-3.webp` | 500×179 WebP | 云朵装饰；运行中 | `source/02-ui-and-clouds.png` 切图；没有单独的生成提示词 |
+| `src/features/staff-game/assets/backgrounds/meadow-desktop.webp` | 1095×492 WebP | 桌面游戏背景；运行中 | `source/03-notation-level-and-backgrounds.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/backgrounds/meadow-mobile.webp` | 863×1822 WebP | 手机竖屏背景；运行中 | [手机竖屏场景提示词](generation-prompts.md#2-手机竖屏场景候选图) |
+| `src/features/staff-game/assets/characters/mascot-idle.webp` | 445×475 WebP | 静态待机参考图；当前代码未引用 | `source/01-characters-and-bubble.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/characters/mascot-cheer.webp` | 432×450 WebP | 静态欢呼参考图；当前代码未引用 | `source/01-characters-and-bubble.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/characters/mascot-wink.webp` | 423×459 WebP | 静态眨眼参考图；当前代码未引用 | `source/01-characters-and-bubble.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/characters/mascot-idle-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 保留未接入；旧待机图集所有帧都是张嘴笑脸；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考待机角色 |
+| `src/features/staff-game/assets/characters/mascot-neutral-idle.webp` | 260×260 WebP；约 17 KiB | 中性表情源图；眉毛和嘴部改为中性，保留原眼睛大小；已合入难过图集第 6 帧，运行时不单独加载 | [中性待机角色提示词](generation-prompts.md#5-中性待机角色)；参考难过末帧 |
+| `src/features/staff-game/assets/characters/mascot-idle-frames-16.webp` | 1024×1024 WebP；4×4；228,550 字节 | 扩帧候选图集；保留但当前未接入，因与难过图集的色调和角色比例不匹配，切换时可见跳变 | ImageGen 以旧待机图集为角色参考；[本轮整理版提示词](generation-prompts.md#待机动作扩帧版)注明不是逐字保存的生成调用文本 |
+| `src/features/staff-game/assets/characters/mascot-cheer-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 答对时跳起欢呼；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考欢呼与待机角色 |
+| `src/features/staff-game/assets/characters/mascot-sad-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 答错或漏音时使用索引 1–6，从收敛表情过渡到难过并恢复为中性；待机共用索引 6；零分结算停在难过帧；未使用的微笑索引 0、7、8 已替换为中性表情，避免误引用时出现笑脸；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考难过表情和待机角色 |
+| `src/features/staff-game/assets/characters/mascot-pause-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 暂停时眨眼；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考眨眼与待机角色 |
+| `src/features/staff-game/assets/characters/mascot-celebration-frames.webp` | 780×780 WebP；3×3；每格 260×260，内含 256×256 帧与 2px 透明隔离边 | 结算时庆祝；运行中 | [角色动作帧图集提示词](generation-prompts.md#4-角色动作帧图集)；参考通关庆祝与欢呼角色 |
+| `src/features/staff-game/assets/characters/mascot-level-celebration.webp` | 483×509 WebP | 静态通关庆祝参考图；当前代码未引用 | `source/03-notation-level-and-backgrounds.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/notation/treble-staff-c4-note.webp` | 451×284 WebP | 高音谱号与中央 C 参考图；运行中 | `source/03-notation-level-and-backgrounds.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/effects/bubble-shell-empty-center.webp` | 512×512 WebP | 气泡透明外壳；运行中 | [空心气泡提示词](generation-prompts.md#1-空心蓝色气泡边框) |
+| `src/features/staff-game/assets/effects/cloud-decoration-1.webp` | 495×171 WebP | 云朵装饰；运行中 | `source/02-ui-and-clouds.png` 切图；没有单独的生成提示词 |
+| `src/features/staff-game/assets/effects/cloud-decoration-2.webp` | 510×177 WebP | 云朵装饰；运行中 | `source/02-ui-and-clouds.png` 切图；没有单独的生成提示词 |
+| `src/features/staff-game/assets/effects/cloud-decoration-3.webp` | 500×179 WebP | 云朵装饰；运行中 | `source/02-ui-and-clouds.png` 切图；没有单独的生成提示词 |
 
 ### UI 素材
 
 | 文件 | 尺寸 / 格式 | 用途与接入状态 | 来源 / 提示词状态 |
 | --- | --- | --- | --- |
-| `src/assets/staff-game/ui/action-help.webp` | 256×256 WebP | 帮助按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
-| `src/assets/staff-game/ui/action-pause.webp` | 256×256 WebP | 暂停按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
-| `src/assets/staff-game/ui/action-resume.webp` | 256×256 WebP | 继续按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
-| `src/assets/staff-game/ui/action-return.webp` | 256×256 WebP | 返回按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
-| `src/assets/staff-game/ui/action-settings.webp` | 256×256 WebP | 设置按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
-| `src/assets/staff-game/ui/help-title-tip.webp` | 1345×724 WebP；约 117 KiB | 帮助弹窗“提示”标题图；透明背景，运行中 | [帮助弹窗标题提示词](generation-prompts.md#6-帮助弹窗提示标题)；参考用户提供的橙色描边字样 |
-| `src/assets/staff-game/ui/button-primary-base.webp` | 663×191 WebP | 主按钮底图；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/ui/button-secondary-base.webp` | 499×153 WebP | 次按钮底图；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/ui/hud-frame.webp` | 872×246 WebP | 游戏顶部 HUD 底图；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/ui/modal-frame.webp` | 393×353 WebP | 弹窗面板底图；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/ui/level-medal-frame.webp` | 432×470 WebP | 关卡奖章框；当前代码未引用 | `source/03-notation-level-and-backgrounds.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/ui/level-jump-decoration.webp` | 480×479 WebP | 跳级弹窗装饰；运行中 | 来自后续图像生成；完整生成提示词未归档，已有需求描述可回溯对话 |
-| `src/assets/staff-game/ui/settings-paw.webp` | 144×144 WebP | 设置弹窗熊掌装饰；运行中 | 来自后续图像生成；完整生成提示词未归档，已有需求描述可回溯对话 |
-| `src/assets/staff-game/ui/star-particle.webp` | 289×266 WebP | 五角星粒子；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
-| `src/assets/staff-game/ui/summary-fireworks.webp` | 560×442 WebP | 结算烟花底图；叠加 Canvas 动画；运行中 | 来自后续图像生成；完整生成提示词未归档，已有需求描述可回溯对话 |
-| `src/assets/staff-game/ui/summary-level-banner.webp` | 700×185 WebP | 结算关卡标题横幅；运行中 | 来自后续图像生成；完整生成提示词未归档，已有需求描述可回溯对话 |
+| `src/features/staff-game/assets/ui/action-help.webp` | 256×256 WebP | 帮助按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
+| `src/features/staff-game/assets/ui/action-pause.webp` | 256×256 WebP | 暂停按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
+| `src/features/staff-game/assets/ui/action-resume.webp` | 256×256 WebP | 继续按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
+| `src/features/staff-game/assets/ui/action-return.webp` | 256×256 WebP | 返回按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
+| `src/features/staff-game/assets/ui/action-settings.webp` | 256×256 WebP | 设置按钮图标；运行中 | 当前仓库未记录原始来源和完整提示词 |
+| `src/features/staff-game/assets/ui/help-title-tip.webp` | 1345×724 WebP；约 117 KiB | 帮助弹窗“提示”标题图；透明背景，运行中 | [帮助弹窗标题提示词](generation-prompts.md#6-帮助弹窗提示标题)；参考用户提供的橙色描边字样 |
+| `src/features/staff-game/assets/ui/button-primary-base.webp` | 663×191 WebP | 主按钮底图；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/ui/button-secondary-base.webp` | 499×153 WebP | 次按钮底图；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/ui/hud-frame.webp` | 872×246 WebP | 游戏顶部 HUD 底图；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/ui/modal-frame.webp` | 393×353 WebP | 弹窗面板底图；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/ui/level-medal-frame.webp` | 432×470 WebP | 关卡奖章框；当前代码未引用 | `source/03-notation-level-and-backgrounds.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/ui/level-jump-decoration.webp` | 480×479 WebP | 跳级弹窗装饰；运行中 | 来自后续图像生成；完整生成提示词未归档，已有需求描述可回溯对话 |
+| `src/features/staff-game/assets/ui/settings-paw.webp` | 144×144 WebP | 设置弹窗熊掌装饰；运行中 | 来自后续图像生成；完整生成提示词未归档，已有需求描述可回溯对话 |
+| `src/features/staff-game/assets/ui/star-particle.webp` | 289×266 WebP | 五角星粒子；运行中 | `source/02-ui-and-clouds.png` 切图；来源图集生成提示词未归档 |
+| `src/features/staff-game/assets/ui/summary-fireworks.webp` | 560×442 WebP | 结算烟花底图；叠加 Canvas 动画；运行中 | 来自后续图像生成；完整生成提示词未归档，已有需求描述可回溯对话 |
+| `src/features/staff-game/assets/ui/summary-level-banner.webp` | 700×185 WebP | 结算关卡标题横幅；运行中 | 来自后续图像生成；完整生成提示词未归档，已有需求描述可回溯对话 |
 
 ### 音频素材
 
 | 文件 | 时长 / 格式 | 用途与接入状态 | 来源 / 提示词状态 |
 | --- | --- | --- | --- |
-| `src/assets/staff-game/audio/bubble-pop.wav` | 0.67 秒；44.1 kHz、16-bit、单声道 | 答对气泡反馈；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
-| `src/assets/staff-game/audio/combo-streak.wav` | 0.89 秒；44.1 kHz、16-bit、单声道 | 连击反馈；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
-| `src/assets/staff-game/audio/combo-excellent.mp3` | 0.75 秒；22.05 kHz、48 kbps、单声道 | 10 连击语音鼓励；响度平衡后接入，受音效开关控制 | 用户提供 `/Users/husky/Downloads/excellent.wav`；转 MP3 并统一到约 -20 LUFS |
-| `src/assets/staff-game/audio/combo-amazing.mp3` | 0.98 秒；22.05 kHz、48 kbps、单声道 | 25 连击语音鼓励；响度平衡后接入，受音效开关控制 | 用户提供 `/Users/husky/Downloads/amazing.wav`；转 MP3 并统一到约 -20 LUFS |
-| `src/assets/staff-game/audio/combo-unbelievable.mp3` | 1.15 秒；22.05 kHz、48 kbps、单声道 | 50 连击及之后每增加 20 连击时播放；响度平衡后接入，受音效开关控制 | 用户提供 `/Users/husky/Downloads/unbelivable.wav`；转 MP3 并统一到约 -20 LUFS |
-| `src/assets/staff-game/audio/menu-click.mp3` | 0.40 秒；22.05 kHz、48 kbps、单声道 | 菜单与按钮点击音；替换原合成弹动音；运行中 | 用户提供 `/Users/husky/Downloads/operateMenu.wav`；裁去前后静音后转 MP3 |
-| `src/assets/staff-game/audio/level-clear.wav` | 1.22 秒；44.1 kHz、16-bit、单声道 | 通关反馈；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
-| `src/assets/staff-game/audio/microphone-ready.wav` | 0.87 秒；44.1 kHz、16-bit、单声道 | 麦克风连接或恢复提示；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
-| `src/assets/staff-game/audio/note-missed-soft.wav` | 0.32 秒；48 kHz、24-bit、单声道 | 答错或气泡超时反馈；运行中 | [答错/漏答提示词](generation-prompts.md#答错漏答提示音) |
-| `src/assets/staff-game/audio/relaxed-game-bgm.mp3` | 56.24 秒；22.05 kHz、48 kbps、双声道 MP3；约 330 KB | 闯关背景音乐；循环播放；运行中 | 用户提供 `/Users/husky/Downloads/bg.wav`；从约 2.4 MB WAV 压缩并做响度处理 |
+| `src/features/staff-game/assets/audio/bubble-pop.wav` | 0.67 秒；44.1 kHz、16-bit、单声道 | 答对气泡反馈；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
+| `src/features/staff-game/assets/audio/combo-streak.wav` | 0.89 秒；44.1 kHz、16-bit、单声道 | 连击反馈；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
+| `src/features/staff-game/assets/audio/combo-excellent.mp3` | 0.75 秒；22.05 kHz、48 kbps、单声道 | 10 连击语音鼓励；响度平衡后接入，受音效开关控制 | 用户提供 `/Users/husky/Downloads/excellent.wav`；转 MP3 并统一到约 -20 LUFS |
+| `src/features/staff-game/assets/audio/combo-amazing.mp3` | 0.98 秒；22.05 kHz、48 kbps、单声道 | 25 连击语音鼓励；响度平衡后接入，受音效开关控制 | 用户提供 `/Users/husky/Downloads/amazing.wav`；转 MP3 并统一到约 -20 LUFS |
+| `src/features/staff-game/assets/audio/combo-unbelievable.mp3` | 1.15 秒；22.05 kHz、48 kbps、单声道 | 50 连击及之后每增加 20 连击时播放；响度平衡后接入，受音效开关控制 | 用户提供 `/Users/husky/Downloads/unbelivable.wav`；转 MP3 并统一到约 -20 LUFS |
+| `src/features/staff-game/assets/audio/menu-click.mp3` | 0.40 秒；22.05 kHz、48 kbps、单声道 | 菜单与按钮点击音；替换原合成弹动音；运行中 | 用户提供 `/Users/husky/Downloads/operateMenu.wav`；裁去前后静音后转 MP3 |
+| `src/features/staff-game/assets/audio/level-clear.wav` | 1.22 秒；44.1 kHz、16-bit、单声道 | 通关反馈；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
+| `src/features/staff-game/assets/audio/microphone-ready.wav` | 0.87 秒；44.1 kHz、16-bit、单声道 | 麦克风连接或恢复提示；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
+| `src/features/staff-game/assets/audio/note-missed-soft.wav` | 0.32 秒；48 kHz、24-bit、单声道 | 答错或气泡超时反馈；运行中 | [答错/漏答提示词](generation-prompts.md#答错漏答提示音) |
+| `src/features/staff-game/assets/audio/relaxed-game-bgm.mp3` | 56.24 秒；22.05 kHz、48 kbps、双声道 MP3；约 330 KB | 闯关背景音乐；循环播放；运行中 | 用户提供 `/Users/husky/Downloads/bg.wav`；从约 2.4 MB WAV 压缩并做响度处理 |
 
 ## 程序绘制的游戏效果
 
@@ -82,9 +82,9 @@
 
 | 效果 | 实现位置 |
 | --- | --- |
-| 气泡内五线谱与音符 | `src/components/StaffGameView.tsx`（SVG） |
-| 萤火虫粒子、流星、连击引线 | `src/components/StaffGameView.tsx`、`src/styles.css` |
-| 结算烟花 | `src/components/StaffGameFireworks.tsx`，叠加 `ui/summary-fireworks.webp` |
+| 气泡内五线谱与音符 | `src/features/staff-game/components/StaffGameView.tsx`（SVG） |
+| 萤火虫粒子、流星、连击引线 | `src/features/staff-game/components/StaffGameView.tsx`、`src/styles.css` |
+| 结算烟花 | `src/features/staff-game/components/StaffGameFireworks.tsx`，叠加 `ui/summary-fireworks.webp` |
 | 结算极光与光球 | `src/styles.css` |
 
 ## 原始资料与预览

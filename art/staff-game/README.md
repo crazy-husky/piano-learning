@@ -4,7 +4,7 @@
 
 ## 核对结论
 
-- 收到 3 张图集；原图保存在 `art/staff-game/source/`，切好的独立素材保存在 `src/assets/staff-game/`。
+- 收到 3 张图集；原图保存在 `art/staff-game/source/`，切好的独立素材保存在 `src/features/staff-game/assets/`。
 - 闯关运行素材统一压缩为 WebP；设置熊掌按 48×48 CSS 像素显示，素材缩至 144×144，约 5.8 KB。其余高像素气泡与操作图标也按游戏显示尺寸缩小。
 - 第 2、3 张图集带真实 PNG 透明通道，已拆分并排除了图集中的标题、分隔线和标注。
 - 第 1 张图集是 RGB 图片，棋盘格只是画面内容，并非透明背景。三个角色已清理外围棋盘格；原气泡不可用，因此重新生成了空心玻璃气泡，真正透明的中心孔可以叠加谱面音符。问题样本见 `art/staff-game/review/rejected-bubble-checkerboard-baked.png`。

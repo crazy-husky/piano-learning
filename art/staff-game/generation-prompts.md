@@ -19,7 +19,7 @@ Constraints: edit only the intrusive highlights and clean alpha in the hole. Do 
 Avoid: opaque/semtransparent interior, objects crossing the inner edge, checkerboard, grids, background, note, staff, mascot, stars, text, logo, watermark, sheet.
 ```
 
-运行素材：`src/assets/staff-game/effects/bubble-shell-empty-center.webp`，512×512。由透明 PNG 缩放并转换为 WebP，alpha 中心孔保持全透明；外部无棋盘格。
+运行素材：`src/features/staff-game/assets/effects/bubble-shell-empty-center.webp`，512×512。由透明 PNG 缩放并转换为 WebP，alpha 中心孔保持全透明；外部无棋盘格。
 
 ## 2. 手机竖屏场景候选图
 
@@ -34,11 +34,11 @@ Composition: portrait 9:19 mobile wallpaper composition, edge-to-edge scene, des
 Constraints: no UI, no cards, no buttons, no HUD, no score, no note bubbles, no mascot, no piano, no staff or notation, no people, no text, no logo, no watermark. Keep the central play area visually quiet and readable.
 ```
 
-运行素材：`src/assets/staff-game/backgrounds/meadow-mobile.webp`，863×1822，RGB WebP。当前由闯关页在窄屏设备上使用。
+运行素材：`src/features/staff-game/assets/backgrounds/meadow-mobile.webp`，863×1822，RGB WebP。当前由闯关页在窄屏设备上使用。
 
 ## 3. 游戏音效
 
-游戏音效保存在 `src/assets/staff-game/audio/`，并由 `src/audio/staffGameSounds.ts` 统一预载与播放。原有 4 个 WAV 由 VSS Sound Studio 制作（44.1 kHz、16-bit、单声道）；`note-missed-soft.wav` 后按下方的新提示重新合成（48 kHz、24-bit、单声道）。之后用户提供了菜单点击音、三条连击鼓励语音和一条背景音乐，经过裁静音、响度平衡或压缩后接入；素材来源和处理后的规格记录在 [音频素材清单](asset-catalog.md#音频素材)。
+游戏音效保存在 `src/features/staff-game/assets/audio/`，并由 `src/features/staff-game/audio/staffGameSounds.ts` 统一预载与播放。原有 4 个 WAV 由 VSS Sound Studio 制作（44.1 kHz、16-bit、单声道）；`note-missed-soft.wav` 后按下方的新提示重新合成（48 kHz、24-bit、单声道）。之后用户提供了菜单点击音、三条连击鼓励语音和一条背景音乐，经过裁静音、响度平衡或压缩后接入；素材来源和处理后的规格记录在 [音频素材清单](asset-catalog.md#音频素材)。
 
 - `bubble-pop.wav`：答对目标音符时的清脆水泡破裂和星光散开声。
 - `combo-streak.wav`：每 3 次连续答对时的渐升连击提示，VSS 候选评分 89/100。
@@ -53,7 +53,7 @@ Prompt: Cartoon game wrong input sound effect, about 0.3 seconds. A soft, round 
 Negative prompt: Voice, speech, harsh alarm, electronic beep, metal scraping, heavy bass impact, sad failure chord, long reverb, background music, sharp high frequencies, disturbing.
 ```
 
-成品替换 `src/assets/staff-game/audio/note-missed-soft.wav`，同时供错误作答和气泡超时播放。
+成品替换 `src/features/staff-game/assets/audio/note-missed-soft.wav`，同时供错误作答和气泡超时播放。
 
 本机 MCP 密钥配置单独保存在 `/Users/husky/.config/piano-learning/vss-mcp.json`，不加入素材目录或版本控制。
 
@@ -63,7 +63,7 @@ Negative prompt: Voice, speech, harsh alarm, electronic beep, metal scraping, he
 
 ### 待机呼吸与眨眼
 
-参考图：`src/assets/staff-game/characters/mascot-idle.webp`。
+参考图：`src/features/staff-game/assets/characters/mascot-idle.webp`。
 
 ```text
 Use case: stylized-concept
@@ -85,7 +85,7 @@ Use the supplied idle sprite sheet as the exact identity and rendering reference
 
 ### 答对欢呼
 
-参考图：`src/assets/staff-game/characters/mascot-cheer.webp`、`src/assets/staff-game/characters/mascot-idle.webp`。
+参考图：`src/features/staff-game/assets/characters/mascot-cheer.webp`、`src/features/staff-game/assets/characters/mascot-idle.webp`。
 
 ```text
 Use case: stylized-concept
@@ -99,7 +99,7 @@ Avoid: panels, grid lines, cell dividers, overlapping characters, crop, characte
 
 ### 答错难过与恢复
 
-参考图：`source/mascot-sad-expression-reference.webp`、`src/assets/staff-game/characters/mascot-idle.webp`。
+参考图：`source/mascot-sad-expression-reference.webp`、`src/features/staff-game/assets/characters/mascot-idle.webp`。
 
 ```text
 Use case: stylized-concept
@@ -113,7 +113,7 @@ Avoid: tears, sobbing, anger, fear, harsh failure symbols, speech bubble, props,
 
 ### 暂停眨眼
 
-参考图：`src/assets/staff-game/characters/mascot-wink.webp`、`src/assets/staff-game/characters/mascot-idle.webp`。
+参考图：`src/features/staff-game/assets/characters/mascot-wink.webp`、`src/features/staff-game/assets/characters/mascot-idle.webp`。
 
 ```text
 Use case: stylized-concept
@@ -127,7 +127,7 @@ Avoid: panels, grid lines, dividers, crop, scale changes, tears, exaggerated exp
 
 ### 通关庆祝
 
-参考图：`src/assets/staff-game/characters/mascot-level-celebration.webp`、`src/assets/staff-game/characters/mascot-cheer.webp`。
+参考图：`src/features/staff-game/assets/characters/mascot-level-celebration.webp`、`src/features/staff-game/assets/characters/mascot-cheer.webp`。
 
 ```text
 Use case: stylized-concept
@@ -141,13 +141,13 @@ Avoid: panels, grid lines, dividers, overlapping/cropped character, inconsistent
 
 ## 5. 中性待机角色
 
-参考图：`src/assets/staff-game/characters/mascot-sad-frames.webp` 的难过帧。生成参数：`transparent_background: true`。生成后只取眉毛和嘴部，合成到原图集第 6 帧；眼睛、身体和轮廓继续使用原始帧。此第 6 帧同时用于待机，保证动画结束后不再切换素材。
+参考图：`src/features/staff-game/assets/characters/mascot-sad-frames.webp` 的难过帧。生成参数：`transparent_background: true`。生成后只取眉毛和嘴部，合成到原图集第 6 帧；眼睛、身体和轮廓继续使用原始帧。此第 6 帧同时用于待机，保证动画结束后不再切换素材。
 
 ```text
 Use case: calm neutral face variant for the exact same mascot pose. Image 1 is the last frame of the game's sad animation. Preserve its precise character silhouette, body proportions, pose, framing, scale, position, arms, hands, feet, eyes, eye size, iris size, eye positions, colors, highlights, shading, and 3D material. Change only the eyebrows to relaxed, nearly level brows and replace the sad mouth with a tiny closed neutral line. Do not redraw, shrink, move, or reshape either eye. No smile, frown, tears, or excited expression. Keep the original transparent background. Do not redraw or resize the body, move any feature outside the face, or add any objects.
 ```
 
-最终素材：`src/assets/staff-game/characters/mascot-neutral-idle.webp`。以难过图集索引 6 的 260×260 原图为底，只合成生成结果中的眉毛和嘴部，原眼睛像素保持不变；质量 100 的透明 WebP，约 17 KiB。该图已合入 `mascot-sad-frames.webp` 索引 6，运行时动画尾帧和待机共用同一格。当前难过序列只使用索引 1–6；原本带笑脸的索引 0、7、8 没有运行时用途，现已用这张中性帧覆盖并保留原坐标，避免后续误引用时再次出现笑脸。
+最终素材：`src/features/staff-game/assets/characters/mascot-neutral-idle.webp`。以难过图集索引 6 的 260×260 原图为底，只合成生成结果中的眉毛和嘴部，原眼睛像素保持不变；质量 100 的透明 WebP，约 17 KiB。该图已合入 `mascot-sad-frames.webp` 索引 6，运行时动画尾帧和待机共用同一格。当前难过序列只使用索引 1–6；原本带笑脸的索引 0、7、8 没有运行时用途，现已用这张中性帧覆盖并保留原坐标，避免后续误引用时再次出现笑脸。
 
 ## 6. 帮助弹窗提示标题
 
@@ -165,7 +165,7 @@ Text (verbatim): “提示”
 Constraints: render the exact Chinese characters “提示” only, correctly formed and readable. Transparent background. No stars, sparkles, icons, symbols, panels, scenery, extra text, watermark, or background. Keep edges clean.
 ```
 
-最终素材：`src/assets/staff-game/ui/help-title-tip.webp`，1345×724，119,264 字节（约 117 KiB）；接入帮助弹窗标题，替换原有文字标题和顶部星星装饰。
+最终素材：`src/features/staff-game/assets/ui/help-title-tip.webp`，1345×724，119,264 字节（约 117 KiB）；接入帮助弹窗标题，替换原有文字标题和顶部星星装饰。
 
 ## 共用交付要求
 

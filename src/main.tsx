@@ -1,8 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { App } from "./App";
-import { AppErrorBoundary } from "./components/AppErrorBoundary";
-import { ConfirmDialogProvider } from "./components/ui/ConfirmDialog";
+import { App } from "./app/App";
+import { AppErrorBoundary } from "./shared/components/AppErrorBoundary";
+import { ConfirmDialogProvider } from "./shared/components/ui/ConfirmDialog";
 import { inspectBrowserSupport, renderBrowserUpgradeNotice } from "./browserSupport";
 import "./styles.css";
 

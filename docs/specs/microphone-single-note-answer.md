@@ -16,11 +16,11 @@ Let a learner answer the existing natural-note practice prompts by playing one p
 
 ## Project Structure
 
-- `src/vocal-pitch/pitchFrameDetector.ts`: shared pitch detector and sample-window sizing.
-- `src/vocal-pitch/usePracticeMicrophoneInput.ts`: microphone lifecycle and realtime frame capture without `MediaRecorder`.
-- `src/vocal-pitch/practiceNoteRecognizer.ts`: stateful note stability, onset, and silence rearming rules.
+- `src/features/vocal-pitch/logic/pitchFrameDetector.ts`: shared pitch detector and sample-window sizing.
+- `src/features/vocal-pitch/logic/usePracticeMicrophoneInput.ts`: microphone lifecycle and realtime frame capture without `MediaRecorder`.
+- `src/features/vocal-pitch/logic/practiceNoteRecognizer.ts`: stateful note stability, onset, and silence rearming rules.
 - `src/domain/answerInput.ts`: microphone answer source and exact-pitch verdict.
-- `src/components/PracticeView.tsx`: mode selection, answer submission, session lifecycle, and audible status.
+- `src/features/practice/components/PracticeView.tsx`: mode selection, answer submission, session lifecycle, and audible status.
 - `src/domain/types.ts`, session snapshot and comparison modules: versioned local history compatibility.
 
 ## Boundaries

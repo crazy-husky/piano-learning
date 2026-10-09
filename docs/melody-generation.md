@@ -2,7 +2,7 @@
 
 自动旋律生成使用版本化算法 `melody-v2`。目标是在所选音域内兼顾两件事：每个八音乐句保持局部旋律性，并在一次练习中逐步覆盖较宽的音区。算法只决定目标音符顺序；答题、计时、复习记录和统计方式与其他练习策略相同。
 
-实现入口为 [`melody.ts`](../src/domain/melody.ts)，练习页通过 [`PracticeView.tsx`](../src/components/PracticeView.tsx) 为一次练习保存生成状态。确定性行为测试位于 [`melody.test.ts`](../src/domain/melody.test.ts)。
+实现入口为 [`melody.ts`](../src/domain/melody.ts)，练习页通过 [`PracticeView.tsx`](../src/features/practice/components/PracticeView.tsx) 为一次练习保存生成状态。确定性行为测试位于 [`melody.test.ts`](../src/domain/melody.test.ts)。
 
 ## 音高与音区
 

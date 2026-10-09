@@ -54,4 +54,4 @@
 
 每次测试都记录人工弹奏序列和最终识别事件，不只看 RMS 或候选帧。至少分别测普通力度、轻弹、快速短音、慢速短音和静音背景，并记录漏识别音、错误音、多报音、八度错误与响应延迟。调参比较应固定琴键、力度、距离、浏览器、算法和设备状态；改变一个参数组后重复多次。
 
-完整采样位于 [`src/materials`](../../src/materials/)。处理逻辑见 [`practiceMicrophonePreferences.ts`](../../src/vocal-pitch/practiceMicrophonePreferences.ts)、[`usePracticeMicrophoneInput.ts`](../../src/vocal-pitch/usePracticeMicrophoneInput.ts) 和 [`practiceMicrophoneAnalysis.ts`](../../src/vocal-pitch/practiceMicrophoneAnalysis.ts)。
+完整采样位于 [`src/materials`](../../src/materials/)。处理逻辑见 [`practiceMicrophonePreferences.ts`](../../src/features/vocal-pitch/logic/practiceMicrophonePreferences.ts)、[`usePracticeMicrophoneInput.ts`](../../src/features/vocal-pitch/logic/usePracticeMicrophoneInput.ts) 和 [`practiceMicrophoneAnalysis.ts`](../../src/features/vocal-pitch/logic/practiceMicrophoneAnalysis.ts)。

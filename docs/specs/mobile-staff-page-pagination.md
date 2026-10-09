@@ -27,11 +27,11 @@ Make the practice staff readable on phones by showing eight notes at a time and 
 
 ## Project Structure
 
-- `src/components/PracticeView.tsx`: viewport mode, queue slice, page counter, and active-session layout state.
-- `src/components/practiceInputLifecycle.ts`: pause and resume microphone lifecycle decisions.
-- `src/components/StaffPagePrompt.tsx`: configurable notes per staff row and phone-sized rendering.
-- `src/components/staffPageFlow.ts`: pure page slicing and count calculation.
-- `src/components/staffPageFlow.test.ts`: paging boundary and count tests.
+- `src/features/practice/components/PracticeView.tsx`: viewport mode, queue slice, page counter, and active-session layout state.
+- `src/features/practice/logic/practiceInputLifecycle.ts`: pause and resume microphone lifecycle decisions.
+- `src/features/practice/components/StaffPagePrompt.tsx`: configurable notes per staff row and phone-sized rendering.
+- `src/features/practice/logic/staffPageFlow.ts`: pure page slicing and count calculation.
+- `src/features/practice/logic/staffPageFlow.test.ts`: paging boundary and count tests.
 - `src/styles.css`: phone practice layout and touch labels.
 
 ## Code Style
