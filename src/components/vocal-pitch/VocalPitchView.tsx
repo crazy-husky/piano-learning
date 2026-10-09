@@ -1,21 +1,10 @@
-import {
-  Eraser,
-  FolderUp,
-  Mic,
-  PanelRightOpen,
-  Pause,
-  Play,
-  RotateCcw,
-  Save,
-  Square,
-} from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { digestBlob } from "../../data/blobDigest";
 import { createUuid } from "../../domain/id";
 import {
   DEFAULT_VOCAL_PITCH_CONFIG,
   describeFrequency,
   detectorConfigChanged,
-  formatDuration,
   getLatestVoicedPitchFrame,
   getPitchFrameAtTime,
   normalizeVocalPitchConfig,
@@ -29,8 +18,9 @@ import type { PracticeNavigationExitRequest, PracticeNavigationExitTarget } from
 import { isInteractiveShortcutTarget } from "../keyboardShortcuts";
 import { useLocalStorageState } from "../useLocalStorageState";
 import { useConfirmDialog } from "../ui/ConfirmDialog";
-import { PitchPreview } from "./PitchPreview";
 import { VocalPitchSidebar } from "./VocalPitchSidebar";
+import { VocalPitchWorkspace } from "./VocalPitchWorkspace";
+import { useVocalFileImport } from "./useVocalFileImport";
 import { useAudioPlayback } from "./useAudioPlayback";
 import { useVocalSidebarResize } from "./useVocalSidebarResize";
 import { VocalPitchDialog, type VocalDialogState } from "./VocalPitchDialog";
@@ -41,8 +31,6 @@ import {
   type DecodedAudio,
   type PitchAnalysisMode,
 } from "../../vocal-pitch/pitchAnalysis";
-import { digestBlob } from "../../data/blobDigest";
-import { encodeMonoWavPcm16 } from "../../vocal-pitch/wavEncode";
 import {
   useVocalRecorder,
   type VocalRecordingEndReason,
@@ -60,6 +48,8 @@ import {
   suppressEnhancedPitchReminderToday,
 } from "../../vocal-pitch/enhancedPitchModels";
 
+export { hasDraggedFiles, requestDroppedFileImport } from "./useVocalFileImport";
+
 interface VocalPitchViewProps {
   backupDirectory?: FileSystemDirectoryHandle;
   libraryRevision?: string;
@@ -70,30 +60,6 @@ interface VocalPitchViewProps {
 }
 
 export type VocalLibraryMutationPreflightResult = "backup-updated" | "blocked" | "proceed";
-
-const MAX_AUDIO_SECONDS = 10 * 60;
-
-export function hasDraggedFiles(types: readonly string[]): boolean {
-  return types.includes("Files");
-}
-
-interface DroppedFileImportActions {
-  importFile: (file: File) => Promise<void>;
-  runLibraryMutationPreflight: () => Promise<boolean>;
-  runWithReplacementGuard: (after: () => void | Promise<void>) => void;
-}
-
-export function requestDroppedFileImport(
-  file: File | null,
-  mutationBusy: boolean,
-  actions: DroppedFileImportActions,
-): void {
-  if (!file || mutationBusy) return;
-  actions.runWithReplacementGuard(async () => {
-    if (!(await actions.runLibraryMutationPreflight())) return;
-    await actions.importFile(file);
-  });
-}
 
 function recordingName(now = new Date()): string {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -158,9 +124,6 @@ export function VocalPitchView({
   const [recordingResultPending, setRecordingResultPending] = useState(false);
   const [modelDownloadProgress, setModelDownloadProgress] = useState<number | null>(null);
   const [renameRequest, setRenameRequest] = useState<VocalRenameRequest | null>(null);
-  const [fileDragActive, setFileDragActive] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const fileDragDepthRef = useRef(0);
   const analysisRequestGenerationRef = useRef(0);
   const lastNavigationRequestIdRef = useRef(0);
   const materialBaseUpdatedAtRef = useRef<string | null>(null);
@@ -556,92 +519,33 @@ export function VocalPitchView({
     });
   }, [recorder]);
 
-  const openUploadPicker = useCallback(() => {
-    runWithReplacementGuard(async () => {
-      if (await runLibraryMutationPreflight()) fileInputRef.current?.click();
-    });
-  }, [runLibraryMutationPreflight, runWithReplacementGuard]);
-
-  const importFile = useCallback(async (file: File) => {
-    cancelAnalysis();
-    const generation = analysisRequestGenerationRef.current;
-    try {
-      setInlineMessage("正在读取音频…");
-      const decoded = await decodeAudioBlob(file);
-      if (analysisRequestGenerationRef.current !== generation) return;
-      if (decoded.durationSeconds > MAX_AUDIO_SECONDS + 0.1) {
-        throw new Error("文件超过 10 分钟，未导入");
-      }
-      const audioBlob = file.type.startsWith("video/")
-        ? encodeMonoWavPcm16(decoded.samples, decoded.sampleRate)
-        : file;
-      const contentDigest = await digestBlob(audioBlob);
-      if (analysisRequestGenerationRef.current !== generation) return;
-      const now = new Date().toISOString();
-      const next: VocalAudioMaterial = {
-        schemaVersion: 1,
-        id: createUuid(),
-        name: file.name,
-        originalFileName: file.name,
-        source: "upload",
-        mimeType: audioBlob.type || "application/octet-stream",
-        size: audioBlob.size,
-        durationSeconds: decoded.durationSeconds,
-        createdAt: now,
-        updatedAt: now,
-        contentDigest,
-        audioBlob,
-        config,
-      };
-      materialBaseUpdatedAtRef.current = null;
-      setMaterialLibraryOutdated(false);
-      setMaterial(next);
-      setDisplayedFrames([]);
-      setDirty(true);
-      setAnalysisStale(false);
-      setInlineMessage(null);
-      const mode = await selectAnalysisMode(next);
-      await analyzeDecoded(next, decoded, mode);
-    } catch (error) {
-      if (analysisRequestGenerationRef.current === generation) {
-        setInlineMessage(error instanceof Error ? error.message : "无法导入音频文件");
-      }
-    }
-  }, [analyzeDecoded, cancelAnalysis, config, selectAnalysisMode]);
-
-  const beginFileDrag = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
-    if (!hasDraggedFiles(event.dataTransfer.types)) return;
-    event.preventDefault();
-    fileDragDepthRef.current += 1;
-    if (mutationBusy) return;
-    event.dataTransfer.dropEffect = "copy";
-    setFileDragActive(true);
-  }, [mutationBusy]);
-
-  const continueFileDrag = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
-    if (!hasDraggedFiles(event.dataTransfer.types)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = mutationBusy ? "none" : "copy";
-  }, [mutationBusy]);
-
-  const endFileDrag = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
-    if (!hasDraggedFiles(event.dataTransfer.types)) return;
-    fileDragDepthRef.current = Math.max(0, fileDragDepthRef.current - 1);
-    if (fileDragDepthRef.current === 0) setFileDragActive(false);
-  }, []);
-
-  const dropFile = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
-    if (!hasDraggedFiles(event.dataTransfer.types)) return;
-    event.preventDefault();
-    fileDragDepthRef.current = 0;
-    setFileDragActive(false);
-    const file = event.dataTransfer.files.item(0);
-    requestDroppedFileImport(file, mutationBusy, {
-      importFile,
-      runLibraryMutationPreflight,
-      runWithReplacementGuard,
-    });
-  }, [importFile, mutationBusy, runLibraryMutationPreflight, runWithReplacementGuard]);
+  const {
+    beginFileDrag,
+    continueFileDrag,
+    dropFile,
+    endFileDrag,
+    fileDragActive,
+    fileInputRef,
+    handleFileChange,
+    importFile,
+    openUploadPicker,
+  } = useVocalFileImport({
+    analysisRequestGenerationRef,
+    analyzeDecoded,
+    cancelAnalysis,
+    config,
+    materialBaseUpdatedAtRef,
+    mutationBusy,
+    runLibraryMutationPreflight,
+    runWithReplacementGuard,
+    selectAnalysisMode,
+    setAnalysisStale,
+    setDirty,
+    setDisplayedFrames,
+    setInlineMessage,
+    setMaterial,
+    setMaterialLibraryOutdated,
+  });
 
   const openMaterial = useCallback((target: VocalAudioMaterial) => {
     runWithReplacementGuard(() => {
@@ -809,122 +713,45 @@ export function VocalPitchView({
     ?? (analysisStale ? "参数已更改，请重新分析" : null);
   return (
     <div ref={workspaceRef} className="vocal-workspace">
-      <section className="vocal-preview-column">
-        <header className="vocal-pitch-readout">
-          <div className="vocal-current-pitch">
-            <strong>{currentPitch?.note ?? "无音高"}</strong>
-            <span>{currentPitch ? `${currentPitch.frequencyHz.toFixed(2)} Hz` : "— Hz"}</span>
-            <span className={currentPitch && Math.abs(currentPitch.cents) <= 10 ? "in-tune" : undefined}>
-              {currentPitch ? `${currentPitch.cents >= 0 ? "+" : ""}${currentPitch.cents.toFixed(1)} ¢` : "— ¢"}
-            </span>
-            <span>{currentFrame ? `${Math.round(currentFrame.confidence * 100)}%` : "—%"}</span>
-          </div>
-          <div className="vocal-readout-status">
-            <span>{statusLabel}</span>
-            <time>{formatDuration(effectiveTime)} / {formatDuration(recordingBusy ? recorder.activeSeconds : material?.durationSeconds ?? 0)}</time>
-          </div>
-          {!sidebarOpen ? (
-            <button className="vocal-sidebar-open icon-button" title="展开边栏" onClick={() => setSidebarOpen(true)}>
-              <PanelRightOpen size={19} />
-            </button>
-          ) : null}
-        </header>
-
-        <div
-          className="vocal-preview-stage"
-          onDragEnter={beginFileDrag}
-          onDragLeave={endFileDrag}
-          onDragOver={continueFileDrag}
-          onDrop={dropFile}
-        >
-          <PitchPreview
-            currentPitchHz={currentFrame?.frequencyHz ?? null}
-            currentTime={effectiveTime}
-            duration={recordingBusy ? Math.max(0.01, recorder.activeSeconds) : material?.durationSeconds ?? 10}
-            followResetKey={followResetKey}
-            frames={displayedFrames}
-            followEnabled={recordingActive || playback.isPlaying}
-            isRecording={recordingActive}
-            onSeek={seek}
-            referencePitchHz={config.referencePitchHz}
-            variant={recordingBusy || !material?.analysis ? "realtime" : "offline"}
-          />
-          {!material && !recordingBusy ? (
-            <div className="vocal-empty-overlay">
-              <div className="vocal-empty-actions">
-                <button className="record-button" disabled={backupPreflightPending} onClick={startRecording}>
-                  <Mic size={18} /> 录一段清唱
-                </button>
-                <button disabled={backupPreflightPending} onClick={openUploadPicker}>
-                  <FolderUp size={17} /> 上传音视频
-                </button>
-              </div>
-              <span>支持最长 10 分钟的单声部人声</span>
-            </div>
-          ) : null}
-          {fileDragActive ? (
-            <div className="vocal-file-drop-overlay" role="status">
-              <FolderUp size={28} />
-              <strong>松开以上传音视频</strong>
-            </div>
-          ) : null}
-        </div>
-
-        <footer className="vocal-controls">
-          <button
-            className={recordingBusy ? "recording-stop" : "record-button"}
-            disabled={backupPreflightPending || recorder.status === "stopping" || recordingResultPending}
-            onClick={() => {
-              if (recordingActive) {
-                finishRecording();
-              } else startRecording();
-            }}
-          >
-            {recordingBusy ? <Square size={17} /> : <Mic size={18} />}
-            {recordingResultPending ? "正在完成" : recordingActive ? "停止" : "录制"}
-            {recordingActive ? <kbd>Space</kbd> : null}
-          </button>
-          <button
-            disabled={mutationBusy || playback.isPreparing || !material}
-            onClick={() => void togglePlayback()}
-          >
-            {playback.isPlaying ? <Pause size={17} /> : <Play size={17} />}
-            {playback.isPlaying ? "暂停" : "播放"}
-            {recordingActive ? null : <kbd>Space</kbd>}
-          </button>
-          <i className="vocal-control-divider" />
-          <button disabled={mutationBusy || !material} onClick={reanalyze}>
-            <RotateCcw size={17} />
-            {analysisProgress !== null ? "取消分析" : "重新分析"}
-          </button>
-          <button disabled={mutationBusy} onClick={openUploadPicker}>
-            <FolderUp size={17} /> 上传音视频
-          </button>
-          <button disabled={mutationBusy || analysisProgress !== null || !material || !dirty} onClick={() => void saveCurrentMaterial(true)}>
-            <Save size={17} /> 保存
-          </button>
-          {controlStatusMessage || analysisProgress !== null ? (
-            <span className="vocal-control-status" aria-live="polite" title={controlStatusMessage ?? undefined}>
-              {controlStatusMessage}
-              {analysisProgress !== null ? <progress max={1} value={analysisProgress} /> : null}
-            </span>
-          ) : null}
-          <button disabled={mutationBusy || !material} onClick={clearWorkspace}>
-            <Eraser size={17} /> 清空
-          </button>
-          <input
-            ref={fileInputRef}
-            className="sr-only"
-            accept="audio/*,video/*"
-            type="file"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (file) void importFile(file);
-            }}
-          />
-        </footer>
-      </section>
+      <VocalPitchWorkspace
+        analysisProgress={analysisProgress}
+        backupPreflightPending={backupPreflightPending}
+        controlStatusMessage={controlStatusMessage}
+        currentFrame={currentFrame}
+        currentPitch={currentPitch}
+        dirty={dirty}
+        displayedFrames={displayedFrames}
+        effectiveTime={effectiveTime}
+        fileDragActive={fileDragActive}
+        fileInputRef={fileInputRef}
+        followResetKey={followResetKey}
+        material={material}
+        mutationBusy={mutationBusy}
+        onBeginFileDrag={beginFileDrag}
+        onClearWorkspace={clearWorkspace}
+        onContinueFileDrag={continueFileDrag}
+        onDropFile={dropFile}
+        onEndFileDrag={endFileDrag}
+        onFileChange={handleFileChange}
+        onFinishRecording={finishRecording}
+        onOpenUploadPicker={openUploadPicker}
+        onReanalyze={reanalyze}
+        onSaveCurrentMaterial={() => void saveCurrentMaterial(true)}
+        onSeek={seek}
+        onSetSidebarOpen={() => setSidebarOpen(true)}
+        onStartRecording={startRecording}
+        onTogglePlayback={() => void togglePlayback()}
+        playbackIsPlaying={playback.isPlaying}
+        playbackIsPreparing={playback.isPreparing}
+        recordingActive={recordingActive}
+        recordingBusy={recordingBusy}
+        recordingResultPending={recordingResultPending}
+        recordingSeconds={recorder.activeSeconds}
+        recordingStopping={recorder.status === "stopping"}
+        referencePitchHz={config.referencePitchHz}
+        sidebarOpen={sidebarOpen}
+        statusLabel={statusLabel}
+      />
 
       {sidebarOpen ? (
         <>

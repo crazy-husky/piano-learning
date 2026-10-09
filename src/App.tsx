@@ -1,16 +1,7 @@
-import { ArrowLeft, AudioLines, BarChart3, BellOff, BookOpen, Dumbbell, FolderOpen, House, Settings, X } from "lucide-react";
+import { ArrowLeft, AudioLines, BarChart3, BellOff, BookOpen, ChevronDown, Dumbbell, FolderOpen, Gamepad2, House, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { preloadPianoSamples, setPianoVolume } from "./audio/piano";
-import {
-  type BackupPreflightResult,
-  chooseBackupDirectory,
-  refreshBackupConflictDetails,
-  resolveBackupConflict,
-  supportsFileBackups,
-  syncBackupBeforeActivity,
-  type BackupConflictResolution,
-} from "./data/backup";
 import {
   db,
   ensureSettings,
@@ -23,9 +14,8 @@ import {
 } from "./data/db";
 import { IndexedDbMaintenancePanel } from "./debug/IndexedDbMaintenancePanel";
 import { installIndexedDbMaintenanceDebug } from "./debug/indexedDbMaintenance";
-import { shouldRunBackupEntryPreflight } from "./domain/backupSync";
 import { backupText, formatBackupConflictDetail } from "./domain/backupText";
-import type { AppSettings, BackupState, PracticeSessionRecord, ReviewRecord, StaffRecallRunRecord } from "./domain/types";
+import type { AppSettings } from "./domain/types";
 import { MidiLatencyDiagnosticsPanel } from "./diagnostics/MidiLatencyDiagnosticsPanel";
 import { MIDI_LATENCY_DIAGNOSTICS_ENABLED } from "./diagnostics/midiLatencyDiagnostics";
 import { BackupConflictResolver } from "./components/BackupConflictResolver";
@@ -34,14 +24,12 @@ import {
   PracticeView,
   type PracticeNavigationExitRequest,
   type PracticeNavigationExitTarget,
-  type PracticeStartPreflightResult,
 } from "./components/PracticeView";
 import { SettingsView } from "./components/SettingsView";
 import { StatsView } from "./components/stats/StatsView";
-import { StudyView, type StaffRecallStartPreflightResult } from "./components/StudyView";
+import { StudyView } from "./components/StudyView";
 import {
   VocalPitchView,
-  type VocalLibraryMutationPreflightResult,
 } from "./components/vocal-pitch/VocalPitchView";
 import { useBlurButtonAfterPointerClick } from "./components/useBlurButtonAfterPointerClick";
 import { useLocalStorageState } from "./components/useLocalStorageState";
@@ -65,6 +53,7 @@ import {
 import { useMidiInput } from "./midi/useMidiInput";
 import { ENHANCED_PITCH_MODEL_CACHE } from "./vocal-pitch/enhancedPitchModels";
 import { useAppUpdateNotice } from "./useAppUpdateNotice";
+import { getBackupReminderState, loadFreshAppData, useBackupReminder, type AppData } from "./useBackupReminder";
 import { appRouteFromHash, appRoutePathForPage, appRouteUrl, isStaffGameRoutePath, isStaffGameSongRoutePath, type AppRoute, type AppRoutePath } from "./routing/appRoutes";
 import {
   DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
@@ -77,8 +66,6 @@ import {
 type View = PracticeNavigationExitTarget;
 type SettingsSaveOptions = { feedback?: boolean };
 
-const BACKUP_REMINDER_SUPPRESSED_DATE_KEY = "anki-note.backupReminderSuppressedDate";
-const BACKUP_REMINDER_SUPPRESSED_WEEK_KEY = "anki-note.backupReminderSuppressedWeek";
 const INITIAL_PRACTICE_MICROPHONE_PREFERENCES = (() => {
   if (typeof navigator === "undefined") return DEFAULT_PRACTICE_MICROPHONE_PREFERENCES;
   const sensitivityLevel = isTouchPracticeDevice(
@@ -108,88 +95,6 @@ const LOCAL_PREFERENCE_FEEDBACK_KEYS = new Set([
   "anki-note.midiInputId",
 ]);
 
-interface AppData {
-  settings: AppSettings;
-  sessions: PracticeSessionRecord[];
-  reviews: ReviewRecord[];
-  staffRecallRuns: StaffRecallRunRecord[];
-  backupState: BackupState;
-  practiceHistoryLoaded: boolean;
-  staffRecallHistoryLoaded: boolean;
-}
-
-interface BackupCheckResult {
-  latestData?: AppData;
-  proceed: boolean;
-  result: BackupPreflightResult;
-}
-
-type StoredBackupState = BackupState & { restoreRequiredBeforeBackup?: boolean };
-type BackupReminderState =
-  | { kind: "none"; showReminder: false }
-  | { kind: "needs-directory"; showReminder: boolean }
-  | { kind: "data-conflict"; showReminder: true };
-type BackupReminderAction = "choose-directory";
-
-function todayKey(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
-function weekStartKey(): string {
-  const monday = new Date();
-  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
-  const month = String(monday.getMonth() + 1).padStart(2, "0");
-  const day = String(monday.getDate()).padStart(2, "0");
-  return `${monday.getFullYear()}-${month}-${day}`;
-}
-
-function isBackupReminderSuppressed(): boolean {
-  try {
-    const suppressedToday = localStorage.getItem(BACKUP_REMINDER_SUPPRESSED_DATE_KEY) === todayKey();
-    const suppressedThisWeek = localStorage.getItem(BACKUP_REMINDER_SUPPRESSED_WEEK_KEY) === weekStartKey();
-    return suppressedToday || suppressedThisWeek;
-  } catch {
-    return false;
-  }
-}
-
-function backupSyncRequired(backupState: BackupState): boolean {
-  const stored = backupState as StoredBackupState;
-  return Boolean(backupState.dataConflictBeforeBackup ?? backupState.syncRequiredBeforeBackup ?? stored.restoreRequiredBeforeBackup);
-}
-
-function backupConflictDetailsMissing(backupState: BackupState): boolean {
-  return (
-    !backupState.conflictRevision ||
-    backupState.conflictBrowserReviewCount === undefined ||
-    backupState.conflictBackupReviewCount === undefined ||
-    backupState.conflictBrowserStaffRecallRunCount === undefined ||
-    backupState.conflictBackupStaffRecallRunCount === undefined ||
-    backupState.conflictBrowserVocalAudioCounts === undefined ||
-    backupState.conflictBackupVocalAudioCounts === undefined
-  );
-}
-
-function isUserAbort(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
-}
-
-function getBackupReminderState(data: AppData): BackupReminderState {
-  if (!supportsFileBackups()) {
-    return { kind: "none", showReminder: false };
-  }
-  if (backupSyncRequired(data.backupState)) {
-    return { kind: "data-conflict", showReminder: true };
-  }
-  if (!data.backupState.directoryHandle) {
-    return { kind: "needs-directory", showReminder: !isBackupReminderSuppressed() };
-  }
-  return { kind: "none", showReminder: false };
-}
-
 function HistoryLoadingState({
   error,
   label,
@@ -212,27 +117,18 @@ function HistoryLoadingState({
   );
 }
 
-async function loadFreshAppData(): Promise<AppData> {
-  const [{ settings, sessions, reviews, staffRecallRuns }, backupState] = await Promise.all([loadAllData(), getBackupState()]);
-  return {
-    settings,
-    sessions,
-    reviews,
-    staffRecallRuns,
-    backupState,
-    practiceHistoryLoaded: true,
-    staffRecallHistoryLoaded: true,
-  };
-}
-
 export function App(): JSX.Element {
   useBlurButtonAfterPointerClick();
   useAppUpdateNotice();
   const midi = useMidiInput();
 
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
+  const [isGameNavExpanded, setIsGameNavExpanded] = useState(() => isStaffGameRoutePath(route.path));
   const routeRef = useRef(route);
   routeRef.current = route;
+  useEffect(() => {
+    if (isStaffGameRoutePath(route.path)) setIsGameNavExpanded(true);
+  }, [route.path]);
   const staffGameSelectionReturnPathRef = useRef<AppRoutePath>("/");
   const staffGameSelectionRoutePushedRef = useRef(false);
   const staffGamePlayRoutePushedRef = useRef(false);
@@ -268,14 +164,10 @@ export function App(): JSX.Element {
   practiceRunningRef.current = practiceRunning;
   const pendingRoutePathRef = useRef<AppRoutePath | null>(null);
   const view = route.page;
-  const [backupReminderBusy, setBackupReminderBusy] = useState(false);
-  const [backupReminderMessage, setBackupReminderMessage] = useState<{ dangerous?: boolean; detail: string; title: string } | null>(null);
-  const [backupReminderVisible, setBackupReminderVisible] = useState(false);
   const [practiceExitRequest, setPracticeExitRequest] = useState<PracticeNavigationExitRequest | null>(null);
   const [vocalExitRequest, setVocalExitRequest] = useState<PracticeNavigationExitRequest | null>(null);
   const practiceExitRequestIdRef = useRef(0);
   const vocalExitRequestIdRef = useRef(0);
-  const backupCheckInFlightRef = useRef<Promise<BackupCheckResult> | null>(null);
 
   const showConfigurationFeedback = useCallback((
     detail: string,
@@ -389,6 +281,28 @@ export function App(): JSX.Element {
     setData((current) => (current ? { ...current, backupState } : current));
   }, []);
   const hasBackupDirectory = Boolean(data?.backupState.directoryHandle);
+  const {
+    busy: backupReminderBusy,
+    message: backupReminderMessage,
+    visible: backupReminderVisible,
+    setVisible: setBackupReminderVisible,
+    showAfterActivity: showBackupReminderAfterActivity,
+    suppressToday: suppressBackupReminderToday,
+    suppressThisWeek: suppressBackupReminderThisWeek,
+    runReminderAction: runBackupReminderAction,
+    resolveReminderConflict: resolveBackupReminderConflict,
+    preflightBeforePracticeStart,
+    preflightBeforeStaffRecallStart,
+    preflightBeforeVocalLibraryChange,
+  } = useBackupReminder({
+    data,
+    setData,
+    refresh,
+    refreshBackupState,
+    hasBackupDirectory,
+    practiceRunning,
+    view,
+  });
 
   const navigateToRoute = useCallback((path: AppRoutePath, options: { query?: Record<string, string>; replace?: boolean } = {}): void => {
     const queryString = options.query ? new URLSearchParams(options.query).toString() : "";
@@ -572,24 +486,6 @@ export function App(): JSX.Element {
   }, [data]);
 
   useEffect(() => {
-    if (!data) {
-      return;
-    }
-    if (!backupReminderMessage) {
-      setBackupReminderVisible(getBackupReminderState(data).showReminder);
-    }
-  }, [
-    backupReminderMessage,
-    data !== null,
-    hasBackupDirectory,
-    data?.backupState.lastSeenBackupVersion,
-    data?.backupState.dataConflictBeforeBackup,
-    data?.backupState.syncRequiredBeforeBackup,
-    data?.sessions.length,
-    data?.reviews.length,
-  ]);
-
-  useEffect(() => {
     function onLocalPreferenceChange(event: Event): void {
       const key = (event as CustomEvent<{ key?: string }>).detail?.key;
       if (view === "settings" && key && LOCAL_PREFERENCE_FEEDBACK_KEYS.has(key)) {
@@ -665,6 +561,25 @@ export function App(): JSX.Element {
     });
   }, [navigateToRoute]);
 
+  const selectStaffGameModeFromNavigation = useCallback((mode: "levels" | "songs"): void => {
+    const nextPath: AppRoutePath = mode === "songs" ? "/practice/game/songs" : "/practice/game";
+    if (practiceRunning && view === "practice" && nextPath !== route.path) {
+      pendingRoutePathRef.current = nextPath;
+      if (!practiceExitRequest) {
+        practiceExitRequestIdRef.current += 1;
+        setPracticeExitRequest({ id: practiceExitRequestIdRef.current, targetView: "practice" });
+      }
+      return;
+    }
+    if (view === "vocal" && nextPath !== route.path) {
+      pendingRoutePathRef.current = nextPath;
+      vocalExitRequestIdRef.current += 1;
+      setVocalExitRequest({ id: vocalExitRequestIdRef.current, targetView: "practice" });
+      return;
+    }
+    selectStaffGameMode(mode);
+  }, [practiceExitRequest, practiceRunning, route.path, selectStaffGameMode, view]);
+
   const startStaffGameSong = useCallback((songId: string): void => {
     const isAlreadyOnSongPlayRoute = routeRef.current.path === "/practice/game/songs/play";
     navigateToRoute("/practice/game/songs/play", {
@@ -682,260 +597,6 @@ export function App(): JSX.Element {
     }
     navigateToRoute(staffGameSelectionReturnPathRef.current, { replace: true });
   }, [navigateToRoute]);
-
-  const showBackupReminderMessage = useCallback((title: string, detail: string, autoHide: boolean): void => {
-    if (autoHide) {
-      setBackupReminderMessage(null);
-      setBackupReminderVisible(false);
-      toast.success(title, { description: detail, duration: 2_500 });
-      return;
-    }
-    toast.error(title, { description: detail });
-    setBackupReminderMessage({ dangerous: true, detail, title });
-    setBackupReminderVisible(true);
-  }, []);
-
-  const suppressBackupReminderToday = useCallback((): void => {
-    try {
-      localStorage.setItem(BACKUP_REMINDER_SUPPRESSED_DATE_KEY, todayKey());
-    } catch {
-      // The current page can still hide the reminder even when storage is blocked.
-    }
-    setBackupReminderVisible(false);
-  }, []);
-
-  const suppressBackupReminderThisWeek = useCallback((): void => {
-    try {
-      localStorage.setItem(BACKUP_REMINDER_SUPPRESSED_WEEK_KEY, weekStartKey());
-    } catch {
-      // The current page can still hide the reminder even when storage is blocked.
-    }
-    setBackupReminderVisible(false);
-  }, []);
-
-  const showBackupReminderAfterActivity = useCallback((): void => {
-    if (data && getBackupReminderState(data).showReminder) {
-      setBackupReminderVisible(true);
-    }
-  }, [data]);
-
-  useEffect(() => {
-    if (
-      !data ||
-      !hasBackupDirectory ||
-      !backupSyncRequired(data.backupState) ||
-      !backupConflictDetailsMissing(data.backupState)
-    ) {
-      return;
-    }
-    let cancelled = false;
-    void refreshBackupConflictDetails()
-      .then((updated) => {
-        if (updated && !cancelled) {
-          void refreshBackupState();
-        }
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    data !== null,
-    hasBackupDirectory,
-    data?.backupState.dataConflictBeforeBackup,
-    data?.backupState.syncRequiredBeforeBackup,
-    data?.backupState.conflictBrowserReviewCount,
-    data?.backupState.conflictBackupReviewCount,
-    data?.backupState.conflictBrowserRecordCount,
-    data?.backupState.conflictBackupRecordCount,
-    data?.backupState.conflictBrowserStaffRecallRunCount,
-    data?.backupState.conflictBackupStaffRecallRunCount,
-    data?.backupState.conflictBrowserVocalAudioCounts,
-    data?.backupState.conflictBackupVocalAudioCounts,
-    refreshBackupState,
-  ]);
-
-  const runBackupCheck = useCallback(
-    async ({ requestPermission }: { requestPermission: boolean }): Promise<BackupCheckResult> => {
-      while (backupCheckInFlightRef.current) {
-        const inFlightResult = await backupCheckInFlightRef.current;
-        if (!requestPermission || inFlightResult.result !== "skipped") {
-          return inFlightResult;
-        }
-      }
-
-      const checkPromise = (async (): Promise<BackupCheckResult> => {
-        try {
-          const outcome = await syncBackupBeforeActivity({ requestPermission });
-          const { result } = outcome;
-          if (result === "needs-directory") {
-            setBackupReminderVisible(true);
-            return { proceed: true, result };
-          }
-          if (result === "data-conflict") {
-            await refreshBackupState();
-            setBackupReminderVisible(true);
-            return { proceed: false, result };
-          }
-          if (result === "synced-up") {
-            const latestData = outcome.importedData ?? (await loadFreshAppData());
-            setData({
-              ...latestData,
-              practiceHistoryLoaded: true,
-              staffRecallHistoryLoaded: true,
-            });
-            showBackupReminderMessage(backupText.titles.importSuccess, backupText.messages.backupDirectoryAutoImported, true);
-            return {
-              latestData: {
-                ...latestData,
-                practiceHistoryLoaded: true,
-                staffRecallHistoryLoaded: true,
-              },
-              proceed: true,
-              result,
-            };
-          }
-          if (result === "synced-down") {
-            await refreshBackupState();
-            return { proceed: true, result };
-          }
-          if (result === "ready") {
-            if (outcome.backupStateChanged) {
-              await refreshBackupState();
-            }
-            return { proceed: true, result };
-          }
-          return { proceed: true, result };
-        } catch (error) {
-          if (!requestPermission || isUserAbort(error)) {
-            return { proceed: true, result: "skipped" };
-          }
-          showBackupReminderMessage(
-            error instanceof Error ? error.message : String(error),
-            backupText.messages.backupPermissionOrDirectoryHint,
-            false,
-          );
-          return { proceed: false, result: "skipped" };
-        }
-      })();
-
-      backupCheckInFlightRef.current = checkPromise;
-      try {
-        return await checkPromise;
-      } finally {
-        if (backupCheckInFlightRef.current === checkPromise) {
-          backupCheckInFlightRef.current = null;
-        }
-      }
-    },
-    [refreshBackupState, showBackupReminderMessage],
-  );
-
-  const preflightBeforePracticeStart = useCallback(async (): Promise<PracticeStartPreflightResult> => {
-    const checkResult = await runBackupCheck({ requestPermission: true });
-    if (!checkResult.proceed) {
-      return { proceed: false };
-    }
-    if (checkResult.result !== "synced-up") {
-      return { proceed: true };
-    }
-    const latestData = checkResult.latestData ?? (await loadFreshAppData());
-    setData(latestData);
-    return { proceed: true, reviews: latestData.reviews, settings: latestData.settings };
-  }, [runBackupCheck]);
-
-  const preflightBeforeStaffRecallStart = useCallback(async (): Promise<StaffRecallStartPreflightResult> => {
-    const checkResult = await runBackupCheck({ requestPermission: true });
-    return { proceed: checkResult.proceed };
-  }, [runBackupCheck]);
-
-  const preflightBeforeVocalLibraryChange = useCallback(async (): Promise<VocalLibraryMutationPreflightResult> => {
-    const checkResult = await runBackupCheck({ requestPermission: true });
-    if (!checkResult.proceed) return "blocked";
-    return checkResult.result === "synced-up" ? "backup-updated" : "proceed";
-  }, [runBackupCheck]);
-
-  useEffect(() => {
-    const backupEntryView = view === "practice" || view === "vocal" ? view : null;
-    if (
-      !data ||
-      !shouldRunBackupEntryPreflight(backupEntryView, practiceRunning) ||
-      !hasBackupDirectory
-    ) {
-      return;
-    }
-    void runBackupCheck({ requestPermission: false });
-  }, [
-    data !== null,
-    hasBackupDirectory,
-    data?.backupState.lastSeenBackupVersion,
-    data?.backupState.dataConflictBeforeBackup,
-    data?.backupState.syncRequiredBeforeBackup,
-    practiceRunning,
-    runBackupCheck,
-    view,
-  ]);
-
-  const runBackupReminderAction = useCallback(async (action: BackupReminderAction): Promise<void> => {
-    if (!data || backupReminderBusy) {
-      return;
-    }
-
-    const reminderState = getBackupReminderState(data);
-    setBackupReminderBusy(true);
-    setBackupReminderMessage(null);
-    try {
-      if (action === "choose-directory") {
-        const result = await chooseBackupDirectory();
-        const latestBackupState = await getBackupState();
-        await refresh();
-        if (result === "diverged") {
-          showBackupReminderMessage(backupText.titles.dataConflict, formatBackupConflictDetail(latestBackupState), false);
-          return;
-        }
-        if (result === "synced-up") {
-          showBackupReminderMessage(backupText.titles.importSuccess, backupText.messages.importSuccessDetail, true);
-        }
-        return;
-      }
-
-    } catch (error) {
-      if (isUserAbort(error)) {
-        setBackupReminderMessage(null);
-        setBackupReminderVisible(reminderState.showReminder);
-        return;
-      }
-      showBackupReminderMessage(
-        error instanceof Error ? error.message : String(error),
-        backupText.messages.backupPermissionOrDirectoryHint,
-        false,
-      );
-    } finally {
-      setBackupReminderBusy(false);
-    }
-  }, [backupReminderBusy, data, refresh, showBackupReminderMessage]);
-
-  const resolveBackupReminderConflict = useCallback(async (resolution: BackupConflictResolution): Promise<void> => {
-    if (!data || backupReminderBusy) {
-      return;
-    }
-    setBackupReminderBusy(true);
-    setBackupReminderMessage(null);
-    try {
-      await resolveBackupConflict(resolution);
-      await refresh();
-      showBackupReminderMessage(backupText.titles.conflictResolved, backupText.messages.conflictResolvedDetail, true);
-    } catch (error) {
-      await refresh();
-      showBackupReminderMessage(
-        error instanceof Error ? error.message : String(error),
-        backupText.messages.backupPermissionOrDirectoryHint,
-        false,
-      );
-    } finally {
-      setBackupReminderBusy(false);
-    }
-  }, [backupReminderBusy, data, refresh, showBackupReminderMessage]);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) {
@@ -1008,6 +669,39 @@ export function App(): JSX.Element {
           <Dumbbell aria-hidden="true" size={18} />
           练习
         </button>
+        <div className="app-nav-game-group">
+          <button
+            aria-expanded={isGameNavExpanded}
+            aria-controls={isGameNavExpanded ? "app-nav-game-submenu" : undefined}
+            className={`app-nav-game-toggle${isStaffGameRoutePath(route.path) ? " active" : ""}`}
+            onClick={() => setIsGameNavExpanded((expanded) => !expanded)}
+            type="button"
+          >
+            <Gamepad2 aria-hidden="true" size={18} />
+            游戏
+            <ChevronDown aria-hidden="true" className="app-nav-game-chevron" size={13} />
+          </button>
+          {isGameNavExpanded ? (
+            <div className="app-nav-game-submenu" id="app-nav-game-submenu">
+              <button
+                aria-current={route.path === "/practice/game" ? "page" : undefined}
+                className={route.path === "/practice/game" ? "active" : ""}
+                onClick={() => selectStaffGameModeFromNavigation("levels")}
+                type="button"
+              >
+                闯关模式
+              </button>
+              <button
+                aria-current={isStaffGameSongRoutePath(route.path) ? "page" : undefined}
+                className={isStaffGameSongRoutePath(route.path) ? "active" : ""}
+                onClick={() => selectStaffGameModeFromNavigation("songs")}
+                type="button"
+              >
+                歌曲模式
+              </button>
+            </div>
+          ) : null}
+        </div>
         <button aria-current={view === "stats" ? "page" : undefined} className={view === "stats" ? "active" : ""} onClick={() => selectView("stats")} type="button">
           <BarChart3 aria-hidden="true" size={18} />
           统计

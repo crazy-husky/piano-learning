@@ -2,50 +2,60 @@ import { Keyboard, Mic, Music2, Play, RotateCcw, SkipForward, Sparkles, Volume2,
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { playPianoNote, preloadPianoSamples, unlockAudio } from "../audio/piano";
-import { playStaffGameSound, playStaffGameStarReveal, preloadStaffGameSounds, setStaffGameSoundsEnabled } from "../audio/staffGameSounds";
 import type { PracticeAnswerInput } from "../domain/answerInput";
 import type { NoteName, PianoKeyName } from "../domain/types";
 import type { MidiInputController } from "../midi/useMidiInput";
 import type { MidiAccessStatus } from "../midi/midiInput";
 import type { usePracticeMicrophoneInput } from "../vocal-pitch/usePracticeMicrophoneInput";
 import { readStaffGameSongProgress, saveStaffGameSongProgress, STAFF_GAME_SONGS, type StaffGameSongProgress } from "../data/staffGameSongs";
-import gameBackgroundDesktop from "../assets/staff-game/backgrounds/meadow-desktop.webp";
-import gameBackgroundMobile from "../assets/staff-game/backgrounds/meadow-mobile.webp";
-import gameBackgroundMusic from "../assets/staff-game/audio/relaxed-game-bgm.mp3";
-import mascotCelebrationFrames from "../assets/staff-game/characters/mascot-celebration-frames.webp";
-import mascotCheerFrames from "../assets/staff-game/characters/mascot-cheer-frames.webp";
-import mascotPauseFrames from "../assets/staff-game/characters/mascot-pause-frames.webp";
-import mascotSadFrames from "../assets/staff-game/characters/mascot-sad-frames.webp";
-import bubbleShell from "../assets/staff-game/effects/bubble-shell-empty-center.webp";
-import cloudDecorationOne from "../assets/staff-game/effects/cloud-decoration-1.webp";
-import cloudDecorationTwo from "../assets/staff-game/effects/cloud-decoration-2.webp";
-import cloudDecorationThree from "../assets/staff-game/effects/cloud-decoration-3.webp";
-import notationC4Preview from "../assets/staff-game/notation/treble-staff-c4-note.webp";
-import buttonPrimaryArt from "../assets/staff-game/ui/button-primary-base.webp";
-import buttonSecondaryArt from "../assets/staff-game/ui/button-secondary-base.webp";
-import actionHelpArt from "../assets/staff-game/ui/action-help.webp";
-import actionPauseArt from "../assets/staff-game/ui/action-pause.webp";
-import actionResumeArt from "../assets/staff-game/ui/action-resume.webp";
-import actionReturnArt from "../assets/staff-game/ui/action-return.webp";
-import actionSettingsArt from "../assets/staff-game/ui/action-settings.webp";
-import helpTitleArt from "../assets/staff-game/ui/help-title-tip.webp";
-import hudFrameArt from "../assets/staff-game/ui/hud-frame.webp";
-import modalFrameArt from "../assets/staff-game/ui/modal-frame.webp";
-import starParticleArt from "../assets/staff-game/ui/star-particle.webp";
-import settingsPawArt from "../assets/staff-game/ui/settings-paw.webp";
-import levelJumpDecorationArt from "../assets/staff-game/ui/level-jump-decoration.webp";
-import summaryLevelBannerArt from "../assets/staff-game/ui/summary-level-banner.webp";
-import summaryFireworksArt from "../assets/staff-game/ui/summary-fireworks.webp";
 import { StaffGameFireworks } from "./StaffGameFireworks";
+import { StaffGameDialogs } from "./StaffGameDialogs";
+import { StaffGameErrorFlash, StaffGameStatusOverlays } from "./StaffGameStatusOverlays";
+import { useStaffGameRoundClock } from "./useStaffGameRoundClock";
+import { useStaffGameScoring } from "./useStaffGameScoring";
+import { useStaffGameAudio } from "./useStaffGameAudio";
+import type { StaffGameComboIndicator as ComboIndicator, StaffGameRushScoreFlight as RushScoreFlight } from "./useStaffGameScoring";
+import type { StaffGameTarget as GameNote } from "./useStaffGameRoundClock";
+import type { StaffGameDialogKind as GameDialog } from "./StaffGameDialogs";
+import { StaffGameHud } from "./StaffGameHud";
+import { StaffGameReadyPanel } from "./StaffGameReadyPanel";
+import { StaffGameSummaryDialog } from "./StaffGameSummaryDialog";
+import {
+  StaffGameMascot,
+  StaffGameParticles,
+  StaffGameRushSpeedLines,
+  StaffGameShootingStar,
+} from "./StaffGameEffects";
+import type { StaffGameMascotAction } from "./StaffGameEffects";
+import {
+  preloadStaffGameResources,
+  STAFF_GAME_ART,
+  STAFF_GAME_RESOURCE_MAX_RETRIES,
+  STAFF_GAME_RESOURCE_RETRY_DELAY_MS,
+} from "./staffGameResources";
+import {
+  BLACK_KEY_NOTES,
+  COMBO_INDICATOR_FADE_DURATION_MS,
+  COMPUTER_KEY_PITCHES,
+  GAME_DIFFICULTIES,
+  GAME_LEVEL_COUNT,
+  GAME_NOTE_PROGRESSION,
+  NOTE_NAMES,
+  PITCH_NAMES,
+  RUSH_FALL_SPEED_MULTIPLIER,
+  RUSH_MODE_COMBO_THRESHOLD,
+  STAR_BASE_DURATION_MS,
+  STAR_THRESHOLDS,
+  gameDurationMsForLevel,
+  gameNoteFromMidi,
+  shuffledNoteBag,
+  starsForStarCredit,
+} from "./staffGameRules";
+import type { GameDifficulty } from "./staffGameRules";
 
-const STAFF_GAME_IMAGE_ASSETS = [
+const {
   gameBackgroundDesktop,
   gameBackgroundMobile,
-  mascotCelebrationFrames,
-  mascotCheerFrames,
-  mascotPauseFrames,
-  mascotSadFrames,
   bubbleShell,
   cloudDecorationOne,
   cloudDecorationTwo,
@@ -54,7 +64,6 @@ const STAFF_GAME_IMAGE_ASSETS = [
   buttonPrimaryArt,
   buttonSecondaryArt,
   actionHelpArt,
-  helpTitleArt,
   actionPauseArt,
   actionResumeArt,
   actionReturnArt,
@@ -62,18 +71,31 @@ const STAFF_GAME_IMAGE_ASSETS = [
   hudFrameArt,
   modalFrameArt,
   starParticleArt,
-  settingsPawArt,
-  levelJumpDecorationArt,
   summaryLevelBannerArt,
   summaryFireworksArt,
-];
-const STAFF_GAME_RESOURCE_MAX_RETRIES = 3;
-const STAFF_GAME_RESOURCE_RETRY_DELAY_MS = 500;
-const STAFF_GAME_IMAGE_TIMEOUT_MS = 15_000;
-const STAFF_GAME_BACKGROUND_AUDIO_TIMEOUT_MS = 15_000;
-// Keep decoded images alive across route re-entry; failed loads are removed so retries can fetch them again.
-const staffGameImageCache = new Map<string, HTMLImageElement>();
-const pendingStaffGameImageLoads = new Map<string, Promise<void>>();
+} = STAFF_GAME_ART;
+
+const COMBO_EXCELLENT_MILESTONE = 10;
+const COMBO_AMAZING_MILESTONE = 20;
+const COMBO_UNBELIEVABLE_MILESTONE = 30;
+const COMBO_UNBELIEVABLE_INTERVAL = 20;
+const COMBO_VOICE_MILESTONE_BUFFER = 2;
+
+function isComboVoiceMilestone(comboCount: number): boolean {
+  return comboCount === COMBO_EXCELLENT_MILESTONE
+    || comboCount === COMBO_AMAZING_MILESTONE
+    || (comboCount >= COMBO_UNBELIEVABLE_MILESTONE
+      && (comboCount - COMBO_UNBELIEVABLE_MILESTONE) % COMBO_UNBELIEVABLE_INTERVAL === 0);
+}
+
+function isNearComboVoiceMilestone(comboCount: number): boolean {
+  if (comboCount <= COMBO_UNBELIEVABLE_MILESTONE) {
+    return [COMBO_EXCELLENT_MILESTONE, COMBO_AMAZING_MILESTONE, COMBO_UNBELIEVABLE_MILESTONE]
+      .some((milestone) => Math.abs(comboCount - milestone) <= COMBO_VOICE_MILESTONE_BUFFER);
+  }
+  const offset = (comboCount - COMBO_UNBELIEVABLE_MILESTONE) % COMBO_UNBELIEVABLE_INTERVAL;
+  return Math.min(offset, COMBO_UNBELIEVABLE_INTERVAL - offset) <= COMBO_VOICE_MILESTONE_BUFFER;
+}
 
 const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v2";
 const GAME_SETTINGS_KEY = "anki-note.staffGameSettings.v1";
@@ -82,86 +104,11 @@ const PHYSICAL_INPUT_NOTICE_ID = "staff-game-physical-input-notice";
 const PHYSICAL_INPUT_NOTICE = "实体钢琴模式通过麦克风识别音高，背景音乐会自动关闭；答题反馈音效仍由「音效」设置控制。请确保乐器音准正常。";
 let lowFpsPromptShownThisPage = false;
 const BURST_STAR_COUNT = 14;
-const GAME_LEVEL_COUNT = 60;
-const SONG_STAR_THRESHOLDS = [60, 80, 95] as const;
-const RUSH_MODE_COMBO_THRESHOLD = 5;
-const COMBO_INDICATOR_FADE_DURATION_MS = 280;
-const RUSH_FALL_SPEED_MULTIPLIER = 0.92;
-const STAR_CREDIT_PER_CORRECT_ANSWER = 10;
-const ERROR_FLASH_THRESHOLD = 4;
-const ERROR_FLASH_DURATION_MS = 1_400;
-const NOTE_NAMES: NoteName[] = ["C", "D", "E", "F", "G", "A", "B"];
-const PITCH_NAMES: PianoKeyName[] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const BLACK_KEY_NOTES: Array<{ pitch: PianoKeyName; className: string }> = [
-  { pitch: "C#", className: "key-cs" },
-  { pitch: "D#", className: "key-ds" },
-  { pitch: "F#", className: "key-fs" },
-  { pitch: "G#", className: "key-gs" },
-  { pitch: "A#", className: "key-as" },
-];
-const COMPUTER_KEY_PITCHES: Record<string, PianoKeyName> = {
-  KeyA: "C", KeyS: "D", KeyD: "E", KeyF: "F", KeyG: "G", KeyH: "A", KeyJ: "B",
-  KeyW: "C#", KeyE: "D#", KeyT: "F#", KeyY: "G#", KeyU: "A#",
-};
-const WHITE_NOTE_MIDI_RANGE = { min: 29, max: 88 } as const;
-const GAME_NOTE_PROGRESSION: Array<{ midi: number; name: PianoKeyName; octave: number }> = (() => {
-  const pitchForMidi = (midi: number) => ({
-    midi,
-    name: PITCH_NAMES[((midi % 12) + 12) % 12],
-    octave: Math.floor(midi / 12) - 1,
-  });
-  const whiteNotes = Array.from({ length: WHITE_NOTE_MIDI_RANGE.max - WHITE_NOTE_MIDI_RANGE.min + 1 }, (_, index) =>
-    pitchForMidi(WHITE_NOTE_MIDI_RANGE.min + index),
-  ).filter((note) => !note.name.includes("#"));
-  const blackNotes = Array.from({ length: WHITE_NOTE_MIDI_RANGE.max - WHITE_NOTE_MIDI_RANGE.min + 1 }, (_, index) =>
-    pitchForMidi(WHITE_NOTE_MIDI_RANGE.min + index),
-  ).filter((note) => note.name.includes("#"));
-  return [
-    ...whiteNotes.filter((note) => note.midi >= 60),
-    ...whiteNotes.filter((note) => note.midi < 60).reverse(),
-    ...blackNotes.filter((note) => note.midi >= 60),
-    ...blackNotes.filter((note) => note.midi < 60).reverse(),
-  ];
-})();
-
-function gameDurationMsForLevel(level: number): number {
-  if (level === 1) return 15_000;
-  if (level === 2) return 20_000;
-  if (level <= 3) return 30_000;
-  if (level <= 6) return 60_000;
-  if (level <= 9) return 120_000;
-  return 140_000;
-}
-
 const SOLFEGE_NAMES = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"] as const;
-const DISPLAY_MODES: Array<{ id: GameDisplayMode; label: string }> = [
-  { id: "note", label: "音名" },
-  { id: "solfege", label: "唱名" },
-  { id: "number", label: "简谱" },
-  { id: "none", label: "无" },
-];
-const GAME_DIFFICULTIES: Array<{
-  id: GameDifficulty;
-  label: string;
-  bubbleDurationMs: number;
-  comboWindowMs: number;
-  correctPoints: number;
-  comboBonusPoints: number;
-}> = [
-  { id: "easy", label: "简单", bubbleDurationMs: 4_900, comboWindowMs: 3_000, correctPoints: 8, comboBonusPoints: 1 },
-  { id: "normal", label: "普通", bubbleDurationMs: 3_300, comboWindowMs: 2_200, correctPoints: 10, comboBonusPoints: 2 },
-  { id: "hard", label: "困难", bubbleDurationMs: 2_700, comboWindowMs: 1_600, correctPoints: 12, comboBonusPoints: 3 },
-  { id: "nightmare", label: "噩梦", bubbleDurationMs: 2_200, comboWindowMs: 1_000, correctPoints: 15, comboBonusPoints: 4 },
-];
-const STAR_THRESHOLDS = [36, 70, 110] as const;
-const STAR_BASE_DURATION_MS = 30_000;
-
 type GameInputMode = "physical" | "virtual" | "midi";
 type GameDisplayMode = "note" | "solfege" | "number" | "none";
-type GameDifficulty = "easy" | "normal" | "hard" | "nightmare";
 type StaffGameMode = "levels" | "songs";
 type SongSelectionStep = "list" | "detail" | null;
-type GameDialog = "help" | "settings" | "levels" | null;
 
 interface StaffGameAudioSettings {
   soundEffectsEnabled: boolean;
@@ -185,35 +132,10 @@ interface StaffGameProgress {
   selectedLevel: number;
 }
 
-interface GameNote {
-  midi: number;
-  name: PianoKeyName;
-  octave: number;
-  token: number;
-  centerX: number;
-}
-
 interface BubbleBurst {
   token: number;
   x: number;
   y: number;
-}
-
-interface ComboIndicator {
-  token: number;
-  count: number;
-  durationMs: number;
-  isFadingOut?: boolean;
-}
-
-interface RushScoreFlight {
-  token: number;
-  points: number;
-  left: number;
-  top: number;
-  deltaX: number;
-  deltaY: number;
-  ready: boolean;
 }
 
 type MicrophoneController = Pick<
@@ -244,403 +166,6 @@ function defaultProgress(): StaffGameProgress {
     unlockedLevel: 1,
     selectedLevel: 1,
   };
-}
-
-interface FireflyParticle {
-  id: number;
-  left: string;
-  top: string;
-  size: string;
-  opacity: string;
-  duration: string;
-  delay: string;
-  driftX: string;
-  driftY: string;
-  midX: string;
-  midY: string;
-  moving: boolean;
-}
-
-type StaffGameMascotAction = "idle" | "cheer" | "sad" | "summarySad" | "pause" | "celebration";
-
-interface MascotAnimationLayer {
-  id: number;
-  action: StaffGameMascotAction;
-  token: number;
-}
-
-const MASCOT_FRAME_SHEETS: Record<StaffGameMascotAction, string> = {
-  idle: mascotSadFrames,
-  cheer: mascotCheerFrames,
-  sad: mascotSadFrames,
-  summarySad: mascotSadFrames,
-  pause: mascotPauseFrames,
-  celebration: mascotCelebrationFrames,
-};
-
-const MASCOT_ANIMATIONS: Record<StaffGameMascotAction, {
-  frames: number[];
-  frameDurationMs: number;
-  loop?: boolean;
-  holdFrame?: number;
-  holdMs?: number;
-}> = {
-  // The idle pose is the same neutral end frame used by the sad recovery animation.
-  idle: { frames: [6], frameDurationMs: 100, loop: true },
-  // Keep the brief takeoff anticipation, then move through the peak and descent without a repeated midair frame.
-  cheer: { frames: [0, 0, 1, 2, 3, 4, 5, 6, 7, 8], frameDurationMs: 80, holdFrame: 8, holdMs: 140 },
-  // Finish on the shared neutral frame so the face recovers during the animation, not after a pause.
-  sad: { frames: [6, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6], frameDurationMs: 95, holdFrame: 6, holdMs: 250 },
-  // Settlement starts from the shared neutral frame and ends on the sad pose without the smile frame.
-  summarySad: { frames: [6, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5], frameDurationMs: 95, holdFrame: 5 },
-  pause: { frames: [0, 1, 2, 3, 4, 5], frameDurationMs: 100, holdFrame: 5 },
-  celebration: { frames: [0, 1, 2, 3, 4, 5, 6, 7, 8], frameDurationMs: 90, holdFrame: 8 },
-};
-
-const MASCOT_STATIC_FRAMES: Record<StaffGameMascotAction, number> = {
-  idle: 6,
-  cheer: 4,
-  sad: 5,
-  summarySad: 5,
-  pause: 5,
-  celebration: 8,
-};
-
-// The original 3x3 atlases have 2px gutters around each 256px frame.
-const MASCOT_FRAME_BACKGROUND_POSITIONS = ["0.381679%", "50%", "99.618321%"] as const;
-
-function usePrefersReducedMotion(): boolean {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = (): void => setPrefersReducedMotion(query.matches);
-    updatePreference();
-    if (typeof query.addEventListener === "function") {
-      query.addEventListener("change", updatePreference);
-      return () => query.removeEventListener("change", updatePreference);
-    }
-    query.addListener(updatePreference);
-    return () => query.removeListener(updatePreference);
-  }, []);
-
-  return prefersReducedMotion;
-}
-
-interface MascotAnimationLayerProps {
-  action: StaffGameMascotAction;
-  token: number;
-  active: boolean;
-  animate: boolean;
-  holdFrameOverride?: number;
-  onComplete?: (token: number) => void;
-}
-
-function MascotAnimationLayer({ action, token, active, animate, holdFrameOverride, onComplete }: MascotAnimationLayerProps): JSX.Element {
-  const [frame, setFrame] = useState(MASCOT_ANIMATIONS[action].frames[0]);
-  const prefersReducedMotion = usePrefersReducedMotion();
-  const shouldAnimate = animate && !prefersReducedMotion;
-  const activeRef = useRef(active);
-  activeRef.current = active;
-
-  useEffect(() => {
-    const animation = MASCOT_ANIMATIONS[action];
-    const frames = shouldAnimate ? animation.frames : [MASCOT_STATIC_FRAMES[action]];
-    let frameIndex = 0;
-    let completionTimeout: number | null = null;
-    if (!active) return undefined;
-    setFrame(frames[0]);
-    if (!shouldAnimate) {
-      if (animation.loop || !onComplete) return undefined;
-      const staticPoseDurationMs = animation.frames.length * animation.frameDurationMs + (animation.holdMs ?? 0);
-      completionTimeout = window.setTimeout(() => {
-        if (activeRef.current) onComplete(token);
-      }, staticPoseDurationMs);
-      return () => {
-        if (completionTimeout !== null) window.clearTimeout(completionTimeout);
-      };
-    }
-    if (frames.length === 1) return undefined;
-
-    const interval = window.setInterval(() => {
-      if (animation.loop) {
-        frameIndex = (frameIndex + 1) % frames.length;
-        setFrame(frames[frameIndex]);
-        return;
-      }
-
-      if (frameIndex < frames.length - 1) {
-        frameIndex += 1;
-        setFrame(frames[frameIndex]);
-        return;
-      }
-
-      window.clearInterval(interval);
-      const heldFrame = holdFrameOverride ?? animation.holdFrame;
-      if (heldFrame !== undefined) setFrame(heldFrame);
-      if (activeRef.current && onComplete && animation.holdMs) {
-        completionTimeout = window.setTimeout(() => onComplete(token), animation.holdMs);
-      } else if (activeRef.current && onComplete) {
-        onComplete(token);
-      }
-    }, animation.frameDurationMs);
-
-    return () => {
-      window.clearInterval(interval);
-      if (completionTimeout !== null) window.clearTimeout(completionTimeout);
-    };
-  }, [action, active, holdFrameOverride, onComplete, shouldAnimate, token]);
-
-  // Derive the static pose during render so disabling effects cannot paint one more
-  // stale animation frame while the interval cleanup runs.
-  const animationFrames = MASCOT_ANIMATIONS[action].frames;
-  const currentFrame = shouldAnimate ? frame : MASCOT_STATIC_FRAMES[action];
-  const displayedFrame = shouldAnimate && !animationFrames.includes(currentFrame)
-    ? animationFrames[0]
-    : currentFrame;
-  const visualAction = action === "summarySad" ? "sad" : action;
-  const column = displayedFrame % 3;
-  const row = Math.floor(displayedFrame / 3);
-  const style: CSSProperties = {
-    backgroundImage: `url("${MASCOT_FRAME_SHEETS[action]}")`,
-    backgroundSize: "304.6875% 304.6875%",
-    backgroundPosition: `${MASCOT_FRAME_BACKGROUND_POSITIONS[column]} ${MASCOT_FRAME_BACKGROUND_POSITIONS[row]}`,
-  };
-
-  return (
-    <div
-      aria-hidden="true"
-      className={`staff-game-mascot-sprite${active ? " is-current" : " is-leaving"} is-${visualAction}`}
-      data-action={action}
-      data-frame={displayedFrame}
-      draggable={false}
-      style={style}
-    />
-  );
-}
-
-interface StaffGameMascotProps {
-  action: StaffGameMascotAction;
-  token: number;
-  animate: boolean;
-  holdFrame?: number;
-  className?: string;
-  onComplete?: (token: number) => void;
-}
-
-function StaffGameMascot({ action, token, animate, holdFrame, className = "", onComplete }: StaffGameMascotProps): JSX.Element {
-  const nextLayerIdRef = useRef(0);
-  const currentIdentityRef = useRef({ action, token });
-  const [layers, setLayers] = useState<MascotAnimationLayer[]>(() => [{ id: 0, action, token }]);
-
-  useLayoutEffect(() => {
-    if (currentIdentityRef.current.action === action && currentIdentityRef.current.token === token) return undefined;
-    const previousAction = currentIdentityRef.current.action;
-    currentIdentityRef.current = { action, token };
-
-    const nextLayer: MascotAnimationLayer = { id: ++nextLayerIdRef.current, action, token };
-    if (!animate) {
-      setLayers([nextLayer]);
-      return undefined;
-    }
-
-    // Idle and sad share one atlas; reuse the layer in either direction to avoid a translucent crossfade dip.
-    if ((previousAction === "sad" && action === "idle") || (previousAction === "idle" && action === "sad")) {
-      setLayers((currentLayers) => {
-        const activeLayer = currentLayers.at(-1);
-        return activeLayer ? [{ ...activeLayer, action, token }] : [nextLayer];
-      });
-      return undefined;
-    }
-
-    setLayers((currentLayers) => [...currentLayers.slice(-1), nextLayer]);
-    const transitionTimeout = window.setTimeout(() => {
-      setLayers((currentLayers) => currentLayers.filter((layer) => layer.id === nextLayer.id));
-    }, 170);
-    return () => window.clearTimeout(transitionTimeout);
-  }, [action, animate, token]);
-
-  return (
-    <div aria-hidden="true" className={`staff-game-mascot${animate ? "" : " effects-disabled"}${className ? ` ${className}` : ""}`}>
-      {layers.map((layer, index) => (
-        <MascotAnimationLayer
-          action={layer.action}
-          active={index === layers.length - 1}
-          animate={animate}
-          holdFrameOverride={holdFrame}
-          key={layer.id}
-          onComplete={onComplete}
-          token={layer.token}
-        />
-      ))}
-    </div>
-  );
-}
-
-function StaffGameParticles(): JSX.Element {
-  const [particles] = useState<FireflyParticle[]>(() => {
-    const clusters = Array.from({ length: 14 }, () => ({
-      x: 2 + Math.random() * 96,
-      y: 2 + Math.random() * 96,
-      radiusX: 8 + Math.random() * 20,
-      radiusY: 8 + Math.random() * 18,
-    }));
-    const pickCluster = (): (typeof clusters)[number] => {
-      return clusters[Math.floor(Math.random() * clusters.length)];
-    };
-    const spreadAround = (center: number, radius: number): number => center + ((Math.random() + Math.random() + Math.random()) / 3 - 0.5) * radius * 2;
-    const clampPercent = (value: number): number => Math.max(1, Math.min(99, value));
-
-    return Array.from({ length: 112 }, (_, id) => {
-      const clustered = Math.random() < 0.68;
-      const cluster = clustered ? pickCluster() : null;
-      const left = cluster ? clampPercent(spreadAround(cluster.x, cluster.radiusX)) : 2 + Math.random() * 96;
-      const top = cluster ? clampPercent(spreadAround(cluster.y, cluster.radiusY)) : 2 + Math.random() * 96;
-      const driftX = (Math.random() - 0.5) * 54;
-      const driftY = (Math.random() - 0.5) * 42;
-      return {
-        id,
-        left: `${left}%`,
-        top: `${top}%`,
-        size: `${id % 13 === 0 ? 3.8 + Math.random() * 1.8 : 1.5 + Math.random() * 3.2}px`,
-        opacity: `${id % 13 === 0 ? 0.46 + Math.random() * 0.24 : 0.28 + Math.random() * 0.32}`,
-        duration: `${11 + Math.random() * 13}s`,
-        delay: `${-Math.random() * 22}s`,
-        driftX: `${driftX}vw`,
-        driftY: `${driftY}vh`,
-        midX: `${driftX * 0.52}vw`,
-        midY: `${driftY * 0.52}vh`,
-        moving: Math.random() > 0.28,
-      };
-    });
-  });
-
-  return (
-    <div aria-hidden="true" className="staff-game-fireflies">
-      {particles.map((particle) => (
-        <i
-          className={`staff-game-firefly${particle.moving ? " is-moving" : ""}`}
-          key={particle.id}
-          style={{
-            left: particle.left,
-            top: particle.top,
-            width: particle.size,
-            height: particle.size,
-            opacity: particle.moving ? undefined : particle.opacity,
-            "--firefly-opacity": particle.opacity,
-            "--firefly-duration": particle.duration,
-            "--firefly-delay": particle.delay,
-            "--firefly-drift-x": particle.driftX,
-            "--firefly-drift-y": particle.driftY,
-            "--firefly-mid-x": particle.midX,
-            "--firefly-mid-y": particle.midY,
-          } as CSSProperties}
-        />
-      ))}
-    </div>
-  );
-}
-
-interface RushSpeedLine {
-  id: number;
-  left: string;
-  width: string;
-  height: string;
-  opacity: string;
-  duration: string;
-  delay: string;
-}
-
-function StaffGameRushSpeedLines(): JSX.Element {
-  const [lines] = useState<RushSpeedLine[]>(() => Array.from({ length: 60 }, (_, id) => {
-    const durationSeconds = 0.2 + Math.random() * 0.4;
-    return {
-      id,
-      left: `${Math.random() * 100}%`,
-      width: `${1 + Math.random() * 2}px`,
-      height: `${30 + Math.random() * 150}px`,
-      opacity: `${0.2 + Math.random() * 0.6}`,
-      duration: `${durationSeconds}s`,
-      delay: `${-Math.random() * durationSeconds}s`,
-    };
-  }));
-
-  return (
-    <div aria-hidden="true" className="staff-game-speed-lines">
-      {lines.map((line) => (
-        <div
-          className="staff-game-speed-line"
-          key={line.id}
-          style={{
-            left: line.left,
-            width: line.width,
-            height: line.height,
-            opacity: line.opacity,
-            animationDuration: line.duration,
-            animationDelay: line.delay,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-interface ShootingStar {
-  id: number;
-  left: string;
-  top: string;
-  width: string;
-  angle: string;
-  travelX: string;
-  travelY: string;
-  duration: string;
-}
-
-function StaffGameShootingStar(): JSX.Element {
-  const [meteor, setMeteor] = useState<ShootingStar | null>(null);
-  const nextIdRef = useRef(0);
-
-  useEffect(() => {
-    const launch = (): void => {
-      const travelX = (Math.random() < 0.5 ? -1 : 1) * window.innerWidth * (0.22 + Math.random() * 0.3);
-      const travelY = (Math.random() < 0.5 ? -1 : 1) * window.innerHeight * (0.04 + Math.random() * 0.08);
-      const angle = Math.atan2(travelY, travelX) * (180 / Math.PI);
-      setMeteor({
-        id: nextIdRef.current++,
-        left: `${Math.random() * 100}%`,
-        top: `${3 + Math.random() * 34}%`,
-        width: `${130 + Math.random() * 110}px`,
-        angle: `${angle}deg`,
-        travelX: `${travelX}px`,
-        travelY: `${travelY}px`,
-        duration: `${2800 + Math.random() * 900}ms`,
-      });
-    };
-
-    const intervalId = window.setInterval(launch, 4_000);
-    return () => window.clearInterval(intervalId);
-  }, []);
-
-  return (
-    <div aria-hidden="true" className="staff-game-shooting-star-layer">
-      {meteor ? (
-        <i
-          className="staff-game-shooting-star"
-          key={meteor.id}
-          onAnimationEnd={() => setMeteor((current) => current?.id === meteor.id ? null : current)}
-          style={{
-            left: meteor.left,
-            top: meteor.top,
-            width: meteor.width,
-            animationDuration: meteor.duration,
-            "--meteor-angle": meteor.angle,
-            "--meteor-travel-x": meteor.travelX,
-            "--meteor-travel-y": meteor.travelY,
-          } as CSSProperties}
-        />
-      ) : null}
-    </div>
-  );
 }
 
 function canUseVirtualKeyboard(): boolean {
@@ -758,135 +283,6 @@ function updateModeAudioSettings(
   };
 }
 
-function loadGameImage(source: string): Promise<void> {
-  if (staffGameImageCache.has(source)) return Promise.resolve();
-  const pendingLoad = pendingStaffGameImageLoads.get(source);
-  if (pendingLoad) return pendingLoad;
-
-  const image = new Image();
-  const loadPromise = new Promise<void>((resolve, reject) => {
-    let settled = false;
-    let timeout: number | undefined;
-    const handleError = (): void => settle(new Error(`Failed to load ${source}`));
-    const cleanup = (): void => {
-      image.removeEventListener("load", finishLoading);
-      image.removeEventListener("error", handleError);
-      if (timeout !== undefined) window.clearTimeout(timeout);
-    };
-    const settle = (error?: Error): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      if (error) {
-        reject(error);
-      } else {
-        staffGameImageCache.set(source, image);
-        resolve();
-      }
-    };
-    const finishLoading = (): void => {
-      if (typeof image.decode !== "function") {
-        settle();
-        return;
-      }
-      void image.decode().then(
-        () => settle(),
-        () => settle(image.naturalWidth > 0 ? undefined : new Error(`Failed to decode ${source}`)),
-      );
-    };
-
-    timeout = window.setTimeout(() => {
-      settle(new Error(`Timed out while loading ${source}`));
-      image.removeAttribute("src");
-    }, STAFF_GAME_IMAGE_TIMEOUT_MS);
-    image.addEventListener("load", finishLoading, { once: true });
-    image.addEventListener("error", handleError, { once: true });
-    image.src = source;
-    if (image.complete) {
-      if (image.naturalWidth > 0) finishLoading();
-      else settle(new Error(`Failed to load ${source}`));
-    }
-  });
-  pendingStaffGameImageLoads.set(source, loadPromise);
-  void loadPromise.then(
-    () => pendingStaffGameImageLoads.delete(source),
-    () => pendingStaffGameImageLoads.delete(source),
-  );
-  return loadPromise;
-}
-
-function playGameMusic(audio: HTMLAudioElement): void {
-  try {
-    // Older iOS WebKit implementations return undefined from play() instead of a Promise.
-    const result = audio.play() as Promise<void> | undefined;
-    if (result && typeof result.catch === "function") void result.catch(() => undefined);
-  } catch {
-    // Autoplay may wait for a user gesture even after the track has loaded.
-  }
-}
-
-async function preloadStaffGameImages(): Promise<number> {
-  const results = await Promise.allSettled(STAFF_GAME_IMAGE_ASSETS.map(loadGameImage));
-  return results.filter((result) => result.status === "rejected").length;
-}
-
-function preloadGameBackgroundMusic(audio: HTMLAudioElement, signal: AbortSignal, retry: boolean): Promise<void> {
-  if (signal.aborted) return Promise.resolve();
-  if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return Promise.resolve();
-  if (retry && audio.error) {
-    audio.pause();
-    audio.removeAttribute("src");
-    audio.load();
-  }
-
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const cleanup = (): void => {
-      audio.removeEventListener("canplay", handleCanPlay);
-      audio.removeEventListener("error", handleError);
-      signal.removeEventListener("abort", handleAbort);
-      window.clearTimeout(timeout);
-    };
-    const settle = (error?: Error): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      if (error) reject(error);
-      else resolve();
-    };
-    const handleCanPlay = (): void => settle();
-    const handleError = (): void => settle(new Error("Failed to load game background music"));
-    const handleAbort = (): void => settle();
-    const timeout = window.setTimeout(
-      () => settle(new Error("Timed out while loading game background music")),
-      STAFF_GAME_BACKGROUND_AUDIO_TIMEOUT_MS,
-    );
-
-    audio.addEventListener("canplay", handleCanPlay, { once: true });
-    audio.addEventListener("error", handleError, { once: true });
-    signal.addEventListener("abort", handleAbort, { once: true });
-    audio.preload = "auto";
-    audio.volume = 0.06;
-    audio.src = gameBackgroundMusic;
-    audio.load();
-    if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) settle();
-  });
-}
-
-async function preloadStaffGameResources(
-  backgroundMusic: HTMLAudioElement,
-  signal: AbortSignal,
-  retry: boolean,
-): Promise<number> {
-  const [imageFailures, soundFailures, backgroundMusicFailures, pianoSampleFailures] = await Promise.all([
-    preloadStaffGameImages(),
-    preloadStaffGameSounds(),
-    preloadGameBackgroundMusic(backgroundMusic, signal, retry).then(() => 0, () => 1),
-    preloadPianoSamples().then((loaded) => loaded ? 0 : 1, () => 1),
-  ]);
-  return imageFailures + soundFailures + backgroundMusicFailures + pianoSampleFailures;
-}
-
 function readProgress(): StaffGameProgress {
   try {
     const parsed = JSON.parse(localStorage.getItem(GAME_PROGRESS_KEY) ?? "null") as Partial<StaffGameProgress> | null;
@@ -921,120 +317,6 @@ function saveProgress(progress: StaffGameProgress): void {
   } catch {
     // The current game remains playable if browser storage is unavailable.
   }
-}
-
-function starsForStarCredit(starCredit: number, level: number): number {
-  const durationScale = gameDurationMsForLevel(level) / STAR_BASE_DURATION_MS;
-  return STAR_THRESHOLDS.filter((threshold) => starCredit >= Math.ceil(threshold * durationScale)).length;
-}
-
-function starsForSongAccuracy(accuracy: number): number {
-  return SONG_STAR_THRESHOLDS.filter((threshold) => accuracy >= threshold).length;
-}
-
-function gameNoteFromMidi(midi: number): Pick<GameNote, "midi" | "name" | "octave"> {
-  return {
-    midi,
-    name: PITCH_NAMES[((midi % 12) + 12) % 12],
-    octave: Math.floor(midi / 12) - 1,
-  };
-}
-
-function shuffledItems<T>(items: T[]): T[] {
-  const shuffled = [...items];
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
-  }
-  return shuffled;
-}
-
-function canFollowRecentNotes(midi: number, recentNoteMidis: number[]): boolean {
-  const lastTwo = recentNoteMidis.slice(-2);
-  if (lastTwo.length === 2 && lastTwo[0] === midi && lastTwo[1] === midi) return false;
-
-  const lastThree = recentNoteMidis.slice(-3);
-  if (lastThree.length === 3 && lastThree[0] === lastThree[2] && lastThree[1] === midi) return false;
-  return true;
-}
-
-function shuffledNoteBag(level: number): Array<{ midi: number; name: PianoKeyName; octave: number }> {
-  const unlockedNotes = GAME_NOTE_PROGRESSION.slice(0, level);
-  const focusNote = unlockedNotes[unlockedNotes.length - 1];
-  if (!focusNote) return [];
-
-  const bag: typeof GAME_NOTE_PROGRESSION = [];
-  const addCopies = (note: (typeof GAME_NOTE_PROGRESSION)[number], count: number): void => {
-    for (let index = 0; index < count; index += 1) bag.push({ ...note });
-  };
-  const addReviewNotes = (pool: typeof GAME_NOTE_PROGRESSION, count: number): void => {
-    let remaining = count;
-    while (pool.length > 0 && remaining > 0) {
-      const cycle = shuffledItems(pool);
-      const selected = cycle.slice(0, remaining);
-      bag.push(...selected.map((note) => ({ ...note })));
-      remaining -= selected.length;
-    }
-  };
-
-  if (level === 1) {
-    addCopies(focusNote, 1);
-  } else if (level <= 5) {
-    // A 20-note bag keeps the new focus note at 40%, with the rest reviewing earlier notes.
-    addCopies(focusNote, 8);
-    addReviewNotes(unlockedNotes.slice(0, -1), 12);
-  } else {
-    // Keep the focus note at 30%; distribute review slots across the newest five and older notes.
-    addCopies(focusNote, 6);
-    const earlierNotes = unlockedNotes.slice(0, -1);
-    const recentNotes = earlierNotes.slice(-5);
-    const olderNotes = earlierNotes.slice(0, -5);
-    if (olderNotes.length === 0) {
-      addReviewNotes(recentNotes, 14);
-    } else {
-      // Let the older-note share grow with its pool so one very old note is not overrepresented early on.
-      const olderSlots = Math.min(7, olderNotes.length);
-      addReviewNotes(recentNotes, 14 - olderSlots);
-      addReviewNotes(olderNotes, olderSlots);
-    }
-  }
-
-  return shuffledItems(bag);
-}
-
-function drawNextNote(
-  level: number,
-  notePool: Array<{ midi: number; name: PianoKeyName; octave: number }>,
-  recentNoteMidis: number[],
-): { midi: number; name: PianoKeyName; octave: number } | null {
-  if (level === 1) {
-    if (notePool.length === 0) notePool.push(...shuffledNoteBag(level));
-    return notePool.pop() ?? null;
-  }
-
-  if (notePool.length === 0) notePool.push(...shuffledNoteBag(level));
-  let eligibleIndices = notePool.flatMap((note, index) => canFollowRecentNotes(note.midi, recentNoteMidis) ? [index] : []);
-  if (eligibleIndices.length === 0) {
-    // Keep blocked notes in the pool; add a fresh weighted draw so a legal note is always available.
-    notePool.push(...shuffledNoteBag(level));
-    eligibleIndices = notePool.flatMap((note, index) => canFollowRecentNotes(note.midi, recentNoteMidis) ? [index] : []);
-  }
-  if (eligibleIndices.length === 0) return null;
-  const chosenIndex = eligibleIndices[Math.floor(Math.random() * eligibleIndices.length)];
-  return notePool.splice(chosenIndex, 1)[0] ?? null;
-}
-
-function randomBubbleCenterX(playfield: HTMLElement | null): number {
-  if (!playfield || typeof window === "undefined" || playfield.clientWidth <= 0) return 0;
-  const viewportWidth = window.innerWidth;
-  const bubbleWidth = viewportWidth > 820
-    ? Math.max(112, Math.min(viewportWidth * 0.11, 150))
-    : Math.max(144, Math.min(viewportWidth * 0.22, 190));
-  const edgePadding = viewportWidth > 820
-    ? Math.max(72, Math.min(playfield.clientWidth * 0.14, 190))
-    : Math.min(28, Math.max(20, playfield.clientWidth * 0.035));
-  const availableWidth = Math.max(0, playfield.clientWidth - bubbleWidth - edgePadding * 2);
-  return bubbleWidth / 2 + edgePadding + Math.random() * availableWidth;
 }
 
 function noteLabel(note: GameNote): string {
@@ -1140,6 +422,8 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
   const settingsDialogShakeLockRef = useRef(false);
   const [target, setTarget] = useState<GameNote | null>(null);
+  const [rushBubbleScreenTopStart, setRushBubbleScreenTopStart] = useState<{ token: number; top: number } | null>(null);
+  const rushBubbleScreenTopStartRef = useRef<{ token: number; top: number } | null>(null);
   const [targetPopped, setTargetPopped] = useState(false);
   const [targetWrong, setTargetWrong] = useState(false);
   const [bubbleBurst, setBubbleBurst] = useState<BubbleBurst | null>(null);
@@ -1156,6 +440,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     token: number;
     queuedAction: "cheer" | "sad" | null;
   }>({ action: "idle", token: 0, queuedAction: null });
+  const readyMascotCheerLockRef = useRef(false);
   const [summaryScoreCount, setSummaryScoreCount] = useState(0);
   const [summaryComboCount, setSummaryComboCount] = useState(0);
   const [summaryAccuracy, setSummaryAccuracy] = useState(0);
@@ -1171,6 +456,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   const startAttemptRef = useRef(0);
   const comboIndicatorRef = useRef<ComboIndicator | null>(null);
   const targetRef = useRef<GameNote | null>(null);
+  const spawnTargetRef = useRef<(atGameMs: number) => void>(() => undefined);
   const playfieldRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
   const targetElementRef = useRef<HTMLDivElement>(null);
@@ -1229,7 +515,14 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
       : { ...current, queuedAction: action });
   }, []);
 
+  const triggerReadyMascotCheer = useCallback((): void => {
+    if (phaseRef.current !== "ready" || gameModeRef.current !== "levels" || readyMascotCheerLockRef.current) return;
+    readyMascotCheerLockRef.current = true;
+    setMascotReaction((current) => ({ action: "cheer", token: current.token + 1, queuedAction: null }));
+  }, []);
+
   const finishMascotReaction = useCallback((token: number): void => {
+    readyMascotCheerLockRef.current = false;
     setMascotReaction((current) => {
       if (current.token !== token) return current;
       if (phaseRef.current !== "running") {
@@ -1249,6 +542,10 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   }, [dialog]);
 
   useEffect(() => {
+    if (phase !== "ready" || gameMode !== "levels") readyMascotCheerLockRef.current = false;
+  }, [gameMode, phase]);
+
+  useEffect(() => {
     const getGameButton = (target: EventTarget | null): HTMLButtonElement | null => {
       if (!(target instanceof Element)) return null;
       const button = target.closest<HTMLButtonElement>("button");
@@ -1256,7 +553,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
       return button.closest(".staff-game-shell, .staff-game-summary-backdrop, .staff-game-dialog-backdrop, .staff-game-mic-dialog-backdrop, .staff-game-low-fps-backdrop, .staff-game-pause-backdrop") ? button : null;
     };
     const playMenuClick = (button: HTMLButtonElement | null): void => {
-      if (button) playStaffGameSound("menuClick");
+      if (button) playGameSound("menuClick");
     };
     const handlePointerDown = (event: PointerEvent): void => {
       if (event.button !== 0) return;
@@ -1333,6 +630,15 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   midiRef.current = midi;
 
   const activeAudioSettings = settings.audioByMode[gameMode];
+  const { playGameSound, playStarReveal, playVirtualPianoNote, setGameSoundsEnabled, unlockGameAudio } = useStaffGameAudio({
+    settings,
+    backgroundMusicRef,
+    backgroundMusicEnabled: activeAudioSettings.backgroundMusicEnabled,
+    inputMode: settings.inputMode,
+    phase,
+    resourceLoadState,
+    soundEffectsEnabled: activeAudioSettings.soundEffectsEnabled,
+  });
   const draftAudioSettings = settingsDraft.audioByMode[gameMode];
   const difficulty = GAME_DIFFICULTIES.find((item) => item.id === settings.difficulty) ?? GAME_DIFFICULTIES[1];
   const bubbleDurationMs = difficulty.bubbleDurationMs;
@@ -1342,9 +648,34 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   const threeStarCredit = Math.ceil(STAR_THRESHOLDS[STAR_THRESHOLDS.length - 1] * gameDurationMs / STAR_BASE_DURATION_MS);
   const levelProgress = threeStarCredit > 0 ? Math.min(1, starCredit / threeStarCredit) : 0;
   const rushModeActive = combo >= RUSH_MODE_COMBO_THRESHOLD && phase === "running";
+  const preserveRushBubbleScreenTop = combo >= RUSH_MODE_COMBO_THRESHOLD && (phase === "running" || phase === "paused");
   const comboIndicatorIsRush = (comboIndicator?.count ?? 0) >= RUSH_MODE_COMBO_THRESHOLD;
   const rushVisualsActive = rushModeActive && settings.gameEffectsEnabled;
   const activeBubbleDurationMs = rushModeActive ? Math.round(bubbleDurationMs * RUSH_FALL_SPEED_MULTIPLIER) : bubbleDurationMs;
+
+  useLayoutEffect(() => {
+    if (!target) {
+      if (rushBubbleScreenTopStartRef.current !== null) {
+        rushBubbleScreenTopStartRef.current = null;
+        setRushBubbleScreenTopStart(null);
+      }
+      return;
+    }
+    if (!preserveRushBubbleScreenTop) {
+      if (rushBubbleScreenTopStartRef.current?.token !== target.token) {
+        rushBubbleScreenTopStartRef.current = null;
+        setRushBubbleScreenTopStart(null);
+      }
+      return;
+    }
+    const playfieldTop = playfieldRef.current?.getBoundingClientRect().top;
+    if (playfieldTop === undefined) return;
+    const nextStart = { token: target.token, top: Math.round(-playfieldTop) };
+    const currentStart = rushBubbleScreenTopStartRef.current;
+    if (currentStart?.token === nextStart.token && currentStart.top === nextStart.top) return;
+    rushBubbleScreenTopStartRef.current = nextStart;
+    setRushBubbleScreenTopStart(nextStart);
+  }, [preserveRushBubbleScreenTop, target?.token]);
 
   useLayoutEffect(() => {
     if (!rushScoreFlights.some((flight) => !flight.ready)) return;
@@ -1371,33 +702,6 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     document.body.classList.toggle("rush-mode", rushVisualsActive);
     return () => document.body.classList.remove("rush-mode");
   }, [rushVisualsActive]);
-
-  const spawnTarget = useCallback((atGameMs: number): void => {
-    if (phaseRef.current !== "running") return;
-    const drawnNote = gameModeRef.current === "songs"
-      ? (() => {
-        const song = STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current);
-        const midi = song?.noteMidis[songTargetIndexRef.current];
-        return midi === undefined ? null : gameNoteFromMidi(midi);
-      })()
-      : drawNextNote(levelRef.current, noteBagRef.current, recentNoteMidisRef.current);
-    if (!drawnNote) return;
-    targetTokenRef.current += 1;
-    const next = {
-      ...drawnNote,
-      token: targetTokenRef.current,
-      centerX: randomBubbleCenterX(playfieldRef.current),
-    };
-    if (gameModeRef.current === "levels") {
-      recentNoteMidisRef.current = [...recentNoteMidisRef.current, next.midi].slice(-3);
-    }
-    targetSpawnGameMsRef.current = atGameMs;
-    targetRef.current = next;
-    targetPoppedRef.current = false;
-    setTarget(next);
-    setTargetPopped(false);
-    setTargetWrong(false);
-  }, []);
 
   const clearComboTimer = useCallback((): void => {
     if (comboResetTimeoutRef.current !== null) {
@@ -1542,197 +846,86 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     saveStaffGameSongProgress(next);
   }, []);
 
-  const finishRound = useCallback((): void => {
-    if (roundFinishedRef.current) return;
-    roundFinishedRef.current = true;
-    flushScorePresentation(scoreRef.current);
-    if (errorFlashTimeoutRef.current !== null) window.clearTimeout(errorFlashTimeoutRef.current);
-    errorFlashTimeoutRef.current = null;
-    setErrorFlashActive(false);
-    consecutiveWrongAnswersRef.current = 0;
-    const isSongMode = gameModeRef.current === "songs";
-    const activeSong = STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current);
-    const accuracy = activeSong
-      ? Math.round(songFirstTryHitsRef.current * 100 / activeSong.noteMidis.length)
-      : 0;
-    const finalStars = isSongMode ? starsForSongAccuracy(accuracy) : starsForStarCredit(starCreditRef.current, levelRef.current);
-    if (finalStars > 0 && settingsRef.current.audioByMode[gameModeRef.current].soundEffectsEnabled) {
-      playStaffGameSound("levelClear");
+  const playComboFeedback = useCallback((nextCombo: number): void => {
+    if (nextCombo === COMBO_EXCELLENT_MILESTONE) {
+      playGameSound("comboExcellent");
+    } else if (nextCombo === COMBO_AMAZING_MILESTONE) {
+      playGameSound("comboAmazing");
+    } else if (isComboVoiceMilestone(nextCombo)) {
+      playGameSound("comboUnbelievable");
     }
-    setEarnedStars(finalStars);
-    setSummaryAccuracy(accuracy);
-    resetComboDisplay();
-    targetRef.current = null;
-    setTarget(null);
-    setBubbleBurst(null);
-    if (burstTimeoutRef.current !== null) window.clearTimeout(burstTimeoutRef.current);
-    burstTimeoutRef.current = null;
-    if (nextTargetTimeoutRef.current !== null) window.clearTimeout(nextTargetTimeoutRef.current);
-    waitingForNextTargetRef.current = false;
-    phaseRef.current = "summary";
-    setPhase("summary");
-    setFeedback(isSongMode ? "歌曲演奏完成" : "本局结束 · 可重试或进入下一关");
-    if (isSongMode) persistSongResult(finalStars, accuracy);
-    else persistRoundResult(finalStars);
-    microphone.stop();
-    onSessionActiveChange(false);
-  }, [flushScorePresentation, microphone.stop, onSessionActiveChange, persistRoundResult, persistSongResult, resetComboDisplay]);
+    if (nextCombo >= 3 && nextCombo % 3 === 0 && !isNearComboVoiceMilestone(nextCombo)) {
+      playGameSound("comboStreak");
+    }
+  }, [playGameSound]);
 
-  const handleRecognizedAnswer = useCallback((answer: PracticeAnswerInput): void => {
-    if (phaseRef.current !== "running" || !targetRef.current) return;
-    if (settingsRef.current.inputMode === "virtual" && answer.source !== "screen-keyboard" && answer.source !== "computer-keyboard") return;
-    if (settingsRef.current.inputMode === "physical" && answer.source !== "microphone") return;
-    if (settingsRef.current.inputMode === "midi" && answer.source !== "midi") return;
-    const currentTarget = targetRef.current;
-    const midi = answer.midiNoteNumber;
-    if (midi === undefined) return;
-    const isCorrect = settingsRef.current.inputMode === "virtual"
-      ? ((midi % 12) + 12) % 12 === ((currentTarget.midi % 12) + 12) % 12
-      : midi === currentTarget.midi;
-    if (isCorrect) {
-      if (targetPoppedRef.current) return;
-      const isSongMode = gameModeRef.current === "songs";
-      const activeSong = isSongMode ? STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current) : undefined;
-      if (isSongMode && activeSong) {
-        if (songWrongTargetTokenRef.current !== currentTarget.token) {
-          songFirstTryHitsRef.current += 1;
-          setSongFirstTryHits(songFirstTryHitsRef.current);
-        }
-        songWrongTargetTokenRef.current = null;
-        songTargetIndexRef.current += 1;
-        setSongNotesCompleted(songTargetIndexRef.current);
-      }
-      consecutiveWrongAnswersRef.current = 0;
-      triggerMascotReaction("cheer");
-      playStaffGameSound("bubblePop");
-      targetPoppedRef.current = true;
-      targetRef.current = null;
-      setTargetPopped(true);
-      const fieldBounds = playfieldRef.current?.getBoundingClientRect();
-      const bubbleBounds = targetElementRef.current?.getBoundingClientRect();
-      if (fieldBounds && bubbleBounds) {
-        setBubbleBurst({
-          token: currentTarget.token,
-          x: bubbleBounds.left + bubbleBounds.width / 2 - fieldBounds.left,
-          y: bubbleBounds.top + bubbleBounds.height / 2 - fieldBounds.top,
-        });
-      }
-      const nextCombo = comboRef.current + 1;
-      if (comboIndicatorFadeTimeoutRef.current !== null) {
-        window.clearTimeout(comboIndicatorFadeTimeoutRef.current);
-        comboIndicatorFadeTimeoutRef.current = null;
-      }
-      const nextComboIndicator: ComboIndicator = {
-        token: currentTarget.token,
-        count: nextCombo,
-        durationMs: GAME_DIFFICULTIES.find((item) => item.id === settingsRef.current.difficulty)?.comboWindowMs ?? 2_200,
-      };
-      comboIndicatorRef.current = nextComboIndicator;
-      setComboIndicator(nextComboIndicator);
-      restartComboTimer();
-      if (fieldBounds && bubbleBounds) {
-        if (burstTimeoutRef.current !== null) window.clearTimeout(burstTimeoutRef.current);
-        burstTimeoutRef.current = window.setTimeout(() => {
-          setBubbleBurst(null);
-          burstTimeoutRef.current = null;
-        }, 760);
-      }
-      if (nextCombo >= 3 && nextCombo % 3 === 0) playStaffGameSound("comboStreak");
-      if (nextCombo === 10) {
-        playStaffGameSound("comboExcellent");
-      } else if (nextCombo === 25) {
-        playStaffGameSound("comboAmazing");
-      } else if (nextCombo >= 50 && (nextCombo - 50) % 20 === 0) {
-        playStaffGameSound("comboUnbelievable");
-      }
-      comboRef.current = nextCombo;
-      maxComboRef.current = Math.max(maxComboRef.current, nextCombo);
-      const scorePreset = GAME_DIFFICULTIES.find((item) => item.id === settingsRef.current.difficulty) ?? GAME_DIFFICULTIES[1];
-      const basePoints = scorePreset.correctPoints + Math.min(5, nextCombo - 1) * scorePreset.comboBonusPoints;
-      const rushScoringActive = nextCombo >= RUSH_MODE_COMBO_THRESHOLD;
-      const points = basePoints * (rushScoringActive ? 2 : 1);
-      scoreRef.current += points;
-      const totalScore = scoreRef.current;
-      starCreditRef.current += STAR_CREDIT_PER_CORRECT_ANSWER;
-      setCombo(nextCombo);
-      setMaxCombo(maxComboRef.current);
-      setScore(totalScore);
-      if (rushScoringActive) {
-        const sceneBounds = sceneRef.current?.getBoundingClientRect();
-        if (sceneBounds && bubbleBounds) {
-          rushScoreFlightTokenRef.current += 1;
-          const flight: RushScoreFlight = {
-            token: rushScoreFlightTokenRef.current,
-            points,
-            left: bubbleBounds.left + bubbleBounds.width / 2 - sceneBounds.left,
-            top: bubbleBounds.bottom - sceneBounds.top + 42,
-            deltaX: 0,
-            deltaY: 0,
-            ready: false,
-          };
-          const nextFlights = [...rushScoreFlightsRef.current, flight];
-          rushScoreFlightsRef.current = nextFlights;
-          setRushScoreFlights(nextFlights);
-        } else {
-          queueRushScore(points);
-        }
-      } else if (
-        rushScoreFlightsRef.current.length > 0
-        || scoreAnimationTimerRef.current !== null
-        || scoreAnimationTargetRef.current > displayedScoreRef.current
-      ) {
-        queueRushScore(points);
-      } else {
-        setDisplayedScoreImmediately(totalScore);
-      }
-      setStarCredit(starCreditRef.current);
-      setFeedback(`+${points} · ${noteLabel(currentTarget)}`);
-      const accuracy = activeSong
-        ? Math.round(songFirstTryHitsRef.current * 100 / activeSong.noteMidis.length)
-        : 0;
-      const nextStars = isSongMode ? starsForSongAccuracy(accuracy) : starsForStarCredit(starCreditRef.current, levelRef.current);
-      setEarnedStars(nextStars);
-      if (nextTargetTimeoutRef.current !== null) window.clearTimeout(nextTargetTimeoutRef.current);
-      nextTargetTimeoutRef.current = window.setTimeout(() => {
-        nextTargetTimeoutRef.current = null;
-        if (phaseRef.current !== "running") {
-          waitingForNextTargetRef.current = true;
-          return;
-        }
-        if (isSongMode && activeSong && songTargetIndexRef.current >= activeSong.noteMidis.length) {
-          finishRound();
-          return;
-        }
-        const gameNow = elapsedBeforeRunRef.current + (performance.now() - runSegmentStartedAtRef.current);
-        spawnTarget(gameNow);
-      }, 350);
-      return;
-    }
-
-    if (targetWrong) return;
-    triggerMascotReaction("sad");
-    if (gameModeRef.current === "songs" && songWrongTargetTokenRef.current !== currentTarget.token) {
-      songWrongTargetTokenRef.current = currentTarget.token;
-    }
-    const errorFlashInProgress = errorFlashTimeoutRef.current !== null;
-    if (!errorFlashInProgress) consecutiveWrongAnswersRef.current += 1;
-    resetComboDisplay();
-    setTargetWrong(true);
-    playStaffGameSound("noteMissed");
-    const heardPitch = PITCH_NAMES[((midi % 12) + 12) % 12];
-    setFeedback(`听到 ${heardPitch}${answer.octave ?? ""}，再试一次`);
-    if (wrongClearTimeoutRef.current !== null) window.clearTimeout(wrongClearTimeoutRef.current);
-    wrongClearTimeoutRef.current = window.setTimeout(() => setTargetWrong(false), 460);
-    if (!errorFlashInProgress && consecutiveWrongAnswersRef.current >= ERROR_FLASH_THRESHOLD) {
-      consecutiveWrongAnswersRef.current = 0;
-      setErrorFlashActive(true);
-      errorFlashTimeoutRef.current = window.setTimeout(() => {
-        errorFlashTimeoutRef.current = null;
-        consecutiveWrongAnswersRef.current = 0;
-        setErrorFlashActive(false);
-      }, ERROR_FLASH_DURATION_MS);
-    }
-  }, [finishRound, queueRushScore, resetComboDisplay, restartComboTimer, setDisplayedScoreImmediately, spawnTarget, targetWrong, triggerMascotReaction]);
+  const { finishRound, handleRecognizedAnswer } = useStaffGameScoring({
+    burstTimeoutRef,
+    comboIndicatorFadeTimeoutRef,
+    comboIndicatorRef,
+    comboRef,
+    consecutiveWrongAnswersRef,
+    displayedScoreRef,
+    elapsedBeforeRunRef,
+    errorFlashTimeoutRef,
+    flushScorePresentation,
+    gameModeRef,
+    levelRef,
+    maxComboRef,
+    microphoneStop: microphone.stop,
+    nextTargetTimeoutRef,
+    noteLabel,
+    onSessionActiveChange,
+    persistRoundResult,
+    persistSongResult,
+    phaseRef,
+    playComboFeedback,
+    playGameSound,
+    playfieldRef,
+    queueRushScore,
+    resetComboDisplay,
+    restartComboTimer,
+    roundFinishedRef,
+    rushScoreFlightTokenRef,
+    rushScoreFlightsRef,
+    runSegmentStartedAtRef,
+    sceneRef,
+    scoreAnimationTargetRef,
+    scoreAnimationTimerRef,
+    scoreRef,
+    selectedSongIdRef,
+    setBubbleBurst,
+    setCombo,
+    setComboIndicator,
+    setEarnedStars,
+    setErrorFlashActive,
+    setFeedback,
+    setMaxCombo,
+    setPhase,
+    setRushScoreFlights,
+    setScore,
+    setSongFirstTryHits,
+    setSongNotesCompleted,
+    setStarCredit,
+    setSummaryAccuracy,
+    setTarget,
+    setTargetPopped,
+    setTargetWrong,
+    settingsRef,
+    songFirstTryHitsRef,
+    songTargetIndexRef,
+    songWrongTargetTokenRef,
+    spawnTargetRef,
+    starCreditRef,
+    targetElementRef,
+    targetPoppedRef,
+    targetRef,
+    targetWrong,
+    triggerMascotReaction,
+    waitingForNextTargetRef,
+    wrongClearTimeoutRef,
+    setDisplayedScoreImmediately,
+  });
 
   useEffect(() => {
     onRegisterAnswerHandler(handleRecognizedAnswer);
@@ -1760,16 +953,16 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     setRevealedSummaryStars(0);
     let cancelled = false;
     const revealTimeouts = [260, 760, 1260].map((delay, index) => window.setTimeout(() => {
-      void playStaffGameStarReveal(index, activeAudioSettings.soundEffectsEnabled).then(() => {
-        if (!cancelled) setRevealedSummaryStars(index + 1);
-      });
+      if (cancelled) return;
+      setRevealedSummaryStars(index + 1);
+      void playStarReveal(index, activeAudioSettings.soundEffectsEnabled);
     }, delay));
 
     return () => {
       cancelled = true;
       revealTimeouts.forEach(window.clearTimeout);
     };
-  }, [activeAudioSettings.soundEffectsEnabled, phase, settings.inputMode]);
+  }, [activeAudioSettings.soundEffectsEnabled, phase, playStarReveal, settings.inputMode]);
 
   useEffect(() => {
     if (phase !== "summary") {
@@ -1793,40 +986,8 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   }, [maxCombo, phase, score]);
 
   useEffect(() => {
-    setStaffGameSoundsEnabled(activeAudioSettings.soundEffectsEnabled);
     saveGameSettings(settings);
-  }, [activeAudioSettings.soundEffectsEnabled, settings]);
-
-  useEffect(() => {
-    const audio = backgroundMusicRef.current;
-    if (!audio) return undefined;
-    audio.volume = 0.06;
-    const shouldPlay = resourceLoadState === "ready" && phase === "running" && activeAudioSettings.backgroundMusicEnabled && settings.inputMode !== "physical";
-
-    const removeUnlockListeners = (): void => {
-      document.removeEventListener("pointerdown", unlockMusic);
-      document.removeEventListener("keydown", unlockMusic);
-    };
-    const unlockMusic = (): void => {
-      if (!shouldPlay || !audio.paused) return;
-      playGameMusic(audio);
-    };
-
-    if (shouldPlay) {
-      audio.addEventListener("play", removeUnlockListeners, { once: true });
-      document.addEventListener("pointerdown", unlockMusic);
-      document.addEventListener("keydown", unlockMusic);
-      playGameMusic(audio);
-    } else {
-      audio.pause();
-    }
-
-    return () => {
-      removeUnlockListeners();
-      audio.removeEventListener("play", removeUnlockListeners);
-      audio.pause();
-    };
-  }, [activeAudioSettings.backgroundMusicEnabled, phase, resourceLoadState, settings.inputMode]);
+  }, [settings]);
 
   useEffect(() => {
     const syncVirtualKeyboardAvailability = (): void => {
@@ -1897,58 +1058,40 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     if (scoreAnimationTimerRef.current !== null) window.clearTimeout(scoreAnimationTimerRef.current);
   }, [microphone.stop, onSessionActiveChange]);
 
-  useEffect(() => {
-    if (phase !== "running") return undefined;
-    let frame = 0;
-    let lastUiUpdateAt = 0;
-    const tick = (now: number): void => {
-      const gameTime = elapsedBeforeRunRef.current + now - runSegmentStartedAtRef.current;
-      if (now - lastUiUpdateAt >= 100) {
-        lastUiUpdateAt = now;
-        setElapsedMs(gameModeRef.current === "songs" ? gameTime : Math.min(gameDurationMs, gameTime));
-      }
-      if (gameModeRef.current === "levels" && gameTime >= gameDurationMs) {
-        setElapsedMs(gameDurationMs);
-        finishRound();
-        return;
-      }
-      if (targetRef.current && !targetPoppedRef.current && gameTime - targetSpawnGameMsRef.current >= activeBubbleDurationMs) {
-        const missedTarget = targetRef.current;
-        targetRef.current = null;
-        setTarget(null);
-        if (missedTarget) triggerMascotReaction("sad");
-        playStaffGameSound("noteMissed");
-        resetComboDisplay();
-        const isSongMode = gameModeRef.current === "songs";
-        const activeSong = isSongMode ? STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current) : undefined;
-        if (isSongMode && activeSong && missedTarget) {
-          songTargetIndexRef.current += 1;
-          setSongNotesCompleted(songTargetIndexRef.current);
-          songWrongTargetTokenRef.current = null;
-          setFeedback(`漏掉 ${noteLabel(missedTarget)} · 继续下一音`);
-        } else {
-          setFeedback("气泡飘走了，连击中断");
-        }
-        if (nextTargetTimeoutRef.current !== null) window.clearTimeout(nextTargetTimeoutRef.current);
-        nextTargetTimeoutRef.current = window.setTimeout(() => {
-          nextTargetTimeoutRef.current = null;
-          if (phaseRef.current !== "running") {
-            waitingForNextTargetRef.current = true;
-            return;
-          }
-          if (isSongMode && activeSong && songTargetIndexRef.current >= activeSong.noteMidis.length) {
-            finishRound();
-            return;
-          }
-          const nextGameTime = elapsedBeforeRunRef.current + (performance.now() - runSegmentStartedAtRef.current);
-          spawnTarget(nextGameTime);
-        }, 180);
-      }
-      frame = window.requestAnimationFrame(tick);
-    };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
-  }, [activeBubbleDurationMs, finishRound, gameDurationMs, phase, resetComboDisplay, spawnTarget, triggerMascotReaction]);
+  const { pauseRunSegment, spawnTarget, startRunSegment } = useStaffGameRoundClock({
+    activeBubbleDurationMs,
+    elapsedBeforeRunRef,
+    finishRound,
+    gameDurationMs,
+    gameModeRef,
+    levelRef,
+    noteBagRef,
+    noteLabel,
+    nextTargetTimeoutRef,
+    phase,
+    phaseRef,
+    playGameSound,
+    playfieldRef,
+    recentNoteMidisRef,
+    resetComboDisplay,
+    runSegmentStartedAtRef,
+    selectedSongIdRef,
+    setElapsedMs,
+    setFeedback,
+    setSongNotesCompleted,
+    setTarget,
+    setTargetPopped,
+    setTargetWrong,
+    songTargetIndexRef,
+    songWrongTargetTokenRef,
+    targetPoppedRef,
+    targetRef,
+    targetSpawnGameMsRef,
+    targetTokenRef,
+    triggerMascotReaction,
+    waitingForNextTargetRef,
+  });
+  spawnTargetRef.current = spawnTarget;
 
   const resetRoundState = useCallback((): void => {
     if (nextTargetTimeoutRef.current !== null) window.clearTimeout(nextTargetTimeoutRef.current);
@@ -2027,7 +1170,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     setIsStarting(true);
     setGameError("");
     try {
-      await unlockAudio().catch(() => undefined);
+      await unlockGameAudio().catch(() => undefined);
       if (isCancelled()) return false;
       if (settingsRef.current.inputMode === "physical") {
         let started = false;
@@ -2048,7 +1191,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
           setGameError(`无法连接麦克风${reason}。请在浏览器的网站权限中允许麦克风，再重新尝试。`);
           return false;
         }
-        playStaffGameSound("microphoneReady");
+        playGameSound("microphoneReady");
       } else if (settingsRef.current.inputMode === "midi") {
         if (!await connectMidiForRound(isCancelled)) return false;
         if (isCancelled()) return false;
@@ -2069,7 +1212,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
         };
       }
       resetRoundState();
-      runSegmentStartedAtRef.current = performance.now();
+      startRunSegment();
       setFeedback(gameModeRef.current === "songs"
         ? "按旋律顺序弹奏；答错可重试，漏音后会继续"
         : settingsRef.current.inputMode === "virtual" ? "点击琴键，弹出对应音符" : settingsRef.current.inputMode === "midi" ? "弹奏 MIDI 键盘，弹出对应音符" : "聆听麦克风，弹出对应音符");
@@ -2088,7 +1231,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
         setIsStarting(false);
       }
     }
-  }, [connectMidiForRound, microphone.error, microphone.start, microphone.stop, resetRoundState, spawnTarget]);
+  }, [connectMidiForRound, microphone.error, microphone.start, microphone.stop, resetRoundState, spawnTarget, startRunSegment]);
 
   const cancelPendingStart = useCallback((): void => {
     if (!isStartingRef.current) return;
@@ -2100,16 +1243,13 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
 
   const pauseRound = useCallback((): void => {
     if (phaseRef.current !== "running") return;
-    const pausedAt = performance.now();
-    const elapsedAtPause = elapsedBeforeRunRef.current + pausedAt - runSegmentStartedAtRef.current;
-    elapsedBeforeRunRef.current = gameModeRef.current === "songs" ? elapsedAtPause : Math.min(gameDurationMs, elapsedAtPause);
-    setElapsedMs(elapsedBeforeRunRef.current);
+    setElapsedMs(pauseRunSegment());
     setMascotReaction((current) => ({ action: "idle", token: current.token + 1, queuedAction: null }));
     phaseRef.current = "paused";
     setPhase("paused");
     setFeedback(gameModeRef.current === "songs" ? "演奏已暂停" : "闯关已暂停");
     microphone.stop();
-  }, [gameDurationMs, microphone.stop]);
+  }, [microphone.stop, pauseRunSegment]);
 
   useEffect(() => {
     if (phase !== "running" || !settings.gameEffectsEnabled || showLowFpsPrompt) return undefined;
@@ -2232,7 +1372,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
           setGameError(`麦克风未能重新连接${reason}。请检查网站权限和输入设备后重试。`);
           return;
         }
-        playStaffGameSound("microphoneReady");
+        playGameSound("microphoneReady");
       } else if (settingsRef.current.inputMode === "midi") {
         if (!await connectMidiForRound(isCancelled)) return;
         if (isCancelled()) return;
@@ -2241,7 +1381,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
         microphone.stop();
       }
       if (isCancelled() || phaseRef.current !== "paused") return;
-      runSegmentStartedAtRef.current = performance.now();
+      startRunSegment();
       phaseRef.current = "running";
       setPhase("running");
       setFeedback(gameModeRef.current === "songs"
@@ -2265,7 +1405,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
         setIsStarting(false);
       }
     }
-  }, [connectMidiForRound, finishRound, microphone.error, microphone.start, microphone.stop, spawnTarget]);
+  }, [connectMidiForRound, finishRound, microphone.error, microphone.start, microphone.stop, spawnTarget, startRunSegment]);
 
   const exitGame = useCallback((): void => {
     cancelPendingStart();
@@ -2423,7 +1563,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     };
     settingsRef.current = nextSettings;
     setSettings(nextSettings);
-    setStaffGameSoundsEnabled(nextSettings.audioByMode[gameMode].soundEffectsEnabled);
+    setGameSoundsEnabled(nextSettings.audioByMode[gameMode].soundEffectsEnabled);
     if (nextSettings.inputMode === "virtual") microphone.stop();
     closeGameDialog();
   }, [closeGameDialog, gameMode, microphone.stop, midi.status, settingsDraft, virtualKeyboardAvailable]);
@@ -2434,7 +1574,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
       settingsRef.current.inputMode === "virtual" &&
       settingsRef.current.audioByMode[gameModeRef.current].pianoSoundEnabled
     ) {
-      void playPianoNote(pitch, 4).catch(() => undefined);
+      void playVirtualPianoNote(pitch, 4).catch(() => undefined);
     }
     const pitchClass = PITCH_NAMES.indexOf(pitch);
     handleRecognizedAnswer({ noteName: pitch[0] as NoteName, octave: 4, midiNoteNumber: 60 + pitchClass, source });
@@ -2519,8 +1659,21 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
           ? "正在连接 MIDI 键盘…"
           : "点击开始后连接 MIDI 键盘"
       : inputStatusText;
+  const gameInputStatusState =
+    (settings.inputMode === "physical" && microphone.error) ||
+    (settings.inputMode === "midi" && (midi.status === "denied" || midi.status === "error"))
+      ? "error"
+      : settings.inputMode === "virtual" ||
+          (settings.inputMode === "physical" && microphone.isListening) ||
+          (settings.inputMode === "midi" && midi.isConnected)
+        ? "ready"
+        : "pending";
   const showVirtualKeyboard = virtualKeyboardAvailable && settings.inputMode === "virtual" && (phase === "running" || phase === "paused");
-  const mascotAction: StaffGameMascotAction = phase === "paused" ? "pause" : phase === "running" ? mascotReaction.action : "idle";
+  const mascotAction: StaffGameMascotAction = phase === "paused"
+    ? "pause"
+    : phase === "running" || (phase === "ready" && !isSongMode && mascotReaction.action === "cheer")
+      ? mascotReaction.action
+      : "idle";
   const pauseControlDisabled = (phase !== "running" && phase !== "paused") || isStarting;
 
   if (resourceLoadState !== "ready") {
@@ -2545,7 +1698,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   return (
     <section className="practice-shell staff-game-shell" aria-label="五线谱闯关游戏">
       <div className="staff-game-scene" ref={sceneRef} style={gameArtStyle}>
-        {errorFlashActive ? <div aria-hidden="true" className="staff-game-error-flash" /> : null}
+        <StaffGameErrorFlash active={errorFlashActive} />
         <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-a" draggable="false" src={cloudDecorationOne} />
         <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-b" draggable="false" src={cloudDecorationTwo} />
         <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-c" draggable="false" src={cloudDecorationThree} />
@@ -2569,73 +1722,60 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
             } as CSSProperties}
           >+{flight.points}</span>
         ))}
-        {songSelectionStep ? (
-          <header className="staff-game-song-hud">
-            <span aria-hidden="true" />
-            <div><strong>游戏歌曲模式</strong><span>{songSelectionStep === "detail" ? selectedSong.title : "选择一首歌曲"}</span></div>
-            <span aria-hidden="true" />
-          </header>
-        ) : (
-          <header className={`staff-game-hud${isSongMode ? " is-song-mode" : ""}${rushModeActive ? " is-rush-mode" : ""}`}>
-            <div aria-hidden={rushModeActive} className="staff-game-hud-card staff-game-display-card">
-              <span>{isSongMode ? "歌曲最佳" : "历史最高"}</span>
-              <strong aria-label={`${isSongMode ? selectedSongRecord.bestStars : progress.bestStars[level - 1]} 颗星`} className="staff-game-history-stars">
-                {[1, 2, 3].map((star) => <img alt="" className={(isSongMode ? selectedSongRecord.bestStars : progress.bestStars[level - 1]) >= star ? "earned" : ""} key={star} src={starParticleArt} />)}
-              </strong>
-            </div>
-            <div aria-hidden={rushModeActive} aria-label={isSongMode ? `${selectedSong.title}，已完成 ${songNotesCompleted} 音，共 ${selectedSong.noteMidis.length} 音` : `第 ${level} 关，当前获得 ${currentRoundStars} 颗星`} className={`staff-game-level-medal${isSongMode ? " is-song-progress" : ""}`}>
-            <svg aria-hidden="true" className="staff-game-level-progress" viewBox="0 0 120 120">
-              <path className="staff-game-level-progress-track" d="M 26.06 26.06 A 48 48 0 1 0 93.94 26.06" pathLength="1000" />
-              <path
-                className="staff-game-level-progress-fill"
-                d="M 26.06 26.06 A 48 48 0 1 0 93.94 26.06"
-                pathLength="1000"
-                strokeDashoffset={1000 * (1 - activeProgress)}
-              />
-              {!isSongMode ? [
-                { x: 15, y: 93.94 },
-                { x: 105, y: 93.94 },
-                { x: 93.94, y: 26.06 },
-              ].map((position, index) => (
-                <text
-                  className={`staff-game-level-progress-star${currentRoundStars > index ? " earned" : ""}`}
-                  dominantBaseline="central"
-                  key={index}
-                  textAnchor="middle"
-                  x={position.x}
-                  y={position.y}
-                >★</text>
-              )) : null}
-            </svg>
-              <span>{isSongMode ? "歌曲" : "LEVEL"}</span>
-              <strong className={isSongMode ? "staff-game-song-progress-value" : undefined}>{isSongMode ? `${Math.floor(songProgressRatio * 100)}%` : level}</strong>
-            </div>
-            <div className="staff-game-score-group">
-            <div className="staff-game-hud-card staff-game-score-card">
-              <span>{isSongMode ? "本曲得分" : phase === "summary" ? "本局得分" : "本关得分"}</span>
-              <strong aria-label={`当前得分 ${displayedScore}`} className={rushModeActive ? "is-rush-score" : undefined} ref={scoreValueRef}>{displayedScore}</strong>
-              <small>{isSongMode
-                ? `最佳 ${selectedSongRecord.bestScore}　·　${songNotesCompleted}/${selectedSong.noteMidis.length} 音　·　${songAccuracy}%`
-                : `最高 ${progress.bestScores[level - 1]}${phase === "ready" ? "" : `　·　${remainingSeconds} 秒`}`}</small>
-            </div>
-              {isSongMode || rushModeActive ? null : <button aria-label="选择关卡跳级" className="staff-game-jump-button" onClick={() => openGameDialog("levels")} type="button">
-                <SkipForward aria-hidden="true" size={14} />跳级
-              </button>}
-            </div>
-          </header>
-        )}
+        <StaffGameHud
+          activeProgress={activeProgress}
+          currentRoundStars={currentRoundStars}
+          displayedScore={displayedScore}
+          historyLabel={isSongMode ? "歌曲最佳" : "历史最高"}
+          historyStars={isSongMode ? selectedSongRecord.bestStars : progress.bestStars[level - 1]}
+          isSongMode={isSongMode}
+          medalLabel={isSongMode
+            ? `${selectedSong.title}，已完成 ${songNotesCompleted} 音，共 ${selectedSong.noteMidis.length} 音`
+            : `第 ${level} 关，当前获得 ${currentRoundStars} 颗星`}
+          onOpenLevels={() => openGameDialog("levels")}
+          progressLabel={isSongMode ? "歌曲" : "LEVEL"}
+          progressValue={isSongMode ? `${Math.floor(songProgressRatio * 100)}%` : level}
+          rushModeActive={rushModeActive}
+          scoreDetail={isSongMode
+            ? `最佳 ${selectedSongRecord.bestScore}　·　${songNotesCompleted}/${selectedSong.noteMidis.length} 音　·　${songAccuracy}%`
+            : `最高 ${progress.bestScores[level - 1]}${phase === "ready" ? "" : `　·　${remainingSeconds} 秒`}`}
+          scoreLabel={isSongMode ? "本曲得分" : phase === "summary" ? "本局得分" : "本关得分"}
+          scoreValueRef={scoreValueRef}
+          showLevelJump={!isSongMode && !rushModeActive}
+          songSelectionHeaderTitle={songSelectionStep
+            ? songSelectionStep === "detail" ? selectedSong.title : "选择一首歌曲"
+            : null}
+          starImage={starParticleArt}
+        />
 
-        <div className={`staff-game-playfield${phase === "paused" ? " is-paused" : ""}`} ref={playfieldRef}>
+        <div className={`staff-game-playfield${phase === "paused" ? " is-paused" : ""}${rushBubbleScreenTopStart?.token === target?.token ? " has-screen-top-rush-bubble" : ""}`} ref={playfieldRef}>
           <div aria-hidden="true" className="staff-game-scene-glow" />
           {(!songSelectionStep && (phase === "ready" || phase === "running" || phase === "paused")) ? (
             <div className={`staff-game-mascot-anchor${settings.gameEffectsEnabled ? " effects-enabled" : ""}${phase === "ready" && !isSongMode ? " has-greeting" : ""}`}>
               {phase === "ready" && !isSongMode ? <span aria-hidden="true" className={`staff-game-mascot-greeting${settings.gameEffectsEnabled ? " is-animated" : ""}`}>Hi~</span> : null}
-              <StaffGameMascot
-                action={mascotAction}
-                animate={settings.gameEffectsEnabled}
-                onComplete={finishMascotReaction}
-                token={mascotReaction.token}
-              />
+              {phase === "ready" && !isSongMode ? (
+                <button
+                  aria-label="让小人欢呼"
+                  className="staff-game-mascot-interactive"
+                  onClick={triggerReadyMascotCheer}
+                  onMouseEnter={triggerReadyMascotCheer}
+                  type="button"
+                >
+                  <StaffGameMascot
+                    action={mascotAction}
+                    animate={settings.gameEffectsEnabled}
+                    onComplete={finishMascotReaction}
+                    token={mascotReaction.token}
+                  />
+                </button>
+              ) : (
+                <StaffGameMascot
+                  action={mascotAction}
+                  animate={settings.gameEffectsEnabled}
+                  onComplete={finishMascotReaction}
+                  token={mascotReaction.token}
+                />
+              )}
             </div>
           ) : null}
           {target ? (
@@ -2644,7 +1784,13 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
               className={`staff-game-bubble${rushVisualsActive ? " is-rush" : ""}${targetPopped ? " is-popped" : ""}${phase === "paused" ? " is-paused" : ""}`}
               key={target.token}
               ref={targetElementRef}
-              style={{ animationDuration: `${activeBubbleDurationMs}ms`, left: `${target.centerX}px` }}
+              style={{
+                animationDuration: `${activeBubbleDurationMs}ms`,
+                left: `${target.centerX}px`,
+                ...(rushBubbleScreenTopStart?.token === target.token
+                  ? { "--staff-game-bubble-start-top": `${rushBubbleScreenTopStart.top}px` }
+                  : {}),
+              } as CSSProperties}
             >
               <img alt="" aria-hidden="true" className="staff-game-bubble-shell" draggable="false" src={bubbleShell} />
               <div className="staff-game-bubble-content">
@@ -2713,156 +1859,79 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
           ) : null}
 
           {phase === "ready" && songSelectionStep === "list" ? (
-            <section aria-label="选择游戏歌曲" className="staff-game-card staff-game-song-card">
-              <span aria-hidden="true" className="staff-game-song-card-ornament"><Sparkles size={22} strokeWidth={2.4} /></span>
-              <div className="staff-game-song-list-heading">
-                <div><h1>选择歌曲</h1><p>自然音单旋律 · 可以自由选歌</p></div>
-                <span>{STAFF_GAME_SONGS.length} 首</span>
-              </div>
-              <div className="staff-game-song-list">
-                {STAFF_GAME_SONGS.map((song) => {
-                  const record = songProgress[song.id];
-                  return (
-                    <button className="staff-game-song-choice" key={song.id} onClick={() => selectSong(song.id)} type="button">
-                      <span className="staff-game-song-choice-note" aria-hidden="true">♪</span>
-                      <span className="staff-game-song-choice-copy">
-                        <strong>{song.title}</strong>
-                        <small>{song.englishTitle}</small>
-                        <span>{song.difficulty} · {song.noteMidis.length} 个音 · 最佳 {record?.bestScore ?? 0} 分</span>
-                      </span>
-                      <strong aria-label={`${record?.bestStars ?? 0} 颗星`} className="staff-game-history-stars">
-                        {[1, 2, 3].map((star) => <img alt="" className={(record?.bestStars ?? 0) >= star ? "earned" : ""} key={star} src={starParticleArt} />)}
-                      </strong>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+            <StaffGameReadyPanel
+              bubbleImage={bubbleShell}
+              onSelectSong={selectSong}
+              songProgress={songProgress}
+              songs={STAFF_GAME_SONGS}
+              starImage={starParticleArt}
+              variant="song-list"
+            />
           ) : null}
 
           {phase === "ready" && songSelectionStep === "detail" ? (
-            <section aria-label={`${selectedSong.title} 歌曲详情`} className="staff-game-card staff-game-song-card staff-game-song-detail-card">
-              <span aria-hidden="true" className="staff-game-song-card-ornament"><Sparkles size={22} strokeWidth={2.4} /></span>
-              <div className="staff-game-song-detail-hero">
-                <div className="staff-game-preview-bubble">
-                  <img alt="" aria-hidden="true" className="staff-game-bubble-shell" draggable="false" src={bubbleShell} />
-                  <NoteStaff note={selectedSongPreviewNote} />
-                </div>
-                <div>
-                  <h1>{selectedSong.title}</h1>
-                  <p>{selectedSong.englishTitle}</p>
-                </div>
-              </div>
-              <p className="staff-game-song-description">{selectedSong.description}</p>
-              <div className="staff-game-song-facts">
-                <span>{selectedSong.difficulty}</span><span>自然音</span><span>{selectedSong.noteMidis.length} 个音</span>
-              </div>
-              <div className="staff-game-song-record">
-                <span>历史最佳</span>
-                <strong className="staff-game-history-stars">
-                  {[1, 2, 3].map((star) => <img alt="" className={selectedSongRecord.bestStars >= star ? "earned" : ""} key={star} src={starParticleArt} />)}
-                </strong>
-                <small>{selectedSongRecord.bestScore} 分 · 首次准确率 {selectedSongRecord.bestAccuracy}% · 最高连击 {selectedSongRecord.maxCombo}</small>
-              </div>
-              <p className="staff-game-song-howto">泡泡按旋律顺序出现，答错可重试；漏音后继续下一音。完成歌曲后按首次作答准确率评星。</p>
-              <button className="staff-game-primary" disabled={isStarting} onClick={startSelectedSong} type="button">
-                <Play fill="currentColor" size={20} />{isStarting ? "正在准备…" : "开始演奏"}
-              </button>
-              <button className="staff-game-song-inline-back" onClick={handleSongSelectionBack} type="button">‹ 返回歌曲列表</button>
-            </section>
+            <StaffGameReadyPanel
+              bubbleImage={bubbleShell}
+              isStarting={isStarting}
+              onBackToSongList={handleSongSelectionBack}
+              onStartSong={startSelectedSong}
+              previewNotation={<NoteStaff note={selectedSongPreviewNote} />}
+              record={selectedSongRecord}
+              song={selectedSong}
+              starImage={starParticleArt}
+              variant="song-detail"
+            />
           ) : null}
 
           {phase === "ready" && songSelectionStep === null && gameMode === "levels" ? (
-            <div className="staff-game-card staff-game-ready-card">
-              <h1>五线谱闯关</h1>
-              <div className="staff-game-preview-bubble">
-                <img alt="" aria-hidden="true" className="staff-game-bubble-shell" draggable="false" src={bubbleShell} />
-                <img alt="中央 C 音符位于高音谱表上的示意图" className="staff-game-preview-notation" draggable="false" src={notationC4Preview} />
-              </div>
-              <div className="staff-game-level-detail">
-                <div className="staff-game-stat"><span>本关重点音符</span><strong>{focusNote}</strong></div>
-                <div className="staff-game-stat">
-                  <span>历史星级</span>
-                  <strong aria-label={`${progress.bestStars[level - 1]} 星`} className="staff-game-history-stars">
-                    {[1, 2, 3].map((star) => <img alt="" className={progress.bestStars[level - 1] >= star ? "earned" : ""} key={star} src={starParticleArt} />)}
-                  </strong>
-                </div>
-                <div className="staff-game-stat"><span>最高连击</span><strong>{progress.maxCombos[level - 1]} 次</strong></div>
-              </div>
-              <div className={`staff-game-mic-status${(settings.inputMode === "physical" && microphone.error) || (settings.inputMode === "midi" && (midi.status === "denied" || midi.status === "error")) ? " has-error" : settings.inputMode === "virtual" || (settings.inputMode === "physical" && microphone.isListening) || (settings.inputMode === "midi" && midi.isConnected) ? " is-ready" : " is-pending"}`}>
-                <span aria-hidden="true" className="staff-game-mic-indicator">
-                  {settings.inputMode === "virtual" ? <Keyboard size={17} /> : settings.inputMode === "midi" ? <Music2 size={17} /> : <Mic size={17} />}
-                </span>
-                <span>{gameInputStatusText}</span>
-              </div>
-              <button className="staff-game-primary" disabled={isStarting} onClick={() => void beginRound()} type="button">
-                <Play fill="currentColor" size={20} />{isStarting ? "正在准备…" : "开始闯关"}
-              </button>
-            </div>
+            <StaffGameReadyPanel
+              bestStars={progress.bestStars[level - 1]}
+              bubbleImage={bubbleShell}
+              focusNote={focusNote}
+              inputMode={settings.inputMode}
+              inputStatusState={gameInputStatusState}
+              inputStatusText={gameInputStatusText}
+              isStarting={isStarting}
+              maxCombo={progress.maxCombos[level - 1]}
+              onStartLevel={() => void beginRound()}
+              starImage={starParticleArt}
+              variant="level"
+            />
           ) : null}
 
-          {phase === "summary" && typeof document !== "undefined" ? createPortal(
-            <div aria-label={isSongMode ? `${selectedSong.title} 演奏结算` : `第 ${level} 关结算`} aria-modal="true" className={`staff-game-summary-backdrop${settings.gameEffectsEnabled ? "" : " effects-disabled"}`} role="dialog" style={gameArtStyle}>
-              <div aria-label={`${revealedSummaryStars} 颗星依次出现，获得 ${earnedStars} 颗星`} className={`staff-game-summary-stars has-star-halo${earnedStars === 0 ? " is-white-star-halo" : ""}${settings.gameEffectsEnabled ? " is-animated" : ""}`} role="img">
-                {[1, 2, 3].map((star) => (
-                  <img
-                    alt=""
-                    className={`staff-game-summary-star${earnedStars >= star ? " earned" : ""}${revealedSummaryStars >= star ? " is-revealed" : ""}`}
-                    key={star}
-                    src={starParticleArt}
-                  />
-                ))}
-              </div>
-              <section className="staff-game-card staff-game-summary-card">
-                <div aria-label={isSongMode ? selectedSong.title : `第 ${level} 关`} className="staff-game-summary-level-badge" role="img">
-                  <img alt="" aria-hidden="true" draggable="false" src={summaryLevelBannerArt} />
-                  <strong className={isSongMode ? "is-song-title" : undefined}>{isSongMode ? selectedSong.title : `LEVEL ${level}`}</strong>
-                </div>
-                <div className="staff-game-summary-content">
-                  <div aria-hidden="true" className="staff-game-summary-celebration">
-                    {settings.gameEffectsEnabled ? <StaffGameFireworks image={summaryFireworksArt} /> : null}
-                    <StaffGameMascot
-                      action={shouldCelebrateSummary ? "celebration" : "summarySad"}
-                      animate={settings.gameEffectsEnabled}
-                      className="staff-game-summary-mascot"
-                      token={0}
-                    />
-                  </div>
-                  {isSongMode || earnedStars > 0 ? <h2>{isSongMode ? "演奏完成！" : "闯关成功！"}</h2> : null}
-                  <div className="staff-game-result-stats">
-                    <div>
-                      <span>最大连击数</span>
-                      <strong>
-                        <span>{summaryComboCount} 次</span>
-                        {roundRecordsAtStartRef.current.maxCombo > 0 && maxCombo > roundRecordsAtStartRef.current.maxCombo ? <em>新纪录</em> : null}
-                      </strong>
-                    </div>
-                    <div className="is-score">
-                      <span>获得的分数</span>
-                      <strong>
-                        <span>{summaryScoreCount} 分</span>
-                        {roundRecordsAtStartRef.current.score > 0 && score > roundRecordsAtStartRef.current.score ? <em>新纪录</em> : null}
-                      </strong>
-                    </div>
-                    {isSongMode ? <div><span>首次准确率</span><strong>{summaryAccuracy}%</strong></div> : null}
-                  </div>
-                  <div className="staff-game-summary-actions">
-                    <button className="staff-game-primary" onClick={retryLevel} type="button"><RotateCcw size={16} />{isSongMode ? "再弹一次" : "再试一次"}</button>
-                    {isSongMode ? (
-                      <>
-                        <button className="staff-game-secondary" onClick={playNextSong} type="button"><SkipForward size={16} />{STAFF_GAME_SONGS[STAFF_GAME_SONGS.length - 1]?.id === selectedSong.id ? "回到歌曲列表" : "下一首"}</button>
-                        {STAFF_GAME_SONGS[STAFF_GAME_SONGS.length - 1]?.id !== selectedSong.id ? <button className="staff-game-summary-list-button" onClick={returnToSongList} type="button">歌曲列表</button> : null}
-                      </>
-                    ) : (
-                      <button className="staff-game-secondary" disabled={level >= GAME_LEVEL_COUNT} onClick={() => advanceLevel(level + 1)} type="button">
-                        <SkipForward size={16} />{level >= GAME_LEVEL_COUNT ? "已通关" : "下一级"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </section>
-            </div>,
-            document.body,
+          {phase === "summary" && typeof document !== "undefined" ? (
+            <StaffGameSummaryDialog
+              accuracy={summaryAccuracy}
+              ariaLabel={isSongMode ? `${selectedSong.title} 演奏结算` : `第 ${level} 关结算`}
+              comboCount={summaryComboCount}
+              earnedStars={earnedStars}
+              fireworks={settings.gameEffectsEnabled ? <StaffGameFireworks image={summaryFireworksArt} /> : null}
+              gameArtStyle={gameArtStyle}
+              gameEffectsEnabled={settings.gameEffectsEnabled}
+              isFinalLevel={level >= GAME_LEVEL_COUNT}
+              isNewComboRecord={roundRecordsAtStartRef.current.maxCombo > 0 && maxCombo > roundRecordsAtStartRef.current.maxCombo}
+              isNewScoreRecord={roundRecordsAtStartRef.current.score > 0 && score > roundRecordsAtStartRef.current.score}
+              isSongMode={isSongMode}
+              level={level}
+              levelBannerImage={summaryLevelBannerArt}
+              mascot={(
+                <StaffGameMascot
+                  action={shouldCelebrateSummary ? "celebration" : "summarySad"}
+                  animate={settings.gameEffectsEnabled}
+                  className="staff-game-summary-mascot"
+                  token={0}
+                />
+              )}
+              onAdvanceLevel={() => advanceLevel(level + 1)}
+              onPlayNextSong={playNextSong}
+              onReturnToSongList={returnToSongList}
+              onRetry={retryLevel}
+              revealedStars={revealedSummaryStars}
+              score={summaryScoreCount}
+              songTitle={selectedSong.title}
+              starImage={starParticleArt}
+              hasNextSong={STAFF_GAME_SONGS[STAFF_GAME_SONGS.length - 1]?.id !== selectedSong.id}
+            />
           ) : null}
         </div>
 
@@ -2942,265 +2011,60 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
             ><img alt="" aria-hidden="true" src={phase === "paused" ? actionResumeArt : actionPauseArt} /></button>
           </div>
         </footer>
-        {dialog && typeof document !== "undefined" ? createPortal(
-          <div className="staff-game-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget) closeGameDialog(); }} style={gameArtStyle}>
-            <section
-              aria-labelledby="staff-game-dialog-title"
-              aria-modal="true"
-              className={`staff-game-dialog staff-game-${dialog}-dialog${dialog === "settings" && isSettingsDialogShaking ? " is-wobbling" : ""}`}
-              onAnimationEnd={(event) => {
-                if (event.animationName !== "staff-game-settings-dialog-wobble") return;
-                settingsDialogShakeLockRef.current = false;
-                setIsSettingsDialogShaking(false);
-              }}
-              onClick={(event) => event.stopPropagation()}
-              role="dialog"
-            >
-              {dialog === "help" ? (
-                <>
-                  <button aria-label="关闭弹窗" className="staff-game-dialog-close" onClick={closeGameDialog} type="button"><X size={23} /></button>
-                  <h2 aria-label="提示" className="staff-game-help-title" id="staff-game-dialog-title">
-                    <img alt="" aria-hidden="true" draggable="false" src={helpTitleArt} />
-                  </h2>
-                  <div className="staff-game-help-copy">
-                    <h3>{isSongMode ? "歌曲模式说明" : "闯关模式说明"}</h3>
-                    {isSongMode ? (
-                      <>
-                        <p>选择歌曲后，气泡会按旋律顺序出现。答错可重试当前音符；气泡飘走后会记为漏音并继续下一音。全曲完成后，按首次作答准确率评星：达到 60%、80%、95% 分别获得 1、2、3 星。</p>
-                        <p>可用麦克风、MIDI 键盘或虚拟琴键输入。虚拟琴键可点击；电脑端也可用 A、S、D、F、G、H、J 弹奏 C4 到 B4。</p>
-                        <p>答对可得分并增加连击；难度会影响基础分、气泡下落速度和连击时限，连击另有加分。歌曲成绩会记录最佳分、准确率、星级和最高连击。</p>
-                      </>
-                    ) : (
-                      <>
-                        <p>共有 60 关：第 1–35 关逐步加入白键，第 36–60 关加入黑键。可通过「跳级」直接选择任意关卡。</p>
-                        <p>观察气泡里的五线谱音符，用麦克风（实体乐器）、MIDI 键盘或虚拟琴键作答。虚拟琴键可点击，也可在电脑端用键盘输入。</p>
-                        <p>答对可得分并增加连击；难度会影响基础分、气泡下落速度和连击时限，连击另有加分。星级按答对数量计算，目标随关卡时长调整，不受难度加分影响；结算页可重试或直接开始下一关，也可通过跳级选择任意关卡。</p>
-                        <p>虚拟琴键输入时，电脑端可用 A、S、D、F、G、H、J 弹奏 C4 到 B4；W、E、T、Y、U 对应五个黑键。</p>
-                      </>
-                    )}
-                  </div>
-                </>
-              ) : dialog === "levels" ? (
-                <>
-                  <img alt="" aria-hidden="true" className="staff-game-level-decoration" draggable="false" src={levelJumpDecorationArt} />
-                  <button aria-label="关闭弹窗" className="staff-game-dialog-close" onClick={closeGameDialog} type="button"><X size={23} /></button>
-                  <div className="staff-game-level-dialog-content">
-                    <h2 id="staff-game-dialog-title">选择关卡</h2>
-                    <div className="staff-game-level-picker-content">
-                      <p>点选关卡后会立即开始</p>
-                      <section aria-label="白键关卡" className="staff-game-level-picker-group">
-                        <h3>白键 · 1–35</h3>
-                        <div className="staff-game-level-picker-grid">
-                          {GAME_NOTE_PROGRESSION.slice(0, 35).map((note, index) => {
-                            const selectedLevel = index + 1;
-                            const isCurrent = level === selectedLevel;
-                            return (
-                              <button
-                                aria-label={`第 ${selectedLevel} 关，${note.name}${note.octave}${isCurrent ? "，当前关卡" : ""}`}
-                                aria-pressed={isCurrent}
-                                className={`staff-game-level-choice${isCurrent ? " is-current" : ""}${progress.bestStars[index] > 0 ? " has-stars" : ""}`}
-                                key={selectedLevel}
-                                onClick={() => jumpToLevel(selectedLevel)}
-                                type="button"
-                              ><strong>{selectedLevel}</strong><span>{note.name}{note.octave}</span>{isCurrent ? <small>当前</small> : null}</button>
-                            );
-                          })}
-                        </div>
-                      </section>
-                      <section aria-label="黑键关卡" className="staff-game-level-picker-group">
-                        <h3>黑键 · 36–60</h3>
-                        <div className="staff-game-level-picker-grid">
-                          {GAME_NOTE_PROGRESSION.slice(35).map((note, index) => {
-                            const selectedLevel = index + 36;
-                            const progressIndex = selectedLevel - 1;
-                            const isCurrent = level === selectedLevel;
-                            return (
-                              <button
-                                aria-label={`第 ${selectedLevel} 关，${note.name}${note.octave}${isCurrent ? "，当前关卡" : ""}`}
-                                aria-pressed={isCurrent}
-                                className={`staff-game-level-choice is-black-key${isCurrent ? " is-current" : ""}${progress.bestStars[progressIndex] > 0 ? " has-stars" : ""}`}
-                                key={selectedLevel}
-                                onClick={() => jumpToLevel(selectedLevel)}
-                                type="button"
-                              ><strong>{selectedLevel}</strong><span>{note.name}{note.octave}</span>{isCurrent ? <small>当前</small> : null}</button>
-                            );
-                          })}
-                        </div>
-                      </section>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <button
-                    aria-label="熊掌，悬停或点击可让弹窗颤动"
-                    className="staff-game-settings-decoration"
-                    onClick={triggerSettingsDialogShake}
-                    onPointerEnter={triggerSettingsDialogShake}
-                    type="button"
-                  ><img alt="" aria-hidden="true" draggable="false" src={settingsPawArt} /></button>
-                  <button aria-label="关闭弹窗" className="staff-game-dialog-close" onClick={closeGameDialog} type="button"><X size={23} /></button>
-                  <div className="staff-game-settings-content">
-                    <h2 id="staff-game-dialog-title">游戏设置</h2>
-                    <section className="staff-game-settings-section">
-                      <h3>输入方式</h3>
-                      <div className="staff-game-input-options">
-                        <button aria-pressed={settingsDraft.inputMode === "virtual"} className={`staff-game-input-option${settingsDraft.inputMode === "virtual" ? " is-selected" : ""}`} disabled={!virtualKeyboardAvailable} onClick={() => selectInputMode("virtual")} type="button">
-                          <Keyboard aria-hidden="true" size={29} /><strong>虚拟琴键</strong><small>{virtualKeyboardAvailable ? "点击屏幕琴键作答，电脑也可用" : "虚拟琴键暂不可用"}</small>
-                        </button>
-                        <button aria-pressed={settingsDraft.inputMode === "physical"} className={`staff-game-input-option${settingsDraft.inputMode === "physical" ? " is-selected" : ""}`} onClick={() => selectInputMode("physical")} type="button">
-                          <Mic aria-hidden="true" size={29} /><strong>实体钢琴</strong><small>麦克风识别，关闭背景音乐，游戏音效单独控制</small>
-                        </button>
-                        {midiOptionAvailable ? (
-                          <button aria-pressed={settingsDraft.inputMode === "midi"} className={`staff-game-input-option${settingsDraft.inputMode === "midi" ? " is-selected" : ""}`} onClick={() => selectInputMode("midi")} type="button">
-                            <Music2 aria-hidden="true" size={29} /><strong>MIDI 键盘</strong><small>{midi.isConnected ? `已连接：${midi.selectedInput?.name ?? "设备"}` : midi.status === "denied" ? "浏览器 MIDI 权限未开启" : "电脑端连接 MIDI 键盘"}</small>
-                          </button>
-                        ) : null}
-                      </div>
-                    </section>
-                    <div className="staff-game-settings-pair-grid staff-game-audio-settings-grid">
-                      <section className="staff-game-settings-section staff-game-settings-row">
-                        <div><h3>音效</h3><p>答对、连击和关卡反馈</p></div>
-                        <button aria-label={draftAudioSettings.soundEffectsEnabled ? "关闭音效" : "开启音效"} aria-pressed={draftAudioSettings.soundEffectsEnabled} className={`staff-game-sound-switch${draftAudioSettings.soundEffectsEnabled ? " is-on" : ""}`} onClick={() => setSettingsDraft((current) => updateModeAudioSettings(current, gameMode, { soundEffectsEnabled: !current.audioByMode[gameMode].soundEffectsEnabled }))} type="button">
-                          {draftAudioSettings.soundEffectsEnabled ? <Volume2 size={19} /> : <VolumeX size={19} />}<span>{draftAudioSettings.soundEffectsEnabled ? "开启" : "关闭"}</span>
-                        </button>
-                      </section>
-                      {settingsDraft.inputMode !== "physical" ? (
-                        <section className="staff-game-settings-section staff-game-settings-row staff-game-background-music-setting">
-                          <div><h3>背景音乐</h3><p>轻快旋律循环播放</p></div>
-                          <button aria-label={draftAudioSettings.backgroundMusicEnabled ? "关闭背景音乐" : "开启背景音乐"} aria-pressed={draftAudioSettings.backgroundMusicEnabled} className={`staff-game-sound-switch${draftAudioSettings.backgroundMusicEnabled ? " is-on" : ""}`} onClick={() => setSettingsDraft((current) => updateModeAudioSettings(current, gameMode, { backgroundMusicEnabled: !current.audioByMode[gameMode].backgroundMusicEnabled }))} type="button">
-                            {draftAudioSettings.backgroundMusicEnabled ? <Volume2 size={19} /> : <VolumeX size={19} />}<span>{draftAudioSettings.backgroundMusicEnabled ? "开启" : "关闭"}</span>
-                          </button>
-                        </section>
-                      ) : null}
-                      {settingsDraft.inputMode === "virtual" ? (
-                        <section className="staff-game-settings-section staff-game-settings-row staff-game-piano-sound-setting">
-                          <div><h3>钢琴声</h3><p>弹奏虚拟琴键时播放琴音</p></div>
-                          <button aria-label={draftAudioSettings.pianoSoundEnabled ? "关闭钢琴声" : "开启钢琴声"} aria-pressed={draftAudioSettings.pianoSoundEnabled} className={`staff-game-sound-switch${draftAudioSettings.pianoSoundEnabled ? " is-on" : ""}`} onClick={() => setSettingsDraft((current) => updateModeAudioSettings(current, gameMode, { pianoSoundEnabled: !current.audioByMode[gameMode].pianoSoundEnabled }))} type="button">
-                            {draftAudioSettings.pianoSoundEnabled ? <Volume2 size={19} /> : <VolumeX size={19} />}<span>{draftAudioSettings.pianoSoundEnabled ? "开启" : "关闭"}</span>
-                          </button>
-                        </section>
-                      ) : null}
-                    </div>
-                    {settingsDraft.inputMode === "virtual" ? (
-                      <div className="staff-game-settings-pair-grid staff-game-virtual-effects-grid">
-                        <section className="staff-game-settings-section staff-game-display-setting">
-                          <label htmlFor="staff-game-display-mode">显示</label>
-                          <select
-                            id="staff-game-display-mode"
-                            onChange={(event) => setSettingsDraft((current) => ({ ...current, displayMode: event.currentTarget.value as GameDisplayMode }))}
-                            value={settingsDraft.displayMode}
-                          >
-                            {DISPLAY_MODES.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
-                          </select>
-                        </section>
-                        <section className="staff-game-settings-section staff-game-settings-row">
-                          <div><h3>游戏特效</h3><p>萤火粒子、流星、泡泡星光与烟花</p></div>
-                          <button aria-label={settingsDraft.gameEffectsEnabled ? "关闭游戏特效" : "开启游戏特效"} aria-pressed={settingsDraft.gameEffectsEnabled} className={`staff-game-sound-switch staff-game-effects-switch${settingsDraft.gameEffectsEnabled ? " is-on" : ""}`} onClick={() => setSettingsDraft((current) => ({ ...current, gameEffectsEnabled: !current.gameEffectsEnabled }))} type="button">
-                            <Sparkles size={19} /><span>{settingsDraft.gameEffectsEnabled ? "开启" : "关闭"}</span>
-                          </button>
-                        </section>
-                      </div>
-                    ) : (
-                      <section className="staff-game-settings-section staff-game-settings-row">
-                        <div><h3>游戏特效</h3><p>萤火粒子、流星、泡泡星光与烟花</p></div>
-                        <button aria-label={settingsDraft.gameEffectsEnabled ? "关闭游戏特效" : "开启游戏特效"} aria-pressed={settingsDraft.gameEffectsEnabled} className={`staff-game-sound-switch staff-game-effects-switch${settingsDraft.gameEffectsEnabled ? " is-on" : ""}`} onClick={() => setSettingsDraft((current) => ({ ...current, gameEffectsEnabled: !current.gameEffectsEnabled }))} type="button">
-                          <Sparkles size={19} /><span>{settingsDraft.gameEffectsEnabled ? "开启" : "关闭"}</span>
-                        </button>
-                      </section>
-                    )}
-                    <section className="staff-game-settings-section staff-game-difficulty-setting">
-                      <h3>难度</h3>
-                      <div aria-label="游戏难度" className="staff-game-difficulty-options" role="group">
-                        {GAME_DIFFICULTIES.map((option) => (
-                          <button
-                            aria-pressed={settingsDraft.difficulty === option.id}
-                            className={`staff-game-difficulty-option${settingsDraft.difficulty === option.id ? " is-selected" : ""}`}
-                            key={option.id}
-                            onClick={() => setSettingsDraft((current) => ({ ...current, difficulty: option.id }))}
-                            type="button"
-                          >{option.label}</button>
-                        ))}
-                      </div>
-                      <p className="staff-game-difficulty-summary" aria-live="polite">
-                        <span>下落 { (draftDifficulty.bubbleDurationMs / 1000).toFixed(1) } 秒 · 连击等待 { (draftDifficulty.comboWindowMs / 1000).toFixed(1) } 秒</span>
-                        <span>答对 {draftDifficulty.correctPoints} 分 · 连击每次 +{draftDifficulty.comboBonusPoints} 分</span>
-                      </p>
-                    </section>
-                    <div className="staff-game-dialog-actions">
-                      <button className="staff-game-secondary" onClick={closeGameDialog} type="button">取消</button>
-                      <button className="staff-game-primary" onClick={applyGameSettings} type="button">确定</button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </section>
-          </div>,
-          document.body,
-        ) : null}
-        {gameError && typeof document !== "undefined" ? createPortal(
-          <div className="staff-game-mic-dialog-backdrop" style={gameArtStyle}>
-            <section aria-labelledby="staff-game-mic-dialog-title" aria-modal="true" className="staff-game-mic-dialog" role="alertdialog">
-              <span className="staff-game-mic-dialog-icon">{settings.inputMode === "midi" ? <Music2 aria-hidden="true" size={22} /> : <Mic aria-hidden="true" size={22} />}</span>
-              <h2 id="staff-game-mic-dialog-title">{settings.inputMode === "midi" ? "需要连接 MIDI 键盘" : "需要开启麦克风"}</h2>
-              <p>{gameError}</p>
-              <div className="staff-game-summary-actions">
-                <button className="staff-game-secondary" onClick={() => setGameError("")} type="button">稍后处理</button>
-                <button className="staff-game-primary" disabled={isStarting} onClick={() => void (phase === "paused" ? resumeRound() : beginRound())} type="button">
-                  {isStarting ? "正在连接…" : "重新尝试"}
-                </button>
-              </div>
-            </section>
-          </div>,
-          document.body,
-        ) : null}
+        <StaffGameDialogs
+          applyGameSettings={applyGameSettings}
+          bestStars={progress.bestStars}
+          closeGameDialog={closeGameDialog}
+          dialog={dialog}
+          draftAudioSettings={draftAudioSettings}
+          draftDifficulty={draftDifficulty}
+          gameArtStyle={gameArtStyle}
+          isSettingsDialogShaking={isSettingsDialogShaking}
+          isSongMode={isSongMode}
+          jumpToLevel={jumpToLevel}
+          level={level}
+          midi={midi}
+          midiOptionAvailable={midiOptionAvailable}
+          onDifficultyChange={(difficulty) => setSettingsDraft((current) => ({ ...current, difficulty }))}
+          onDisplayModeChange={(displayMode) => setSettingsDraft((current) => ({ ...current, displayMode }))}
+          onSettingsDialogAnimationEnd={(event) => {
+            if (event.animationName !== "staff-game-settings-dialog-wobble") return;
+            settingsDialogShakeLockRef.current = false;
+            setIsSettingsDialogShaking(false);
+          }}
+          onToggleBackgroundMusic={() => setSettingsDraft((current) => updateModeAudioSettings(current, gameMode, { backgroundMusicEnabled: !current.audioByMode[gameMode].backgroundMusicEnabled }))}
+          onToggleGameEffects={() => setSettingsDraft((current) => ({ ...current, gameEffectsEnabled: !current.gameEffectsEnabled }))}
+          onTogglePianoSound={() => setSettingsDraft((current) => updateModeAudioSettings(current, gameMode, { pianoSoundEnabled: !current.audioByMode[gameMode].pianoSoundEnabled }))}
+          onToggleSoundEffects={() => setSettingsDraft((current) => updateModeAudioSettings(current, gameMode, { soundEffectsEnabled: !current.audioByMode[gameMode].soundEffectsEnabled }))}
+          selectInputMode={selectInputMode}
+          settingsDraft={settingsDraft}
+          triggerSettingsDialogShake={triggerSettingsDialogShake}
+          virtualKeyboardAvailable={virtualKeyboardAvailable}
+        />
       </div>
-      {showLowFpsPrompt && typeof document !== "undefined" ? createPortal(
-        <div className="staff-game-low-fps-backdrop">
-          <section aria-labelledby="staff-game-low-fps-title" aria-modal="true" className="staff-game-low-fps-dialog" role="alertdialog">
-            <Sparkles aria-hidden="true" className="staff-game-low-fps-icon" size={34} />
-            <h2 id="staff-game-low-fps-title">检测到页面有些卡顿</h2>
-            <p>最近几秒帧率低于 28 FPS。关闭粒子、流星和烟花等特效，可能会让游戏更流畅。</p>
-            <div className="staff-game-low-fps-actions">
-              <button className="staff-game-secondary" onClick={() => { setShowLowFpsPrompt(false); void resumeRound(); }} type="button">保持特效</button>
-              <button className="staff-game-primary" onClick={() => {
-                const nextSettings = { ...settingsRef.current, gameEffectsEnabled: false };
-                settingsRef.current = nextSettings;
-                setSettings(nextSettings);
-                setSettingsDraft(nextSettings);
-                setShowLowFpsPrompt(false);
-                void resumeRound();
-              }} type="button">关闭特效</button>
-            </div>
-          </section>
-        </div>,
-        document.body,
-      ) : null}
-      {phase === "paused" && dialog === null && !gameError && typeof document !== "undefined" ? createPortal(
-        <div className="staff-game-pause-backdrop" style={gameArtStyle}>
-          <section aria-labelledby="staff-game-pause-title" aria-modal="true" className="staff-game-pause-dialog" role="dialog">
-            <div aria-hidden="true" className={`staff-game-pause-clock${settings.gameEffectsEnabled ? " is-animated" : ""}`}>
-              <div className="staff-game-pause-clock-face">
-                <span className="staff-game-pause-clock-hand is-hour" />
-                <span className="staff-game-pause-clock-hand is-minute" />
-                <span className="staff-game-pause-clock-pin" />
-              </div>
-            </div>
-            <div aria-live="polite" className={`staff-game-pause-label${settings.gameEffectsEnabled ? " is-animated" : ""}`}>
-              <strong id="staff-game-pause-title">{touchGameLayout ? "暂停中.." : "暂停中，点击按钮或者按空格键继续。"}</strong>
-            </div>
-            <div className="staff-game-pause-actions">
-              <button className="staff-game-primary" disabled={isStarting} onClick={() => void resumeRound()} type="button">
-                <Play aria-hidden="true" fill="currentColor" size={20} />继续
-              </button>
-              <button className="staff-game-secondary" disabled={isStarting} onClick={retryLevel} type="button">
-                <RotateCcw aria-hidden="true" size={20} />重新开始
-              </button>
-            </div>
-          </section>
-        </div>,
-        document.body,
-      ) : null}
+      <StaffGameStatusOverlays
+        gameArtStyle={gameArtStyle}
+        gameEffectsEnabled={settings.gameEffectsEnabled}
+        gameError={gameError}
+        isMidiInput={settings.inputMode === "midi"}
+        isStarting={isStarting}
+        onDisableEffects={() => {
+          const nextSettings = { ...settingsRef.current, gameEffectsEnabled: false };
+          settingsRef.current = nextSettings;
+          setSettings(nextSettings);
+          setSettingsDraft(nextSettings);
+          setShowLowFpsPrompt(false);
+          void resumeRound();
+        }}
+        onDismissInputError={() => setGameError("")}
+        onKeepEffects={() => { setShowLowFpsPrompt(false); void resumeRound(); }}
+        onResume={() => void resumeRound()}
+        onRetryInput={() => void (phase === "paused" ? resumeRound() : beginRound())}
+        onRetryLevel={retryLevel}
+        showLowFpsPrompt={showLowFpsPrompt}
+        showPauseDialog={phase === "paused" && dialog === null && !gameError}
+        touchGameLayout={touchGameLayout}
+      />
     </section>
   );
 }

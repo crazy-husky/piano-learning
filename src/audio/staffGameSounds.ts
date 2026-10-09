@@ -31,7 +31,7 @@ const soundSources: Record<SampledStaffGameSound, { url: string; volumeDb: numbe
   bubblePop: { url: bubblePopUrl, volumeDb: -13 },
   comboAmazing: { url: comboAmazingUrl, volumeDb: -8 },
   comboExcellent: { url: comboExcellentUrl, volumeDb: -8 },
-  comboStreak: { url: comboStreakUrl, volumeDb: -17 },
+  comboStreak: { url: comboStreakUrl, volumeDb: -20 },
   comboUnbelievable: { url: comboUnbelievableUrl, volumeDb: -8 },
   levelClear: { url: levelClearUrl, volumeDb: -13 },
   menuClick: { url: menuClickUrl, volumeDb: -14 },

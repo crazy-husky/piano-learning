@@ -4818,7 +4818,7 @@ button.danger:hover:not(:disabled) {
   height: 100dvh;
   min-height: 0;
   margin: 0;
-  padding: 14px;
+  padding: 0;
 }
 
 .staff-game-loading-shell {
@@ -5240,6 +5240,10 @@ body.rush-mode .staff-game-scene::before {
   overflow: hidden;
 }
 
+.staff-game-playfield.has-screen-top-rush-bubble {
+  overflow: visible;
+}
+
 .staff-game-burst {
   position: absolute;
   z-index: 5;
@@ -5310,9 +5314,11 @@ body.rush-mode .staff-game-scene::before {
 
 @media (min-width: 821px) {
   .staff-game-playfield > .staff-game-bubble {
-    --staff-game-bubble-start-top: -38px;
+    --staff-game-bubble-start-top: -13px;
+    --staff-game-bubble-end-offset: 170px;
     width: clamp(112px, 11vw, 150px);
   }
+
 }
 
 .staff-game-bubble.is-paused {
@@ -6165,6 +6171,38 @@ body.rush-mode .staff-game-scene::before {
   animation: staff-game-float 3.8s ease-in-out infinite;
 }
 
+.staff-game-shell .staff-game-mascot-interactive:not(:disabled) {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: auto;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: none;
+  cursor: pointer;
+}
+
+.staff-game-shell .staff-game-mascot-interactive:hover:not(:disabled),
+.staff-game-shell .staff-game-mascot-interactive:active:not(:disabled) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.staff-game-mascot-interactive:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--warning) 68%, transparent);
+  outline-offset: 2px;
+}
+
 .staff-game-mascot {
   position: relative;
   display: block;
@@ -6263,7 +6301,7 @@ body.rush-mode .staff-game-scene::before {
 
 @keyframes staff-game-fall {
   from { top: var(--staff-game-bubble-start-top, 12px); transform: translateX(-50%) scale(1); }
-  to { top: calc(100% - 190px); transform: translateX(-50%) scale(0.98); }
+  to { top: calc(100% - var(--staff-game-bubble-end-offset, 190px)); transform: translateX(-50%) scale(0.98); }
 }
 
 @keyframes staff-game-pop {
@@ -9578,13 +9616,14 @@ body.rush-mode .staff-game-scene::before {
 
 @media (min-width: 821px) {
   .staff-game-dialog.staff-game-settings-dialog {
-    width: min(610px, 100%);
+    width: min(820px, 100%);
     padding: 47px 15px 13px;
   }
 
   .staff-game-settings-dialog .staff-game-settings-content {
     padding: 11px 16px 10px;
   }
+
 }
 
 @media (max-width: 820px) {
@@ -11365,6 +11404,36 @@ body.rush-mode .staff-game-rush-vignette {
   }
 }
 
+@media (min-width: 821px) {
+  .staff-game-settings-dialog .staff-game-audio-settings-grid:has(.staff-game-piano-sound-setting) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .staff-game-settings-dialog .staff-game-audio-settings-grid:not(:has(.staff-game-background-music-setting)) > .staff-game-settings-section {
+    grid-column: 1 / -1;
+  }
+
+  .staff-game-settings-dialog .staff-game-audio-settings-grid > .staff-game-settings-section {
+    border-right: 1px solid rgba(63, 148, 171, 0.34);
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .staff-game-settings-dialog .staff-game-audio-settings-grid > .staff-game-settings-section:first-child {
+    padding-left: 0;
+  }
+
+  .staff-game-settings-dialog .staff-game-audio-settings-grid > .staff-game-settings-section:last-child {
+    border-right: 0;
+    border-left: 0;
+    padding-right: 0;
+  }
+
+  .staff-game-settings-dialog .staff-game-audio-settings-grid > .staff-game-piano-sound-setting {
+    grid-column: auto;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .staff-game-low-fps-dialog {
     animation: none;
@@ -12052,6 +12121,13 @@ body.rush-mode .staff-game-rush-vignette {
     flex-direction: column;
     gap: 10px;
     padding: 12px 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  .app-nav::-webkit-scrollbar {
+    display: none;
   }
 
   .app-nav button {
@@ -12062,6 +12138,59 @@ body.rush-mode .staff-game-rush-vignette {
     padding: 8px 4px;
     color: var(--muted);
     font-size: 13px;
+  }
+
+  .app-nav-game-group {
+    display: grid;
+    gap: 4px;
+  }
+
+  .app-nav .app-nav-game-toggle {
+    position: relative;
+  }
+
+  .app-nav-game-chevron {
+    position: absolute;
+    top: 4px;
+    right: 3px;
+    opacity: 0.72;
+    transition: transform 0.16s ease;
+  }
+
+  .app-nav-game-toggle[aria-expanded="true"] .app-nav-game-chevron {
+    transform: rotate(180deg);
+  }
+
+  .app-nav-game-submenu {
+    display: grid;
+    gap: 4px;
+    margin-left: 5px;
+    padding-left: 4px;
+    border-left: 1px solid var(--border-strong);
+  }
+
+  .app-nav .app-nav-game-submenu button {
+    min-height: 36px;
+    flex-direction: row;
+    gap: 0;
+    padding: 6px 2px;
+    border-color: transparent;
+    background: transparent;
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .app-nav .app-nav-game-submenu button:hover:not(:disabled) {
+    border-color: var(--border);
+    background: var(--surface-soft);
+    color: var(--text);
+  }
+
+  .app-nav .app-nav-game-submenu button.active {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: white;
   }
 
   .app-nav button.active {
