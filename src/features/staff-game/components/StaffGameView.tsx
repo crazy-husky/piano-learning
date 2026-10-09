@@ -1,6 +1,5 @@
 import { Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { toast } from "sonner";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { NoteName, PianoKeyName } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
@@ -97,8 +96,6 @@ function isNearComboVoiceMilestone(comboCount: number): boolean {
 const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v2";
 const GAME_SETTINGS_KEY = "anki-note.staffGameSettings.v1";
 const LOW_FPS_PROMPT_SESSION_KEY = "anki-note.staffGameLowFpsPrompted.v1";
-const PHYSICAL_INPUT_NOTICE_ID = "staff-game-physical-input-notice";
-const PHYSICAL_INPUT_NOTICE = "实体钢琴模式通过麦克风识别音高，背景音乐会自动关闭；答题反馈音效仍由「音效」设置控制。请确保乐器音准正常。";
 let lowFpsPromptShownThisPage = false;
 const BURST_STAR_COUNT = 14;
 const SOLFEGE_NAMES = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"] as const;
@@ -1563,17 +1560,11 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   }, [pauseRound]);
 
   const closeGameDialog = useCallback((): void => {
-    toast.dismiss(PHYSICAL_INPUT_NOTICE_ID);
     setDialog(null);
   }, []);
 
   const selectInputMode = useCallback((inputMode: StaffGameSettings["inputMode"]): void => {
     setSettingsDraft((current) => ({ ...current, inputMode }));
-    if (inputMode === "physical") {
-      toast.error(PHYSICAL_INPUT_NOTICE, { id: PHYSICAL_INPUT_NOTICE_ID, duration: 6_000 });
-    } else {
-      toast.dismiss(PHYSICAL_INPUT_NOTICE_ID);
-    }
   }, []);
 
   const applyGameSettings = useCallback((): void => {

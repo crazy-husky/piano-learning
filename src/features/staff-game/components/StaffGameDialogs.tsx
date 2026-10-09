@@ -1,26 +1,16 @@
-import { Keyboard, Mic, Music2, Sparkles, Volume2, VolumeX, X } from "lucide-react";
+import { Keyboard, Mic, Music2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { AnimationEventHandler, CSSProperties } from "react";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import { StaffGamePhysicalInputNotice } from "./StaffGamePhysicalInputNotice";
+import { StaffGameSettingsControls, type GameDisplayMode, type StaffGameAudioSettingsDraft, type StaffGameSettingsDraft } from "./StaffGameSettingsControls";
 import { GAME_DIFFICULTIES, GAME_NOTE_PROGRESSION, type GameDifficulty } from "../logic/staffGameRules";
 import { STAFF_GAME_ART } from "../logic/staffGameResources";
 
 export type StaffGameDialogKind = "help" | "settings" | "levels" | null;
-type StaffGameInputMode = "physical" | "virtual" | "midi";
-type GameDisplayMode = "note" | "solfege" | "number" | "none";
-
-interface StaffGameDialogSettings {
-  inputMode: StaffGameInputMode;
-  displayMode: GameDisplayMode;
-  difficulty: GameDifficulty;
-  gameEffectsEnabled: boolean;
-}
-
-interface StaffGameDialogAudioSettings {
-  soundEffectsEnabled: boolean;
-  backgroundMusicEnabled: boolean;
-  pianoSoundEnabled: boolean;
-}
+type StaffGameInputMode = StaffGameSettingsDraft["inputMode"];
+type StaffGameDialogSettings = StaffGameSettingsDraft & { difficulty: GameDifficulty };
+type StaffGameDialogAudioSettings = StaffGameAudioSettingsDraft;
 
 interface StaffGameDialogsProps {
   dialog: StaffGameDialogKind;
@@ -54,13 +44,6 @@ const {
   levelJumpDecorationArt,
   settingsPawArt,
 } = STAFF_GAME_ART;
-
-const DISPLAY_MODES: Array<{ id: GameDisplayMode; label: string }> = [
-  { id: "note", label: "音名" },
-  { id: "solfege", label: "唱名" },
-  { id: "number", label: "简谱" },
-  { id: "none", label: "无" },
-];
 
 export function StaffGameDialogs({
   dialog,
@@ -202,57 +185,15 @@ export function StaffGameDialogs({
                         ) : null}
                       </div>
                     </section>
-                    <div className="staff-game-settings-pair-grid staff-game-audio-settings-grid">
-                      <section className="staff-game-settings-section staff-game-settings-row">
-                        <div><h3>音效</h3><p>答对、连击和关卡反馈</p></div>
-                        <button aria-label={draftAudioSettings.soundEffectsEnabled ? "关闭音效" : "开启音效"} aria-pressed={draftAudioSettings.soundEffectsEnabled} className={`staff-game-sound-switch${draftAudioSettings.soundEffectsEnabled ? " is-on" : ""}`} onClick={onToggleSoundEffects} type="button">
-                          {draftAudioSettings.soundEffectsEnabled ? <Volume2 size={19} /> : <VolumeX size={19} />}<span>{draftAudioSettings.soundEffectsEnabled ? "开启" : "关闭"}</span>
-                        </button>
-                      </section>
-                      {settingsDraft.inputMode !== "physical" ? (
-                        <section className="staff-game-settings-section staff-game-settings-row staff-game-background-music-setting">
-                          <div><h3>背景音乐</h3><p>轻快旋律循环播放</p></div>
-                          <button aria-label={draftAudioSettings.backgroundMusicEnabled ? "关闭背景音乐" : "开启背景音乐"} aria-pressed={draftAudioSettings.backgroundMusicEnabled} className={`staff-game-sound-switch${draftAudioSettings.backgroundMusicEnabled ? " is-on" : ""}`} onClick={onToggleBackgroundMusic} type="button">
-                            {draftAudioSettings.backgroundMusicEnabled ? <Volume2 size={19} /> : <VolumeX size={19} />}<span>{draftAudioSettings.backgroundMusicEnabled ? "开启" : "关闭"}</span>
-                          </button>
-                        </section>
-                      ) : null}
-                      {settingsDraft.inputMode === "virtual" ? (
-                        <section className="staff-game-settings-section staff-game-settings-row staff-game-piano-sound-setting">
-                          <div><h3>钢琴声</h3><p>弹奏虚拟琴键时播放琴音</p></div>
-                          <button aria-label={draftAudioSettings.pianoSoundEnabled ? "关闭钢琴声" : "开启钢琴声"} aria-pressed={draftAudioSettings.pianoSoundEnabled} className={`staff-game-sound-switch${draftAudioSettings.pianoSoundEnabled ? " is-on" : ""}`} onClick={onTogglePianoSound} type="button">
-                            {draftAudioSettings.pianoSoundEnabled ? <Volume2 size={19} /> : <VolumeX size={19} />}<span>{draftAudioSettings.pianoSoundEnabled ? "开启" : "关闭"}</span>
-                          </button>
-                        </section>
-                      ) : null}
-                    </div>
-                    {settingsDraft.inputMode === "virtual" ? (
-                      <div className="staff-game-settings-pair-grid staff-game-virtual-effects-grid">
-                        <section className="staff-game-settings-section staff-game-display-setting">
-                          <label htmlFor="staff-game-display-mode">显示</label>
-                          <select
-                            id="staff-game-display-mode"
-                            onChange={(event) => onDisplayModeChange(event.currentTarget.value as GameDisplayMode)}
-                            value={settingsDraft.displayMode}
-                          >
-                            {DISPLAY_MODES.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
-                          </select>
-                        </section>
-                        <section className="staff-game-settings-section staff-game-settings-row">
-                          <div><h3>游戏特效</h3><p>萤火粒子、流星、泡泡星光与烟花</p></div>
-                          <button aria-label={settingsDraft.gameEffectsEnabled ? "关闭游戏特效" : "开启游戏特效"} aria-pressed={settingsDraft.gameEffectsEnabled} className={`staff-game-sound-switch staff-game-effects-switch${settingsDraft.gameEffectsEnabled ? " is-on" : ""}`} onClick={onToggleGameEffects} type="button">
-                            <Sparkles size={19} /><span>{settingsDraft.gameEffectsEnabled ? "开启" : "关闭"}</span>
-                          </button>
-                        </section>
-                      </div>
-                    ) : (
-                      <section className="staff-game-settings-section staff-game-settings-row">
-                        <div><h3>游戏特效</h3><p>萤火粒子、流星、泡泡星光与烟花</p></div>
-                        <button aria-label={settingsDraft.gameEffectsEnabled ? "关闭游戏特效" : "开启游戏特效"} aria-pressed={settingsDraft.gameEffectsEnabled} className={`staff-game-sound-switch staff-game-effects-switch${settingsDraft.gameEffectsEnabled ? " is-on" : ""}`} onClick={onToggleGameEffects} type="button">
-                          <Sparkles size={19} /><span>{settingsDraft.gameEffectsEnabled ? "开启" : "关闭"}</span>
-                        </button>
-                      </section>
-                    )}
+                    <StaffGameSettingsControls
+                      draftAudioSettings={draftAudioSettings}
+                      onDisplayModeChange={onDisplayModeChange}
+                      onToggleBackgroundMusic={onToggleBackgroundMusic}
+                      onToggleGameEffects={onToggleGameEffects}
+                      onTogglePianoSound={onTogglePianoSound}
+                      onToggleSoundEffects={onToggleSoundEffects}
+                      settingsDraft={settingsDraft}
+                    />
                     <section className="staff-game-settings-section staff-game-difficulty-setting">
                       <h3>难度</h3>
                       <div aria-label="游戏难度" className="staff-game-difficulty-options" role="group">
@@ -271,6 +212,9 @@ export function StaffGameDialogs({
                         <span>答对 {draftDifficulty.correctPoints} 分 · 连击每次 +{draftDifficulty.comboBonusPoints} 分</span>
                       </p>
                     </section>
+                    {settingsDraft.inputMode === "physical" ? (
+                      <StaffGamePhysicalInputNotice />
+                    ) : null}
                     <div className="staff-game-dialog-actions">
                       <button className="staff-game-secondary" onClick={closeGameDialog} type="button">取消</button>
                       <button className="staff-game-primary" onClick={applyGameSettings} type="button">确定</button>

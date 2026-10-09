@@ -523,13 +523,6 @@
   gap: 10px;
 }
 
-.settings-switch-control > span {
-  color: var(--muted);
-  font-size: 13px;
-  min-width: 28px;
-  text-align: right;
-}
-
 .ui-switch {
   appearance: none;
   align-items: center;

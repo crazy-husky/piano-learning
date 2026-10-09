@@ -683,7 +683,7 @@ export function App(): JSX.Element {
           <BookOpen aria-hidden="true" size={18} />
           学习
         </button>
-        <button aria-current={view === "practice" ? "page" : undefined} className={view === "practice" ? "active" : ""} onClick={() => selectView("practice")} type="button">
+        <button aria-current={route.path === "/practice" ? "page" : undefined} className={route.path === "/practice" ? "active" : ""} onClick={() => selectView("practice")} type="button">
           <Dumbbell aria-hidden="true" size={18} />
           练习
         </button>

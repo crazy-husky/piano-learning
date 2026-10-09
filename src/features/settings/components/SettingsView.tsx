@@ -412,7 +412,6 @@ export function SettingsView({
             <span>开启后由详细参数接管识别，算法敏感度档位暂时隐藏；关闭后恢复之前选择的档位。详细参数可在练习页的“调试设置”中调整。</span>
           </div>
           <div className="settings-switch-control">
-            <span>{practiceMicrophonePreferences.debugMode ? "开启" : "关闭"}</span>
             <ToggleSwitch
               aria-label="调试开关"
               checked={practiceMicrophonePreferences.debugMode}

@@ -262,27 +262,6 @@
   font-size: 12px;
 }
 
-.staff-game-sound-switch {
-  display: inline-flex;
-  min-width: 105px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid rgba(81, 144, 158, 0.34);
-  border-radius: 999px;
-  background: #dcebf0;
-  color: #66818e;
-  cursor: pointer;
-  font-weight: 850;
-  padding: 9px 14px;
-}
-
-.staff-game-sound-switch.is-on {
-  border-color: rgba(45, 157, 126, 0.45);
-  background: #d8f2e4;
-  color: #258264;
-}
-
 .staff-game-speed-heading > strong {
   color: #dc8c27;
   font-size: 19px;
@@ -1359,13 +1338,6 @@
   .staff-game-settings-dialog .staff-game-settings-row p,
   .staff-game-settings-dialog .staff-game-speed-heading p {
     font-size: 10px;
-  }
-
-  .staff-game-settings-dialog .staff-game-sound-switch {
-    min-width: 94px;
-    gap: 6px;
-    padding: 7px 11px;
-    font-size: 14px;
   }
 
   .staff-game-settings-dialog .staff-game-speed-heading > strong {
