@@ -32,6 +32,15 @@ export interface SelectNextNoteOptions {
   melodyState?: MelodyGenerationState;
 }
 
+export interface AdaptiveNoteScheduler {
+  appendReview(review: ReviewRecord): void;
+  select(options?: Pick<SelectNextNoteOptions, "lastTargetNoteId" | "plannedTargetNoteIds" | "rng">): TargetNote;
+  selectPage(
+    count: number,
+    options?: Pick<SelectNextNoteOptions, "lastTargetNoteId" | "plannedTargetNoteIds" | "rng">,
+  ): TargetNote[];
+}
+
 export interface AdaptiveNotePerformance {
   adjustedMedianMs?: number;
   eligibleReviewCount: number;
@@ -210,8 +219,8 @@ function targetSetForSession(session: PracticeSessionRecord | undefined): Set<st
 }
 
 interface PreparedAdaptiveHistory {
-  baseQuestionGaps: ReadonlyMap<TargetNoteId, number>;
-  qualifiedReviewsByNote: ReadonlyMap<TargetNoteId, readonly ReviewRecord[]>;
+  baseQuestionGaps: Map<TargetNoteId, number>;
+  qualifiedReviewsByNote: Map<TargetNoteId, ReviewRecord[]>;
 }
 
 function buildBaseQuestionGaps({
@@ -275,6 +284,77 @@ function prepareAdaptiveHistory({
   return {
     baseQuestionGaps: buildBaseQuestionGaps({ currentSessionId, notes, orderedReviews, sessions }),
     qualifiedReviewsByNote: buildQualifiedReviewsByNote(notes, orderedReviews),
+  };
+}
+
+export function createAdaptiveNoteScheduler(options: SelectNextNoteOptions): AdaptiveNoteScheduler {
+  if (options.notes.length === 0) {
+    throw new Error("Cannot select a note without enabled groups.");
+  }
+  const strategy = resolvePracticeQueueStrategy(options.queueStrategy);
+  if (strategy === "melody") {
+    throw new Error("Adaptive scheduler cannot be used for melody practice.");
+  }
+  const notes = resolveStrategyNotes(options.notes, strategy, options.drillNoteNames);
+  const sessions = options.sessions ?? [];
+  const currentSessionId = options.currentSessionId;
+  const currentTargetSet = new Set(notes.map((note) => note.id));
+  const sessionTargetSets = new Map(
+    sessions.map((session) => [session.id, targetSetForSession(session)]),
+  );
+  const history = prepareAdaptiveHistory({
+    currentSessionId,
+    notes,
+    reviews: options.reviews,
+    sessions,
+  });
+
+  return {
+    appendReview(review): void {
+      if (!isStatisticalReview(review)) return;
+      history.qualifiedReviewsByNote.get(review.targetNoteId)?.push(review);
+      const targetSet = review.sessionId === currentSessionId
+        ? currentTargetSet
+        : sessionTargetSets.get(review.sessionId);
+      if (!targetSet) return;
+      for (const noteId of currentTargetSet) {
+        history.baseQuestionGaps.set(
+          noteId,
+          targetSet.has(noteId)
+            ? noteId === review.targetNoteId ? 0 : (history.baseQuestionGaps.get(noteId) ?? 0) + 1
+            : history.baseQuestionGaps.get(noteId) ?? 0,
+        );
+      }
+    },
+    select(dynamicOptions = {}): TargetNote {
+      return selectAdaptiveNote({
+        history,
+        lastTargetNoteId: dynamicOptions.lastTargetNoteId ?? options.lastTargetNoteId,
+        notes,
+        plannedTargetNoteIds: dynamicOptions.plannedTargetNoteIds ?? options.plannedTargetNoteIds ?? [],
+        rng: dynamicOptions.rng ?? options.rng ?? Math.random,
+      });
+    },
+    selectPage(count, dynamicOptions = {}): TargetNote[] {
+      if (count <= 0) return [];
+      const selected: TargetNote[] = [];
+      let lastTargetNoteId = dynamicOptions.lastTargetNoteId ?? options.lastTargetNoteId;
+      for (let index = 0; index < count; index += 1) {
+        const note = selectAdaptiveNote({
+          history,
+          lastTargetNoteId,
+          notes,
+          plannedTargetNoteIds: [
+            ...(dynamicOptions.plannedTargetNoteIds ?? options.plannedTargetNoteIds ?? []),
+            ...selected.map((selectedNote) => selectedNote.id),
+          ],
+          rng: dynamicOptions.rng ?? options.rng ?? Math.random,
+        });
+        selected.push(note);
+        lastTargetNoteId = note.id;
+      }
+      return selected;
+    },
   };
 }
 

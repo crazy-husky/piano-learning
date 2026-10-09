@@ -246,6 +246,7 @@ export function StatsView({
     ),
     [statsUiPreferences.hiddenRecognitionSeries],
   );
+
   const sessionProgressMode = sessionProgressPreferences.mode;
   const sessionProgressAllHistory = sessionProgressPreferences.allHistory;
   const sessionProgressHistoryLimit = sessionProgressPreferences.historyLimit;
@@ -368,14 +369,14 @@ export function StatsView({
     () => getNotesForGroups(settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode),
     [settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode],
   );
-  const activeTargetNoteIds = useMemo(() => new Set(activeNotes.map((note) => note.id)), [activeNotes]);
-  const groupScopedReviews = useMemo(() => {
-    return longTermReviews.filter((review) => activeTargetNoteIds.has(review.targetNoteId));
-  }, [activeTargetNoteIds, longTermReviews]);
-  const filteredReviews = useMemo(() => filterByRange(groupScopedReviews, range), [groupScopedReviews, range]);
+  const rangeScopedReviews = useMemo(() => {
+    const rangedIds = new Set(activeNotes.map((note) => note.id));
+    return longTermReviews.filter((review) => rangedIds.has(review.targetNoteId));
+  }, [activeNotes, longTermReviews]);
+  const filteredReviews = useMemo(() => filterByRange(rangeScopedReviews, range), [range, rangeScopedReviews]);
   const dailyStats = useMemo(
-    () => primaryContentReady ? buildDailyStats(groupScopedReviews) : [],
-    [groupScopedReviews, primaryContentReady],
+    () => primaryContentReady ? buildDailyStats(filteredReviews) : [],
+    [filteredReviews, primaryContentReady],
   );
   const recognitionTrendBySession = useMemo(
     () => recognitionStatsReady
@@ -488,10 +489,10 @@ export function StatsView({
       return filteredReviews;
     }
     return filterByRange(
-      longTermReviews.filter((review) => sessionProgressSessionIds.has(review.sessionId)),
+      rangeScopedReviews.filter((review) => sessionProgressSessionIds.has(review.sessionId)),
       range,
     );
-  }, [filteredReviews, longTermReviews, noteRangeStatsReady, range, sessionProgressSelection, sessionProgressSessionIds]);
+  }, [filteredReviews, noteRangeStatsReady, range, rangeScopedReviews, sessionProgressSelection, sessionProgressSessionIds]);
   const noteStats = useMemo(() => {
     if (!noteRangeStatsReady || activeNotes.length === 0) {
       return [];

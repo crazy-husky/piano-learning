@@ -44,7 +44,7 @@ import {
   buildPracticeSessionStartSnapshot,
 } from "../domain/practiceSessionStartSnapshot";
 import { isCompletedReview } from "../domain/reviews";
-import { selectNextNote, selectNotePage } from "../domain/scheduler";
+import { createAdaptiveNoteScheduler, selectNextNote, selectNotePage, type AdaptiveNoteScheduler } from "../domain/scheduler";
 import {
   buildSessionProgressBenchmark,
   buildSessionProgressSeries,
@@ -685,6 +685,7 @@ export function PracticeView({
   const sessionStartSnapshotRef = useRef<PracticeSessionStartSnapshot | null>(null);
   const sessionReviewsRef = useRef<ReviewRecord[]>([]);
   const lastTargetNoteIdRef = useRef<TargetNote["id"] | undefined>();
+  const adaptiveSchedulerRef = useRef<AdaptiveNoteScheduler | null>(null);
   const melodyQueueRef = useRef<TargetNote[]>([]);
   const melodyGenerationStateRef = useRef(createMelodyGenerationState());
   const staffPageRef = useRef<StaffPageRuntime | null>(null);
@@ -1261,17 +1262,30 @@ export function PracticeView({
       if (count <= 0) {
         return;
       }
-      const notes = selectNotePage({
-        notes: sourceNotes,
-        reviews: sourceReviews,
-        sessions,
-        currentSessionId: sessionRef.current?.id,
-        queueStrategy: sourceQueueStrategy,
-        drillNoteNames: sourceDrillNoteNames,
-        lastTargetNoteId: lastTargetNoteIdRef.current,
-        melodyState: melodyGenerationStateRef.current,
-        count,
-      });
+      const notes = sourceQueueStrategy !== "melody"
+        ? adaptiveSchedulerRef.current?.selectPage(count, { lastTargetNoteId: lastTargetNoteIdRef.current }) ??
+          selectNotePage({
+            notes: sourceNotes,
+            reviews: sourceReviews,
+            sessions,
+            currentSessionId: sessionRef.current?.id,
+            queueStrategy: sourceQueueStrategy,
+            drillNoteNames: sourceDrillNoteNames,
+            lastTargetNoteId: lastTargetNoteIdRef.current,
+            melodyState: melodyGenerationStateRef.current,
+            count,
+          })
+        : selectNotePage({
+            notes: sourceNotes,
+            reviews: sourceReviews,
+            sessions,
+            currentSessionId: sessionRef.current?.id,
+            queueStrategy: sourceQueueStrategy,
+            drillNoteNames: sourceDrillNoteNames,
+            lastTargetNoteId: lastTargetNoteIdRef.current,
+            melodyState: melodyGenerationStateRef.current,
+            count,
+          });
       const page = {
         notes,
         index: 0,
@@ -1301,7 +1315,7 @@ export function PracticeView({
         return false;
       }
 
-      const nextRow = selectNotePage({
+      const pageSelectionOptions = {
         notes: enabledNotes,
         reviews: [...schedulerReviews, ...sessionReviewsRef.current],
         sessions,
@@ -1312,7 +1326,13 @@ export function PracticeView({
         plannedTargetNoteIds: remainingVisibleNotes.map((note) => note.id),
         melodyState: melodyGenerationStateRef.current,
         count: nextRowCount,
-      });
+      };
+      const nextRow = queueStrategy !== "melody"
+        ? adaptiveSchedulerRef.current?.selectPage(nextRowCount, {
+            lastTargetNoteId: pageSelectionOptions.lastTargetNoteId,
+            plannedTargetNoteIds: pageSelectionOptions.plannedTargetNoteIds,
+          }) ?? selectNotePage(pageSelectionOptions)
+        : selectNotePage(pageSelectionOptions);
       const sessionId = sessionRef.current?.id;
       syncStaffPage({
         ...page,
@@ -1395,14 +1415,14 @@ export function PracticeView({
 
   const selectAndStartNext = useCallback(
     (nextCompletedCount: number): void => {
-      const nextReviews = [...schedulerReviews, ...sessionReviewsRef.current];
       const remainingCount = mode === "fixed-count" ? fixedCount - nextCompletedCount : undefined;
       const note =
         queueStrategy === "melody"
           ? drawMelodyNote(enabledNotes, remainingCount)
-          : selectNextNote({
+          : adaptiveSchedulerRef.current?.select({ lastTargetNoteId: lastTargetNoteIdRef.current }) ??
+            selectNextNote({
               notes: enabledNotes,
-              reviews: nextReviews,
+              reviews: [...schedulerReviews, ...sessionReviewsRef.current],
               sessions,
               currentSessionId: sessionRef.current?.id,
               queueStrategy,
@@ -1453,6 +1473,7 @@ export function PracticeView({
       if (!ignored) {
         await saveReview(review);
       }
+      adaptiveSchedulerRef.current?.appendReview(review);
       sessionReviewsRef.current = [...sessionReviewsRef.current, review];
       return review;
     },
@@ -1521,6 +1542,7 @@ export function PracticeView({
         await writeBackupNow().catch(() => undefined);
       }
       await onDataChanged();
+      adaptiveSchedulerRef.current = null;
       if (shouldKeepSession && updateUi) {
         onPracticeFinished();
       }
@@ -1655,6 +1677,16 @@ export function PracticeView({
         lastTargetNoteIdRef.current = undefined;
         melodyQueueRef.current = [];
         melodyGenerationStateRef.current = createMelodyGenerationState();
+        adaptiveSchedulerRef.current = practiceConfig.queueStrategy === "melody"
+          ? null
+          : createAdaptiveNoteScheduler({
+              notes: nextEnabledNotes,
+              reviews: nextSchedulerReviews,
+              sessions,
+              currentSessionId: nextSession.id,
+              queueStrategy: practiceConfig.queueStrategy,
+              drillNoteNames: practiceConfig.drillNoteNames,
+            });
         syncStaffPage(null);
         setIsStaffPageScrolling(false);
         endingRef.current = false;
@@ -1683,14 +1715,15 @@ export function PracticeView({
           const firstNote =
             practiceConfig.queueStrategy === "melody"
               ? drawMelodyNote(nextEnabledNotes, practiceConfig.fixedCount)
-              : selectNextNote({
-                  notes: nextEnabledNotes,
-                  reviews: nextSchedulerReviews,
-                  sessions,
-                  currentSessionId: nextSession.id,
-                  queueStrategy: practiceConfig.queueStrategy,
-                  drillNoteNames: practiceConfig.drillNoteNames,
-                });
+              : adaptiveSchedulerRef.current?.select() ??
+                selectNextNote({
+                    notes: nextEnabledNotes,
+                    reviews: nextSchedulerReviews,
+                    sessions,
+                    currentSessionId: nextSession.id,
+                    queueStrategy: practiceConfig.queueStrategy,
+                    drillNoteNames: practiceConfig.drillNoteNames,
+                  });
           startPrompt(firstNote);
         }
       });

@@ -296,6 +296,21 @@ export async function loadAllData(): Promise<{
   return { settings, sessions, reviews, staffRecallRuns };
 }
 
+export async function loadPracticeHistory(): Promise<{
+  sessions: PracticeSessionRecord[];
+  reviews: ReviewRecord[];
+}> {
+  const [sessions, reviews] = await Promise.all([
+    db.practiceSessions.orderBy("startedAt").toArray(),
+    db.reviews.orderBy("startedAt").toArray(),
+  ]);
+  return { sessions, reviews };
+}
+
+export async function loadStaffRecallHistory(): Promise<StaffRecallRunRecord[]> {
+  return db.staffRecallRuns.orderBy("endedAt").toArray();
+}
+
 export async function recoverAbandonedSessions(): Promise<void> {
   const openSessions = await db.practiceSessions.filter((session) => !session.endedAt).toArray();
   if (openSessions.length === 0) {

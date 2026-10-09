@@ -11,7 +11,16 @@ import {
   syncBackupBeforeActivity,
   type BackupConflictResolution,
 } from "./data/backup";
-import { db, getBackupState, loadAllData, recoverAbandonedSessions, restoreDefaultConfiguration } from "./data/db";
+import {
+  db,
+  ensureSettings,
+  getBackupState,
+  loadAllData,
+  loadPracticeHistory,
+  loadStaffRecallHistory,
+  recoverAbandonedSessions,
+  restoreDefaultConfiguration,
+} from "./data/db";
 import { IndexedDbMaintenancePanel } from "./debug/IndexedDbMaintenancePanel";
 import { installIndexedDbMaintenanceDebug } from "./debug/indexedDbMaintenance";
 import { shouldRunBackupEntryPreflight } from "./domain/backupSync";
@@ -105,6 +114,8 @@ interface AppData {
   reviews: ReviewRecord[];
   staffRecallRuns: StaffRecallRunRecord[];
   backupState: BackupState;
+  practiceHistoryLoaded: boolean;
+  staffRecallHistoryLoaded: boolean;
 }
 
 interface BackupCheckResult {
@@ -179,9 +190,39 @@ function getBackupReminderState(data: AppData): BackupReminderState {
   return { kind: "none", showReminder: false };
 }
 
+function HistoryLoadingState({
+  error,
+  label,
+  onRetry,
+}: {
+  error: string | null;
+  label: string;
+  onRetry: () => void;
+}): JSX.Element {
+  if (!error) {
+    return <div className="loading" role="status">加载{label}中</div>;
+  }
+
+  return (
+    <section className="history-load-error" role="alert">
+      <strong>{label}加载失败</strong>
+      <p>{error}</p>
+      <button className="primary" onClick={onRetry}>重试加载</button>
+    </section>
+  );
+}
+
 async function loadFreshAppData(): Promise<AppData> {
   const [{ settings, sessions, reviews, staffRecallRuns }, backupState] = await Promise.all([loadAllData(), getBackupState()]);
-  return { settings, sessions, reviews, staffRecallRuns, backupState };
+  return {
+    settings,
+    sessions,
+    reviews,
+    staffRecallRuns,
+    backupState,
+    practiceHistoryLoaded: true,
+    staffRecallHistoryLoaded: true,
+  };
 }
 
 export function App(): JSX.Element {
@@ -213,6 +254,11 @@ export function App(): JSX.Element {
   const [appearanceTimestamp, setAppearanceTimestamp] = useState(() => Date.now());
   const isNightMode = resolveNightMode(pageAppearancePreferences, new Date(appearanceTimestamp));
   const [data, setData] = useState<AppData | null>(null);
+  const [historyLoadErrors, setHistoryLoadErrors] = useState<{ practice: string | null; staffRecall: string | null }>({
+    practice: null,
+    staffRecall: null,
+  });
+  const [historyLoadRetryToken, setHistoryLoadRetryToken] = useState(0);
   const currentSettingsRef = useRef<AppSettings | undefined>(undefined);
   currentSettingsRef.current = data?.settings;
   const settingsMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -252,6 +298,27 @@ export function App(): JSX.Element {
 
   const refresh = useCallback(async (): Promise<void> => {
     setData(await loadFreshAppData());
+  }, []);
+
+  const refreshPracticeHistory = useCallback(async (): Promise<void> => {
+    const [history, settings, backupState] = await Promise.all([loadPracticeHistory(), ensureSettings(), getBackupState()]);
+    setData((current) => current ? {
+      ...current,
+      ...history,
+      settings,
+      backupState,
+      practiceHistoryLoaded: true,
+    } : current);
+  }, []);
+
+  const refreshStaffRecallHistory = useCallback(async (): Promise<void> => {
+    const [staffRecallRuns, backupState] = await Promise.all([loadStaffRecallHistory(), getBackupState()]);
+    setData((current) => current ? {
+      ...current,
+      staffRecallRuns,
+      backupState,
+      staffRecallHistoryLoaded: true,
+    } : current);
   }, []);
 
   const saveSettings = useCallback(async (
@@ -435,14 +502,64 @@ export function App(): JSX.Element {
     let cancelled = false;
     void (async () => {
       await recoverAbandonedSessions();
-      if (!cancelled) {
-        await refresh();
-      }
+      const [settings, backupState] = await Promise.all([ensureSettings(), getBackupState()]);
+      if (!cancelled) setData({
+        settings,
+        backupState,
+        sessions: [],
+        reviews: [],
+        staffRecallRuns: [],
+        practiceHistoryLoaded: false,
+        staffRecallHistoryLoaded: false,
+      });
     })();
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, []);
+
+  useEffect(() => {
+    if (!data) return undefined;
+    const needsPracticeHistory = (
+      (view === "practice" && !isStaffGameRoutePath(route.path)) || view === "stats"
+    ) && !data.practiceHistoryLoaded;
+    const needsStaffRecallHistory = view === "study" && !data.staffRecallHistoryLoaded;
+    if (!needsPracticeHistory && !needsStaffRecallHistory) return undefined;
+
+    let cancelled = false;
+    if (needsPracticeHistory) {
+      setHistoryLoadErrors((current) => ({ ...current, practice: null }));
+      void loadPracticeHistory()
+        .then((history) => {
+          if (!cancelled) setData((current) => current ? { ...current, ...history, practiceHistoryLoaded: true } : current);
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            const message = error instanceof Error ? error.message : String(error);
+            setHistoryLoadErrors((current) => ({ ...current, practice: message }));
+            toast.error("练习记录加载失败", { description: message });
+          }
+        });
+    }
+    if (needsStaffRecallHistory) {
+      setHistoryLoadErrors((current) => ({ ...current, staffRecall: null }));
+      void loadStaffRecallHistory()
+        .then((staffRecallRuns) => {
+          if (!cancelled) setData((current) => current ? { ...current, staffRecallRuns, staffRecallHistoryLoaded: true } : current);
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            const message = error instanceof Error ? error.message : String(error);
+            setHistoryLoadErrors((current) => ({ ...current, staffRecall: message }));
+            toast.error("学习记录加载失败", { description: message });
+          }
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.practiceHistoryLoaded, data?.staffRecallHistoryLoaded, data !== null, historyLoadRetryToken, route.path, view]);
 
   useEffect(() => {
     preloadPianoSamples();
@@ -662,9 +779,21 @@ export function App(): JSX.Element {
           }
           if (result === "synced-up") {
             const latestData = outcome.importedData ?? (await loadFreshAppData());
-            setData(latestData);
+            setData({
+              ...latestData,
+              practiceHistoryLoaded: true,
+              staffRecallHistoryLoaded: true,
+            });
             showBackupReminderMessage(backupText.titles.importSuccess, backupText.messages.backupDirectoryAutoImported, true);
-            return { latestData, proceed: true, result };
+            return {
+              latestData: {
+                ...latestData,
+                practiceHistoryLoaded: true,
+                staffRecallHistoryLoaded: true,
+              },
+              proceed: true,
+              result,
+            };
           }
           if (result === "synced-down") {
             await refreshBackupState();
@@ -959,14 +1088,14 @@ export function App(): JSX.Element {
         ) : null}
         {view === "home" ? <HomeView onNavigate={navigateToRoute} /> : null}
         {view === "practice" ? (
-          <PracticeView
+          (data.practiceHistoryLoaded || isStaffGameRoutePath(route.path)) ? <PracticeView
             midi={midi}
             practiceMicrophonePreferences={practiceMicrophonePreferences}
             onPracticeMicrophonePreferencesChange={setPracticeMicrophonePreferences}
             practicePagePreferences={practicePagePreferences}
             settings={data.settings}
-            sessions={data.sessions}
-            reviews={data.reviews}
+            sessions={data.practiceHistoryLoaded ? data.sessions : []}
+            reviews={data.practiceHistoryLoaded ? data.reviews : []}
             navigationExitRequest={practiceExitRequest}
             onRequestNavigationExit={selectView}
             isStaffGameRoute={isStaffGameRoutePath(route.path)}
@@ -978,7 +1107,7 @@ export function App(): JSX.Element {
             onStaffGameModeChange={selectStaffGameMode}
             onStaffGameSongStart={startStaffGameSong}
             onStaffGameSongSelectionExit={returnFromStaffGameSongSelection}
-            onDataChanged={refresh}
+            onDataChanged={refreshPracticeHistory}
             onNavigationExit={handleNavigationExit}
             onOpenStats={() => selectView("stats")}
             onOpenSettings={() => selectView("settings")}
@@ -986,24 +1115,36 @@ export function App(): JSX.Element {
             onPracticeFinished={showBackupReminderAfterActivity}
             onRunningChange={setPracticeRunning}
             onSettingsSaved={(settings, options) => saveSettings(settings, { ...options, feedback: false })}
+          /> : <HistoryLoadingState
+            error={historyLoadErrors.practice}
+            label="练习记录"
+            onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
           />
         ) : null}
         {view === "stats" ? (
-          <StatsView
+          data.practiceHistoryLoaded ? <StatsView
             settings={data.settings}
             reviews={data.reviews}
             sessions={data.sessions}
             onSettingsSaved={(settings) => saveSettings(settings, { feedback: false })}
+          /> : <HistoryLoadingState
+            error={historyLoadErrors.practice}
+            label="统计记录"
+            onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
           />
         ) : null}
         {view === "study" ? (
-          <StudyView
+          data.staffRecallHistoryLoaded ? <StudyView
             onBeforeStaffRecallStart={preflightBeforeStaffRecallStart}
-            onDataChanged={refresh}
+            onDataChanged={refreshStaffRecallHistory}
             onSettingsSaved={(settings) => saveSettings(settings, { feedback: false })}
             onStaffRecallFinished={showBackupReminderAfterActivity}
             settings={data.settings}
             staffRecallRuns={data.staffRecallRuns}
+          /> : <HistoryLoadingState
+            error={historyLoadErrors.staffRecall}
+            label="学习记录"
+            onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
           />
         ) : null}
         {view === "settings" ? (

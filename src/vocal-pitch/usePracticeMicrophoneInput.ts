@@ -85,6 +85,7 @@ interface PracticeMicrophoneDiagnostics {
 }
 
 interface PendingAnalysis {
+  algorithm: "pitch" | "swiftf0";
   analysisRms: number;
   gain: PracticeMicrophoneAnalysisGain;
   generation: number;
@@ -93,10 +94,22 @@ interface PendingAnalysis {
   timeMs: number;
 }
 
+interface PracticePitchWorkerResponse {
+  alternativeClarity?: number | null;
+  alternativeFrequencyHz?: number | null;
+  candidateClarity?: number;
+  candidateFrequencyHz?: number;
+  error?: string;
+  generation?: number;
+  id?: number;
+  type: "error" | "result";
+}
+
 const INPUT_LEVEL_UPDATE_INTERVAL_MS = 100;
 const DETECTED_NOTE_HOLD_MS = 1200;
 const CAPTURE_MAX_DURATION_MS = 30000;
 const SWIFT_F0_ANALYSIS_TIMEOUT_MS = 10000;
+const PITCH_ANALYSIS_TIMEOUT_MS = 3000;
 const REQUESTED_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   autoGainControl: false,
   channelCount: 1,
@@ -288,6 +301,9 @@ export function usePracticeMicrophoneInput(
   const workerReadyRef = useRef(false);
   const workerUnsubscribeRef = useRef<(() => void) | null>(null);
   const workerMessageHandlerRef = useRef<(message: SwiftF0PracticeResponse) => void>(() => undefined);
+  const pitchWorkerRef = useRef<Worker | null>(null);
+  const pitchWorkerFailureRef = useRef(false);
+  const pitchWorkerMessageHandlerRef = useRef<(message: PracticePitchWorkerResponse) => void>(() => undefined);
   const pendingAnalysisRef = useRef<PendingAnalysis | null>(null);
   const requestInFlightRef = useRef(false);
   const requestIdRef = useRef(0);
@@ -312,6 +328,10 @@ export function usePracticeMicrophoneInput(
   const lastFrameAtRef = useRef(0);
   const lastLevelUpdateAtRef = useRef(0);
   const lastVoicedAtRef = useRef(0);
+  const latestObservationUiRef = useRef<Pick<PracticeMicrophoneDiagnostics,
+    "analysisRms" | "candidateConfidence" | "candidateFrequencyHz" | "candidateNote" | "inputRms" | "outcome"
+  > | null>(null);
+  const detectedNoteUiRef = useRef<string | null>(null);
   const callbacksRef = useRef({ onAnswer });
   callbacksRef.current = { onAnswer };
 
@@ -428,6 +448,8 @@ export function usePracticeMicrophoneInput(
     silentGainRef.current = null;
     sampleBufferRef.current = new Float32Array(0);
     recognizerRef.current.reset();
+    latestObservationUiRef.current = null;
+    detectedNoteUiRef.current = null;
     inputGenerationRef.current += 1;
     if (analysisTimeoutRef.current !== null) {
       window.clearTimeout(analysisTimeoutRef.current);
@@ -515,7 +537,12 @@ export function usePracticeMicrophoneInput(
       }
     }
 
-    if (liveNote) lastVoicedAtRef.current = timeMs;
+    if (liveNote) {
+      lastVoicedAtRef.current = timeMs;
+      detectedNoteUiRef.current = `${liveNote.noteName}${liveNote.octave}`;
+    } else if (timeMs - lastVoicedAtRef.current > DETECTED_NOTE_HOLD_MS) {
+      detectedNoteUiRef.current = null;
+    }
     if (recognized) {
       callbacksRef.current.onAnswer({
         midiNoteNumber: recognized.midiNoteNumber,
@@ -525,29 +552,16 @@ export function usePracticeMicrophoneInput(
       });
     }
 
-    if (mountedRef.current) {
-      setState((current) => ({
-        ...current,
-        diagnostics: current.diagnostics
-          ? {
-              ...current.diagnostics,
-              candidateConfidence: confidence,
-              candidateFrequencyHz: frequencyHz !== null && Number.isFinite(frequencyHz) && frequencyHz > 0
-                ? frequencyHz
-                : null,
-              candidateNote: candidateNote ? `${candidateNote.noteName}${candidateNote.octave}` : null,
-              inputRms: rawRms,
-              analysisRms,
-              outcome,
-            }
-          : null,
-        detectedNote: liveNote
-          ? `${liveNote.noteName}${liveNote.octave}`
-          : performance.now() - lastVoicedAtRef.current > DETECTED_NOTE_HOLD_MS
-            ? null
-            : current.detectedNote,
-      }));
-    }
+    latestObservationUiRef.current = {
+      analysisRms,
+      candidateConfidence: confidence,
+      candidateFrequencyHz: frequencyHz !== null && Number.isFinite(frequencyHz) && frequencyHz > 0
+        ? frequencyHz
+        : null,
+      candidateNote: candidateNote ? `${candidateNote.noteName}${candidateNote.octave}` : null,
+      inputRms: rawRms,
+      outcome,
+    };
   }, []);
 
   const handleWorkerMessage = useCallback((message: SwiftF0PracticeResponse): void => {
@@ -567,7 +581,7 @@ export function usePracticeMicrophoneInput(
         return;
       }
       const pending = pendingAnalysisRef.current;
-      if (pending?.id === message.id) {
+      if (pending?.algorithm === "swiftf0" && pending.id === message.id) {
         if (analysisTimeoutRef.current !== null) {
           window.clearTimeout(analysisTimeoutRef.current);
           analysisTimeoutRef.current = null;
@@ -577,9 +591,9 @@ export function usePracticeMicrophoneInput(
         finalCaptureFrameIssueRef.current = `最后一帧识别失败：${message.error}`;
         settleCaptureStopWaiters();
       }
-      if (pending && pending.generation === inputGenerationRef.current && stateRef.current === "listening") {
+      if (pending?.algorithm === "swiftf0" && pending.generation === inputGenerationRef.current && stateRef.current === "listening") {
         fail(`SwiftF0 听音识别失败：${message.error}`);
-      } else if (pending?.id === message.id && mountedRef.current && !captureRecordingRef.current) {
+      } else if (pending?.algorithm === "swiftf0" && pending.id === message.id && mountedRef.current && !captureRecordingRef.current) {
         setState((current) => current.captureAnalysisPending
           ? { ...current, captureAnalysisPending: false, captureStatus: "最后一帧识别失败，采样仍可分析" }
           : current);
@@ -588,7 +602,7 @@ export function usePracticeMicrophoneInput(
     }
 
     const pending = pendingAnalysisRef.current;
-    if (pending?.id !== message.id) return;
+    if (pending?.algorithm !== "swiftf0" || pending.id !== message.id) return;
     if (analysisTimeoutRef.current !== null) {
       window.clearTimeout(analysisTimeoutRef.current);
       analysisTimeoutRef.current = null;
@@ -624,6 +638,85 @@ export function usePracticeMicrophoneInput(
 
   workerMessageHandlerRef.current = handleWorkerMessage;
 
+  const handlePitchWorkerMessage = useCallback((message: PracticePitchWorkerResponse): void => {
+    const pending = pendingAnalysisRef.current;
+    if (pending?.algorithm !== "pitch" || pending.id !== message.id) return;
+    if (analysisTimeoutRef.current !== null) {
+      window.clearTimeout(analysisTimeoutRef.current);
+      analysisTimeoutRef.current = null;
+    }
+    pendingAnalysisRef.current = null;
+    requestInFlightRef.current = false;
+
+    if (message.type === "error") {
+      finalCaptureFrameIssueRef.current = `最后一帧识别失败：${message.error ?? "Worker 分析异常"}`;
+      pitchWorkerFailureRef.current = true;
+      pitchWorkerRef.current?.terminate();
+      pitchWorkerRef.current = null;
+      settleCaptureStopWaiters();
+      return;
+    }
+
+    if (pending.generation !== message.generation || pending.generation !== inputGenerationRef.current) {
+      finalCaptureFrameIssueRef.current = "最后一帧识别结果已过期";
+      settleCaptureStopWaiters();
+      return;
+    }
+
+    const confidence = message.candidateClarity ?? 0;
+    const frequencyHz = message.candidateFrequencyHz ?? 0;
+    const alternativeClarity = message.alternativeClarity ?? 0;
+    const alternativeFrequencyHz = message.alternativeFrequencyHz ?? 0;
+    const detectorDisagreement = Boolean(
+      frequencyHz > 0 &&
+      alternativeFrequencyHz > 0 &&
+      confidence >= activeThresholdsRef.current.confidenceThreshold &&
+      alternativeClarity >= (activeThresholdsRef.current.primaryClarityThreshold ?? activeThresholdsRef.current.confidenceThreshold) &&
+      Math.abs(12 * Math.log2(frequencyHz / alternativeFrequencyHz)) >= 1.5,
+    );
+    processObservation(
+      confidence,
+      frequencyHz,
+      pending.analysisRms,
+      pending.rms,
+      pending.timeMs,
+      pending.gain,
+      detectorDisagreement,
+    );
+    settleCaptureStopWaiters();
+  }, [processObservation, settleCaptureStopWaiters]);
+
+  pitchWorkerMessageHandlerRef.current = handlePitchWorkerMessage;
+
+  const ensurePitchWorker = useCallback((): void => {
+    if (pitchWorkerRef.current || pitchWorkerFailureRef.current || typeof Worker === "undefined") return;
+    try {
+      const worker = new Worker(new URL("./practicePitchDetection.worker.ts", import.meta.url), { type: "module" });
+      worker.addEventListener("message", (event: MessageEvent<PracticePitchWorkerResponse>) => {
+        pitchWorkerMessageHandlerRef.current(event.data);
+      });
+      worker.addEventListener("error", () => {
+        const pending = pendingAnalysisRef.current;
+        if (pending?.algorithm === "pitch") {
+          if (analysisTimeoutRef.current !== null) {
+            window.clearTimeout(analysisTimeoutRef.current);
+            analysisTimeoutRef.current = null;
+          }
+          pendingAnalysisRef.current = null;
+          requestInFlightRef.current = false;
+          finalCaptureFrameIssueRef.current = "音高识别 Worker 运行失败，已切换为主线程识别";
+          settleCaptureStopWaiters();
+        }
+        pitchWorkerFailureRef.current = true;
+        worker.terminate();
+        if (pitchWorkerRef.current === worker) pitchWorkerRef.current = null;
+      });
+      pitchWorkerRef.current = worker;
+    } catch {
+      pitchWorkerFailureRef.current = true;
+    }
+  }, [settleCaptureStopWaiters]);
+
   const ensureWorkerReady = useCallback(async (): Promise<void> => {
     if (workerReadyRef.current) return;
     await ensureSwiftF0PracticeRuntimeReady();
@@ -650,7 +743,7 @@ export function usePracticeMicrophoneInput(
     const id = ++requestIdRef.current;
     const generation = inputGenerationRef.current;
     const transferableSamples = analysisSamples.slice();
-    pendingAnalysisRef.current = { analysisRms, gain, generation, id, rms, timeMs };
+    pendingAnalysisRef.current = { algorithm: "swiftf0", analysisRms, gain, generation, id, rms, timeMs };
     requestInFlightRef.current = true;
     analysisTimeoutRef.current = window.setTimeout(() => {
       if (pendingAnalysisRef.current?.id !== id) return;
@@ -688,6 +781,64 @@ export function usePracticeMicrophoneInput(
     }
   }, [settleCaptureStopWaiters]);
 
+  const postPracticePitchFrame = useCallback((
+    analysisSamples: Float32Array,
+    sampleRate: number,
+    timeMs: number,
+    rms: number,
+    analysisRms: number,
+    gain: PracticeMicrophoneAnalysisGain,
+  ): "busy" | "submitted" | "unavailable" => {
+    const worker = pitchWorkerRef.current;
+    if (!worker) return "unavailable";
+    if (requestInFlightRef.current) return "busy";
+
+    const configuration = activeConfigurationRef.current;
+    if (configuration.algorithm === "swiftf0") return "unavailable";
+    const id = ++requestIdRef.current;
+    const generation = inputGenerationRef.current;
+    const transferableSamples = analysisSamples.slice();
+    pendingAnalysisRef.current = { algorithm: "pitch", analysisRms, gain, generation, id, rms, timeMs };
+    requestInFlightRef.current = true;
+    analysisTimeoutRef.current = window.setTimeout(() => {
+      if (pendingAnalysisRef.current?.id !== id) return;
+      pendingAnalysisRef.current = null;
+      requestInFlightRef.current = false;
+      analysisTimeoutRef.current = null;
+      finalCaptureFrameIssueRef.current = "音高识别 Worker 超时，后续帧将切回主线程识别";
+      pitchWorkerFailureRef.current = true;
+      pitchWorkerRef.current?.terminate();
+      pitchWorkerRef.current = null;
+      settleCaptureStopWaiters();
+    }, PITCH_ANALYSIS_TIMEOUT_MS);
+    try {
+      worker.postMessage({
+        algorithm: configuration.algorithm,
+        confidenceThreshold: configuration.confidenceThreshold,
+        generation,
+        id,
+        inputRmsThreshold: configuration.inputRmsThreshold,
+        primaryClarityThreshold: configuration.primaryClarityThreshold,
+        sampleRate,
+        samples: transferableSamples.buffer,
+        timeMs,
+        type: "analyze",
+        yinThreshold: configuration.yinThreshold,
+      }, [transferableSamples.buffer]);
+      return "submitted";
+    } catch {
+      window.clearTimeout(analysisTimeoutRef.current);
+      analysisTimeoutRef.current = null;
+      pendingAnalysisRef.current = null;
+      requestInFlightRef.current = false;
+      finalCaptureFrameIssueRef.current = "音高识别 Worker 请求失败，后续帧将切回主线程识别";
+      pitchWorkerFailureRef.current = true;
+      worker.terminate();
+      if (pitchWorkerRef.current === worker) pitchWorkerRef.current = null;
+      return "unavailable";
+    }
+  }, [settleCaptureStopWaiters]);
+
   const runLiveAnalysis = useCallback((): void => {
     const analyser = analyserRef.current;
     if (!analyser || stateRef.current !== "listening") return;
@@ -710,35 +861,40 @@ export function usePracticeMicrophoneInput(
         postAnalysisFrame(samples, analysisSamples, analyser.context.sampleRate, now, rms, analysisRms, gain);
       } else {
         const thresholds = activeThresholdsRef.current;
-        const detector = detectorRef.current;
-        if (detector) {
-          const detection = classifyPitchFrame(
-            detector,
-            analysisSamples,
-            analyser.context.sampleRate,
-            { ...DEFAULT_VOCAL_PITCH_CONFIG, voicingThreshold: thresholds.confidenceThreshold },
-            now / 1000,
-            PRACTICE_NOTE_FREQUENCY_RANGE,
-            thresholds.inputRmsThreshold,
-          );
-          const { alternativeCandidate, candidate, frame } = detection;
-          const detectorDisagreement = Boolean(
-            alternativeCandidate &&
-            candidate.frequencyHz > 0 &&
-            alternativeCandidate.frequencyHz > 0 &&
-            candidate.clarity >= thresholds.confidenceThreshold &&
-            alternativeCandidate.clarity >= (thresholds.primaryClarityThreshold ?? thresholds.confidenceThreshold) &&
-            Math.abs(12 * Math.log2(candidate.frequencyHz / alternativeCandidate.frequencyHz)) >= 1.5,
-          );
-          processObservation(
-            candidate.clarity,
-            candidate.frequencyHz,
-            analysisRms,
-            rms,
-            now,
-            gain,
-            detectorDisagreement,
-          );
+        const workerResult = pitchWorkerRef.current
+          ? postPracticePitchFrame(analysisSamples, analyser.context.sampleRate, now, rms, analysisRms, gain)
+          : "unavailable";
+        if (workerResult === "unavailable") {
+          const detector = detectorRef.current;
+          if (detector) {
+            const detection = classifyPitchFrame(
+              detector,
+              analysisSamples,
+              analyser.context.sampleRate,
+              { ...DEFAULT_VOCAL_PITCH_CONFIG, voicingThreshold: thresholds.confidenceThreshold },
+              now / 1000,
+              PRACTICE_NOTE_FREQUENCY_RANGE,
+              thresholds.inputRmsThreshold,
+            );
+            const { alternativeCandidate, candidate } = detection;
+            const detectorDisagreement = Boolean(
+              alternativeCandidate &&
+              candidate.frequencyHz > 0 &&
+              alternativeCandidate.frequencyHz > 0 &&
+              candidate.clarity >= thresholds.confidenceThreshold &&
+              alternativeCandidate.clarity >= (thresholds.primaryClarityThreshold ?? thresholds.confidenceThreshold) &&
+              Math.abs(12 * Math.log2(candidate.frequencyHz / alternativeCandidate.frequencyHz)) >= 1.5,
+            );
+            processObservation(
+              candidate.clarity,
+              candidate.frequencyHz,
+              analysisRms,
+              rms,
+              now,
+              gain,
+              detectorDisagreement,
+            );
+          }
         }
       }
 
@@ -748,15 +904,22 @@ export function usePracticeMicrophoneInput(
           setState((current) => ({
             ...current,
             diagnostics: current.diagnostics
-              ? { ...current.diagnostics, audioContextState: analyser.context.state, inputRms: rms, analysisRms }
+              ? {
+                  ...current.diagnostics,
+                  ...(latestObservationUiRef.current ?? {}),
+                  audioContextState: analyser.context.state,
+                  inputRms: latestObservationUiRef.current?.inputRms ?? rms,
+                  analysisRms: latestObservationUiRef.current?.analysisRms ?? analysisRms,
+                }
               : null,
+            detectedNote: detectedNoteUiRef.current,
             inputLevel: Math.min(1, analysisRms / (activeThresholdsRef.current.inputRmsThreshold * 8)),
           }));
         }
       }
     }
     animationRef.current = requestAnimationFrame(runLiveAnalysis);
-  }, [postAnalysisFrame, processObservation, recordInputFrame]);
+  }, [postAnalysisFrame, postPracticePitchFrame, processObservation, recordInputFrame]);
 
   const start = useCallback((options: { includeAccidentals?: boolean } = {}): Promise<boolean> => {
     includeAccidentalsRef.current = options.includeAccidentals === true;
@@ -898,6 +1061,8 @@ export function usePracticeMicrophoneInput(
         sampleBufferRef.current = new Float32Array(frameSize);
         detectorRef.current = createDetectorForConfiguration(configuration, frameSize, sampleRate);
         recognizerRef.current.reset();
+        latestObservationUiRef.current = null;
+        detectedNoteUiRef.current = null;
         lastFrameAtRef.current = 0;
         lastLevelUpdateAtRef.current = 0;
         lastVoicedAtRef.current = 0;
@@ -912,6 +1077,7 @@ export function usePracticeMicrophoneInput(
         }
 
         if (configuration.algorithm === "swiftf0") await ensureWorkerReady();
+        else ensurePitchWorker();
         if (!mountedRef.current || generation !== startGenerationRef.current) return false;
         updateStatus("listening");
         animationRef.current = requestAnimationFrame(runLiveAnalysis);
@@ -933,11 +1099,14 @@ export function usePracticeMicrophoneInput(
       if (startPromiseRef.current === pending) startPromiseRef.current = null;
     });
     return pending;
-  }, [ensureWorkerReady, fail, recordCaptureLifecycleEvent, releaseDevices, runLiveAnalysis, updateStatus]);
+  }, [ensurePitchWorker, ensureWorkerReady, fail, recordCaptureLifecycleEvent, releaseDevices, runLiveAnalysis, updateStatus]);
 
   useEffect(() => {
     const configuration = resolvePracticeMicrophoneConfiguration(preferences);
     if (configuration.algorithm !== activeAlgorithmRef.current) {
+      pitchWorkerRef.current?.terminate();
+      pitchWorkerRef.current = null;
+      pitchWorkerFailureRef.current = false;
       if (activeAlgorithmRef.current === "swiftf0" && configuration.algorithm !== "swiftf0") {
         workerUnsubscribeRef.current?.();
         workerUnsubscribeRef.current = null;
@@ -1243,6 +1412,8 @@ export function usePracticeMicrophoneInput(
       workerUnsubscribeRef.current = null;
       workerReadyRef.current = false;
       workerRef.current = null;
+      pitchWorkerRef.current?.terminate();
+      pitchWorkerRef.current = null;
     };
   }, [releaseDevices]);
 

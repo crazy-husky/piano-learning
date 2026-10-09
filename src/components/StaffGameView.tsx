@@ -85,6 +85,7 @@ const BURST_STAR_COUNT = 14;
 const GAME_LEVEL_COUNT = 60;
 const SONG_STAR_THRESHOLDS = [60, 80, 95] as const;
 const RUSH_MODE_COMBO_THRESHOLD = 5;
+const COMBO_INDICATOR_FADE_DURATION_MS = 280;
 const RUSH_FALL_SPEED_MULTIPLIER = 0.92;
 const STAR_CREDIT_PER_CORRECT_ANSWER = 10;
 const ERROR_FLASH_THRESHOLD = 4;
@@ -131,6 +132,7 @@ function gameDurationMsForLevel(level: number): number {
   if (level <= 9) return 120_000;
   return 140_000;
 }
+
 const SOLFEGE_NAMES = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"] as const;
 const DISPLAY_MODES: Array<{ id: GameDisplayMode; label: string }> = [
   { id: "note", label: "音名" },
@@ -180,6 +182,7 @@ interface StaffGameProgress {
   bestStars: number[];
   maxCombos: number[];
   unlockedLevel: number;
+  selectedLevel: number;
 }
 
 interface GameNote {
@@ -200,8 +203,7 @@ interface ComboIndicator {
   token: number;
   count: number;
   durationMs: number;
-  left: number;
-  top: number;
+  isFadingOut?: boolean;
 }
 
 interface RushScoreFlight {
@@ -240,6 +242,7 @@ function defaultProgress(): StaffGameProgress {
     bestStars: Array(GAME_LEVEL_COUNT).fill(0),
     maxCombos: Array(GAME_LEVEL_COUNT).fill(0),
     unlockedLevel: 1,
+    selectedLevel: 1,
   };
 }
 
@@ -899,6 +902,13 @@ function readProgress(): StaffGameProgress {
       bestStars: readArray(parsed.bestStars),
       maxCombos: readArray(parsed.maxCombos),
       unlockedLevel: Math.max(1, Math.min(GAME_LEVEL_COUNT, Math.floor(Number(parsed.unlockedLevel) || base.unlockedLevel))),
+      selectedLevel: Math.max(
+        1,
+        Math.min(
+          GAME_LEVEL_COUNT,
+          Math.floor(Number(parsed.selectedLevel) || Number(parsed.unlockedLevel) || base.selectedLevel),
+        ),
+      ),
     };
   } catch {
     return defaultProgress();
@@ -1014,7 +1024,7 @@ function drawNextNote(
   return notePool.splice(chosenIndex, 1)[0] ?? null;
 }
 
-function randomBubbleCenterX(playfield: HTMLDivElement | null): number {
+function randomBubbleCenterX(playfield: HTMLElement | null): number {
   if (!playfield || typeof window === "undefined" || playfield.clientWidth <= 0) return 0;
   const viewportWidth = window.innerWidth;
   const bubbleWidth = viewportWidth > 820
@@ -1110,7 +1120,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   const [resourceLoadAttempt, setResourceLoadAttempt] = useState(0);
   const [resourceLoadRetryCount, setResourceLoadRetryCount] = useState(0);
   const [progress, setProgress] = useState<StaffGameProgress>(readProgress);
-  const [level, setLevel] = useState(() => readProgress().unlockedLevel);
+  const [level, setLevel] = useState(() => readProgress().selectedLevel);
   const [gameMode, setGameMode] = useState<StaffGameMode>(initialMode);
   const [songSelectionStep, setSongSelectionStep] = useState<SongSelectionStep>(initialMode === "songs" ? initialSongSelectionStep : null);
   const [selectedSongId, setSelectedSongId] = useState(() => STAFF_GAME_SONGS.find((song) => song.id === initialSongId)?.id ?? STAFF_GAME_SONGS[0].id);
@@ -1159,6 +1169,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   const [isStarting, setIsStarting] = useState(false);
   const isStartingRef = useRef(false);
   const startAttemptRef = useRef(0);
+  const comboIndicatorRef = useRef<ComboIndicator | null>(null);
   const targetRef = useRef<GameNote | null>(null);
   const playfieldRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -1167,6 +1178,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   const targetPoppedRef = useRef(false);
   const comboRef = useRef(0);
   const comboResetTimeoutRef = useRef<number | null>(null);
+  const comboIndicatorFadeTimeoutRef = useRef<number | null>(null);
   const comboTimerStartedAtRef = useRef<number | null>(null);
   const comboTimerRemainingRef = useRef(0);
   const scoreRef = useRef(0);
@@ -1330,6 +1342,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   const threeStarCredit = Math.ceil(STAR_THRESHOLDS[STAR_THRESHOLDS.length - 1] * gameDurationMs / STAR_BASE_DURATION_MS);
   const levelProgress = threeStarCredit > 0 ? Math.min(1, starCredit / threeStarCredit) : 0;
   const rushModeActive = combo >= RUSH_MODE_COMBO_THRESHOLD && phase === "running";
+  const comboIndicatorIsRush = (comboIndicator?.count ?? 0) >= RUSH_MODE_COMBO_THRESHOLD;
   const rushVisualsActive = rushModeActive && settings.gameEffectsEnabled;
   const activeBubbleDurationMs = rushModeActive ? Math.round(bubbleDurationMs * RUSH_FALL_SPEED_MULTIPLIER) : bubbleDurationMs;
 
@@ -1399,8 +1412,39 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     comboTimerRemainingRef.current = 0;
     comboRef.current = 0;
     setCombo(0);
-    setComboIndicator(null);
+    const currentIndicator = comboIndicatorRef.current;
+    if (!currentIndicator) return;
+
+    if (comboIndicatorFadeTimeoutRef.current !== null) {
+      window.clearTimeout(comboIndicatorFadeTimeoutRef.current);
+    }
+    const fadingIndicator = { ...currentIndicator, isFadingOut: true };
+    comboIndicatorRef.current = fadingIndicator;
+    setComboIndicator(fadingIndicator);
+    comboIndicatorFadeTimeoutRef.current = window.setTimeout(() => {
+      comboIndicatorFadeTimeoutRef.current = null;
+      if (comboIndicatorRef.current?.token !== fadingIndicator.token) return;
+      comboIndicatorRef.current = null;
+      setComboIndicator(null);
+    }, COMBO_INDICATOR_FADE_DURATION_MS);
   }, [clearComboTimer]);
+
+  const clearComboIndicator = useCallback((): void => {
+    if (comboIndicatorFadeTimeoutRef.current !== null) {
+      window.clearTimeout(comboIndicatorFadeTimeoutRef.current);
+      comboIndicatorFadeTimeoutRef.current = null;
+    }
+    comboIndicatorRef.current = null;
+    setComboIndicator(null);
+  }, []);
+
+  const clearComboDisplay = useCallback((): void => {
+    clearComboTimer();
+    comboTimerRemainingRef.current = 0;
+    comboRef.current = 0;
+    setCombo(0);
+    clearComboIndicator();
+  }, [clearComboIndicator, clearComboTimer]);
 
   const restartComboTimer = useCallback((): void => {
     clearComboTimer();
@@ -1472,6 +1516,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
       bestStars: current.bestStars.map((best, itemIndex) => itemIndex === index ? Math.max(best, finalStars) : best),
       maxCombos: current.maxCombos.map((best, itemIndex) => itemIndex === index ? Math.max(best, maxComboRef.current) : best),
       unlockedLevel: finalStars > 0 ? Math.max(current.unlockedLevel, Math.min(GAME_LEVEL_COUNT, levelRef.current + 1)) : current.unlockedLevel,
+      selectedLevel: current.selectedLevel,
     };
     progressRef.current = next;
     setProgress(next);
@@ -1573,21 +1618,17 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
         });
       }
       const nextCombo = comboRef.current + 1;
-      const fieldWidth = fieldBounds?.width ?? window.innerWidth;
-      const fieldHeight = fieldBounds?.height ?? window.innerHeight;
-      const desiredLeft = fieldBounds && bubbleBounds
-        ? bubbleBounds.left - fieldBounds.left - 96
-        : currentTarget.centerX - 96;
-      const desiredTop = fieldBounds && bubbleBounds
-        ? bubbleBounds.top - fieldBounds.top - 94
-        : 10;
-      setComboIndicator({
+      if (comboIndicatorFadeTimeoutRef.current !== null) {
+        window.clearTimeout(comboIndicatorFadeTimeoutRef.current);
+        comboIndicatorFadeTimeoutRef.current = null;
+      }
+      const nextComboIndicator: ComboIndicator = {
         token: currentTarget.token,
         count: nextCombo,
         durationMs: GAME_DIFFICULTIES.find((item) => item.id === settingsRef.current.difficulty)?.comboWindowMs ?? 2_200,
-        left: Math.max(8, Math.min(Math.max(8, fieldWidth - 108), desiredLeft)),
-        top: Math.max(8, Math.min(Math.max(8, fieldHeight - 108), desiredTop)),
-      });
+      };
+      comboIndicatorRef.current = nextComboIndicator;
+      setComboIndicator(nextComboIndicator);
       restartComboTimer();
       if (fieldBounds && bubbleBounds) {
         if (burstTimeoutRef.current !== null) window.clearTimeout(burstTimeoutRef.current);
@@ -1817,7 +1858,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
       return;
     }
 
-    if (phase !== "running" || !comboIndicator || comboResetTimeoutRef.current !== null) return;
+    if (phase !== "running" || !comboIndicator || comboIndicator.isFadingOut || comboResetTimeoutRef.current !== null) return;
     const remainingMs = comboTimerRemainingRef.current;
     if (remainingMs <= 0) {
       resetComboDisplay();
@@ -1851,6 +1892,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     if (nextTargetTimeoutRef.current !== null) window.clearTimeout(nextTargetTimeoutRef.current);
     if (burstTimeoutRef.current !== null) window.clearTimeout(burstTimeoutRef.current);
     if (comboResetTimeoutRef.current !== null) window.clearTimeout(comboResetTimeoutRef.current);
+    if (comboIndicatorFadeTimeoutRef.current !== null) window.clearTimeout(comboIndicatorFadeTimeoutRef.current);
     if (errorFlashTimeoutRef.current !== null) window.clearTimeout(errorFlashTimeoutRef.current);
     if (scoreAnimationTimerRef.current !== null) window.clearTimeout(scoreAnimationTimerRef.current);
   }, [microphone.stop, onSessionActiveChange]);
@@ -1938,7 +1980,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     setEarnedStars(0);
     setSummaryScoreCount(0);
     setSummaryComboCount(0);
-    resetComboDisplay();
+    clearComboDisplay();
     setMaxCombo(0);
     maxComboRef.current = 0;
     setElapsedMs(0);
@@ -1951,7 +1993,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     setSongNotesCompleted(0);
     setSongFirstTryHits(0);
     setSummaryAccuracy(0);
-  }, [flushScorePresentation, resetComboDisplay]);
+  }, [clearComboDisplay, flushScorePresentation]);
 
   const connectMidiForRound = useCallback(async (isCancelled: () => boolean): Promise<boolean> => {
     if (isCancelled()) return false;
@@ -2058,7 +2100,8 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
 
   const pauseRound = useCallback((): void => {
     if (phaseRef.current !== "running") return;
-    const elapsedAtPause = elapsedBeforeRunRef.current + performance.now() - runSegmentStartedAtRef.current;
+    const pausedAt = performance.now();
+    const elapsedAtPause = elapsedBeforeRunRef.current + pausedAt - runSegmentStartedAtRef.current;
     elapsedBeforeRunRef.current = gameModeRef.current === "songs" ? elapsedAtPause : Math.min(gameDurationMs, elapsedAtPause);
     setElapsedMs(elapsedBeforeRunRef.current);
     setMascotReaction((current) => ({ action: "idle", token: current.token + 1, queuedAction: null }));
@@ -2237,7 +2280,11 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
 
   const advanceLevel = useCallback((nextLevel: number): void => {
     const clamped = Math.max(1, Math.min(GAME_LEVEL_COUNT, nextLevel));
-    const nextProgress = { ...progressRef.current, unlockedLevel: Math.max(progressRef.current.unlockedLevel, clamped) };
+    const nextProgress = {
+      ...progressRef.current,
+      unlockedLevel: Math.max(progressRef.current.unlockedLevel, clamped),
+      selectedLevel: clamped,
+    };
     progressRef.current = nextProgress;
     setProgress(nextProgress);
     saveProgress(nextProgress);
@@ -2249,6 +2296,10 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   const jumpToLevel = useCallback((selectedLevel: number): void => {
     setDialog(null);
     const clamped = Math.max(1, Math.min(GAME_LEVEL_COUNT, selectedLevel));
+    const nextProgress = { ...progressRef.current, selectedLevel: clamped };
+    progressRef.current = nextProgress;
+    setProgress(nextProgress);
+    saveProgress(nextProgress);
     setLevel(clamped);
     levelRef.current = clamped;
     void beginRound();
@@ -2603,30 +2654,26 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
             </div>
           ) : null}
 
-          {rushModeActive && combo > 0 ? (
+          {comboIndicator && comboIndicatorIsRush ? (
             <div
-              aria-label={`${combo} 连击`}
+              aria-label={`${comboIndicator.count} 连击`}
               aria-live="polite"
-              className="staff-game-combo-cloud"
-              key={`combo-cloud-${combo}`}
+              className={`staff-game-combo-cloud${comboIndicator.isFadingOut ? " is-fading-out" : ""}${phase === "paused" ? " is-paused" : ""}`}
+              key={`combo-cloud-${comboIndicator.token}`}
               role="status"
             >
-              <span><strong>{combo}</strong><small>连击</small></span>
+              <span><strong>{comboIndicator.count}</strong><small>连击</small></span>
             </div>
           ) : null}
 
-          {comboIndicator && combo < RUSH_MODE_COMBO_THRESHOLD ? (
+          {comboIndicator && !comboIndicatorIsRush ? (
             <div
               aria-label={`连击 ${comboIndicator.count} 次`}
               aria-live="polite"
-              className={`staff-game-combo-indicator${phase === "paused" ? " is-paused" : ""}`}
+              className={`staff-game-combo-indicator${comboIndicator.isFadingOut ? " is-fading-out" : ""}${phase === "paused" ? " is-paused" : ""}`}
               key={`combo-${comboIndicator.token}`}
               role="status"
-              style={{
-                left: comboIndicator.left,
-                top: comboIndicator.top,
-                "--combo-duration": `${comboIndicator.durationMs}ms`,
-              } as CSSProperties}
+              style={{ "--combo-duration": `${comboIndicator.durationMs}ms` } as CSSProperties}
             >
               <span className="staff-game-combo-pulse">
                 <span className="staff-game-combo-label">连击</span>
