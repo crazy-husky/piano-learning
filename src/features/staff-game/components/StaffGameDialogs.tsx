@@ -15,6 +15,7 @@ type StaffGameDialogAudioSettings = StaffGameAudioSettingsDraft;
 interface StaffGameDialogsProps {
   dialog: StaffGameDialogKind;
   gameArtStyle: CSSProperties;
+  isStarting: boolean;
   isSettingsDialogShaking: boolean;
   onSettingsDialogAnimationEnd: AnimationEventHandler<HTMLElement>;
   isSongMode: boolean;
@@ -48,6 +49,7 @@ const {
 export function StaffGameDialogs({
   dialog,
   gameArtStyle,
+  isStarting,
   isSettingsDialogShaking,
   onSettingsDialogAnimationEnd,
   isSongMode,
@@ -74,7 +76,7 @@ export function StaffGameDialogs({
   return (
     <>
         {dialog && typeof document !== "undefined" ? createPortal(
-          <div className="staff-game-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget) closeGameDialog(); }} style={gameArtStyle}>
+          <div className="staff-game-dialog-backdrop" onClick={(event) => { if (!isStarting && event.target === event.currentTarget) closeGameDialog(); }} style={gameArtStyle}>
             <section
               aria-labelledby="staff-game-dialog-title"
               aria-modal="true"
@@ -110,7 +112,7 @@ export function StaffGameDialogs({
               ) : dialog === "levels" ? (
                 <>
                   <img alt="" aria-hidden="true" className="staff-game-level-decoration" draggable="false" src={levelJumpDecorationArt} />
-                  <button aria-label="关闭弹窗" className="staff-game-dialog-close" onClick={closeGameDialog} type="button"><X size={23} /></button>
+                  <button aria-label="关闭弹窗" className="staff-game-dialog-close" disabled={isStarting} onClick={closeGameDialog} type="button"><X size={23} /></button>
                   <div className="staff-game-level-dialog-content">
                     <h2 id="staff-game-dialog-title">选择关卡</h2>
                     <div className="staff-game-level-picker-content">
@@ -126,6 +128,7 @@ export function StaffGameDialogs({
                                 aria-label={`第 ${selectedLevel} 关，${note.name}${note.octave}${isCurrent ? "，当前关卡" : ""}`}
                                 aria-pressed={isCurrent}
                                 className={`staff-game-level-choice${isCurrent ? " is-current" : ""}${bestStars[index] > 0 ? " has-stars" : ""}`}
+                                disabled={isStarting}
                                 key={selectedLevel}
                                 onClick={() => jumpToLevel(selectedLevel)}
                                 type="button"
@@ -146,6 +149,7 @@ export function StaffGameDialogs({
                                 aria-label={`第 ${selectedLevel} 关，${note.name}${note.octave}${isCurrent ? "，当前关卡" : ""}`}
                                 aria-pressed={isCurrent}
                                 className={`staff-game-level-choice is-black-key${isCurrent ? " is-current" : ""}${bestStars[progressIndex] > 0 ? " has-stars" : ""}`}
+                                disabled={isStarting}
                                 key={selectedLevel}
                                 onClick={() => jumpToLevel(selectedLevel)}
                                 type="button"
@@ -212,6 +216,11 @@ export function StaffGameDialogs({
                         <span>答对 {draftDifficulty.correctPoints} 分 · 连击每次 +{draftDifficulty.comboBonusPoints} 分</span>
                       </p>
                     </section>
+                    {isSongMode && settingsDraft.inputMode === "virtual" ? (
+                      <p className="staff-game-song-mode-notice" role="note">
+                        歌曲模式默认关闭背景音乐和游戏音效，让你专注聆听与演奏歌曲。
+                      </p>
+                    ) : null}
                     {settingsDraft.inputMode === "physical" ? (
                       <StaffGamePhysicalInputNotice />
                     ) : null}

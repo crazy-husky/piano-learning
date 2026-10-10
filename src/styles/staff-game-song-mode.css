@@ -50,38 +50,6 @@
   font-weight: 800;
 }
 
-.staff-game-song-inline-back {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 3px 10px rgba(32, 93, 109, 0.12);
-  color: #327d91;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 850;
-  padding: 8px 13px;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.staff-game-song-detail-card button.staff-game-song-inline-back:hover:not(:disabled) {
-  border-color: rgba(74, 184, 201, 0.68);
-  background: rgba(224, 248, 245, 0.96);
-  box-shadow: 0 4px 12px rgba(32, 111, 123, 0.16);
-  color: #28778b;
-  transform: translateY(-1px);
-}
-
-.staff-game-song-detail-card button.staff-game-song-inline-back:focus-visible {
-  outline: 3px solid rgba(45, 174, 202, 0.52);
-  outline-offset: 3px;
-}
-
 .staff-game-song-card {
   position: relative;
   display: flex;
@@ -240,12 +208,6 @@
   align-items: stretch;
   gap: 9px;
   text-align: center;
-}
-
-.staff-game-song-inline-back {
-  align-self: center;
-  margin-top: 1px;
-  padding: 6px 11px;
 }
 
 @media (min-width: 821px) {

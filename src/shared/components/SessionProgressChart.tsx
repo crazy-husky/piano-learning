@@ -1,6 +1,6 @@
-import * as echarts from "echarts";
+import type * as echarts from "echarts";
 import type { EChartsOption } from "echarts";
-import { useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type {
   SessionProgressBenchmark,
@@ -13,6 +13,8 @@ import {
   normalizeHistoryLimit,
 } from "./HistoryLimitControl";
 import { useNightMode } from "../appearance/pageAppearance";
+import { loadECharts } from "../charts/loadECharts";
+import { ChartLoadingSkeleton } from "./LoadingSkeletons";
 
 export const DEFAULT_SESSION_PROGRESS_HISTORY_LIMIT = DEFAULT_HISTORY_LIMIT;
 
@@ -138,6 +140,7 @@ export function SessionProgressChart({
 }: SessionProgressChartProps): JSX.Element {
   const chartElementRef = useRef<HTMLDivElement | null>(null);
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
+  const [chartLoadState, setChartLoadState] = useState<"loading" | "ready" | "error">("loading");
   const isNightMode = useNightMode();
   const chartColors = useMemo(() => ({
     accent: isNightMode ? "#72b8a6" : "#256f67",
@@ -212,30 +215,46 @@ export function SessionProgressChart({
     }),
     [chartColors, chartGroups, prefersReducedMotion, xMax],
   );
-
-  useLayoutEffect(() => {
+  useEffect(() => {
     const element = chartElementRef.current;
     if (!element) {
       return undefined;
     }
-    const chart = echarts.init(element, undefined, { renderer: "canvas" });
-    chartInstanceRef.current = chart;
-    const resizeObserver = new ResizeObserver(() => chart.resize());
-    resizeObserver.observe(element);
+
+    let cancelled = false;
+    let chart: echarts.ECharts | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    void loadECharts().then((echartsModule) => {
+      if (cancelled) return;
+
+      chart = echartsModule.init(element, undefined, { renderer: "canvas" });
+      chartInstanceRef.current = chart;
+      resizeObserver = new ResizeObserver(() => chart?.resize());
+      resizeObserver.observe(element);
+      setChartLoadState("ready");
+    }).catch(() => {
+      chart?.dispose();
+      chartInstanceRef.current = null;
+      if (!cancelled) setChartLoadState("error");
+    });
+
     return () => {
-      resizeObserver.disconnect();
-      chart.dispose();
+      cancelled = true;
+      resizeObserver?.disconnect();
+      chart?.dispose();
       chartInstanceRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    chartInstanceRef.current?.setOption(option, true);
-  }, [option]);
+    if (chartLoadState === "ready") chartInstanceRef.current?.setOption(option, true);
+  }, [chartLoadState, option]);
 
   return (
     <div className="session-progress-chart-wrap">
       {overlay ? <div className="session-progress-chart-overlay">{overlay}</div> : null}
+      {chartLoadState === "loading" ? <ChartLoadingSkeleton /> : null}
+      {chartLoadState === "error" ? <div className="echarts-loading-error" role="status">图表暂时无法加载</div> : null}
       <div aria-label="答对进度图" className="session-progress-chart" ref={chartElementRef} role="img" style={{ height }} />
     </div>
   );

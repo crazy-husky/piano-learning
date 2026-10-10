@@ -57,6 +57,7 @@
 | `audio/combo-unbelievable.mp3` | 1.15 秒 | 50 连击及之后每增加 20 连击时播放 | 用户提供；与其他连击语音响度平衡 |
 | `audio/menu-click.mp3` | 0.40 秒 | 菜单和按钮点击；替换原合成弹动音 | 用户提供；已裁去前后静音 |
 | `audio/note-missed-soft.wav` | 0.32 秒 | 答错或气泡超时；低音木琴后接短促下行合成音 | 定制合成；48 kHz、24-bit、单声道 |
+| `audio/note-missed-unpitched.wav` | 0.07 秒 | 麦克风输入下漏音反馈 | 48 kHz、16-bit、单声道；来源与音质评估未归档 |
 | `audio/level-clear.wav` | 1.22 秒 | 本局达到至少 1 星 | 85/100 |
 | `audio/microphone-ready.wav` | 0.87 秒 | 麦克风连接成功或恢复 | 85/100 |
 | `audio/relaxed-game-bgm.mp3` | 56.24 秒 | 闯关背景音乐，循环播放 | 用户提供；从 2.4 MB WAV 转为约 330 KB MP3，并做响度处理 |

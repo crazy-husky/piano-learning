@@ -189,6 +189,12 @@ select {
   font: inherit;
 }
 
+button,
+a,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
 button {
   min-height: var(--control-height);
   border: 1px solid var(--border);

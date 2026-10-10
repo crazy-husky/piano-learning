@@ -142,6 +142,10 @@
   padding: 7px 0 8px;
 }
 
+.staff-game-settings-dialog .ui-switch-thumb {
+  background: #fff;
+}
+
 .staff-game-settings-dialog .staff-game-settings-section:last-of-type {
   border-bottom: 0;
 }

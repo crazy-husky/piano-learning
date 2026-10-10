@@ -1,6 +1,6 @@
-import * as echarts from "echarts";
+import type * as echarts from "echarts";
 import type { EChartsOption, LineSeriesOption } from "echarts";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   RECOGNITION_SERIES_KEYS,
@@ -14,6 +14,8 @@ import {
 } from "./recognitionTrend";
 import { STATS_COLORS } from "./statsColors";
 import { getPageThemeColor, useNightMode } from "../../../shared/appearance/pageAppearance";
+import { loadECharts } from "../../../shared/charts/loadECharts";
+import { ChartLoadingSkeleton } from "../../../shared/components/LoadingSkeletons";
 
 const RECOGNITION_CHART_COLORS = {
   get errorRate() { return getPageThemeColor("--recognition-error-rate", STATS_COLORS.recognitionChart.errorRate); },
@@ -464,8 +466,13 @@ function RecognitionTrendChart({
 }): JSX.Element {
   const chartElementRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
+  const [chartLoadState, setChartLoadState] = useState<"loading" | "ready" | "error">("loading");
   const isNightMode = useNightMode();
   const seriesOptions = useMemo(() => getRecognitionSeriesOptions(), [isNightMode]);
+  const chartOption = useMemo(
+    () => makeRecognitionTimeChartOption(data, metric, valueMode, visibleSeries, relativeBaselineMode),
+    [data, isNightMode, metric, relativeBaselineMode, valueMode, visibleSeries],
+  );
 
   useEffect(() => {
     const element = chartElementRef.current;
@@ -473,35 +480,45 @@ function RecognitionTrendChart({
       return undefined;
     }
 
-    const chart = echarts.init(element, null, { renderer: "canvas" });
-    chartRef.current = chart;
+    let cancelled = false;
+    let chart: echarts.EChartsType | null = null;
     let resizeFrame = 0;
+    let resizeObserver: ResizeObserver | null = null;
     const scheduleResize = (): void => {
+      if (!chart) return;
       window.cancelAnimationFrame(resizeFrame);
-      resizeFrame = window.requestAnimationFrame(() => chart.resize());
+      resizeFrame = window.requestAnimationFrame(() => chart?.resize());
     };
-    const resizeObserver = new ResizeObserver(scheduleResize);
-    const resizeTarget = element.parentElement ?? element;
-    resizeObserver.observe(resizeTarget);
-    if (resizeTarget !== element) {
-      resizeObserver.observe(element);
-    }
-    scheduleResize();
+
+    void loadECharts().then((echartsModule) => {
+      if (cancelled) return;
+
+      chart = echartsModule.init(element, null, { renderer: "canvas" });
+      chartRef.current = chart;
+      resizeObserver = new ResizeObserver(scheduleResize);
+      const resizeTarget = element.parentElement ?? element;
+      resizeObserver.observe(resizeTarget);
+      if (resizeTarget !== element) resizeObserver.observe(element);
+      scheduleResize();
+      setChartLoadState("ready");
+    }).catch(() => {
+      chart?.dispose();
+      chartRef.current = null;
+      if (!cancelled) setChartLoadState("error");
+    });
 
     return () => {
+      cancelled = true;
       window.cancelAnimationFrame(resizeFrame);
-      resizeObserver.disconnect();
-      chart.dispose();
+      resizeObserver?.disconnect();
+      chart?.dispose();
       chartRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    chartRef.current?.setOption(
-      makeRecognitionTimeChartOption(data, metric, valueMode, visibleSeries, relativeBaselineMode),
-      true,
-    );
-  }, [data, isNightMode, metric, relativeBaselineMode, valueMode, visibleSeries]);
+    if (chartLoadState === "ready") chartRef.current?.setOption(chartOption, true);
+  }, [chartLoadState, chartOption]);
 
   return (
     <div className="recognition-time-chart-shell">
@@ -542,7 +559,11 @@ function RecognitionTrendChart({
           全选
         </button>
       </div>
-      <div aria-label="识别趋势折线图" className="recognition-time-chart" ref={chartElementRef} role="img" />
+      <div className="recognition-time-chart-frame">
+        {chartLoadState === "loading" ? <ChartLoadingSkeleton /> : null}
+        {chartLoadState === "error" ? <div className="echarts-loading-error" role="status">图表暂时无法加载</div> : null}
+        <div aria-label="识别趋势折线图" className="recognition-time-chart" ref={chartElementRef} role="img" />
+      </div>
     </div>
   );
 }

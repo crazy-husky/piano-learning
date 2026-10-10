@@ -6,8 +6,8 @@ import comboStreakUrl from "../assets/audio/combo-streak.wav";
 import comboUnbelievableUrl from "../assets/audio/combo-unbelievable.mp3";
 import levelClearUrl from "../assets/audio/level-clear.wav";
 import menuClickUrl from "../assets/audio/menu-click.mp3";
-import microphoneReadyUrl from "../assets/audio/microphone-ready.wav";
 import noteMissedUrl from "../assets/audio/note-missed-soft.wav";
+import noteMissedUnpitchedUrl from "../assets/audio/note-missed-unpitched.wav";
 
 export type StaffGameSound =
   | "bubblePop"
@@ -17,8 +17,8 @@ export type StaffGameSound =
   | "comboUnbelievable"
   | "levelClear"
   | "menuClick"
-  | "microphoneReady"
-  | "noteMissed";
+  | "noteMissed"
+  | "noteMissedUnpitched";
 type SampledStaffGameSound = StaffGameSound;
 const STAFF_GAME_SOUND_LOAD_TIMEOUT_MS = 8_000;
 
@@ -35,20 +35,22 @@ const soundSources: Record<SampledStaffGameSound, { url: string; volumeDb: numbe
   comboUnbelievable: { url: comboUnbelievableUrl, volumeDb: -8 },
   levelClear: { url: levelClearUrl, volumeDb: -13 },
   menuClick: { url: menuClickUrl, volumeDb: -14 },
-  microphoneReady: { url: microphoneReadyUrl, volumeDb: -18 },
   noteMissed: { url: noteMissedUrl, volumeDb: -18 },
+  noteMissedUnpitched: { url: noteMissedUnpitchedUrl, volumeDb: -6 },
 };
 
 const soundPlayers = new Map<SampledStaffGameSound, SoundPlayer>();
 let soundEffectsEnabled = true;
 let starRevealSynth: Tone.Synth | null = null;
 
-function canPlayAudio(): boolean {
-  return soundEffectsEnabled;
+function canPlayAudio(sound?: StaffGameSound): boolean {
+  // Menu clicks are interface feedback, independent of the in-game effects setting.
+  return sound === "menuClick" || soundEffectsEnabled;
 }
 
 function stopPlayingAudio(): void {
-  soundPlayers.forEach(({ player }) => {
+  soundPlayers.forEach(({ player }, sound) => {
+    if (sound === "menuClick") return;
     try {
       player.stop();
     } catch {
@@ -122,12 +124,12 @@ export async function preloadStaffGameSounds(): Promise<number> {
 }
 
 export function playStaffGameSound(sound: StaffGameSound): void {
-  if (typeof window === "undefined" || !canPlayAudio()) return;
+  if (typeof window === "undefined" || !canPlayAudio(sound)) return;
   const { player, ready } = getSoundPlayer(sound);
   void Tone.start()
     .then(() => ready)
     .then(() => {
-      if (canPlayAudio()) player.start();
+      if (canPlayAudio(sound)) player.start();
     })
     .catch(() => undefined);
 }

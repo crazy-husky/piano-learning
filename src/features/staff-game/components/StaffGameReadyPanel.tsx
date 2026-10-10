@@ -22,7 +22,6 @@ type StaffGameReadyPanelProps = SharedArtwork & (
       previewNotation: ReactNode;
       isStarting: boolean;
       onStartSong: () => void;
-      onBackToSongList: () => void;
     }
   | {
       variant: "level";
@@ -102,7 +101,6 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
         <button className="staff-game-primary" disabled={props.isStarting} onClick={props.onStartSong} type="button">
           <Play fill="currentColor" size={20} />{props.isStarting ? "正在准备…" : "开始演奏"}
         </button>
-        <button className="staff-game-song-inline-back" onClick={props.onBackToSongList} type="button">‹ 返回歌曲列表</button>
       </section>
     );
   }

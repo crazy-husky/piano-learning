@@ -1,7 +1,9 @@
 .staff-game-shell {
+  display: flex;
   width: 100%;
   max-width: none;
   height: 100dvh;
+  flex-direction: column;
   min-height: 0;
   margin: 0;
   padding: 0;
@@ -141,6 +143,12 @@
   text-align: center;
 }
 
+.app-error-build-info {
+  margin: 8px 0 0 !important;
+  color: #6d7f88 !important;
+  font-size: 13px !important;
+}
+
 @media (max-width: 560px) {
   .app-error-debug-toolbar {
     flex-direction: column;
@@ -170,82 +178,184 @@
   user-select: text;
 }
 
-.app-global-error-notice {
+.app-global-error-badge {
   position: fixed;
   z-index: 15000;
   right: max(12px, env(safe-area-inset-right));
-  bottom: max(12px, env(safe-area-inset-bottom));
+  bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.64);
+  border-radius: 999px;
+  background: #c73535;
+  box-shadow: 0 4px 14px rgba(112, 23, 23, 0.25);
+  color: #fff;
+  padding: 4px;
+}
+
+.app-global-error-badge button {
+  min-width: 32px;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-global-error-badge-details {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 0 8px !important;
+}
+
+.app-global-error-badge-icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.app-global-error-badge-countdown {
+  min-width: 1.2em;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  text-align: center;
+}
+
+.app-global-error-badge-close {
+  width: 28px;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  border-radius: 50% !important;
+  font-size: 20px !important;
+  line-height: 1 !important;
+}
+
+.app-global-error-badge button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.app-global-error-badge button:focus-visible,
+.app-global-error-dialog button:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 2px;
+}
+
+.app-global-error-dialog-backdrop {
+  position: fixed;
+  z-index: 20000;
+  inset: 0;
+  display: grid;
+  place-items: center;
   box-sizing: border-box;
-  width: min(480px, calc(100vw - 24px));
-  max-height: min(70vh, 520px);
+  overflow: auto;
+  background: rgba(18, 27, 32, 0.45);
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+}
+
+.app-global-error-dialog {
+  box-sizing: border-box;
+  width: min(680px, 100%);
+  max-height: 100%;
   overflow: auto;
   border: 1px solid var(--warning-border);
   border-radius: 14px;
   background: var(--warning-surface);
   color: var(--text);
-  padding: 14px;
+  padding: 18px;
   box-shadow: var(--shadow);
 }
 
-.app-global-error-notice-header {
+.app-global-error-dialog-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
 }
 
-.app-global-error-notice-header > div {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.app-global-error-notice-header strong {
+.app-global-error-dialog-header h2 {
+  margin: 0;
   color: var(--warning-text);
+  font-size: 20px;
 }
 
-.app-global-error-notice-header span,
-.app-global-error-notice-copy-status {
+.app-global-error-dialog-header p,
+.app-global-error-build-info,
+.app-global-error-dialog-copy-status {
+  margin: 6px 0 0;
   color: var(--muted);
   font-size: 13px;
 }
 
-.app-global-error-notice-header button {
+.app-global-error-dialog-close {
   flex: 0 0 auto;
-  min-height: 36px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.app-global-error-dialog-close:hover {
+  background: rgba(90, 100, 108, 0.12);
+}
+
+.app-global-error-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.app-global-error-dialog-actions button {
+  min-height: 38px;
   border: 0;
   border-radius: 8px;
   background: var(--accent-fill);
   color: #fff;
-  padding: 0 12px;
+  padding: 0 14px;
   font: inherit;
   font-weight: 700;
   cursor: pointer;
 }
 
-.app-global-error-notice-header button:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
+.app-global-error-dialog-actions button:hover {
+  filter: brightness(0.94);
 }
 
-.app-global-error-notice-copy-status {
-  margin: 8px 0;
+.app-global-error-dialog-copy-status {
+  min-height: 18px;
 }
 
-.app-global-error-notice details {
+.app-global-error-dialog details {
   border-top: 1px solid var(--warning-border);
-  padding-top: 8px;
+  padding-top: 10px;
 }
 
-.app-global-error-notice summary {
+.app-global-error-dialog summary {
   color: var(--text);
   cursor: pointer;
   font-size: 13px;
   font-weight: 650;
 }
 
-.app-global-error-notice pre {
-  max-height: 42vh;
+.app-global-error-dialog pre {
+  max-height: min(42vh, 420px);
   overflow: auto;
   margin: 8px 0 0;
   border-radius: 8px;
@@ -259,15 +369,8 @@
 }
 
 @media (max-width: 560px) {
-  .app-global-error-notice {
-    left: max(12px, env(safe-area-inset-left));
-    width: auto;
-    max-height: min(60vh, 420px);
-  }
-
-  .app-global-error-notice-header {
-    align-items: flex-start;
-    flex-direction: column;
+  .app-global-error-dialog {
+    padding: 14px;
   }
 }
 
@@ -285,7 +388,8 @@
   position: relative;
   display: flex;
   width: 100%;
-  height: 100%;
+  height: auto;
+  flex: 1 1 0;
   min-height: 540px;
   flex-direction: column;
   overflow: hidden;
@@ -477,15 +581,20 @@ body.rush-mode .staff-game-scene::before {
   position: absolute;
   display: block;
   height: 2px;
+  transform-origin: 100% 50%;
+  animation: staff-game-shooting-star-traverse var(--meteor-duration, 3s) cubic-bezier(0.16, 0.62, 0.32, 1) both;
+}
+
+.staff-game-shooting-star-streak {
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
   background: linear-gradient(90deg, transparent 0%, rgba(220, 248, 255, 0.12) 22%, rgba(232, 250, 255, 0.72) 76%, #fff 100%);
   filter: drop-shadow(0 0 4px rgba(214, 247, 255, 0.9));
-  opacity: 0;
-  transform-origin: 100% 50%;
-  animation: staff-game-shooting-star-traverse 2.7s cubic-bezier(0.16, 0.62, 0.32, 1) both;
+  animation: staff-game-shooting-star-trail var(--meteor-duration, 3s) linear both;
 }
 
-.staff-game-shooting-star::after {
+.staff-game-shooting-star-head {
   position: absolute;
   top: 50%;
   right: -1px;
@@ -494,8 +603,23 @@ body.rush-mode .staff-game-scene::before {
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 0 7px 3px rgba(230, 251, 255, 0.92);
-  content: "";
   transform: translate(50%, -50%);
+}
+
+.staff-game-shooting-star-head::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.98) 0 10%, rgba(218, 249, 255, 0.8) 24%, rgba(153, 231, 247, 0.3) 48%, transparent 72%);
+  clip-path: polygon(50% 0, 59% 39%, 100% 50%, 59% 61%, 50% 100%, 41% 61%, 0 50%, 41% 39%);
+  content: "";
+  filter: drop-shadow(0 0 4px rgba(216, 250, 255, 0.95));
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.16);
+  animation: staff-game-shooting-star-head-twinkle var(--meteor-duration, 3s) linear both;
 }
 
 @keyframes staff-game-firefly-flight {
@@ -507,13 +631,26 @@ body.rush-mode .staff-game-scene::before {
 }
 
 @keyframes staff-game-shooting-star-traverse {
-  0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(var(--meteor-angle)) scaleX(0.4); }
-  10% { opacity: 1; animation-timing-function: linear; }
-  34% { opacity: 0.84; filter: drop-shadow(0 0 3px rgba(214, 247, 255, 0.72)); animation-timing-function: linear; }
-  58% { opacity: 0.62; filter: drop-shadow(0 0 2px rgba(214, 247, 255, 0.5)); animation-timing-function: linear; }
-  80% { opacity: 0.36; filter: drop-shadow(0 0 1px rgba(214, 247, 255, 0.3)); animation-timing-function: linear; }
-  93% { opacity: 0.13; filter: drop-shadow(0 0 1px rgba(214, 247, 255, 0.12)); animation-timing-function: linear; }
-  100% { opacity: 0; filter: drop-shadow(0 0 0 rgba(214, 247, 255, 0)); transform: translate3d(var(--meteor-travel-x), var(--meteor-travel-y), 0) rotate(var(--meteor-angle)) scaleX(1); }
+  0% { transform: translate3d(0, 0, 0) rotate(var(--meteor-angle)) scaleX(0.4); }
+  100% { transform: translate3d(var(--meteor-travel-x), var(--meteor-travel-y), 0) rotate(var(--meteor-angle)) scaleX(1); }
+}
+
+@keyframes staff-game-shooting-star-trail {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  34% { opacity: 0.84; filter: drop-shadow(0 0 3px rgba(214, 247, 255, 0.72)); }
+  58% { opacity: 0.62; filter: drop-shadow(0 0 2px rgba(214, 247, 255, 0.5)); }
+  80% { opacity: 0.36; filter: drop-shadow(0 0 1px rgba(214, 247, 255, 0.3)); }
+  93% { opacity: 0.13; filter: drop-shadow(0 0 1px rgba(214, 247, 255, 0.12)); }
+  100% { opacity: 0; filter: drop-shadow(0 0 0 rgba(214, 247, 255, 0)); }
+}
+
+@keyframes staff-game-shooting-star-head-twinkle {
+  0%, 90% { opacity: 0; transform: translate(-50%, -50%) scale(0.16); }
+  94% { opacity: 0.72; transform: translate(-50%, -50%) scale(0.78); }
+  97% { opacity: 1; transform: translate(-50%, -50%) scale(1.18); }
+  99% { opacity: 0.82; transform: translate(-50%, -50%) scale(0.92); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.28); }
 }
 
 .staff-game-hud-card {
@@ -1788,9 +1925,18 @@ body.rush-mode .staff-game-scene::before {
     height: 100dvh;
   }
 
+  .app-shell-practice-page .staff-game-shell.is-ready {
+    padding: 0;
+  }
+
   .staff-game-scene {
     min-height: 0;
     border-radius: 19px;
+  }
+
+  .app-shell-practice-page .staff-game-shell.is-ready .staff-game-scene {
+    border: 0;
+    border-radius: 0;
   }
 
   .staff-game-scene::before {

@@ -1,7 +1,8 @@
 import * as Tone from "tone";
 import { noteToToneName } from "../domain/notes";
-import { DEFAULT_PIANO_VOLUME, normalizePianoVolume } from "../domain/settings";
 import type { Octave, PianoKeyName, TargetNote } from "../domain/types";
+import { getPianoVolume } from "./pianoSettings";
+export { setPianoVolume } from "./pianoSettings";
 
 const PIANO_SAMPLE_BASE_URL = `${import.meta.env.BASE_URL}audio/salamander/`;
 const PIANO_SAMPLE_LOAD_TIMEOUT_MS = 30_000;
@@ -47,7 +48,6 @@ let sampler: Tone.Sampler | undefined;
 let samplerLoadPromise: Promise<void> | undefined;
 let samplerStatus: SamplerStatus = "idle";
 let fallbackSynth: Tone.PolySynth | undefined;
-let pianoVolume = DEFAULT_PIANO_VOLUME;
 
 function normalizeError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
@@ -150,10 +150,6 @@ export async function preloadPianoSamples(): Promise<boolean> {
   }
 }
 
-export function setPianoVolume(volume: number): void {
-  pianoVolume = normalizePianoVolume(volume);
-}
-
 export async function unlockAudio(): Promise<void> {
   await Tone.start();
   getSampler({ retryFailed: true });
@@ -164,10 +160,10 @@ export async function playPianoNote(noteName: PianoKeyName, octave: Octave): Pro
   const note = noteToToneName(noteName, octave);
   const sampledPiano = getLoadedSampler();
   if (sampledPiano) {
-    sampledPiano.triggerAttackRelease(note, "8n", undefined, pianoVolume);
+    sampledPiano.triggerAttackRelease(note, "8n", undefined, getPianoVolume());
     return;
   }
-  getFallbackSynth().triggerAttackRelease(note, "8n", undefined, pianoVolume);
+  getFallbackSynth().triggerAttackRelease(note, "8n", undefined, getPianoVolume());
 }
 
 async function startToneNote(note: string): Promise<SustainedPianoNote> {
@@ -176,7 +172,7 @@ async function startToneNote(note: string): Promise<SustainedPianoNote> {
   let released = false;
 
   if (sampledPiano) {
-    sampledPiano.triggerAttack(note, undefined, pianoVolume);
+    sampledPiano.triggerAttack(note, undefined, getPianoVolume());
     return {
       release: () => {
         if (released) return;
@@ -187,7 +183,7 @@ async function startToneNote(note: string): Promise<SustainedPianoNote> {
   }
 
   const synth = getFallbackSynth();
-  synth.triggerAttack(note, undefined, pianoVolume);
+  synth.triggerAttack(note, undefined, getPianoVolume());
   return {
     release: () => {
       if (released) return;

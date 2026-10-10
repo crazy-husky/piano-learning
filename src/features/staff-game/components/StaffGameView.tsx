@@ -1086,6 +1086,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     finishRound,
     gameDurationMs,
     gameModeRef,
+    inputMode: settings.inputMode,
     levelRef,
     noteBagRef,
     noteLabel,
@@ -1214,7 +1215,6 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
           setGameError(`无法连接麦克风${reason}。请在浏览器的网站权限中允许麦克风，再重新尝试。`);
           return false;
         }
-        playGameSound("microphoneReady");
       } else if (settingsRef.current.inputMode === "midi") {
         if (!await connectMidiForRound(isCancelled)) return false;
         if (isCancelled()) return false;
@@ -1395,7 +1395,6 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
           setGameError(`麦克风未能重新连接${reason}。请检查网站权限和输入设备后重试。`);
           return;
         }
-        playGameSound("microphoneReady");
       } else if (settingsRef.current.inputMode === "midi") {
         if (!await connectMidiForRound(isCancelled)) return;
         if (isCancelled()) return;
@@ -1457,7 +1456,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   }, [beginRound]);
 
   const jumpToLevel = useCallback((selectedLevel: number): void => {
-    setDialog(null);
+    if (isStartingRef.current) return;
     const clamped = Math.max(1, Math.min(GAME_LEVEL_COUNT, selectedLevel));
     const nextProgress = { ...progressRef.current, selectedLevel: clamped };
     progressRef.current = nextProgress;
@@ -1465,7 +1464,9 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     saveProgress(nextProgress);
     setLevel(clamped);
     levelRef.current = clamped;
-    void beginRound();
+    void beginRound().then((started) => {
+      if (started) setDialog(null);
+    });
   }, [beginRound]);
 
   const selectSong = useCallback((songId: string): void => {
@@ -1560,6 +1561,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   }, [pauseRound]);
 
   const closeGameDialog = useCallback((): void => {
+    if (isStartingRef.current) return;
     setDialog(null);
   }, []);
 
@@ -1713,7 +1715,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
   }
 
   return (
-    <section className="practice-shell staff-game-shell" aria-label="五线谱闯关游戏">
+    <section className={`practice-shell staff-game-shell${phase === "ready" ? " is-ready" : ""}`} aria-label="五线谱闯关游戏">
         <div className="staff-game-scene" ref={sceneRef} style={gameArtStyle}>
           <StaffGameErrorFlash active={errorFlashActive} />
           <img alt="" aria-hidden="true" className="staff-game-cloud-drift cloud-drift-a" draggable="false" src={cloudDecorationOne} />
@@ -1899,7 +1901,6 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
             <StaffGameReadyPanel
               bubbleImage={bubbleShell}
               isStarting={isStarting}
-              onBackToSongList={handleSongSelectionBack}
               onStartSong={startSelectedSong}
               previewNotation={<NoteStaff note={selectedSongPreviewNote} />}
               record={selectedSongRecord}
@@ -1991,50 +1992,50 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
           </div>
         ) : null}
         <footer className={`staff-game-controls${touchGameLayout ? " is-touch-layout" : ""}${isSongMode ? " is-song-mode" : ""}`}>
-          {!(isSongMode && songSelectionStep === "detail") ? (
-            <button
-              aria-label={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
-              title={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
-              className="staff-game-action-button staff-game-back-button is-desktop-control"
-              onClick={handleSongSelectionBack}
-              type="button"
-            ><img alt="" aria-hidden="true" src={actionReturnArt} /></button>
-          ) : null}
+          <button
+            aria-label={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
+            title={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
+            className="staff-game-action-button staff-game-back-button is-desktop-control"
+            onClick={handleSongSelectionBack}
+            type="button"
+          ><img alt="" aria-hidden="true" src={actionReturnArt} /></button>
           <div aria-live="polite" className="staff-game-feedback is-desktop-control">
             {phase === "ready" || showVirtualKeyboard ? null : settings.inputMode === "physical" && microphone.isListening ? <><Volume2 aria-hidden="true" size={16} /><span>{feedback || microphone.detectedNote || "麦克风已连接"}</span></> : <span>{feedback}</span>}
           </div>
           <div aria-label="游戏操作" className="staff-game-toolbar is-desktop-control">
             <button aria-label="游戏提示" title="游戏提示" className="staff-game-action-button" onClick={() => openGameDialog("help")} type="button"><img alt="" aria-hidden="true" src={actionHelpArt} /></button>
             <button aria-label="游戏设置" title="游戏设置" className="staff-game-action-button" onClick={() => openGameDialog("settings")} type="button"><img alt="" aria-hidden="true" src={actionSettingsArt} /></button>
-            <button
-              aria-label={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}
-              title={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}
-              className="staff-game-action-button"
-              disabled={pauseControlDisabled}
-              onClick={() => phase === "running" ? pauseRound() : void resumeRound()}
-              type="button"
-            ><img alt="" aria-hidden="true" src={phase === "paused" ? actionResumeArt : actionPauseArt} /></button>
+            {(!isSongMode || songSelectionStep === null) ? (
+              <button
+                aria-label={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}
+                title={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}
+                className="staff-game-action-button"
+                disabled={pauseControlDisabled}
+                onClick={() => phase === "running" ? pauseRound() : void resumeRound()}
+                type="button"
+              ><img alt="" aria-hidden="true" src={phase === "paused" ? actionResumeArt : actionPauseArt} /></button>
+            ) : null}
           </div>
           <div aria-label="游戏操作" className="staff-game-toolbar is-mobile-control">
-            {!(isSongMode && songSelectionStep === "detail") ? (
-              <button
-                aria-label={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
-                title={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
-                className="staff-game-action-button"
-                onClick={handleSongSelectionBack}
-                type="button"
-              ><img alt="" aria-hidden="true" src={actionReturnArt} /></button>
-            ) : null}
+            <button
+              aria-label={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
+              title={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
+              className="staff-game-action-button"
+              onClick={handleSongSelectionBack}
+              type="button"
+            ><img alt="" aria-hidden="true" src={actionReturnArt} /></button>
             <button aria-label="游戏提示" title="游戏提示" className="staff-game-action-button" onClick={() => openGameDialog("help")} type="button"><img alt="" aria-hidden="true" src={actionHelpArt} /></button>
             <button aria-label="游戏设置" title="游戏设置" className="staff-game-action-button" onClick={() => openGameDialog("settings")} type="button"><img alt="" aria-hidden="true" src={actionSettingsArt} /></button>
-            <button
-              aria-label={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}
-              title={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}
-              className="staff-game-action-button"
-              disabled={pauseControlDisabled}
-              onClick={() => phase === "running" ? pauseRound() : void resumeRound()}
-              type="button"
-            ><img alt="" aria-hidden="true" src={phase === "paused" ? actionResumeArt : actionPauseArt} /></button>
+            {(!isSongMode || songSelectionStep === null) ? (
+              <button
+                aria-label={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}
+                title={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}
+                className="staff-game-action-button"
+                disabled={pauseControlDisabled}
+                onClick={() => phase === "running" ? pauseRound() : void resumeRound()}
+                type="button"
+              ><img alt="" aria-hidden="true" src={phase === "paused" ? actionResumeArt : actionPauseArt} /></button>
+            ) : null}
           </div>
         </footer>
         <StaffGameDialogs
@@ -2045,6 +2046,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
           draftAudioSettings={draftAudioSettings}
           draftDifficulty={draftDifficulty}
           gameArtStyle={gameArtStyle}
+          isStarting={isStarting}
           isSettingsDialogShaking={isSettingsDialogShaking}
           isSongMode={isSongMode}
           jumpToLevel={jumpToLevel}

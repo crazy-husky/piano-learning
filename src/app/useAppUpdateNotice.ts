@@ -3,6 +3,8 @@ import { toast } from "sonner";
 
 const UPDATE_CHECK_INTERVAL_MS = 60_000;
 const UPDATE_CHECK_TIMEOUT_MS = 8_000;
+const WORKER_INSTALL_TIMEOUT_MS = 120_000;
+const WORKER_ACTIVATION_TIMEOUT_MS = 15_000;
 const UPDATE_NOTICE_ID = "app-update-available";
 
 interface BuildVersionResponse {
@@ -19,8 +21,125 @@ function isBuildVersionResponse(value: unknown): value is BuildVersionResponse {
   return Boolean(value && typeof value === "object" && "buildId" in value);
 }
 
+type ServiceWorkerReadyResult =
+  | { state: "waiting" | "activated"; worker: ServiceWorker }
+  | { state: "failed" | "timeout"; worker: null };
+
+interface PreparedServiceWorkerUpdate {
+  registration: ServiceWorkerRegistration;
+  result: Extract<ServiceWorkerReadyResult, { state: "waiting" | "activated" }>;
+}
+
+function waitForWorkerReady(registration: ServiceWorkerRegistration, timeoutMs: number): Promise<ServiceWorkerReadyResult> {
+  if (registration.waiting) return Promise.resolve({ state: "waiting", worker: registration.waiting });
+
+  return new Promise((resolve) => {
+    let observedWorker: ServiceWorker | null = null;
+    let timeoutId = 0;
+    let settled = false;
+
+    const finish = (result: ServiceWorkerReadyResult): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      registration.removeEventListener("updatefound", onUpdateFound);
+      observedWorker?.removeEventListener("statechange", onStateChange);
+      resolve(result);
+    };
+
+    const onStateChange = (): void => {
+      if (registration.waiting) {
+        finish({ state: "waiting", worker: registration.waiting });
+      } else if (observedWorker?.state === "activated") {
+        finish(registration.active
+          ? { state: "activated", worker: registration.active }
+          : { state: "failed", worker: null });
+      } else if (observedWorker?.state === "redundant") {
+        finish({ state: "failed", worker: null });
+      }
+    };
+
+    const watchInstallingWorker = (): void => {
+      observedWorker?.removeEventListener("statechange", onStateChange);
+      observedWorker = registration.installing;
+      observedWorker?.addEventListener("statechange", onStateChange);
+      onStateChange();
+    };
+
+    const onUpdateFound = (): void => watchInstallingWorker();
+
+    registration.addEventListener("updatefound", onUpdateFound);
+    timeoutId = window.setTimeout(() => finish(registration.waiting
+      ? { state: "waiting", worker: registration.waiting }
+      : { state: "timeout", worker: null }), timeoutMs);
+    watchInstallingWorker();
+  });
+}
+
+async function stageServiceWorkerUpdate(): Promise<PreparedServiceWorkerUpdate | null> {
+  if (!("serviceWorker" in navigator)) return null;
+
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) return null;
+    if (registration.waiting) {
+      return { registration, result: { state: "waiting", worker: registration.waiting } };
+    }
+
+    const previousActiveWorker = registration.active;
+    try {
+      await registration.update();
+    } catch {
+      // The version endpoint can update before the service-worker script is reachable.
+      return null;
+    }
+
+    if (registration.waiting) {
+      return { registration, result: { state: "waiting", worker: registration.waiting } };
+    }
+    if (registration.active && registration.active !== previousActiveWorker) {
+      return { registration, result: { state: "activated", worker: registration.active } };
+    }
+    if (!registration.installing) return null;
+
+    const result = await waitForWorkerReady(registration, WORKER_INSTALL_TIMEOUT_MS);
+    if (result.state === "failed" || result.state === "timeout") return null;
+    return { registration, result };
+  } catch {
+    return null;
+  }
+}
+
+function applyAvailableUpdate(preparedUpdate: PreparedServiceWorkerUpdate): boolean {
+  const { registration, result } = preparedUpdate;
+  if (result.state === "activated") {
+    window.location.reload();
+    return true;
+  }
+
+  const waitingWorker = registration.waiting;
+  if (waitingWorker !== result.worker || waitingWorker.state !== "installed") return false;
+
+  let reloading = false;
+  const reloadOnce = (): void => {
+    if (reloading) return;
+    reloading = true;
+    window.clearTimeout(fallbackTimeoutId);
+    waitingWorker.removeEventListener("statechange", onWorkerStateChange);
+    window.location.reload();
+  };
+  const onWorkerStateChange = (): void => {
+    if (waitingWorker.state === "activated") reloadOnce();
+  };
+  const fallbackTimeoutId = window.setTimeout(reloadOnce, WORKER_ACTIVATION_TIMEOUT_MS);
+
+  waitingWorker.addEventListener("statechange", onWorkerStateChange);
+  waitingWorker.postMessage("skip-waiting");
+  return true;
+}
+
 export function useAppUpdateNotice(): void {
-  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [preparedUpdate, setPreparedUpdate] = useState<PreparedServiceWorkerUpdate | null>(null);
 
   useEffect(() => {
     if (import.meta.env.DEV) return;
@@ -48,8 +167,11 @@ export function useAppUpdateNotice(): void {
         if (!isBuildVersionResponse(payload) || typeof payload.buildId !== "string" || !payload.buildId) return;
         if (payload.buildId === __APP_BUILD_ID__) return;
 
+        const preparedUpdate = await stageServiceWorkerUpdate();
+        if (!preparedUpdate) return;
+
         updateFound = true;
-        if (!disposed) setUpdateAvailable(true);
+        if (!disposed) setPreparedUpdate(preparedUpdate);
       } catch {
         // A failed check is transient; the next interval, focus, or reconnect retries it.
       } finally {
@@ -82,18 +204,20 @@ export function useAppUpdateNotice(): void {
   }, []);
 
   useEffect(() => {
-    if (!updateAvailable) return;
+    if (!preparedUpdate) return;
     toast.warning("发现新版本", {
       id: UPDATE_NOTICE_ID,
-      description: "刷新页面后即可使用最新版本。",
+      description: "检测到新版本。点击立即更新会刷新页面；关闭页面后，下次打开将自动使用新版。",
       duration: Number.POSITIVE_INFINITY,
       action: {
-        label: "刷新页面",
-        onClick: () => window.location.reload(),
+        label: "立即更新",
+        onClick: () => {
+          if (applyAvailableUpdate(preparedUpdate)) toast.dismiss(UPDATE_NOTICE_ID);
+        },
       },
     });
     return () => {
       toast.dismiss(UPDATE_NOTICE_ID);
     };
-  }, [updateAvailable]);
+  }, [preparedUpdate]);
 }

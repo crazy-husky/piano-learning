@@ -1008,6 +1008,15 @@ body.rush-mode .staff-game-rush-vignette {
   text-align: left;
 }
 
+.staff-game-settings-dialog .staff-game-song-mode-notice {
+  margin: 9px 4px 2px;
+  color: #628b98;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: left;
+}
+
 .staff-game-summary-backdrop.effects-disabled .staff-game-summary-star.is-revealed {
   opacity: 1;
   transform: none;
@@ -1130,6 +1139,12 @@ body.rush-mode .staff-game-rush-vignette {
 
 @media (max-width: 820px) {
   .staff-game-settings-dialog .staff-game-physical-input-notice {
+    margin-top: 7px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .staff-game-settings-dialog .staff-game-song-mode-notice {
     margin-top: 7px;
     font-size: 11px;
     line-height: 1.4;

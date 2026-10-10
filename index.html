@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f3eb" />
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%icons/icon.svg?v=2" />
+    <link rel="apple-touch-icon" sizes="180x180" href="%BASE_URL%icons/apple-touch-icon.png?v=2" />
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-title" content="识谱视奏" />
     <title>识谱视奏</title>
     <style>
       html,
@@ -13,6 +15,87 @@
       #root {
         min-height: 100%;
         margin: 0;
+      }
+
+      .app-startup {
+        box-sizing: border-box;
+        display: grid;
+        min-height: 100vh;
+        min-height: 100dvh;
+        padding: 24px;
+        place-items: center;
+        background: linear-gradient(145deg, #f7f3eb, #e5f5f5);
+        color: #245f5a;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .app-startup-card {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid rgba(36, 120, 110, 0.14);
+        border-radius: 22px;
+        box-sizing: border-box;
+        box-shadow: 0 12px 36px rgba(36, 95, 90, 0.08);
+        display: grid;
+        gap: 10px;
+        justify-items: center;
+        padding: 28px 36px;
+        width: min(100%, 320px);
+      }
+
+      .app-startup-note {
+        align-items: center;
+        background: #e4f5f5;
+        border: 1px solid #c8e8e8;
+        border-radius: 50%;
+        color: #258ba0;
+        display: grid;
+        font-size: 26px;
+        height: 52px;
+        place-items: center;
+        width: 52px;
+      }
+
+      .app-startup-card > strong {
+        font-size: 20px;
+        letter-spacing: 0.04em;
+      }
+
+      .app-startup-message {
+        color: #6b8589;
+        font-size: 14px;
+      }
+
+      .app-startup-progress {
+        background: #e6eeee;
+        border-radius: 999px;
+        height: 4px;
+        margin-top: 6px;
+        overflow: hidden;
+        width: 100%;
+      }
+
+      .app-startup-progress i {
+        animation: app-startup-progress 1.4s ease-in-out infinite;
+        background: #35b9ce;
+        border-radius: inherit;
+        display: block;
+        height: 100%;
+        transform-origin: left center;
+        width: 100%;
+      }
+
+      @keyframes app-startup-progress {
+        0% { transform: scaleX(0.08); }
+        55% { transform: scaleX(0.72); }
+        100% { transform: scaleX(0.08); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .app-startup-progress i {
+          animation: none;
+          transform: scaleX(0.6);
+        }
       }
 
       .browser-support-gate {
@@ -77,12 +160,21 @@
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main aria-busy="true" aria-label="正在加载应用" class="app-startup" data-startup-fallback role="status">
+        <div class="app-startup-card">
+          <span aria-hidden="true" class="app-startup-note">♫</span>
+          <strong>识谱视奏</strong>
+          <span class="app-startup-message">正在准备练习空间</span>
+          <span aria-hidden="true" class="app-startup-progress"><i></i></span>
+        </div>
+      </main>
+    </div>
     <script>
       (function () {
         function showStartupFailure(event) {
           var root = document.getElementById("root");
-          if (!root || root.childElementCount > 0 || root.dataset.startupErrorShown === "true") return;
+          if (!root || !root.querySelector("[data-startup-fallback]") || root.dataset.startupErrorShown === "true") return;
 
           root.dataset.startupErrorShown = "true";
           var main = document.createElement("main");

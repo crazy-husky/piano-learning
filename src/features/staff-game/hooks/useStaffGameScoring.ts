@@ -355,7 +355,7 @@ export function useStaffGameScoring({
     if (!errorFlashInProgress) consecutiveWrongAnswersRef.current += 1;
     resetComboDisplay();
     setTargetWrong(true);
-    playGameSound("noteMissed");
+    if (settingsRef.current.inputMode !== "physical") playGameSound("noteMissed");
     const heardPitch = PITCH_NAMES[((midi % 12) + 12) % 12];
     setFeedback(`听到 ${heardPitch}${answer.octave ?? ""}，再试一次`);
     if (wrongClearTimeoutRef.current !== null) window.clearTimeout(wrongClearTimeoutRef.current);

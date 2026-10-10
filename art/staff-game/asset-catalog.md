@@ -74,6 +74,7 @@
 | `src/features/staff-game/assets/audio/level-clear.wav` | 1.22 秒；44.1 kHz、16-bit、单声道 | 通关反馈；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
 | `src/features/staff-game/assets/audio/microphone-ready.wav` | 0.87 秒；44.1 kHz、16-bit、单声道 | 麦克风连接或恢复提示；运行中 | VSS 生成；仓库保留用途描述和评估，未归档完整生成提示词 |
 | `src/features/staff-game/assets/audio/note-missed-soft.wav` | 0.32 秒；48 kHz、24-bit、单声道 | 答错或气泡超时反馈；运行中 | [答错/漏答提示词](generation-prompts.md#答错漏答提示音) |
+| `src/features/staff-game/assets/audio/note-missed-unpitched.wav` | 0.07 秒；48 kHz、16-bit、单声道 | 麦克风输入下漏音反馈；运行中 | 来源与制作记录未归档 |
 | `src/features/staff-game/assets/audio/relaxed-game-bgm.mp3` | 56.24 秒；22.05 kHz、48 kbps、双声道 MP3；约 330 KB | 闯关背景音乐；循环播放；运行中 | 用户提供 `/Users/husky/Downloads/bg.wav`；从约 2.4 MB WAV 压缩并做响度处理 |
 
 ## 程序绘制的游戏效果

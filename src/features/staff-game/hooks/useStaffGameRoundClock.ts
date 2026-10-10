@@ -19,9 +19,11 @@ export interface StaffGameTarget {
 
 type StaffGameMode = "levels" | "songs";
 type StaffGamePhase = "ready" | "running" | "paused" | "summary";
+type StaffGameInputMode = "physical" | "virtual" | "midi";
 
 interface StaffGameRoundClockOptions {
   phase: StaffGamePhase;
+  inputMode: StaffGameInputMode;
   gameDurationMs: number;
   activeBubbleDurationMs: number;
   levelRef: MutableRefObject<number>;
@@ -56,6 +58,7 @@ interface StaffGameRoundClockOptions {
 
 export function useStaffGameRoundClock({
   phase,
+  inputMode,
   gameDurationMs,
   activeBubbleDurationMs,
   levelRef,
@@ -134,7 +137,7 @@ export function useStaffGameRoundClock({
         targetRef.current = null;
         setTarget(null);
         if (missedTarget) triggerMascotReaction("sad");
-        playGameSound("noteMissed");
+        playGameSound(inputMode === "physical" ? "noteMissedUnpitched" : "noteMissed");
         resetComboDisplay();
         const isSongMode = gameModeRef.current === "songs";
         const activeSong = isSongMode ? STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current) : undefined;
@@ -165,7 +168,7 @@ export function useStaffGameRoundClock({
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [activeBubbleDurationMs, finishRound, gameDurationMs, phase, playGameSound, resetComboDisplay, spawnTarget, triggerMascotReaction]);
+  }, [activeBubbleDurationMs, finishRound, gameDurationMs, inputMode, phase, playGameSound, resetComboDisplay, spawnTarget, triggerMascotReaction]);
 
   const startRunSegment = useCallback((): void => {
     runSegmentStartedAtRef.current = performance.now();

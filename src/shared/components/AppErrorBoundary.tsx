@@ -1,5 +1,4 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { toast } from "sonner";
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -9,6 +8,9 @@ interface AppErrorBoundaryState {
   fatalErrorDetails: string | null;
   globalErrors: GlobalErrorRecord[];
   copyStatus: string;
+  globalErrorNoticeVisible: boolean;
+  globalErrorNoticeSecondsRemaining: number;
+  errorDetailsOpen: boolean;
 }
 
 type GlobalErrorSource = "window.error" | "unhandledrejection" | "resource-load-error";
@@ -24,6 +26,23 @@ interface GlobalErrorRecord {
 const MAX_GLOBAL_ERROR_RECORDS = 20;
 const GLOBAL_ERROR_DEDUPE_WINDOW_MS = 30_000;
 const MAX_GLOBAL_ERROR_DETAILS_LENGTH = 12_000;
+const GLOBAL_ERROR_NOTICE_DURATION_SECONDS = 10;
+
+const dateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+  timeZoneName: "short",
+});
+
+function formatDateTime(value: string | number): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : dateTimeFormatter.format(date);
+}
 
 function describeError(error: unknown): string {
   if (typeof error === "string") return `Message: ${error}`;
@@ -52,8 +71,12 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     fatalErrorDetails: null,
     globalErrors: [],
     copyStatus: "",
+    globalErrorNoticeVisible: false,
+    globalErrorNoticeSecondsRemaining: 0,
+    errorDetailsOpen: false,
   };
   private copyStatusTimeout: number | null = null;
+  private globalErrorNoticeInterval: number | null = null;
 
   componentDidMount(): void {
     window.addEventListener("error", this.handleWindowError, true);
@@ -64,6 +87,16 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     window.removeEventListener("error", this.handleWindowError, true);
     window.removeEventListener("unhandledrejection", this.handleUnhandledRejection);
     if (this.copyStatusTimeout !== null) window.clearTimeout(this.copyStatusTimeout);
+    this.clearGlobalErrorNoticeInterval();
+  }
+
+  componentDidUpdate(_previousProps: AppErrorBoundaryProps, previousState: AppErrorBoundaryState): void {
+    if (!previousState.fatalErrorDetails && this.state.fatalErrorDetails) {
+      this.clearGlobalErrorNoticeInterval();
+      if (this.state.globalErrorNoticeVisible) {
+        this.setState({ globalErrorNoticeVisible: false, globalErrorNoticeSecondsRemaining: 0 });
+      }
+    }
   }
 
   static getDerivedStateFromError(error: unknown): Partial<AppErrorBoundaryState> {
@@ -107,17 +140,47 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
       return { globalErrors };
     });
-    if (!this.state.fatalErrorDetails) {
-      toast.error("检测到后台错误", {
-        id: "app-global-error-notice",
-        description: "页面仍在运行。近期错误已记录，可以复制诊断信息反馈。",
-        duration: 8_000,
-        action: {
-          label: "复制诊断信息",
-          onClick: () => void this.copyDebugInfo(),
-        },
+    if (!this.state.fatalErrorDetails) this.showGlobalErrorNotice();
+  };
+
+  private clearGlobalErrorNoticeInterval = (): void => {
+    if (this.globalErrorNoticeInterval === null) return;
+    window.clearInterval(this.globalErrorNoticeInterval);
+    this.globalErrorNoticeInterval = null;
+  };
+
+  private showGlobalErrorNotice = (): void => {
+    this.clearGlobalErrorNoticeInterval();
+    this.setState({
+      globalErrorNoticeVisible: true,
+      globalErrorNoticeSecondsRemaining: GLOBAL_ERROR_NOTICE_DURATION_SECONDS,
+    });
+
+    let elapsedSeconds = 0;
+    this.globalErrorNoticeInterval = window.setInterval(() => {
+      elapsedSeconds += 1;
+      const secondsRemaining = Math.max(0, GLOBAL_ERROR_NOTICE_DURATION_SECONDS - elapsedSeconds);
+      this.setState({
+        globalErrorNoticeSecondsRemaining: secondsRemaining,
+        globalErrorNoticeVisible: secondsRemaining > 0,
       });
+      if (secondsRemaining === 0) this.clearGlobalErrorNoticeInterval();
+    }, 1_000);
+  };
+
+  private dismissGlobalErrorNotice = (): void => {
+    this.clearGlobalErrorNoticeInterval();
+    this.setState({ globalErrorNoticeVisible: false, globalErrorNoticeSecondsRemaining: 0 });
+  };
+
+  private refreshPage = async (): Promise<void> => {
+    try {
+      const registration = await navigator.serviceWorker?.getRegistration();
+      await registration?.update();
+    } catch {
+      // The page navigation below still uses the app's network-first service-worker route.
     }
+    window.location.reload();
   };
 
   private handleWindowError = (event: Event): void => {
@@ -149,7 +212,10 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     `Page: ${window.location.pathname}${window.location.hash}`,
     `Viewport: ${window.innerWidth} × ${window.innerHeight}`,
     `Online: ${navigator.onLine ? "yes" : "no"}`,
-    `Time: ${new Date().toISOString()}`,
+    `Version: ${__APP_VERSION__}`,
+    `Build ID: ${__APP_BUILD_ID__}`,
+    `Build time: ${formatDateTime(__APP_BUILD_TIME__)}`,
+    `Report time: ${formatDateTime(Date.now())}`,
     "",
     this.state.fatalErrorDetails
       ? `Fatal React render error:\n${this.state.fatalErrorDetails}`
@@ -159,8 +225,8 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     ...(this.state.globalErrors.length > 0
       ? this.state.globalErrors.map((record) => [
         `Source: ${record.source}`,
-        `First seen: ${record.firstSeenAt}`,
-        `Last seen: ${record.lastSeenAt}`,
+        `First seen: ${formatDateTime(record.firstSeenAt)}`,
+        `Last seen: ${formatDateTime(record.lastSeenAt)}`,
         `Occurrences: ${record.count}`,
         record.details,
       ].join("\n"))
@@ -225,28 +291,80 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   };
 
   private renderGlobalErrorNotice(): ReactNode {
-    if (this.state.globalErrors.length === 0) return null;
+    if (this.state.globalErrors.length === 0 || this.state.fatalErrorDetails) return null;
 
     const occurrenceCount = this.state.globalErrors.reduce((total, record) => total + record.count, 0);
     const copyFailed = this.state.copyStatus.startsWith("自动复制失败");
 
     return (
-      <aside aria-label="后台错误诊断" className="app-global-error-notice" role="region">
-        <div className="app-global-error-notice-header">
-          <div>
-            <strong>页面检测到后台错误</strong>
-            <span>共记录 {occurrenceCount} 次、{this.state.globalErrors.length} 类，页面仍可继续使用。</span>
+      <>
+        {this.state.globalErrorNoticeVisible && (
+          <div className="app-global-error-badge" role="status">
+            <button
+              aria-label={`打开错误详情，${this.state.globalErrorNoticeSecondsRemaining} 秒后提示自动关闭`}
+              className="app-global-error-badge-details"
+              onClick={() => this.setState({ errorDetailsOpen: true })}
+              type="button"
+            >
+              <span aria-hidden="true" className="app-global-error-badge-icon">!</span>
+              <span className="app-global-error-badge-countdown">
+                {this.state.globalErrorNoticeSecondsRemaining}秒
+              </span>
+            </button>
+            <button
+              aria-label="关闭错误提示"
+              className="app-global-error-badge-close"
+              onClick={this.dismissGlobalErrorNotice}
+              type="button"
+            >
+              ×
+            </button>
           </div>
-          <button onClick={() => void this.copyDebugInfo()} type="button">复制诊断信息</button>
-        </div>
-        <p aria-live="polite" className="app-global-error-notice-copy-status">
-          {this.state.copyStatus || "诊断记录会保留到本次页面刷新。"}
-        </p>
-        <details open={copyFailed}>
-          <summary>查看诊断记录（可手动复制）</summary>
-          <pre>{this.buildDebugInfo()}</pre>
-        </details>
-      </aside>
+        )}
+        {this.state.errorDetailsOpen && (
+          <div
+            className="app-global-error-dialog-backdrop"
+            onClick={() => this.setState({ errorDetailsOpen: false })}
+          >
+            <section
+              aria-labelledby="app-global-error-dialog-title"
+              aria-modal="true"
+              className="app-global-error-dialog"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+            >
+              <header className="app-global-error-dialog-header">
+                <div>
+                  <h2 id="app-global-error-dialog-title">页面运行错误</h2>
+                  <p>已记录 {occurrenceCount} 次、{this.state.globalErrors.length} 类。页面仍可继续使用。</p>
+                </div>
+                <button
+                  aria-label="关闭错误详情"
+                  className="app-global-error-dialog-close"
+                  onClick={() => this.setState({ errorDetailsOpen: false })}
+                  type="button"
+                >
+                  ×
+                </button>
+              </header>
+              <p className="app-global-error-build-info">
+                版本 {__APP_VERSION__} · 构建时间 {formatDateTime(__APP_BUILD_TIME__)}
+              </p>
+              <div className="app-global-error-dialog-actions">
+                <button onClick={() => void this.copyDebugInfo()} type="button">复制诊断信息</button>
+                <button onClick={() => void this.refreshPage()} type="button">刷新页面</button>
+              </div>
+              <p aria-live="polite" className="app-global-error-dialog-copy-status">
+                {this.state.copyStatus || "诊断记录会保留到本次页面刷新。"}
+              </p>
+              <details open={copyFailed}>
+                <summary>错误详情（可手动复制）</summary>
+                <pre>{this.buildDebugInfo()}</pre>
+              </details>
+            </section>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -259,6 +377,9 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
               <div>
                 <h1>页面渲染失败</h1>
                 <p>当前页面无法正常显示。请复制调试信息并反馈，方便定位问题。</p>
+                <p className="app-error-build-info">
+                  版本 {__APP_VERSION__} · 构建时间 {formatDateTime(__APP_BUILD_TIME__)}
+                </p>
               </div>
               <div className="app-error-debug-copy-control">
                 <button onClick={() => void this.copyDebugInfo()} type="button">复制调试信息</button>

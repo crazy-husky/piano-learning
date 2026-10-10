@@ -372,25 +372,44 @@ export function StaffGameShootingStar(): JSX.Element {
   const nextIdRef = useRef(0);
 
   useEffect(() => {
-    const launch = (): void => {
-      const travelX = (Math.random() < 0.5 ? -1 : 1) * window.innerWidth * (0.22 + Math.random() * 0.3);
-      const travelY = (Math.random() < 0.5 ? -1 : 1) * window.innerHeight * (0.04 + Math.random() * 0.08);
+    if (meteor) return;
+
+    const firstLaunch = nextIdRef.current === 0;
+    const timeoutId = window.setTimeout(() => {
+      const viewportWidth = Math.max(window.innerWidth, 1);
+      const viewportHeight = Math.max(window.innerHeight, 1);
+      const width = 130 + Math.random() * 110;
+      const headX = viewportWidth * (0.2 + Math.random() * 0.6);
+      const headY = viewportHeight * (0.05 + Math.random() * 0.3);
+      const directionX = Math.random() < 0.5 ? -1 : 1;
+      const directionY = Math.random() < 0.5 ? -1 : 1;
+      const baseTravelX = viewportWidth * (0.22 + Math.random() * 0.3);
+      const baseTravelY = viewportHeight * (0.04 + Math.random() * 0.08);
+      const distanceToHorizontalEdge = directionX > 0 ? viewportWidth - headX : headX;
+      const distanceToVerticalEdge = directionY > 0 ? viewportHeight - headY : headY;
+      const edgeScale = Math.min(
+        1,
+        distanceToHorizontalEdge / baseTravelX,
+        distanceToVerticalEdge / baseTravelY,
+      );
+      const travelX = directionX * baseTravelX * edgeScale;
+      const travelY = directionY * baseTravelY * edgeScale;
+      const durationMs = 3000 + Math.random() * 3000;
       const angle = Math.atan2(travelY, travelX) * (180 / Math.PI);
       setMeteor({
         id: nextIdRef.current++,
-        left: `${Math.random() * 100}%`,
-        top: `${3 + Math.random() * 34}%`,
-        width: `${130 + Math.random() * 110}px`,
+        left: `${headX - width}px`,
+        top: `${headY}px`,
+        width: `${width}px`,
         angle: `${angle}deg`,
         travelX: `${travelX}px`,
         travelY: `${travelY}px`,
-        duration: `${2800 + Math.random() * 900}ms`,
+        duration: `${durationMs * edgeScale}ms`,
       });
-    };
+    }, firstLaunch ? 4_000 : 300 + Math.random() * 900);
 
-    const intervalId = window.setInterval(launch, 4_000);
-    return () => window.clearInterval(intervalId);
-  }, []);
+    return () => window.clearTimeout(timeoutId);
+  }, [meteor]);
 
   return (
     <div aria-hidden="true" className="staff-game-shooting-star-layer">
@@ -398,17 +417,23 @@ export function StaffGameShootingStar(): JSX.Element {
         <i
           className="staff-game-shooting-star"
           key={meteor.id}
-          onAnimationEnd={() => setMeteor((current) => current?.id === meteor.id ? null : current)}
+          onAnimationEnd={(event) => {
+            if (event.target !== event.currentTarget || event.animationName !== "staff-game-shooting-star-traverse") return;
+            setMeteor((current) => current?.id === meteor.id ? null : current);
+          }}
           style={{
             left: meteor.left,
             top: meteor.top,
             width: meteor.width,
-            animationDuration: meteor.duration,
+            "--meteor-duration": meteor.duration,
             "--meteor-angle": meteor.angle,
             "--meteor-travel-x": meteor.travelX,
             "--meteor-travel-y": meteor.travelY,
           } as CSSProperties}
-        />
+        >
+          <span aria-hidden="true" className="staff-game-shooting-star-streak" />
+          <span aria-hidden="true" className="staff-game-shooting-star-head" />
+        </i>
       ) : null}
     </div>
   );

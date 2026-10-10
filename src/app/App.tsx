@@ -1,7 +1,7 @@
 import { ArrowLeft, AudioLines, BarChart3, BellOff, BookOpen, ChevronDown, Dumbbell, FolderOpen, Gamepad2, House, Settings, X } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
-import { preloadPianoSamples, setPianoVolume } from "../audio/piano";
+import { setPianoVolume } from "../audio/pianoSettings";
 import {
   db,
   ensureSettings,
@@ -18,18 +18,12 @@ import type { AppSettings } from "../domain/types";
 import { MidiLatencyDiagnosticsPanel } from "../diagnostics/MidiLatencyDiagnosticsPanel";
 import { MIDI_LATENCY_DIAGNOSTICS_ENABLED } from "../diagnostics/midiLatencyDiagnostics";
 import { BackupConflictResolver } from "../shared/components/BackupConflictResolver";
+import { AppStartupSkeleton, RouteLoadingSkeleton } from "../shared/components/LoadingSkeletons";
 import { HomeView } from "../features/home/components/HomeView";
-import {
-  PracticeView,
-  type PracticeNavigationExitRequest,
-  type PracticeNavigationExitTarget,
+import type {
+  PracticeNavigationExitRequest,
+  PracticeNavigationExitTarget,
 } from "../features/practice/components/PracticeView";
-import { SettingsView } from "../features/settings/components/SettingsView";
-import { StatsView } from "../features/stats/components/StatsView";
-import { StudyView } from "../features/study/components/StudyView";
-import {
-  VocalPitchView,
-} from "../features/vocal-pitch/components/VocalPitchView";
 import { useBlurButtonAfterPointerClick } from "./hooks/useBlurButtonAfterPointerClick";
 import { useLocalStorageState } from "../shared/hooks/useLocalStorageState";
 import {
@@ -61,6 +55,12 @@ import {
   parsePracticeMicrophonePreferences,
   PRACTICE_MICROPHONE_PREFERENCES_KEY,
 } from "../features/vocal-pitch/logic/practiceMicrophonePreferences";
+
+const PracticeView = lazy(() => import("../features/practice/components/PracticeView").then((module) => ({ default: module.PracticeView })));
+const SettingsView = lazy(() => import("../features/settings/components/SettingsView").then((module) => ({ default: module.SettingsView })));
+const StatsView = lazy(() => import("../features/stats/components/StatsView").then((module) => ({ default: module.StatsView })));
+const StudyView = lazy(() => import("../features/study/components/StudyView").then((module) => ({ default: module.StudyView })));
+const VocalPitchView = lazy(() => import("../features/vocal-pitch/components/VocalPitchView").then((module) => ({ default: module.VocalPitchView })));
 
 type View = PracticeNavigationExitTarget;
 type SettingsSaveOptions = { feedback?: boolean };
@@ -104,7 +104,25 @@ function HistoryLoadingState({
   onRetry: () => void;
 }): JSX.Element {
   if (!error) {
-    return <div className="loading" role="status">加载{label}中</div>;
+    return (
+      <section aria-busy="true" aria-label={`正在加载${label}`} className="history-loading-state" role="status">
+        <span>{label}加载中</span>
+        <div aria-hidden="true" className="route-loading-panel">
+          <i />
+          <i />
+          <i />
+        </div>
+        <div aria-hidden="true" className="route-loading-panel route-loading-panel-short">
+          <i />
+          <i />
+        </div>
+        <div aria-hidden="true" className="route-loading-panel">
+          <i />
+          <i />
+          <i />
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -494,8 +512,19 @@ export function App(): JSX.Element {
   }, [data?.practiceHistoryLoaded, data?.staffRecallHistoryLoaded, data !== null, historyLoadRetryToken, route.path, view]);
 
   useEffect(() => {
-    preloadPianoSamples();
-  }, []);
+    if (view !== "practice") return undefined;
+
+    let cancelled = false;
+    void import("../audio/piano")
+      .then(({ preloadPianoSamples }) => {
+        if (!cancelled) void preloadPianoSamples();
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
 
   useEffect(() => {
     if (data) {
@@ -648,7 +677,7 @@ export function App(): JSX.Element {
   }
 
   if (!data) {
-    return <div className="loading">加载中</div>;
+    return <AppStartupSkeleton />;
   }
 
   const backupReminderState = getBackupReminderState(data);
@@ -798,6 +827,7 @@ export function App(): JSX.Element {
             </div>
           </div>
         ) : null}
+        <Suspense fallback={<RouteLoadingSkeleton />}>
         {view === "home" ? <HomeView onNavigate={navigateToRoute} /> : null}
         {view === "practice" ? (
           (data.practiceHistoryLoaded || isStaffGameRoutePath(route.path)) ? <PracticeView
@@ -885,6 +915,7 @@ export function App(): JSX.Element {
             onNavigationExit={handleVocalNavigationExit}
           />
         ) : null}
+        </Suspense>
       </main>
       {showMobileBackButton ? (
         <button aria-label="返回首页" className="mobile-route-back" onClick={() => selectView("home")} type="button">
