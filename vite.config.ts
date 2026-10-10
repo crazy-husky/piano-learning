@@ -35,7 +35,7 @@ const appBuildVersionPlugin: Plugin = {
       && !fileName.endsWith(".map")
       && fileName !== "version.json"
     ));
-    appAssetFiles = [...new Set([...bundledAssets, ...listPublicAssetFiles(publicDirectory)])];
+    appAssetFiles = Array.from(new Set([...bundledAssets, ...listPublicAssetFiles(publicDirectory)]));
 
     this.emitFile({
       type: "asset",
@@ -47,7 +47,7 @@ const appBuildVersionPlugin: Plugin = {
     const outputDirectory = resolve(options.dir || resolve(projectRoot, "dist"));
     const serviceWorkerTemplate = readFileSync(resolve(publicDirectory, "service-worker.js"), "utf8");
     const serviceWorker = serviceWorkerTemplate
-      .replaceAll("__APP_BUILD_ID__", JSON.stringify(buildId))
+      .replace(/__APP_BUILD_ID__/g, JSON.stringify(buildId))
       .replace("__APP_ASSET_FILES__", JSON.stringify(appAssetFiles));
 
     writeFileSync(resolve(outputDirectory, "service-worker.js"), serviceWorker);

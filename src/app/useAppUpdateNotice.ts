@@ -22,8 +22,10 @@ function isBuildVersionResponse(value: unknown): value is BuildVersionResponse {
 }
 
 type ServiceWorkerReadyResult =
-  | { state: "waiting" | "activated"; worker: ServiceWorker }
-  | { state: "failed" | "timeout"; worker: null };
+  | { state: "waiting"; worker: ServiceWorker }
+  | { state: "activated"; worker: ServiceWorker }
+  | { state: "failed"; worker: null }
+  | { state: "timeout"; worker: null };
 
 interface PreparedServiceWorkerUpdate {
   registration: ServiceWorkerRegistration;
