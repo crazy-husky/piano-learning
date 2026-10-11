@@ -116,6 +116,8 @@ pnpm run build
 
 部署脚本只校验并发布已有的 `dist/`，不会替你构建。必须先为 `/piano-learning/` 生成新鲜的生产产物：
 
+部署前会自动运行 `pnpm run check:deploy`（typecheck + lint + format），任何一项失败都会终止部署。
+
 Windows/WSL 在仓库目录运行：
 
 ```bash

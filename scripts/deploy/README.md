@@ -62,6 +62,8 @@ GITHUB_PAGES=true GITHUB_REPOSITORY=crazy-husky/piano-learning pnpm run build
 bash scripts/deploy/deploy_piano_learning.sh --check
 ```
 
+运行 `--deploy` 时，脚本会先自动执行 `pnpm run check:deploy`（typecheck、lint 和格式检查）；任一项失败都会终止部署。`--check` 只校验本地产物，不运行该门禁。
+
 `--check` 只验证本地产物，不需要服务器凭据，也不会连接远程主机。确认检查通过后，在同一终端设置部署配置并发布：
 
 ```bash

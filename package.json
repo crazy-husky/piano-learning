@@ -11,6 +11,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check",
+    "check:deploy": "pnpm typecheck && pnpm lint && pnpm format:check",
     "dev": "vite --host 127.0.0.1 --port 6136 --strictPort",
     "dev:open": "vite --host 127.0.0.1 --port 6136 --strictPort --open http://127.0.0.1:6136/",
     "build": "tsc -b && vite build",
