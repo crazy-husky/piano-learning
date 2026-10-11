@@ -327,7 +327,7 @@ export function useStudyPlayback({ columns, playbackMode, studyPitches }: UseStu
       const inputId = getInputId(event);
       if (heldKeysRef.current.has(inputId)) {
         event.preventDefault();
-        releaseHeldKey(inputId);
+        void releaseHeldKey(inputId);
       }
     }
 

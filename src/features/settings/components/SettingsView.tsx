@@ -260,14 +260,13 @@ export function SettingsView({
   });
 
   function describeDirectorySelection(
-    result: BackupDirectorySelectionResult,
-    selectedBackupState: BackupState
+    result: BackupDirectorySelectionResult
   ): SettingsActionFeedback {
     if (result === "diverged") {
       return {
         kind: "danger",
         title: backupText.titles.dataConflict,
-        description: formatBackupConflictDetail(selectedBackupState),
+        description: formatBackupConflictDetail(),
       };
     }
     if (result === "synced-up") {
@@ -738,7 +737,8 @@ export function SettingsView({
               onClick={() =>
                 void runBusy(async () => {
                   const result = await chooseBackupDirectory();
-                  return describeDirectorySelection(result, await getBackupState());
+                  await getBackupState();
+                  return describeDirectorySelection(result);
                 }, backupText.messages.directorySelected)
               }
             >
@@ -774,7 +774,7 @@ export function SettingsView({
           </div>
           {backupBlockedUntilSync ? (
             <>
-              <div className="status-line danger">{formatBackupConflictDetail(backupState)}</div>
+              <div className="status-line danger">{formatBackupConflictDetail()}</div>
               <BackupConflictResolver
                 backupState={backupState}
                 disabled={busy}

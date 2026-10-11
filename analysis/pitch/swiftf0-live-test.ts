@@ -61,7 +61,6 @@ let inputStartedAt = 0;
 let audioObjectUrl: string | null = null;
 let modelReady = false;
 let selectedBackend = "--";
-let currentMpm: { frequencyHz: number; clarity: number; note: string | null } | null = null;
 let pitchDetector = createPitchFrameDetector(SWIFTF0_INPUT_FRAME_SIZE);
 const sampleBuffer = new Float32Array(SWIFTF0_INPUT_FRAME_SIZE);
 const historyRows: HTMLTableRowElement[] = [];
@@ -145,7 +144,6 @@ function runAnalysisLoop(): void {
       frequencyHz: detection.frequencyHz,
       note: inPracticeRange ? frequencyToNote(detection.frequencyHz) : null,
     };
-    currentMpm = mpm;
     elements.mpmNote.textContent = formatNote(mpm.note, mpm.frequencyHz);
     elements.mpmDetail.textContent = `清晰度 ${mpm.clarity.toFixed(3)}`;
     updateRuntime(sampleRate);
@@ -185,7 +183,6 @@ function stopAnalysis(): void {
   monitorGain = null;
   currentInput = "none";
   inputGeneration += 1;
-  currentMpm = null;
   elements.stopInput.disabled = true;
   elements.startMicrophone.disabled = !modelReady;
   elements.modelStatus.textContent = modelReady ? "模型已就绪" : "模型尚未加载";

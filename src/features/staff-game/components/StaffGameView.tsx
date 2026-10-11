@@ -2237,8 +2237,8 @@ export function StaffGameView({
           rushModeActive={rushModeActive}
           scoreDetail={
             isSongMode
-              ? `最佳 ${selectedSongRecord.bestScore}　·　${songNotesCompleted}/${selectedSong.noteMidis.length} 音　·　${songAccuracy}%`
-              : `最高 ${progress.bestScores[level - 1]}${phase === "ready" ? "" : `　·　${remainingSeconds} 秒`}`
+              ? `最佳 ${selectedSongRecord.bestScore}\u3000·\u3000${songNotesCompleted}/${selectedSong.noteMidis.length} 音\u3000·\u3000${songAccuracy}%`
+              : `最高 ${progress.bestScores[level - 1]}${phase === "ready" ? "" : `\u3000·\u3000${remainingSeconds} 秒`}`
           }
           scoreLabel={isSongMode ? "本曲得分" : phase === "summary" ? "本局得分" : "本关得分"}
           scoreValueRef={scoreValueRef}

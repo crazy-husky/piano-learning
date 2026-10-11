@@ -117,6 +117,6 @@ export function getBackupConflictDataSummaries(
   return { backup, browser };
 }
 
-export function formatBackupConflictDetail(_backupState: BackupState): string {
+export function formatBackupConflictDetail(): string {
   return backupText.messages.dataConflictBeforeBackup;
 }

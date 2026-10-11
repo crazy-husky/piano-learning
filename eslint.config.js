@@ -56,7 +56,7 @@ export default tseslint.config(
     },
     rules: {
       ...jsxA11yWarnings,
-      "@typescript-eslint/no-unused-vars": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { ignoreRestSiblings: true }],
       "@typescript-eslint/no-floating-promises": "warn",
       "@typescript-eslint/no-explicit-any": "warn",
       "react-hooks/rules-of-hooks": "error",

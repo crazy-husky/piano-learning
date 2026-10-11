@@ -180,12 +180,11 @@ function loadGameImage(source: string): Promise<void> {
   const image = new Image();
   const loadPromise = new Promise<void>((resolve, reject) => {
     let settled = false;
-    let timeout: number | undefined;
     const handleError = (): void => settle(new Error(`Failed to load ${source}`));
     const cleanup = (): void => {
       image.removeEventListener("load", finishLoading);
       image.removeEventListener("error", handleError);
-      if (timeout !== undefined) window.clearTimeout(timeout);
+      window.clearTimeout(timeout);
     };
     const settle = (error?: Error): void => {
       if (settled) return;
@@ -198,6 +197,10 @@ function loadGameImage(source: string): Promise<void> {
         resolve();
       }
     };
+    const timeout = window.setTimeout(() => {
+      settle(new Error(`Timed out while loading ${source}`));
+      image.removeAttribute("src");
+    }, STAFF_GAME_IMAGE_TIMEOUT_MS);
     const finishLoading = (): void => {
       if (typeof image.decode !== "function") {
         settle();
@@ -209,10 +212,6 @@ function loadGameImage(source: string): Promise<void> {
       );
     };
 
-    timeout = window.setTimeout(() => {
-      settle(new Error(`Timed out while loading ${source}`));
-      image.removeAttribute("src");
-    }, STAFF_GAME_IMAGE_TIMEOUT_MS);
     image.addEventListener("load", finishLoading, { once: true });
     image.addEventListener("error", handleError, { once: true });
     image.src = source;

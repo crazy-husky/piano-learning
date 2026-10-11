@@ -1146,7 +1146,7 @@ export function App(): JSX.Element {
                   {backupReminderMessage
                     ? backupReminderMessage.detail
                     : backupReminderState.kind === "data-conflict"
-                      ? formatBackupConflictDetail(data.backupState)
+                      ? formatBackupConflictDetail()
                       : backupText.messages.browserOnlyNeedsDirectory}
                 </span>
               </div>

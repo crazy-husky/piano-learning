@@ -843,7 +843,7 @@ export function PracticeView({
 
   const togglePause = useCallback((): void => {
     if (isPausedRef.current) {
-      resumePractice();
+      void resumePractice();
       return;
     }
     pausePractice("manual-pause");

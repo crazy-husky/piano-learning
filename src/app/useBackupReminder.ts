@@ -387,12 +387,12 @@ export function useBackupReminder({
       try {
         if (action === "choose-directory") {
           const result = await chooseBackupDirectory();
-          const latestBackupState = await getBackupState();
+          await getBackupState();
           await refresh();
           if (result === "diverged") {
             showMessage(
               backupText.titles.dataConflict,
-              formatBackupConflictDetail(latestBackupState),
+              formatBackupConflictDetail(),
               false
             );
             return;
