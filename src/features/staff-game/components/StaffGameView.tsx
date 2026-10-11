@@ -498,6 +498,10 @@ export function StaffGameView({
   onSessionActiveChange,
   onRegisterAnswerHandler,
 }: StaffGameViewProps): JSX.Element {
+  const microphoneError = microphone.error;
+  const startMicrophone = microphone.start;
+  const stopMicrophone = microphone.stop;
+  const subscribeMidi = midi.subscribe;
   const [resourceLoadState, setResourceLoadState] = useState<"loading" | "ready" | "error">(
     "loading"
   );
@@ -702,6 +706,8 @@ export function StaffGameView({
       document.removeEventListener("pointerdown", handlePointerDown, true);
       document.removeEventListener("keydown", handleKeyDown, true);
     };
+    // This is a module-level stable function, declared below via useStaffGameAudio.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -836,7 +842,7 @@ export function StaffGameView({
         ((bubbleBounds.left + bubbleBounds.width / 2 - sceneBounds.left) / sceneBounds.width) * 100,
       halfWidthPercent: ((bubbleBounds.width / 2 + 8) / sceneBounds.width) * 100,
     });
-  }, [rushVisualsActive, target?.token]);
+  }, [rushVisualsActive, target]);
 
   useLayoutEffect(() => {
     if (!target) {
@@ -860,7 +866,7 @@ export function StaffGameView({
     if (currentStart?.token === nextStart.token && currentStart.top === nextStart.top) return;
     rushBubbleScreenTopStartRef.current = nextStart;
     setRushBubbleScreenTopStart(nextStart);
-  }, [preserveRushBubbleScreenTop, target?.token]);
+  }, [preserveRushBubbleScreenTop, target]);
 
   useLayoutEffect(() => {
     if (!rushScoreFlights.some((flight) => !flight.ready)) return;
@@ -1157,7 +1163,7 @@ export function StaffGameView({
 
   useEffect(
     () =>
-      midi.subscribe((event) => {
+      subscribeMidi((event) => {
         if (event.type !== "press") return;
         const noteName = event.note.keyName[0] as NoteName;
         handleRecognizedAnswer({
@@ -1168,7 +1174,7 @@ export function StaffGameView({
           source: "midi",
         });
       }),
-    [handleRecognizedAnswer, midi.subscribe]
+    [handleRecognizedAnswer, subscribeMidi]
   );
 
   useEffect(() => {
@@ -1283,7 +1289,7 @@ export function StaffGameView({
     () => () => {
       startAttemptRef.current += 1;
       isStartingRef.current = false;
-      microphone.stop();
+      stopMicrophone();
       onSessionActiveChange(false);
       if (wrongClearTimeoutRef.current !== null) window.clearTimeout(wrongClearTimeoutRef.current);
       if (nextTargetTimeoutRef.current !== null) window.clearTimeout(nextTargetTimeoutRef.current);
@@ -1295,7 +1301,7 @@ export function StaffGameView({
       if (scoreAnimationTimerRef.current !== null)
         window.clearTimeout(scoreAnimationTimerRef.current);
     },
-    [microphone.stop, onSessionActiveChange]
+    [onSessionActiveChange, stopMicrophone]
   );
 
   const { pauseRunSegment, spawnTarget, startRunSegment } = useStaffGameRoundClock({
@@ -1421,7 +1427,7 @@ export function StaffGameView({
       if (settingsRef.current.inputMode === "physical") {
         let started = false;
         try {
-          started = await microphone.start({ includeAccidentals: true });
+          started = await startMicrophone({ includeAccidentals: true });
         } catch (error) {
           if (isCancelled()) return false;
           const reason = error instanceof Error ? `（${error.message}）` : "";
@@ -1429,20 +1435,20 @@ export function StaffGameView({
           return false;
         }
         if (isCancelled()) {
-          microphone.stop();
+          stopMicrophone();
           return false;
         }
         if (!started) {
-          const reason = microphone.error ? `（${microphone.error}）` : "";
+          const reason = microphoneError ? `（${microphoneError}）` : "";
           setGameError(`无法连接麦克风${reason}。请在浏览器的网站权限中允许麦克风，再重新尝试。`);
           return false;
         }
       } else if (settingsRef.current.inputMode === "midi") {
         if (!(await connectMidiForRound(isCancelled))) return false;
         if (isCancelled()) return false;
-        microphone.stop();
+        stopMicrophone();
       } else {
-        microphone.stop();
+        stopMicrophone();
       }
       if (isCancelled()) return false;
       const records = progressRef.current;
@@ -1487,13 +1493,14 @@ export function StaffGameView({
     }
   }, [
     connectMidiForRound,
-    microphone.error,
-    microphone.start,
-    microphone.stop,
+    microphoneError,
     resetRoundState,
     resourceLoadState,
     spawnTarget,
+    startMicrophone,
     startRunSegment,
+    stopMicrophone,
+    unlockGameAudio,
   ]);
 
   const cancelPendingStart = useCallback((): void => {
@@ -1501,8 +1508,8 @@ export function StaffGameView({
     startAttemptRef.current += 1;
     isStartingRef.current = false;
     setIsStarting(false);
-    microphone.stop();
-  }, [microphone.stop]);
+    stopMicrophone();
+  }, [stopMicrophone]);
 
   const pauseRound = useCallback((): void => {
     if (phaseRef.current !== "running") return;
@@ -1515,8 +1522,8 @@ export function StaffGameView({
     phaseRef.current = "paused";
     setPhase("paused");
     setFeedback(gameModeRef.current === "songs" ? "演奏已暂停" : "闯关已暂停");
-    microphone.stop();
-  }, [microphone.stop, pauseRunSegment]);
+    stopMicrophone();
+  }, [pauseRunSegment, stopMicrophone]);
 
   useEffect(() => {
     if (phase !== "running" || !settings.gameEffectsEnabled || showLowFpsPrompt) return undefined;
@@ -1640,7 +1647,7 @@ export function StaffGameView({
       if (settingsRef.current.inputMode === "physical") {
         let started = false;
         try {
-          started = await microphone.start({ includeAccidentals: true });
+          started = await startMicrophone({ includeAccidentals: true });
         } catch (error) {
           if (isCancelled()) return;
           const reason = error instanceof Error ? `（${error.message}）` : "";
@@ -1648,20 +1655,20 @@ export function StaffGameView({
           return;
         }
         if (isCancelled()) {
-          microphone.stop();
+          stopMicrophone();
           return;
         }
         if (!started) {
-          const reason = microphone.error ? `（${microphone.error}）` : "";
+          const reason = microphoneError ? `（${microphoneError}）` : "";
           setGameError(`麦克风未能重新连接${reason}。请检查网站权限和输入设备后重试。`);
           return;
         }
       } else if (settingsRef.current.inputMode === "midi") {
         if (!(await connectMidiForRound(isCancelled))) return;
         if (isCancelled()) return;
-        microphone.stop();
+        stopMicrophone();
       } else {
-        microphone.stop();
+        stopMicrophone();
       }
       if (isCancelled() || phaseRef.current !== "paused") return;
       startRunSegment();
@@ -1696,19 +1703,19 @@ export function StaffGameView({
   }, [
     connectMidiForRound,
     finishRound,
-    microphone.error,
-    microphone.start,
-    microphone.stop,
+    microphoneError,
     spawnTarget,
+    startMicrophone,
     startRunSegment,
+    stopMicrophone,
   ]);
 
   const exitGame = useCallback((): void => {
     cancelPendingStart();
-    microphone.stop();
+    stopMicrophone();
     onSessionActiveChange(false);
     onExit();
-  }, [cancelPendingStart, microphone.stop, onExit, onSessionActiveChange]);
+  }, [cancelPendingStart, onExit, onSessionActiveChange, stopMicrophone]);
 
   const retryLevel = useCallback((): void => {
     void beginRound();
@@ -1770,14 +1777,14 @@ export function StaffGameView({
 
   const returnToSongList = useCallback((): void => {
     cancelPendingStart();
-    microphone.stop();
+    stopMicrophone();
     onSessionActiveChange(false);
     resetRoundState();
     phaseRef.current = "ready";
     setPhase("ready");
     setSongSelectionStep("list");
     onModeChange("songs");
-  }, [cancelPendingStart, microphone.stop, onModeChange, onSessionActiveChange, resetRoundState]);
+  }, [cancelPendingStart, onModeChange, onSessionActiveChange, resetRoundState, stopMicrophone]);
 
   const handleSongSelectionBack = useCallback((): void => {
     cancelPendingStart();
@@ -1887,14 +1894,15 @@ export function StaffGameView({
     settingsRef.current = nextSettings;
     setSettings(nextSettings);
     setGameSoundsEnabled(nextSettings.audioByMode[gameMode].soundEffectsEnabled);
-    if (nextSettings.inputMode === "virtual") microphone.stop();
+    if (nextSettings.inputMode === "virtual") stopMicrophone();
     closeGameDialog();
   }, [
     closeGameDialog,
     gameMode,
-    microphone.stop,
     midi.status,
     settingsDraft,
+    setGameSoundsEnabled,
+    stopMicrophone,
     virtualKeyboardAvailable,
   ]);
 
@@ -1918,7 +1926,7 @@ export function StaffGameView({
         source,
       });
     },
-    [handleRecognizedAnswer]
+    [handleRecognizedAnswer, playVirtualPianoNote]
   );
 
   useEffect(() => {

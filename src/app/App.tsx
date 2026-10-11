@@ -727,12 +727,16 @@ export function App(): JSX.Element {
     };
   }, []);
 
+  const appDataAvailable = data !== null;
+  const practiceHistoryLoaded = data?.practiceHistoryLoaded ?? false;
+  const staffRecallHistoryLoaded = data?.staffRecallHistoryLoaded ?? false;
+
   useEffect(() => {
-    if (!data) return undefined;
+    if (!appDataAvailable) return undefined;
     const needsPracticeHistory =
       ((view === "practice" && !isStaffGameRoutePath(route.path)) || view === "stats") &&
-      !data.practiceHistoryLoaded;
-    const needsStaffRecallHistory = view === "study" && !data.staffRecallHistoryLoaded;
+      !practiceHistoryLoaded;
+    const needsStaffRecallHistory = view === "study" && !staffRecallHistoryLoaded;
     if (!needsPracticeHistory && !needsStaffRecallHistory) return undefined;
 
     let cancelled = false;
@@ -775,11 +779,11 @@ export function App(): JSX.Element {
       cancelled = true;
     };
   }, [
-    data?.practiceHistoryLoaded,
-    data?.staffRecallHistoryLoaded,
-    data !== null,
+    appDataAvailable,
     historyLoadRetryToken,
+    practiceHistoryLoaded,
     route.path,
+    staffRecallHistoryLoaded,
     view,
   ]);
 
@@ -846,7 +850,7 @@ export function App(): JSX.Element {
       }
       navigateToRoute(nextPath);
     },
-    [navigateToRoute, practiceExitRequest, practiceRunning, route.path, view, vocalExitRequest]
+    [navigateToRoute, practiceExitRequest, practiceRunning, route.path, view]
   );
 
   const handleNavigationExit = useCallback(

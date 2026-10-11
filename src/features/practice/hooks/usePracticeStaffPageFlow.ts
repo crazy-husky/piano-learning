@@ -123,7 +123,13 @@ export function usePracticeStaffPageFlow({
     if (!page) {
       setStaffPageFirstNoteOffset(0);
     }
-  }, []);
+  }, [
+    setStaffPageCompletedCount,
+    setStaffPageFirstNoteOffset,
+    setStaffPageIndex,
+    setStaffPageNotes,
+    staffPageRef,
+  ]);
 
   const getNextStaffPageCount = useCallback(
     (nextCompletedCount: number): number => {
@@ -144,7 +150,7 @@ export function usePracticeStaffPageFlow({
       ...page,
       completedCount: Math.max(page.completedCount, page.index + 1),
     });
-  }, [syncStaffPage]);
+  }, [staffPageRef, syncStaffPage]);
 
   const startStaffPageIndex = useCallback(
     (index: number): boolean => {
@@ -160,7 +166,7 @@ export function usePracticeStaffPageFlow({
       startPrompt(nextPage.notes[index]);
       return true;
     },
-    [startPrompt, syncStaffPage]
+    [staffPageRef, startPrompt, syncStaffPage]
   );
 
   const startStaffPage = useCallback(
@@ -216,7 +222,16 @@ export function usePracticeStaffPageFlow({
       syncStaffPage(page);
       startPrompt(notes[0]);
     },
-    [getNextStaffPageCount, sessions, startPrompt, syncStaffPage]
+    [
+      adaptiveSchedulerRef,
+      getNextStaffPageCount,
+      lastTargetNoteIdRef,
+      melodyGenerationStateRef,
+      sessionRef,
+      sessions,
+      startPrompt,
+      syncStaffPage,
+    ]
   );
 
   const startStaffPageScroll = useCallback(
@@ -309,12 +324,21 @@ export function usePracticeStaffPageFlow({
       drillNoteNames,
       enabledNotes,
       fixedCount,
+      adaptiveSchedulerRef,
+      isPausedRef,
+      melodyGenerationStateRef,
       mode,
+      pendingAfterPauseRef,
       queueStrategy,
       resumeActiveTimers,
       schedulerReviews,
+      sessionRef,
+      sessionReviewsRef,
       sessions,
       staffPageScrollDurationMs,
+      setIsStaffPageScrolling,
+      setStaffPageFirstNoteOffset,
+      staffPageRef,
       startPrompt,
       syncStaffPage,
     ]

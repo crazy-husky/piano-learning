@@ -123,7 +123,23 @@ export function useStaffGameRoundClock({
     setTarget(next);
     setTargetPopped(false);
     setTargetWrong(false);
-  }, []);
+  }, [
+    gameModeRef,
+    levelRef,
+    noteBagRef,
+    phaseRef,
+    playfieldRef,
+    recentNoteMidisRef,
+    selectedSongIdRef,
+    setTarget,
+    setTargetPopped,
+    setTargetWrong,
+    songTargetIndexRef,
+    targetPoppedRef,
+    targetRef,
+    targetSpawnGameMsRef,
+    targetTokenRef,
+  ]);
 
   useEffect(() => {
     if (phase !== "running") return undefined;
@@ -192,19 +208,36 @@ export function useStaffGameRoundClock({
     return () => window.cancelAnimationFrame(frame);
   }, [
     activeBubbleDurationMs,
+    elapsedBeforeRunRef,
     finishRound,
     gameDurationMs,
+    gameModeRef,
     inputMode,
+    nextTargetTimeoutRef,
+    noteLabel,
     phase,
+    phaseRef,
     playGameSound,
     resetComboDisplay,
+    runSegmentStartedAtRef,
+    selectedSongIdRef,
+    setElapsedMs,
+    setFeedback,
+    setSongNotesCompleted,
+    setTarget,
+    songTargetIndexRef,
+    songWrongTargetTokenRef,
     spawnTarget,
+    targetPoppedRef,
+    targetRef,
+    targetSpawnGameMsRef,
     triggerMascotReaction,
+    waitingForNextTargetRef,
   ]);
 
   const startRunSegment = useCallback((): void => {
     runSegmentStartedAtRef.current = performance.now();
-  }, []);
+  }, [runSegmentStartedAtRef]);
 
   const pauseRunSegment = useCallback((): number => {
     const pausedAt = performance.now();
@@ -212,7 +245,7 @@ export function useStaffGameRoundClock({
     elapsedBeforeRunRef.current =
       gameModeRef.current === "songs" ? elapsedAtPause : Math.min(gameDurationMs, elapsedAtPause);
     return elapsedBeforeRunRef.current;
-  }, [gameDurationMs]);
+  }, [elapsedBeforeRunRef, gameDurationMs, gameModeRef, runSegmentStartedAtRef]);
 
   return { pauseRunSegment, spawnTarget, startRunSegment };
 }

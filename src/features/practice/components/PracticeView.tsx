@@ -511,6 +511,8 @@ export function PracticeView({
     (answer) => submitAnswerRef.current(answer),
     practiceMicrophonePreferences
   );
+  const practiceMicrophoneStatus = practiceMicrophone.status;
+  const stopPracticeMicrophone = practiceMicrophone.stop;
   const microphoneConfiguration = useMemo(
     () => resolvePracticeMicrophoneConfiguration(practiceMicrophonePreferences),
     [practiceMicrophonePreferences]
@@ -771,9 +773,9 @@ export function PracticeView({
         markInterrupted(interruptReason);
       }
       releasePracticeMicrophoneOnPause(answerPitchMode, () =>
-        practiceMicrophone.stop({
+        stopPracticeMicrophone({
           captureStopReason: "practice-paused",
-          preserveError: practiceMicrophone.status === "error",
+          preserveError: practiceMicrophoneStatus === "error",
         })
       );
       pauseActiveTimers();
@@ -786,8 +788,8 @@ export function PracticeView({
       answerPitchMode,
       markInterrupted,
       pauseActiveTimers,
-      practiceMicrophone.status,
-      practiceMicrophone.stop,
+      practiceMicrophoneStatus,
+      stopPracticeMicrophone,
     ]
   );
 
@@ -876,11 +878,11 @@ export function PracticeView({
     if (
       phase === "running" &&
       answerPitchMode === "microphone" &&
-      practiceMicrophone.status === "error"
+      practiceMicrophoneStatus === "error"
     ) {
       pausePractice("microphone-disconnected");
     }
-  }, [answerPitchMode, pausePractice, phase, practiceMicrophone.status]);
+  }, [answerPitchMode, pausePractice, phase, practiceMicrophoneStatus]);
 
   useEffect(() => {
     if (
@@ -888,11 +890,11 @@ export function PracticeView({
       answerPitchMode === "microphone" &&
       isPaused &&
       !microphoneResumeInFlightRef.current &&
-      practiceMicrophone.status === "listening"
+      practiceMicrophoneStatus === "listening"
     ) {
-      practiceMicrophone.stop();
+      stopPracticeMicrophone();
     }
-  }, [answerPitchMode, isPaused, phase, practiceMicrophone.status, practiceMicrophone.stop]);
+  }, [answerPitchMode, isPaused, phase, practiceMicrophoneStatus, stopPracticeMicrophone]);
 
   const persistConfig = useCallback(async (): Promise<AppSettings> => {
     const nextSettings: AppSettings = {
@@ -969,7 +971,7 @@ export function PracticeView({
         void playTargetNote(note).catch(() => undefined);
       }
     },
-    [autoPlayTarget]
+    [autoPlayTarget, setCurrentNote]
   );
 
   const {
@@ -1145,7 +1147,6 @@ export function PracticeView({
       queueNotes,
       schedulerReviews,
       sessions,
-      staffNotationMode,
       staffPageUiPreferences,
       startPausedReading,
     },

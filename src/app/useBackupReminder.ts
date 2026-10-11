@@ -207,8 +207,10 @@ export function useBackupReminder({
     if (!message) {
       setVisible(getBackupReminderState(data).showReminder);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- track only backup summary changes.
   }, [
     message,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- track loaded/unloaded transitions.
     data !== null,
     hasBackupDirectory,
     data?.backupState.lastSeenBackupVersion,
@@ -238,7 +240,9 @@ export function useBackupReminder({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- track only conflict summary changes.
   }, [
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- track loaded/unloaded transitions.
     data !== null,
     hasBackupDirectory,
     data?.backupState.dataConflictBeforeBackup,
@@ -364,7 +368,9 @@ export function useBackupReminder({
       return;
     }
     void runBackupCheck({ requestPermission: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- track only backup entry changes.
   }, [
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- track loaded/unloaded transitions.
     data !== null,
     hasBackupDirectory,
     data?.backupState.lastSeenBackupVersion,

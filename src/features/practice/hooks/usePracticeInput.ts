@@ -63,6 +63,7 @@ export function usePracticeInput({
     onTogglePause,
   });
   handlersRef.current = { onEscape, onResume, onStartSession, onSubmitAnswer, onTogglePause };
+  const subscribeMidi = midi.subscribe;
 
   useLayoutEffect(() => {
     const diagnosticSampleId = pendingMidiPressDiagnosticSampleIdRef.current;
@@ -73,26 +74,27 @@ export function usePracticeInput({
   }, [heldMidiAnswerKeys]);
 
   useEffect(() => {
+    const heldMidiInputs = heldMidiInputsRef.current;
     function syncHeldMidiKeys(): void {
-      setHeldMidiAnswerKeys(new Set(heldMidiInputsRef.current.values()));
+      setHeldMidiAnswerKeys(new Set(heldMidiInputs.values()));
     }
 
-    const unsubscribe = midi.subscribe((event) => {
+    const unsubscribe = subscribeMidi((event) => {
       if (event.type === "reset") {
         pendingMidiPressDiagnosticSampleIdRef.current = undefined;
-        heldMidiInputsRef.current.clear();
+        heldMidiInputs.clear();
         syncHeldMidiKeys();
         return;
       }
       if (!isNaturalPianoKey(event.note.keyName)) return;
       if (event.type === "release") {
         pendingMidiPressDiagnosticSampleIdRef.current = undefined;
-        heldMidiInputsRef.current.delete(event.note.keyId);
+        heldMidiInputs.delete(event.note.keyId);
         syncHeldMidiKeys();
         return;
       }
 
-      heldMidiInputsRef.current.set(event.note.keyId, event.note.keyName);
+      heldMidiInputs.set(event.note.keyId, event.note.keyName);
       pendingMidiPressDiagnosticSampleIdRef.current = event.note.diagnosticSampleId;
       syncHeldMidiKeys();
       const current = handlersRef.current;
@@ -119,10 +121,10 @@ export function usePracticeInput({
     return () => {
       unsubscribe();
       pendingMidiPressDiagnosticSampleIdRef.current = undefined;
-      heldMidiInputsRef.current.clear();
+      heldMidiInputs.clear();
       setHeldMidiAnswerKeys(new Set());
     };
-  }, [answerPitchMode, canStartOnMidi, isRunning, midi.subscribe]);
+  }, [answerPitchMode, canStartOnMidi, isRunning, subscribeMidi]);
 
   useEffect(() => {
     if (!isRunning) return undefined;

@@ -22,7 +22,6 @@ import type {
   PracticeSessionRecord,
   PracticeSessionStartSnapshot,
   ReviewRecord,
-  StaffNotationMode,
   TargetNote,
 } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
@@ -46,7 +45,6 @@ interface PracticeSessionStartValues {
   queueNotes: TargetNote[];
   schedulerReviews: ReviewRecord[];
   sessions: PracticeSessionRecord[];
-  staffNotationMode: StaffNotationMode;
   staffPageUiPreferences: { smoothStaffPageScroll: boolean };
   startPausedReading: boolean;
 }
@@ -124,7 +122,6 @@ export function usePracticeSessionStart({
     queueNotes,
     schedulerReviews,
     sessions,
-    staffNotationMode,
     staffPageUiPreferences,
     startPausedReading,
   } = values;
@@ -149,6 +146,11 @@ export function usePracticeSessionStart({
     practiceMicrophone,
     runSessionStart,
   } = services;
+  const {
+    resetCapture: resetPracticeMicrophoneCapture,
+    start: startPracticeMicrophone,
+    stop: stopPracticeMicrophone,
+  } = practiceMicrophone;
   const {
     applySettingsSnapshot,
     beginSessionState,
@@ -229,9 +231,9 @@ export function usePracticeSessionStart({
           presentationConfig.startPausedReading;
         if (availablePreflightAnswerPitchMode === "microphone") {
           if (shouldStartPaused) {
-            practiceMicrophone.stop();
+            stopPracticeMicrophone();
           } else {
-            microphoneStarted = await practiceMicrophone.start();
+            microphoneStarted = await startPracticeMicrophone();
             if (!microphoneStarted) {
               return;
             }
@@ -245,7 +247,7 @@ export function usePracticeSessionStart({
           startedAt,
         });
         await db.practiceSessions.put(nextSession);
-        practiceMicrophone.resetCapture();
+        resetPracticeMicrophoneCapture();
         setMicrophoneCaptureAnalysis(null);
         setMicrophoneCaptureNotice(null);
         setExpandedCandidateSegmentKey(null);
@@ -304,18 +306,36 @@ export function usePracticeSessionStart({
       });
     } finally {
       if (microphoneStarted && !sessionStarted) {
-        practiceMicrophone.stop();
+        stopPracticeMicrophone();
       }
     }
   }, [
     answerPitchMode,
+    adaptiveSchedulerRef,
     applySettingsSnapshot,
     beginSessionState,
     drawMelodyNote,
+    endingRef,
+    isPausedRef,
+    lastBackupAtRef,
+    lastBackupCompletedRef,
+    lastTargetNoteIdRef,
+    melodyGenerationStateRef,
+    melodyQueueRef,
     midi.isConnected,
-    practiceMicrophone.start,
-    practiceMicrophone.resetCapture,
-    practiceMicrophone.stop,
+    pendingAfterPauseRef,
+    resetPracticeMicrophoneCapture,
+    sessionRef,
+    sessionReviewsRef,
+    sessionStartSnapshotRef,
+    setExpandedCandidateSegmentKey,
+    setIsMicrophoneAnalysisDialogOpen,
+    setIsPaused,
+    setIsStaffPageScrolling,
+    setMicrophoneCaptureAnalysis,
+    setMicrophoneCaptureNotice,
+    startPracticeMicrophone,
+    stopPracticeMicrophone,
     onBeforePracticeStart,
     onSettingsSaved,
     persistConfig,
@@ -327,7 +347,6 @@ export function usePracticeSessionStart({
     resetSessionActiveTimer,
     startPausedReading,
     staffPageUiPreferences.smoothStaffPageScroll,
-    staffNotationMode,
     startPrompt,
     startStaffPage,
     syncStaffPage,

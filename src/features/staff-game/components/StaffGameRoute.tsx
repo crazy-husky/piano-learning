@@ -54,6 +54,7 @@ export function StaffGameRoute({
     answerHandlerRef.current?.(answer);
   }, []);
   const microphone = usePracticeMicrophoneInput(handleMicrophoneAnswer, microphonePreferences);
+  const stopMicrophone = microphone.stop;
   const handleSessionActiveChange = useCallback(
     (active: boolean): void => {
       setSessionActive(active);
@@ -73,10 +74,10 @@ export function StaffGameRoute({
       return;
     }
     handledNavigationExitRequestIdRef.current = navigationExitRequest.id;
-    microphone.stop();
+    stopMicrophone();
     setSessionActive(false);
     onNavigationExit?.(navigationExitRequest.targetView);
-  }, [microphone.stop, navigationExitRequest, onNavigationExit, sessionActive]);
+  }, [navigationExitRequest, onNavigationExit, sessionActive, stopMicrophone]);
 
   return (
     <StaffGameView
