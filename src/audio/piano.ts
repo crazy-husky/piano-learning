@@ -47,6 +47,7 @@ export interface SustainedPianoNote {
 let sampler: Tone.Sampler | undefined;
 let samplerLoadPromise: Promise<void> | undefined;
 let samplerStatus: SamplerStatus = "idle";
+let samplerLoadError: Error | null = null;
 let fallbackSynth: Tone.PolySynth | undefined;
 
 function normalizeError(error: unknown): Error {
@@ -66,6 +67,11 @@ function resetFailedSampler(): void {
   sampler = undefined;
   samplerLoadPromise = undefined;
   samplerStatus = "idle";
+  samplerLoadError = null;
+}
+
+export function getPianoSampleLoadError(): Error | null {
+  return samplerLoadError;
 }
 
 function getSampler({ retryFailed = false }: GetSamplerOptions = {}): Tone.Sampler | undefined {
@@ -91,6 +97,7 @@ function getSampler({ retryFailed = false }: GetSamplerOptions = {}): Tone.Sampl
       settled = true;
       clearLoadTimeout();
       samplerStatus = "loaded";
+      samplerLoadError = null;
       resolve();
     };
     const markFailed = (error: unknown): void => {
@@ -98,9 +105,10 @@ function getSampler({ retryFailed = false }: GetSamplerOptions = {}): Tone.Sampl
       settled = true;
       clearLoadTimeout();
       samplerStatus = "failed";
+      samplerLoadError = normalizeError(error);
       sampler?.dispose();
       sampler = undefined;
-      reject(normalizeError(error));
+      reject(samplerLoadError);
     };
 
     try {

@@ -14,6 +14,6 @@
 - Deployment is separate from build, commit, and push. The maintainer-only helper in `scripts/deploy/` is ignored by Git and must not be staged or committed.
 - Before publishing, create a fresh production build for `/piano-learning/`, then run `bash scripts/deploy/deploy_piano_learning.sh --check`. The check validates the local bundle; `--deploy` uploads only changed static assets and verifies the public HTTPS page. The helper never builds the project.
 - On macOS, run the helper from Bash with `python3`, `curl`, `ssh`, `scp`, and `expect` available. On Windows, use Git Bash with the same tools available.
-- Set `PRIVATE_DEPLOY_ENV` to a credentials file outside the repository. It supplies values such as `REMOTE_HOST`, `REMOTE_USER`, and `REMOTE_PASSWORD`. Never put real values in tracked files, documentation, shell history, or command output.
+- Set `PRIVATE_DEPLOY_ENV` to a connection config outside the repository. It supplies `REMOTE_HOST` and `REMOTE_USER`; SSH/SCP use `~/.ssh/id_ed25519` with public-key-only authentication on port `51234`.
 - See the README's “发布与预览” section for copyable build and deploy commands.
 - Write git commit messages in Chinese.

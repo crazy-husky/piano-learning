@@ -1,5 +1,5 @@
-import { ArrowLeft, AudioLines, BarChart3, BellOff, BookOpen, ChevronDown, Dumbbell, FolderOpen, Gamepad2, House, Settings, X } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowLeft, AudioLines, BarChart3, BellOff, BookOpen, ChevronDown, Dumbbell, FolderOpen, Gamepad2, GripVertical, House, Settings, X } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Toaster, toast } from "sonner";
 import { setPianoVolume } from "../audio/pianoSettings";
 import {
@@ -20,6 +20,7 @@ import { MIDI_LATENCY_DIAGNOSTICS_ENABLED } from "../diagnostics/midiLatencyDiag
 import { BackupConflictResolver } from "../shared/components/BackupConflictResolver";
 import { AppStartupSkeleton, RouteLoadingSkeleton } from "../shared/components/LoadingSkeletons";
 import { HomeView } from "../features/home/components/HomeView";
+import { StaffGameRoute } from "../features/staff-game/components/StaffGameRoute";
 import type {
   PracticeNavigationExitRequest,
   PracticeNavigationExitTarget,
@@ -56,8 +57,8 @@ import {
   PRACTICE_MICROPHONE_PREFERENCES_KEY,
 } from "../features/vocal-pitch/logic/practiceMicrophonePreferences";
 
-const PracticeView = lazy(() => import("../features/practice/components/PracticeView").then((module) => ({ default: module.PracticeView })));
 const SettingsView = lazy(() => import("../features/settings/components/SettingsView").then((module) => ({ default: module.SettingsView })));
+const PracticeView = lazy(() => import("../features/practice/components/PracticeView").then((module) => ({ default: module.PracticeView })));
 const StatsView = lazy(() => import("../features/stats/components/StatsView").then((module) => ({ default: module.StatsView })));
 const StudyView = lazy(() => import("../features/study/components/StudyView").then((module) => ({ default: module.StudyView })));
 const VocalPitchView = lazy(() => import("../features/vocal-pitch/components/VocalPitchView").then((module) => ({ default: module.VocalPitchView })));
@@ -136,8 +137,25 @@ function HistoryLoadingState({
 
 export function App(): JSX.Element {
   useBlurButtonAfterPointerClick();
-  useAppUpdateNotice();
+  const appUpdateController = useAppUpdateNotice();
   const midi = useMidiInput();
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.removeItem("app-startup-reload-attempted");
+    } catch {
+      // The application can start without session storage.
+    }
+
+    const refreshUrl = new URL(window.location.href);
+    if (!refreshUrl.searchParams.has("__app_refresh")) return;
+    refreshUrl.searchParams.delete("__app_refresh");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${refreshUrl.pathname}${refreshUrl.search}${refreshUrl.hash}`,
+    );
+  }, []);
 
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
   const [isGameNavExpanded, setIsGameNavExpanded] = useState(() => isStaffGameRoutePath(route.path));
@@ -199,11 +217,83 @@ export function App(): JSX.Element {
   const practiceRunningRef = useRef(false);
   practiceRunningRef.current = practiceRunning;
   const pendingRoutePathRef = useRef<AppRoutePath | null>(null);
-  const view = route.page;
+  const [mobileBackPosition, setMobileBackPosition] = useState<{ left: number; top: number } | null>(null);
+  const mobileBackButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mobileBackDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    left: number;
+    top: number;
+    moved: boolean;
+  } | null>(null);
+  const ignoreMobileBackClickRef = useRef(false);
+  const view: View = route.page === "game" ? "practice" : route.page;
+  const isStaffGamePage = route.page === "game";
   const [practiceExitRequest, setPracticeExitRequest] = useState<PracticeNavigationExitRequest | null>(null);
   const [vocalExitRequest, setVocalExitRequest] = useState<PracticeNavigationExitRequest | null>(null);
   const practiceExitRequestIdRef = useRef(0);
   const vocalExitRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    const clampMobileBackPosition = (): void => {
+      const button = mobileBackButtonRef.current;
+      if (!button) return;
+      const { width, height } = button.getBoundingClientRect();
+      const maxLeft = Math.max(0, document.documentElement.clientWidth - width);
+      const maxTop = Math.max(0, document.documentElement.clientHeight - height);
+      setMobileBackPosition((position) => position ? {
+        left: Math.min(maxLeft, Math.max(0, position.left)),
+        top: Math.min(maxTop, Math.max(0, position.top)),
+      } : position);
+    };
+    window.addEventListener("resize", clampMobileBackPosition);
+    return () => window.removeEventListener("resize", clampMobileBackPosition);
+  }, []);
+
+  const handleMobileBackPointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>): void => {
+    if (!event.isPrimary || event.button > 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    mobileBackDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      left: rect.left,
+      top: rect.top,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, []);
+
+  const handleMobileBackPointerMove = useCallback((event: ReactPointerEvent<HTMLButtonElement>): void => {
+    const drag = mobileBackDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < 5) return;
+    drag.moved = true;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const maxLeft = Math.max(0, document.documentElement.clientWidth - rect.width);
+    const maxTop = Math.max(0, document.documentElement.clientHeight - rect.height);
+    setMobileBackPosition({
+      left: Math.min(maxLeft, Math.max(0, drag.left + deltaX)),
+      top: Math.min(maxTop, Math.max(0, drag.top + deltaY)),
+    });
+  }, []);
+
+  const finishMobileBackDrag = useCallback((event: ReactPointerEvent<HTMLButtonElement>, suppressClick: boolean): void => {
+    const drag = mobileBackDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    ignoreMobileBackClickRef.current = suppressClick && drag.moved;
+    mobileBackDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (ignoreMobileBackClickRef.current) {
+      window.setTimeout(() => { ignoreMobileBackClickRef.current = false; }, 0);
+    }
+  }, []);
 
   const showConfigurationFeedback = useCallback((
     detail: string,
@@ -385,16 +475,22 @@ export function App(): JSX.Element {
       if (currentRoute.page === "vocal" && incomingRoute.page !== "vocal") {
         pendingRoutePathRef.current = incomingRoute.path;
         vocalExitRequestIdRef.current += 1;
-        setVocalExitRequest({ id: vocalExitRequestIdRef.current, targetView: incomingRoute.page });
+        setVocalExitRequest({
+          id: vocalExitRequestIdRef.current,
+          targetView: incomingRoute.page === "game" ? "practice" : incomingRoute.page,
+        });
         window.history.pushState(window.history.state, "", appRouteUrl(currentRoute.path, currentRoute.songId ? { songId: currentRoute.songId } : undefined));
         return;
       }
       const isLeavingPractice = currentRoute.page === "practice" && incomingRoute.page !== "practice";
-      const isLeavingStaffGame = isStaffGameRoutePath(currentRoute.path) && !isStaffGameRoutePath(incomingRoute.path);
+      const isLeavingStaffGame = currentRoute.page === "game" && incomingRoute.page !== "game";
       if (practiceRunningRef.current && (isLeavingPractice || isLeavingStaffGame)) {
         pendingRoutePathRef.current = incomingRoute.path;
         practiceExitRequestIdRef.current += 1;
-        setPracticeExitRequest({ id: practiceExitRequestIdRef.current, targetView: incomingRoute.page });
+        setPracticeExitRequest({
+          id: practiceExitRequestIdRef.current,
+          targetView: incomingRoute.page === "game" ? "practice" : incomingRoute.page,
+        });
         window.history.pushState(window.history.state, "", appRouteUrl(currentRoute.path, currentRoute.songId ? { songId: currentRoute.songId } : undefined));
         return;
       }
@@ -512,7 +608,7 @@ export function App(): JSX.Element {
   }, [data?.practiceHistoryLoaded, data?.staffRecallHistoryLoaded, data !== null, historyLoadRetryToken, route.path, view]);
 
   useEffect(() => {
-    if (view !== "practice") return undefined;
+    if (route.path !== "/practice") return undefined;
 
     let cancelled = false;
     void import("../audio/piano")
@@ -524,7 +620,7 @@ export function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [view]);
+  }, [route.path]);
 
   useEffect(() => {
     if (data) {
@@ -672,6 +768,22 @@ export function App(): JSX.Element {
   }, []);
 
   const showIndexedDbMaintenance = import.meta.env.DEV && new URLSearchParams(window.location.search).get("debug") === "indexeddb";
+  const showMobileBackButton = view !== "home" && !(view === "practice" && isStaffGameRoutePath(route.path)) && (!practiceRunning || view === "practice");
+  useLayoutEffect(() => {
+    if (!showMobileBackButton || !mobileBackPosition) return;
+    const button = mobileBackButtonRef.current;
+    if (!button) return;
+    const { width, height } = button.getBoundingClientRect();
+    const maxLeft = Math.max(0, document.documentElement.clientWidth - width);
+    const maxTop = Math.max(0, document.documentElement.clientHeight - height);
+    setMobileBackPosition((position) => {
+      if (!position) return position;
+      const left = Math.min(maxLeft, Math.max(0, position.left));
+      const top = Math.min(maxTop, Math.max(0, position.top));
+      return left === position.left && top === position.top ? position : { left, top };
+    });
+  }, [mobileBackPosition, showMobileBackButton]);
+
   if (showIndexedDbMaintenance) {
     return <IndexedDbMaintenancePanel />;
   }
@@ -697,8 +809,8 @@ export function App(): JSX.Element {
     practiceRunning ? "app-shell-practice-running" : "",
     view === "practice" ? "app-shell-practice-page" : "",
     view === "home" ? "app-shell-home" : "",
+    isStaffGamePage ? "app-shell-game-immersive" : "",
   ].filter(Boolean).join(" ");
-  const showMobileBackButton = view !== "home" && !(view === "practice" && isStaffGameRoutePath(route.path)) && (!practiceRunning || view === "practice");
   return (
     <PageAppearanceProvider isNightMode={isNightMode}>
     <Toaster closeButton position="top-center" richColors theme={isNightMode ? "dark" : "light"} />
@@ -753,7 +865,7 @@ export function App(): JSX.Element {
           <BarChart3 aria-hidden="true" size={18} />
           统计
         </button>
-        <button aria-current={view === "vocal" ? "page" : undefined} className={view === "vocal" ? "active" : ""} onClick={() => selectView("vocal")} type="button">
+        <button aria-current={view === "vocal" ? "page" : undefined} className={`app-nav-vocal${view === "vocal" ? " active" : ""}`} onClick={() => selectView("vocal")} type="button">
           <AudioLines aria-hidden="true" size={18} />
           清唱
         </button>
@@ -829,8 +941,8 @@ export function App(): JSX.Element {
         ) : null}
         <Suspense fallback={<RouteLoadingSkeleton />}>
         {view === "home" ? <HomeView onNavigate={navigateToRoute} /> : null}
-        {view === "practice" ? (
-          (data.practiceHistoryLoaded || isStaffGameRoutePath(route.path)) ? <PracticeView
+        {view === "practice" && !isStaffGameRoutePath(route.path) ? (
+          data.practiceHistoryLoaded ? <PracticeView
             midi={midi}
             practiceMicrophonePreferences={practiceMicrophonePreferences}
             onPracticeMicrophonePreferencesChange={setPracticeMicrophonePreferences}
@@ -840,15 +952,6 @@ export function App(): JSX.Element {
             reviews={data.practiceHistoryLoaded ? data.reviews : []}
             navigationExitRequest={practiceExitRequest}
             onRequestNavigationExit={selectView}
-            isStaffGameRoute={isStaffGameRoutePath(route.path)}
-            initialStaffGameMode={isStaffGameSongRoutePath(route.path) ? "songs" : "levels"}
-            initialSongSelectionStep={route.path === "/practice/game/songs/play" ? "detail" : "list"}
-            initialSongId={route.songId}
-            isStaffGameSongPlayRoute={route.path === "/practice/game/songs/play"}
-            onStaffGameRouteChange={selectPracticeGameRoute}
-            onStaffGameModeChange={selectStaffGameMode}
-            onStaffGameSongStart={startStaffGameSong}
-            onStaffGameSongSelectionExit={returnFromStaffGameSongSelection}
             onDataChanged={refreshPracticeHistory}
             onNavigationExit={handleNavigationExit}
             onOpenStats={() => selectView("stats")}
@@ -861,6 +964,23 @@ export function App(): JSX.Element {
             error={historyLoadErrors.practice}
             label="练习记录"
             onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
+          />
+        ) : null}
+        {isStaffGamePage ? (
+          <StaffGameRoute
+            midi={midi}
+            microphonePreferences={practiceMicrophonePreferences}
+            initialMode={isStaffGameSongRoutePath(route.path) ? "songs" : "levels"}
+            initialSongSelectionStep={route.path === "/practice/game/songs/play" ? "detail" : "list"}
+            initialSongId={route.songId}
+            isSongPlayRoute={route.path === "/practice/game/songs/play"}
+            onModeChange={selectStaffGameMode}
+            onSongStart={startStaffGameSong}
+            onSongSelectionExit={returnFromStaffGameSongSelection}
+            onExit={() => selectPracticeGameRoute(false)}
+            onRunningChange={setPracticeRunning}
+            navigationExitRequest={practiceExitRequest}
+            onNavigationExit={handleNavigationExit}
           />
         ) : null}
         {view === "stats" ? (
@@ -891,12 +1011,16 @@ export function App(): JSX.Element {
         ) : null}
         {view === "settings" ? (
           <SettingsView
+            appUpdateStatus={appUpdateController.status}
+            appUpdateMessage={appUpdateController.message}
             backupState={data.backupState}
             pageAppearancePreferences={pageAppearancePreferences}
             practiceMicrophonePreferences={practiceMicrophonePreferences}
             practicePagePreferences={practicePagePreferences}
             settings={data.settings}
             midi={midi}
+            onCheckForUpdates={appUpdateController.checkForUpdates}
+            onApplyUpdate={appUpdateController.applyUpdate}
             onDataChanged={refresh}
             onPageAppearancePreferencesChange={setPageAppearancePreferences}
             onPracticeMicrophonePreferencesChange={setPracticeMicrophonePreferences}
@@ -918,8 +1042,27 @@ export function App(): JSX.Element {
         </Suspense>
       </main>
       {showMobileBackButton ? (
-        <button aria-label="返回首页" className="mobile-route-back" onClick={() => selectView("home")} type="button">
+        <button
+          aria-label="返回首页，可拖动调整位置"
+          className="mobile-route-back"
+          onClick={() => {
+            if (ignoreMobileBackClickRef.current) {
+              ignoreMobileBackClickRef.current = false;
+              return;
+            }
+            selectView("home");
+          }}
+          onPointerCancel={(event) => finishMobileBackDrag(event, false)}
+          onPointerDown={handleMobileBackPointerDown}
+          onPointerMove={handleMobileBackPointerMove}
+          onPointerUp={(event) => finishMobileBackDrag(event, true)}
+          ref={mobileBackButtonRef}
+          style={mobileBackPosition ? { left: mobileBackPosition.left, top: mobileBackPosition.top, right: "auto", bottom: "auto" } : undefined}
+          title="拖动调整位置，点击返回首页"
+          type="button"
+        >
           <ArrowLeft aria-hidden="true" size={19} />
+          <GripVertical aria-hidden="true" size={16} />
           返回
         </button>
       ) : null}

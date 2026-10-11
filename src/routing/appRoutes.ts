@@ -1,5 +1,5 @@
 export type AppRoutePath = "/" | "/study" | "/practice" | "/practice/game" | "/practice/game/songs" | "/practice/game/songs/play" | "/stats" | "/vocal" | "/settings";
-export type AppRoutePage = "home" | "study" | "practice" | "stats" | "settings" | "vocal";
+export type AppRoutePage = "home" | "study" | "practice" | "game" | "stats" | "settings" | "vocal";
 
 export interface AppRoute {
   page: AppRoutePage;
@@ -32,7 +32,7 @@ export function appRouteFromHash(hash: string): AppRoute {
   const page: AppRoutePage = path === "/"
     ? "home"
     : path.startsWith("/practice/game")
-      ? "practice"
+      ? "game"
       : path.slice(1) as Exclude<AppRoutePage, "home">;
   return { page, path, songId };
 }
@@ -46,7 +46,9 @@ export function isStaffGameSongRoutePath(path: AppRoutePath): boolean {
 }
 
 export function appRoutePathForPage(page: AppRoutePage): AppRoutePath {
-  return page === "home" ? "/" : `/${page}` as AppRoutePath;
+  if (page === "home") return "/";
+  if (page === "game") return "/practice/game";
+  return `/${page}` as AppRoutePath;
 }
 
 export function appRouteUrl(path: AppRoutePath, query?: Record<string, string>): string {

@@ -20,6 +20,11 @@ export function AppStartupSkeleton(): JSX.Element {
         <span aria-hidden="true" className="app-startup-note">♫</span>
         <strong>识谱视奏</strong>
         <span className="app-startup-message">正在准备练习空间</span>
+        <div aria-hidden="true" className="app-startup-skeleton">
+          <div className="app-startup-skeleton-choice-row"><i /><i /><i /></div>
+          <div className="app-startup-skeleton-panel"><i /><i /></div>
+          <div className="app-startup-skeleton-panel app-startup-skeleton-panel-short"><i /><i /></div>
+        </div>
         <span aria-hidden="true" className="app-startup-progress"><i /></span>
       </div>
     </main>
@@ -34,6 +39,9 @@ export function RouteLoadingSkeleton(): JSX.Element | null {
     <section aria-busy="true" aria-label="正在加载页面" className="route-loading-skeleton" role="status">
       <span className="loading-sr-only">正在加载页面</span>
       <div aria-hidden="true" className="route-loading-heading" />
+      <div aria-hidden="true" className="route-loading-metrics">
+        <i /><i /><i />
+      </div>
       <div aria-hidden="true" className="route-loading-panel">
         <i />
         <i />

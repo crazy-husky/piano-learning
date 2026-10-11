@@ -615,9 +615,20 @@
 }
 
 @media (min-width: 700px) {
-  /* Product choice: keep the global sidebar visible during desktop gameplay; the game occupies the main column. */
   .app-shell {
     grid-template-columns: 86px minmax(0, 1fr);
+  }
+
+  .app-shell-game-immersive {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell-game-immersive::before {
+    display: none;
+  }
+
+  .app-shell-game-immersive .app-nav {
+    display: none;
   }
 
   .app-shell::before {

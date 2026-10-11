@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { formatDateTime } from "../formatDateTime";
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -27,22 +28,8 @@ const MAX_GLOBAL_ERROR_RECORDS = 20;
 const GLOBAL_ERROR_DEDUPE_WINDOW_MS = 30_000;
 const MAX_GLOBAL_ERROR_DETAILS_LENGTH = 12_000;
 const GLOBAL_ERROR_NOTICE_DURATION_SECONDS = 10;
-
-const dateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
-  timeZoneName: "short",
-});
-
-function formatDateTime(value: string | number): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : dateTimeFormatter.format(date);
-}
+const MODULE_LOAD_RETRY_SESSION_KEY = `app-module-load-retry:${__APP_BUILD_ID__}`;
+const MODULE_LOAD_FAILURE_PATTERN = /importing a module script failed|failed to fetch dynamically imported module|unable to preload (?:css|module)|loading chunk .* failed/i;
 
 function describeError(error: unknown): string {
   if (typeof error === "string") return `Message: ${error}`;
@@ -81,11 +68,13 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   componentDidMount(): void {
     window.addEventListener("error", this.handleWindowError, true);
     window.addEventListener("unhandledrejection", this.handleUnhandledRejection);
+    window.addEventListener("vite:preloadError", this.handleVitePreloadError);
   }
 
   componentWillUnmount(): void {
     window.removeEventListener("error", this.handleWindowError, true);
     window.removeEventListener("unhandledrejection", this.handleUnhandledRejection);
+    window.removeEventListener("vite:preloadError", this.handleVitePreloadError);
     if (this.copyStatusTimeout !== null) window.clearTimeout(this.copyStatusTimeout);
     this.clearGlobalErrorNoticeInterval();
   }
@@ -104,9 +93,12 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
+    const errorDetails = describeError(error);
     this.setState({
-      fatalErrorDetails: `${describeError(error)}\n\nReact component stack:${info.componentStack || " (unavailable)"}`,
+      fatalErrorDetails: `${errorDetails}\n\nReact component stack:${info.componentStack || " (unavailable)"}`,
     });
+
+    if (MODULE_LOAD_FAILURE_PATTERN.test(errorDetails)) this.retryModuleLoadOnce();
   }
 
   private captureGlobalError = (source: GlobalErrorSource, details: string): void => {
@@ -173,14 +165,30 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     this.setState({ globalErrorNoticeVisible: false, globalErrorNoticeSecondsRemaining: 0 });
   };
 
-  private refreshPage = async (): Promise<void> => {
+  private refreshPage = (clearRetryGuard = true): void => {
     try {
-      const registration = await navigator.serviceWorker?.getRegistration();
-      await registration?.update();
+      if (clearRetryGuard) window.sessionStorage.removeItem(MODULE_LOAD_RETRY_SESSION_KEY);
     } catch {
-      // The page navigation below still uses the app's network-first service-worker route.
+      // Storage may be unavailable in private browsing; the page can still navigate.
     }
-    window.location.reload();
+
+    // A cache-busting document navigation avoids racing Service Worker updates with reloads
+    // in iOS browsers. App.tsx removes this temporary query once the app has booted.
+    const refreshUrl = new URL(window.location.href);
+    refreshUrl.searchParams.set("__app_refresh", String(Date.now()));
+    window.location.replace(refreshUrl.toString());
+  };
+
+  private retryModuleLoadOnce = (): void => {
+    try {
+      if (window.sessionStorage.getItem(MODULE_LOAD_RETRY_SESSION_KEY) === "1") return;
+      window.sessionStorage.setItem(MODULE_LOAD_RETRY_SESSION_KEY, "1");
+    } catch {
+      // Do not auto-retry when the guard cannot be persisted; that could cause a reload loop.
+      return;
+    }
+
+    window.setTimeout(() => this.refreshPage(false), 0);
   };
 
   private handleWindowError = (event: Event): void => {
@@ -205,6 +213,11 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
   private handleUnhandledRejection = (event: PromiseRejectionEvent): void => {
     this.captureGlobalError("unhandledrejection", `Reason: ${describeError(event.reason)}`);
+  };
+
+  private handleVitePreloadError = (event: VitePreloadErrorEvent): void => {
+    this.captureGlobalError("resource-load-error", `Vite module preload error:\n${describeError(event.payload)}`);
+    this.retryModuleLoadOnce();
   };
 
   private buildDebugInfo = (): string => [
@@ -382,7 +395,10 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
                 </p>
               </div>
               <div className="app-error-debug-copy-control">
-                <button onClick={() => void this.copyDebugInfo()} type="button">复制调试信息</button>
+                <div className="app-error-debug-actions">
+                  <button onClick={() => void this.copyDebugInfo()} type="button">复制调试信息</button>
+                  <button onClick={() => void this.refreshPage()} type="button">刷新页面</button>
+                </div>
                 <p aria-live="polite" className="app-error-debug-copy-status">{this.state.copyStatus}</p>
               </div>
             </div>

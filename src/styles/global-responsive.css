@@ -69,6 +69,18 @@
     color: var(--text);
     padding: 0 15px 0 12px;
     backdrop-filter: blur(10px);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .mobile-route-back:active {
+    cursor: grabbing;
+  }
+
+  .home-menu-hide-on-mobile,
+  .app-nav .app-nav-vocal {
+    display: none;
   }
 
   .home-shell {

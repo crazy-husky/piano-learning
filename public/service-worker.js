@@ -2,7 +2,6 @@ const APP_BUILD_ID = __APP_BUILD_ID__;
 const APP_ASSET_FILES = __APP_ASSET_FILES__;
 const APP_CACHE_PREFIX = "anki-note-app-";
 const CACHE_NAME = `${APP_CACHE_PREFIX}${APP_BUILD_ID}`;
-// Keep previous build caches: tabs still running old code may request their lazy-loaded chunks.
 const scopeUrl = new URL(self.registration.scope);
 const indexUrl = new URL("index.html", scopeUrl).toString();
 const APP_SHELL = ["", "index.html", "manifest.webmanifest", "icons/icon.svg?v=2"].map((path) =>
@@ -24,9 +23,9 @@ function getBuildCacheKey(requestOrUrl) {
 
 async function preloadAsset(cache, assetUrl) {
   const cacheKey = getBuildCacheKey(assetUrl);
-  const response = await fetch(new Request(cacheKey, { cache: "reload" }));
+  const response = await fetch(cacheKey, { cache: "reload" });
   if (!response.ok || response.type !== "basic") {
-    throw new Error(`Unable to preload app asset: ${new URL(assetUrl).pathname}`);
+    throw new Error(`Unable to preload app code asset: ${new URL(assetUrl).pathname}`);
   }
   await cache.put(cacheKey, response);
 }
@@ -62,7 +61,7 @@ async function cacheResponse(request, response) {
     const cache = await caches.open(CACHE_NAME);
     await cache.put(getBuildCacheKey(request), response.clone());
   } catch {
-    // Runtime cache writes are best-effort; the network response remains usable.
+    // Cache writes are best-effort; the network response remains usable.
   }
   return response;
 }
@@ -74,7 +73,7 @@ self.addEventListener("fetch", (event) => {
 
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: "reload" })
         .then((response) => cacheResponse(event.request, response))
         .catch(async () => {
           const cache = await caches.open(CACHE_NAME);
@@ -90,7 +89,7 @@ self.addEventListener("fetch", (event) => {
       if (cached) {
         return cached;
       }
-      return fetch(event.request).then((response) => cacheResponse(event.request, response));
+      return fetch(event.request, { cache: "reload" }).then((response) => cacheResponse(event.request, response));
     }),
   );
 });

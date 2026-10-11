@@ -40,7 +40,7 @@
         gap: 10px;
         justify-items: center;
         padding: 28px 36px;
-        width: min(100%, 320px);
+        width: min(100%, 380px);
       }
 
       .app-startup-note {
@@ -85,6 +85,76 @@
         width: 100%;
       }
 
+      .app-startup-skeleton {
+        display: grid;
+        gap: 10px;
+        margin-top: 8px;
+        width: 100%;
+      }
+
+      .app-startup-skeleton-choice-row {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .app-startup-skeleton-choice-row i,
+      .app-startup-skeleton-panel > i {
+        animation: app-startup-shimmer 1.4s ease-in-out infinite;
+        background: linear-gradient(100deg, rgba(36, 120, 110, 0.22) 25%, rgba(36, 120, 110, 0.08) 48%, rgba(36, 120, 110, 0.22) 72%);
+        background-size: 220% 100%;
+        border-radius: 8px;
+        display: block;
+      }
+
+      .app-startup-skeleton-choice-row i {
+        border: 1px solid rgba(36, 120, 110, 0.12);
+        border-radius: 10px;
+        height: 36px;
+      }
+
+      .app-startup-skeleton-panel {
+        background: rgba(255, 255, 255, 0.68);
+        border: 1px solid rgba(36, 120, 110, 0.16);
+        border-radius: 12px;
+        display: grid;
+        gap: 9px;
+        padding: 12px;
+      }
+
+      .app-startup-skeleton-panel::before {
+        animation: app-startup-shimmer 1.4s ease-in-out infinite;
+        background: linear-gradient(100deg, rgba(36, 120, 110, 0.24) 25%, rgba(36, 120, 110, 0.09) 48%, rgba(36, 120, 110, 0.24) 72%);
+        background-size: 220% 100%;
+        border-radius: 6px;
+        content: "";
+        display: block;
+        height: 14px;
+        width: 38%;
+      }
+
+      .app-startup-skeleton-panel > i {
+        height: 12px;
+        width: 88%;
+      }
+
+      .app-startup-skeleton-panel > i:nth-child(2) {
+        width: 66%;
+      }
+
+      .app-startup-skeleton-panel-short > i:first-child {
+        width: 76%;
+      }
+
+      .app-startup-skeleton-panel-short > i:nth-child(2) {
+        width: 48%;
+      }
+
+      @keyframes app-startup-shimmer {
+        from { background-position: 100% 0; }
+        to { background-position: -120% 0; }
+      }
+
       @keyframes app-startup-progress {
         0% { transform: scaleX(0.08); }
         55% { transform: scaleX(0.72); }
@@ -92,8 +162,14 @@
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .app-startup-progress i {
+        .app-startup-progress i,
+        .app-startup-skeleton-choice-row i,
+        .app-startup-skeleton-panel::before,
+        .app-startup-skeleton-panel > i {
           animation: none;
+        }
+
+        .app-startup-progress i {
           transform: scaleX(0.6);
         }
       }
@@ -142,7 +218,6 @@
       }
 
       .browser-support-card button {
-        margin-top: 8px;
         padding: 11px 18px;
         border: 0;
         border-radius: 12px;
@@ -151,6 +226,24 @@
         font: inherit;
         font-weight: 600;
         cursor: pointer;
+      }
+
+      .browser-support-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .browser-support-card .browser-support-clear-cache {
+        background: #edf8f7;
+        border: 1px solid rgba(36, 120, 110, 0.24);
+        color: #245f5a;
+      }
+
+      .browser-support-card button:disabled {
+        cursor: wait;
+        opacity: 0.72;
       }
 
       .browser-support-card button:focus-visible {
@@ -166,6 +259,11 @@
           <span aria-hidden="true" class="app-startup-note">♫</span>
           <strong>识谱视奏</strong>
           <span class="app-startup-message">正在准备练习空间</span>
+          <div aria-hidden="true" class="app-startup-skeleton">
+            <div class="app-startup-skeleton-choice-row"><i></i><i></i><i></i></div>
+            <div class="app-startup-skeleton-panel"><i></i><i></i></div>
+            <div class="app-startup-skeleton-panel app-startup-skeleton-panel-short"><i></i><i></i></div>
+          </div>
           <span aria-hidden="true" class="app-startup-progress"><i></i></span>
         </div>
       </main>
@@ -175,6 +273,13 @@
         function showStartupFailure(event) {
           var root = document.getElementById("root");
           if (!root || !root.querySelector("[data-startup-fallback]") || root.dataset.startupErrorShown === "true") return;
+
+          var reloadAttempted = false;
+          try {
+            reloadAttempted = window.sessionStorage.getItem("app-startup-reload-attempted") === "1";
+          } catch (error) {
+            reloadAttempted = true;
+          }
 
           root.dataset.startupErrorShown = "true";
           var main = document.createElement("main");
@@ -193,13 +298,97 @@
           } else {
             details.textContent = "可以重新加载页面再次尝试。";
           }
+          if (reloadAttempted) {
+            var previousError = event instanceof ErrorEvent && event.message ? `（${event.message}）` : "";
+            details.textContent = `普通重载后仍未启动${previousError}。可以清理应用离线缓存再试；练习记录和设置会保留。`;
+          }
+          details.setAttribute("aria-live", "polite");
+
           var reload = document.createElement("button");
           reload.type = "button";
           reload.textContent = "重新加载页面";
           reload.addEventListener("click", function () {
-            window.location.reload();
+            reload.disabled = true;
+            reload.setAttribute("aria-busy", "true");
+            reload.textContent = "正在重新加载…";
+            try {
+              window.sessionStorage.setItem("app-startup-reload-attempted", "1");
+            } catch (error) {
+              // The reload still works when session storage is unavailable.
+            }
+            window.setTimeout(function () {
+              window.location.reload();
+            }, 60);
           });
-          card.append(title, message, details, reload);
+
+          var actions = document.createElement("div");
+          actions.className = "browser-support-actions";
+          actions.appendChild(reload);
+
+          if (reloadAttempted) {
+            var clearCache = document.createElement("button");
+            clearCache.className = "browser-support-clear-cache";
+            clearCache.type = "button";
+            clearCache.textContent = "清理应用缓存并重试";
+            clearCache.addEventListener("click", function () {
+              clearCache.disabled = true;
+              reload.disabled = true;
+              clearCache.setAttribute("aria-busy", "true");
+              clearCache.textContent = "正在清理应用缓存…";
+              details.textContent = "只清理应用离线资源，不会删除练习记录或设置。";
+
+              if (navigator.onLine === false) {
+                clearCache.disabled = false;
+                reload.disabled = false;
+                clearCache.removeAttribute("aria-busy");
+                clearCache.textContent = "请联网后清理缓存";
+                details.textContent = "清理后需要联网重新加载应用资源；请先连接网络再重试。";
+                return;
+              }
+
+              var cacheStorage = window.caches;
+              if (!cacheStorage || typeof cacheStorage.keys !== "function") {
+                clearCache.disabled = false;
+                reload.disabled = false;
+                reload.removeAttribute("aria-busy");
+                clearCache.removeAttribute("aria-busy");
+                clearCache.textContent = "清理缓存失败，再试一次";
+                details.textContent = "当前浏览器无法清理应用缓存，请检查网络后重试。";
+                return;
+              }
+
+              cacheStorage.keys()
+                .then(function (cacheNames) {
+                  var appCacheNames = cacheNames.filter(function (cacheName) {
+                    return cacheName.indexOf("anki-note-app-") === 0
+                      || cacheName === "anki-note-v2"
+                      || cacheName === "anki-note-v3";
+                  });
+                  return Promise.all(appCacheNames.map(function (cacheName) {
+                    return cacheStorage.delete(cacheName);
+                  }));
+                })
+                .then(function () {
+                  reload.textContent = "正在重新加载…";
+                  reload.setAttribute("aria-busy", "true");
+                  clearCache.textContent = "缓存已清理，正在重新加载…";
+                  window.setTimeout(function () {
+                    window.location.reload();
+                  }, 60);
+                })
+                .catch(function () {
+                  clearCache.disabled = false;
+                  reload.disabled = false;
+                  reload.removeAttribute("aria-busy");
+                  clearCache.removeAttribute("aria-busy");
+                  clearCache.textContent = "清理缓存失败，再试一次";
+                  details.textContent = "应用缓存清理失败，请检查浏览器存储权限后重试。";
+                });
+            });
+            actions.appendChild(clearCache);
+          }
+
+          card.append(title, message, details, actions);
           main.append(card);
           root.replaceChildren(main);
         }

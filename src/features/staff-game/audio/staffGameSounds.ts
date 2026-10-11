@@ -6,8 +6,7 @@ import comboStreakUrl from "../assets/audio/combo-streak.wav";
 import comboUnbelievableUrl from "../assets/audio/combo-unbelievable.mp3";
 import levelClearUrl from "../assets/audio/level-clear.wav";
 import menuClickUrl from "../assets/audio/menu-click.mp3";
-import noteMissedUrl from "../assets/audio/note-missed-soft.wav";
-import noteMissedUnpitchedUrl from "../assets/audio/note-missed-unpitched.wav";
+import noteMissedRubberyUrl from "../assets/audio/note-missed-rubbery.wav";
 
 export type StaffGameSound =
   | "bubblePop"
@@ -27,17 +26,33 @@ interface SoundPlayer {
   ready: Promise<void>;
 }
 
-const soundSources: Record<SampledStaffGameSound, { url: string; volumeDb: number }> = {
-  bubblePop: { url: bubblePopUrl, volumeDb: -13 },
-  comboAmazing: { url: comboAmazingUrl, volumeDb: -8 },
-  comboExcellent: { url: comboExcellentUrl, volumeDb: -8 },
-  comboStreak: { url: comboStreakUrl, volumeDb: -20 },
-  comboUnbelievable: { url: comboUnbelievableUrl, volumeDb: -8 },
-  levelClear: { url: levelClearUrl, volumeDb: -13 },
-  menuClick: { url: menuClickUrl, volumeDb: -14 },
-  noteMissed: { url: noteMissedUrl, volumeDb: -18 },
-  noteMissedUnpitched: { url: noteMissedUnpitchedUrl, volumeDb: -6 },
+const soundSources: Record<SampledStaffGameSound, { url: string; volumeDb: number; label: string }> = {
+  bubblePop: { url: bubblePopUrl, volumeDb: -13, label: "泡泡破裂音效" },
+  comboAmazing: { url: comboAmazingUrl, volumeDb: -8, label: "连击 Amazing 音效" },
+  comboExcellent: { url: comboExcellentUrl, volumeDb: -8, label: "连击 Excellent 音效" },
+  comboStreak: { url: comboStreakUrl, volumeDb: -20, label: "连击 Streak 音效" },
+  comboUnbelievable: { url: comboUnbelievableUrl, volumeDb: -8, label: "连击 Unbelievable 音效" },
+  levelClear: { url: levelClearUrl, volumeDb: -13, label: "关卡完成音效" },
+  menuClick: { url: menuClickUrl, volumeDb: -14, label: "菜单点击音效" },
+  noteMissed: { url: noteMissedRubberyUrl, volumeDb: -6, label: "答错音效" },
+  noteMissedUnpitched: { url: noteMissedRubberyUrl, volumeDb: -6, label: "答错音效（无音高）" },
 };
+
+export const STAFF_GAME_SOUND_RESOURCES = (Object.entries(soundSources) as Array<[
+  SampledStaffGameSound,
+  (typeof soundSources)[SampledStaffGameSound],
+]>).map(([sound, source]) => ({
+  id: `sound:${sound}`,
+  label: source.label,
+  sound,
+  source: source.url,
+}));
+
+export interface StaffGameSoundLoadUpdate {
+  sound: SampledStaffGameSound;
+  status: "loading" | "loaded" | "failed";
+  error?: string;
+}
 
 const soundPlayers = new Map<SampledStaffGameSound, SoundPlayer>();
 let soundEffectsEnabled = true;
@@ -115,10 +130,23 @@ function getSoundPlayer(sound: SampledStaffGameSound): SoundPlayer {
   return result;
 }
 
-export async function preloadStaffGameSounds(): Promise<number> {
+export async function preloadStaffGameSounds(onProgress?: (update: StaffGameSoundLoadUpdate) => void): Promise<number> {
   if (typeof window === "undefined") return 0;
   const results = await Promise.allSettled(
-    (Object.keys(soundSources) as SampledStaffGameSound[]).map((sound) => getSoundPlayer(sound).ready),
+    (Object.keys(soundSources) as SampledStaffGameSound[]).map(async (sound) => {
+      onProgress?.({ sound, status: "loading" });
+      try {
+        await getSoundPlayer(sound).ready;
+        onProgress?.({ sound, status: "loaded" });
+      } catch (error) {
+        onProgress?.({
+          sound,
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    }),
   );
   return results.filter((result) => result.status === "rejected").length;
 }

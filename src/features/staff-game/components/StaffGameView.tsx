@@ -26,10 +26,13 @@ import {
 } from "./StaffGameEffects";
 import type { StaffGameMascotAction } from "./StaffGameEffects";
 import {
+  createStaffGameResourceProgress,
   preloadStaffGameResources,
   STAFF_GAME_ART,
   STAFF_GAME_RESOURCE_MAX_RETRIES,
   STAFF_GAME_RESOURCE_RETRY_DELAY_MS,
+  type StaffGameResourceProgress,
+  type StaffGameResourceUpdate,
 } from "../logic/staffGameResources";
 import {
   BLACK_KEY_NOTES,
@@ -393,6 +396,7 @@ function NoteStaff({ note }: { note: GameNote }): JSX.Element {
 
 export function StaffGameView({ initialMode = "levels", initialSongSelectionStep = "list", initialSongId, isSongPlayRoute, microphone, midi, onModeChange, onSongStart, onSongSelectionExit, onExit, onSessionActiveChange, onRegisterAnswerHandler }: StaffGameViewProps): JSX.Element {
   const [resourceLoadState, setResourceLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [resourceProgress, setResourceProgress] = useState<StaffGameResourceProgress[]>(createStaffGameResourceProgress);
   const [resourceLoadAttempt, setResourceLoadAttempt] = useState(0);
   const [resourceLoadRetryCount, setResourceLoadRetryCount] = useState(0);
   const [progress, setProgress] = useState<StaffGameProgress>(readProgress);
@@ -578,11 +582,19 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
     backgroundMusicRef.current = backgroundMusic;
     setResourceLoadState("loading");
     setResourceLoadRetryCount(0);
+    setResourceProgress(createStaffGameResourceProgress());
+    const updateResourceProgress = (update: StaffGameResourceUpdate): void => {
+      if (!active) return;
+      setResourceProgress((resources) => resources.map((resource) => resource.id === update.id
+        ? { ...resource, status: update.status, error: update.error }
+        : resource));
+    };
     const loadResources = async (): Promise<void> => {
       const failureCount = await preloadStaffGameResources(
         backgroundMusic,
         backgroundMusicPreloadController.signal,
         retryCount > 0,
+        updateResourceProgress,
       );
       if (!active) return;
       if (failureCount === 0) {
@@ -1694,11 +1706,17 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
       ? mascotReaction.action
       : "idle";
   const pauseControlDisabled = (phase !== "running" && phase !== "paused") || isStarting;
+  const loadedResourceCount = resourceProgress.filter((resource) => resource.status === "loaded").length;
+  const failedResourceItems = resourceProgress.filter((resource) => resource.status === "failed");
+  const resourceProgressPercent = resourceProgress.length > 0
+    ? Math.round(loadedResourceCount / resourceProgress.length * 100)
+    : 0;
+  const showPauseControl = phase === "running" || phase === "paused";
 
   if (resourceLoadState !== "ready") {
     return (
       <section aria-busy={resourceLoadState === "loading"} className="practice-shell staff-game-shell staff-game-loading-shell" aria-label="正在准备五线谱闯关">
-        <div className="staff-game-loading-card" role={resourceLoadState === "loading" ? "status" : undefined} aria-live="polite">
+        <div className="staff-game-loading-card" role={resourceLoadState === "error" ? "alert" : undefined}>
           {resourceLoadState === "loading" ? <span aria-hidden="true" className="staff-game-loading-spinner" /> : null}
           <strong>{resourceLoadState === "loading" ? "正在加载游戏素材" : "部分游戏素材未能加载"}</strong>
           <span>{resourceLoadState === "loading"
@@ -1706,6 +1724,30 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
               ? `部分素材未就绪，正在自动重试（${resourceLoadRetryCount}/${STAFF_GAME_RESOURCE_MAX_RETRIES}）`
               : "素材加载完成后即可开始"
             : `已自动重试 ${STAFF_GAME_RESOURCE_MAX_RETRIES} 次，请检查网络连接后重试`}</span>
+          <div className="staff-game-loading-progress">
+            <div className="staff-game-loading-progress-label">
+              <span>加载进度</span>
+              <strong>{loadedResourceCount}/{resourceProgress.length} 项（{resourceProgressPercent}%）</strong>
+            </div>
+            <progress aria-label="游戏素材加载进度" max={resourceProgress.length || 1} value={loadedResourceCount} />
+            {failedResourceItems.length > 0 ? (
+              <span className="staff-game-loading-failure-count">{failedResourceItems.length} 项加载失败{resourceLoadState === "loading" ? "，正在重试" : ""}</span>
+            ) : null}
+          </div>
+          {failedResourceItems.length > 0 ? (
+            <details className="staff-game-loading-details">
+              <summary>查看失败详情（{failedResourceItems.length}）</summary>
+              <ul>
+                {failedResourceItems.map((resource) => (
+                  <li key={resource.id}>
+                    <strong>{resource.label}</strong>
+                    <small>{resource.category} · {resource.source}</small>
+                    <span>{resource.error ?? "资源加载失败"}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
           {resourceLoadState === "error" ? (
             <button className="staff-game-loading-retry" onClick={() => setResourceLoadAttempt((attempt) => attempt + 1)} type="button">重新加载</button>
           ) : null}
@@ -2005,7 +2047,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
           <div aria-label="游戏操作" className="staff-game-toolbar is-desktop-control">
             <button aria-label="游戏提示" title="游戏提示" className="staff-game-action-button" onClick={() => openGameDialog("help")} type="button"><img alt="" aria-hidden="true" src={actionHelpArt} /></button>
             <button aria-label="游戏设置" title="游戏设置" className="staff-game-action-button" onClick={() => openGameDialog("settings")} type="button"><img alt="" aria-hidden="true" src={actionSettingsArt} /></button>
-            {(!isSongMode || songSelectionStep === null) ? (
+            {showPauseControl && (!isSongMode || songSelectionStep === null) ? (
               <button
                 aria-label={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}
                 title={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}
@@ -2026,7 +2068,7 @@ export function StaffGameView({ initialMode = "levels", initialSongSelectionStep
             ><img alt="" aria-hidden="true" src={actionReturnArt} /></button>
             <button aria-label="游戏提示" title="游戏提示" className="staff-game-action-button" onClick={() => openGameDialog("help")} type="button"><img alt="" aria-hidden="true" src={actionHelpArt} /></button>
             <button aria-label="游戏设置" title="游戏设置" className="staff-game-action-button" onClick={() => openGameDialog("settings")} type="button"><img alt="" aria-hidden="true" src={actionSettingsArt} /></button>
-            {(!isSongMode || songSelectionStep === null) ? (
+            {showPauseControl && (!isSongMode || songSelectionStep === null) ? (
               <button
                 aria-label={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}
                 title={phase === "paused" ? isSongMode ? "继续演奏" : "继续闯关" : isSongMode ? "暂停演奏" : "暂停闯关"}

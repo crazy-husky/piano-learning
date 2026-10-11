@@ -35,6 +35,8 @@ import { BackupConflictResolver } from "../../../shared/components/BackupConflic
 import { PausedPlaybackBpmInput } from "../../../shared/components/PausedPlaybackBpmInput";
 import { PlayableKeyboardPreview } from "../../../shared/components/PlayableKeyboardPreview";
 import { handleWheelStep } from "../logic/settingsWheel";
+import { formatDateTime } from "../../../shared/formatDateTime";
+import type { AppUpdateStatus } from "../../../app/useAppUpdateNotice";
 import {
   DEFAULT_STAFF_PAGE_UI_PREFERENCES,
   parseStaffPageUiPreferences,
@@ -81,6 +83,8 @@ function isUserAbort(error: unknown): boolean {
 }
 
 interface SettingsViewProps {
+  appUpdateStatus: AppUpdateStatus;
+  appUpdateMessage: string;
   pageAppearancePreferences: PageAppearancePreferences;
   practiceMicrophonePreferences: PracticeMicrophonePreferences;
   practicePagePreferences: PracticePagePreferences;
@@ -93,9 +97,13 @@ interface SettingsViewProps {
   onDataChanged: () => Promise<void>;
   onRestoreDefaultConfiguration: () => Promise<void>;
   midi: MidiInputController;
+  onCheckForUpdates: () => void;
+  onApplyUpdate: () => void;
 }
 
 export function SettingsView({
+  appUpdateStatus,
+  appUpdateMessage,
   pageAppearancePreferences,
   practiceMicrophonePreferences,
   practicePagePreferences,
@@ -108,6 +116,8 @@ export function SettingsView({
   onDataChanged,
   onRestoreDefaultConfiguration,
   midi,
+  onCheckForUpdates,
+  onApplyUpdate,
 }: SettingsViewProps): JSX.Element {
   const confirmDialog = useConfirmDialog();
   const [busy, setBusy] = useState(false);
@@ -714,6 +724,32 @@ export function SettingsView({
         </button>
       </div>
       </fieldset>
+
+      <div className="panel settings-panel app-version-panel">
+        <div className="setting-row">
+          <div>
+            <strong>当前版本</strong>
+            <span>版本 {__APP_VERSION__} · 构建时间 {formatDateTime(__APP_BUILD_TIME__)}</span>
+          </div>
+          <button
+            disabled={appUpdateStatus === "checking"}
+            onClick={onCheckForUpdates}
+            type="button"
+          >
+            {appUpdateStatus === "checking" ? "正在检查…" : appUpdateStatus === "up-to-date" || appUpdateStatus === "available" ? "重新检查" : "检查更新"}
+          </button>
+        </div>
+        {appUpdateMessage ? (
+          <p aria-live="polite" className={`status-line${appUpdateStatus === "error" ? " danger" : ""}`}>
+            {appUpdateMessage}
+          </p>
+        ) : null}
+        {appUpdateStatus === "available" ? (
+          <div className="action-row">
+            <button className="primary" onClick={onApplyUpdate} type="button">立即更新</button>
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }
