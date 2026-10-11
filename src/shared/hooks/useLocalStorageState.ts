@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import {
   announceLocalStoragePreferenceChange,
   LOCAL_STORAGE_PREFERENCES_RESET_EVENT,
@@ -12,7 +19,7 @@ interface LocalStorageStateOptions<T> {
 function readLocalStorageState<T>(
   key: string,
   fallback: T,
-  parse: ((value: unknown, fallback: T) => T) | undefined,
+  parse: ((value: unknown, fallback: T) => T) | undefined
 ): T {
   if (typeof window === "undefined") {
     return fallback;
@@ -33,7 +40,7 @@ function readLocalStorageState<T>(
 function writeLocalStorageState<T>(
   key: string,
   value: T,
-  serialize: ((value: T) => unknown) | undefined,
+  serialize: ((value: T) => unknown) | undefined
 ): void {
   if (typeof window === "undefined") {
     return;
@@ -53,7 +60,7 @@ function writeLocalStorageState<T>(
 export function useLocalStorageState<T>(
   key: string,
   fallback: T,
-  options: LocalStorageStateOptions<T> = {},
+  options: LocalStorageStateOptions<T> = {}
 ): [T, Dispatch<SetStateAction<T>>] {
   const { parse, serialize } = options;
   const [state, setState] = useState(() => readLocalStorageState(key, fallback, parse));
@@ -81,17 +88,21 @@ export function useLocalStorageState<T>(
     writeLocalStorageState(key, state, serialize);
   }, [key, serialize, state]);
 
-  const setStoredState = useCallback<Dispatch<SetStateAction<T>>>((nextValue) => {
-    const previousValue = stateRef.current;
-    const resolvedValue = typeof nextValue === "function"
-      ? (nextValue as (current: T) => T)(previousValue)
-      : nextValue;
-    stateRef.current = resolvedValue;
-    setState(resolvedValue);
-    if (!Object.is(previousValue, resolvedValue)) {
-      announceLocalStoragePreferenceChange(key);
-    }
-  }, [key]);
+  const setStoredState = useCallback<Dispatch<SetStateAction<T>>>(
+    (nextValue) => {
+      const previousValue = stateRef.current;
+      const resolvedValue =
+        typeof nextValue === "function"
+          ? (nextValue as (current: T) => T)(previousValue)
+          : nextValue;
+      stateRef.current = resolvedValue;
+      setState(resolvedValue);
+      if (!Object.is(previousValue, resolvedValue)) {
+        announceLocalStoragePreferenceChange(key);
+      }
+    },
+    [key]
+  );
 
   return [state, setStoredState];
 }

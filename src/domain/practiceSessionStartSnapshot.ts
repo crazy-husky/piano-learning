@@ -105,7 +105,7 @@ export function buildPracticeSessionStartSnapshot({
         fixedDurationSeconds: mode === "fixed-duration" ? settings.fixedDurationSeconds : undefined,
         includeInterStaffLedgerSpellings: applicableLedgerSetting(
           settings.staffNotationMode,
-          settings.includeInterStaffLedgerSpellings,
+          settings.includeInterStaffLedgerSpellings
         ),
         mode,
         queueStrategy: settings.queueStrategy,

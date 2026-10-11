@@ -42,18 +42,27 @@ interface ToggleSettingProps {
 function ToggleSetting({ title, description, enabled, onToggle }: ToggleSettingProps) {
   return (
     <section className="staff-game-settings-section staff-game-settings-row">
-      <div><h3>{title}</h3><p>{description}</p></div>
+      <div>
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </div>
       <ToggleSwitch
         aria-label={title}
-      checked={enabled}
-      className="staff-game-settings-toggle"
-      onCheckedChange={() => onToggle()}
+        checked={enabled}
+        className="staff-game-settings-toggle"
+        onCheckedChange={() => onToggle()}
       />
     </section>
   );
 }
 
-function DisplaySetting({ value, onChange }: { value: GameDisplayMode; onChange: (mode: GameDisplayMode) => void }) {
+function DisplaySetting({
+  value,
+  onChange,
+}: {
+  value: GameDisplayMode;
+  onChange: (mode: GameDisplayMode) => void;
+}) {
   return (
     <section className="staff-game-settings-section staff-game-display-setting">
       <label htmlFor="staff-game-display-mode">虚拟钢琴显示</label>
@@ -62,7 +71,11 @@ function DisplaySetting({ value, onChange }: { value: GameDisplayMode; onChange:
         onChange={(event) => onChange(event.currentTarget.value as GameDisplayMode)}
         value={value}
       >
-        {DISPLAY_MODES.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
+        {DISPLAY_MODES.map((mode) => (
+          <option key={mode.id} value={mode.id}>
+            {mode.label}
+          </option>
+        ))}
       </select>
     </section>
   );

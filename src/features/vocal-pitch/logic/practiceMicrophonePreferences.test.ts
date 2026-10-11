@@ -31,7 +31,9 @@ describe("practice microphone preferences", () => {
       },
       sensitivityLevel: 3,
     });
-    expect(resolvePracticeMicrophoneConfiguration(DEFAULT_PRACTICE_MICROPHONE_PREFERENCES)).toMatchObject({
+    expect(
+      resolvePracticeMicrophoneConfiguration(DEFAULT_PRACTICE_MICROPHONE_PREFERENCES)
+    ).toMatchObject({
       analysisGain: 1,
       confidenceThreshold: 0.75,
       frameIntervalMs: "auto",
@@ -44,21 +46,35 @@ describe("practice microphone preferences", () => {
   });
 
   it("uses sensitive defaults for touch devices and standard defaults for desktop", () => {
-    expect(isTouchPracticeDevice("Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)", "iPad", 5)).toBe(true);
-    expect(isTouchPracticeDevice("Mozilla/5.0 (Macintosh; Intel Mac OS X)", "MacIntel", 5)).toBe(true);
-    expect(isTouchPracticeDevice("Mozilla/5.0 (Macintosh; Intel Mac OS X)", "MacIntel", 0)).toBe(false);
-    expect(createDefaultPracticeMicrophonePreferences(1)).toMatchObject({ debugMode: false, sensitivityLevel: 1 });
-    expect(createDefaultPracticeMicrophonePreferences(3)).toMatchObject({ debugMode: false, sensitivityLevel: 3 });
+    expect(isTouchPracticeDevice("Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)", "iPad", 5)).toBe(
+      true
+    );
+    expect(isTouchPracticeDevice("Mozilla/5.0 (Macintosh; Intel Mac OS X)", "MacIntel", 5)).toBe(
+      true
+    );
+    expect(isTouchPracticeDevice("Mozilla/5.0 (Macintosh; Intel Mac OS X)", "MacIntel", 0)).toBe(
+      false
+    );
+    expect(createDefaultPracticeMicrophonePreferences(1)).toMatchObject({
+      debugMode: false,
+      sensitivityLevel: 1,
+    });
+    expect(createDefaultPracticeMicrophonePreferences(3)).toMatchObject({
+      debugMode: false,
+      sensitivityLevel: 3,
+    });
   });
 
   it("clamps debug parameters before they become the displayed and effective preferences", () => {
-    expect(normalizePracticeMicrophoneDebugParameters({
-      ...DEFAULT_PRACTICE_MICROPHONE_PREFERENCES.debugParameters,
-      confidenceThreshold: 1.2,
-      inputRmsThreshold: -0.5,
-      primaryClarityThreshold: 2,
-      yinThreshold: 0,
-    })).toMatchObject({
+    expect(
+      normalizePracticeMicrophoneDebugParameters({
+        ...DEFAULT_PRACTICE_MICROPHONE_PREFERENCES.debugParameters,
+        confidenceThreshold: 1.2,
+        inputRmsThreshold: -0.5,
+        primaryClarityThreshold: 2,
+        yinThreshold: 0,
+      })
+    ).toMatchObject({
       confidenceThreshold: 1,
       inputRmsThreshold: 0,
       primaryClarityThreshold: 1,
@@ -82,8 +98,13 @@ describe("practice microphone preferences", () => {
         inputRmsThreshold: 0.0009,
       },
     });
-    expect(withPracticeMicrophoneAlgorithm({ ...latestPreferences, debugMode: true }, "swiftf0"))
-      .toMatchObject({ debugMode: true, sensitivityLevel: 1, debugParameters: latestPreferences.debugParameters });
+    expect(
+      withPracticeMicrophoneAlgorithm({ ...latestPreferences, debugMode: true }, "swiftf0")
+    ).toMatchObject({
+      debugMode: true,
+      sensitivityLevel: 1,
+      debugParameters: latestPreferences.debugParameters,
+    });
   });
 
   it("maps each sensitivity level to progressively stricter thresholds and stability", () => {
@@ -91,35 +112,55 @@ describe("practice microphone preferences", () => {
       resolvePracticeMicrophoneConfiguration({
         ...DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
         sensitivityLevel: sensitivityLevel as 1 | 2 | 3 | 4 | 5,
-      }),
+      })
     );
 
-    expect(configs.map(({ confidenceThreshold }) => confidenceThreshold)).toEqual([0.6, 0.675, 0.75, 0.825, 0.9]);
-    expect(configs.map(({ inputRmsThreshold }) => inputRmsThreshold)).toEqual([
-      0.0009,
-      0.00135,
-      0.0018,
-      0.0027,
-      0.0036,
+    expect(configs.map(({ confidenceThreshold }) => confidenceThreshold)).toEqual([
+      0.6, 0.675, 0.75, 0.825, 0.9,
     ]);
-    expect(configs.map(({ requiredStableFrames, requiredStableMs }) => [requiredStableFrames, requiredStableMs]))
-      .toEqual([[2, 50], [2, 80], [4, 80], [4, 80], [4, 80]]);
+    expect(configs.map(({ inputRmsThreshold }) => inputRmsThreshold)).toEqual([
+      0.0009, 0.00135, 0.0018, 0.0027, 0.0036,
+    ]);
+    expect(
+      configs.map(({ requiredStableFrames, requiredStableMs }) => [
+        requiredStableFrames,
+        requiredStableMs,
+      ])
+    ).toEqual([
+      [2, 50],
+      [2, 80],
+      [4, 80],
+      [4, 80],
+      [4, 80],
+    ]);
     expect(configs.map(({ analysisGain }) => analysisGain)).toEqual([15, 8, 1, 1, 1]);
   });
 
   it("resolves model-specific confidence and YIN thresholds for every level", () => {
     const thresholdsFor = (
       algorithm: PracticeMicrophonePreferences["algorithm"],
-      sensitivityLevel: PracticeMicrophonePreferences["sensitivityLevel"],
-    ) => resolvePracticeMicrophoneThresholds(resolvePracticeMicrophoneConfiguration({
-        ...DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
-        algorithm,
-        sensitivityLevel,
-      }));
+      sensitivityLevel: PracticeMicrophonePreferences["sensitivityLevel"]
+    ) =>
+      resolvePracticeMicrophoneThresholds(
+        resolvePracticeMicrophoneConfiguration({
+          ...DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
+          algorithm,
+          sensitivityLevel,
+        })
+      );
 
-    expect(thresholdsFor("swiftf0", 1)).toEqual({ confidenceThreshold: 0.4, inputRmsThreshold: 0.0009 });
-    expect(thresholdsFor("swiftf0", 3)).toEqual({ confidenceThreshold: 0.6, inputRmsThreshold: 0.0018 });
-    expect(thresholdsFor("swiftf0", 5)).toEqual({ confidenceThreshold: 0.8, inputRmsThreshold: 0.0036 });
+    expect(thresholdsFor("swiftf0", 1)).toEqual({
+      confidenceThreshold: 0.4,
+      inputRmsThreshold: 0.0009,
+    });
+    expect(thresholdsFor("swiftf0", 3)).toEqual({
+      confidenceThreshold: 0.6,
+      inputRmsThreshold: 0.0018,
+    });
+    expect(thresholdsFor("swiftf0", 5)).toEqual({
+      confidenceThreshold: 0.8,
+      inputRmsThreshold: 0.0036,
+    });
     expect(thresholdsFor("mpm-c", 1)).toEqual({
       confidenceThreshold: 0.6,
       inputRmsThreshold: 0.0009,
@@ -130,9 +171,21 @@ describe("practice microphone preferences", () => {
       inputRmsThreshold: 0.0036,
       primaryClarityThreshold: 0.95,
     });
-    expect(thresholdsFor("yin", 1)).toEqual({ confidenceThreshold: 0.6, inputRmsThreshold: 0.0009, yinThreshold: 0.25 });
-    expect(thresholdsFor("yin", 3)).toEqual({ confidenceThreshold: 0.75, inputRmsThreshold: 0.0018, yinThreshold: 0.15 });
-    expect(thresholdsFor("yin", 5)).toEqual({ confidenceThreshold: 0.9, inputRmsThreshold: 0.0036, yinThreshold: 0.1 });
+    expect(thresholdsFor("yin", 1)).toEqual({
+      confidenceThreshold: 0.6,
+      inputRmsThreshold: 0.0009,
+      yinThreshold: 0.25,
+    });
+    expect(thresholdsFor("yin", 3)).toEqual({
+      confidenceThreshold: 0.75,
+      inputRmsThreshold: 0.0018,
+      yinThreshold: 0.15,
+    });
+    expect(thresholdsFor("yin", 5)).toEqual({
+      confidenceThreshold: 0.9,
+      inputRmsThreshold: 0.0036,
+      yinThreshold: 0.1,
+    });
   });
 
   it("uses debug parameters only while debug mode is enabled", () => {
@@ -158,7 +211,9 @@ describe("practice microphone preferences", () => {
       inputRmsThreshold: 0.0018,
       requiredStableFrames: 4,
     });
-    expect(resolvePracticeMicrophoneConfiguration({ ...preferences, debugMode: true })).toMatchObject({
+    expect(
+      resolvePracticeMicrophoneConfiguration({ ...preferences, debugMode: true })
+    ).toMatchObject({
       analysisGain: 10,
       confidenceThreshold: 0.33,
       frameIntervalMs: 20,
@@ -171,20 +226,22 @@ describe("practice microphone preferences", () => {
   });
 
   it("normalizes invalid values in the current preference shape", () => {
-    expect(parsePracticeMicrophonePreferences({
-      algorithm: "unknown",
-      debugMode: true,
-      debugParameters: {
-        analysisGain: 20,
-        confidenceThreshold: 1.5,
-        frameIntervalMs: 25,
-        inputRmsThreshold: -1,
-        requiredStableFrames: 5,
-        requiredStableMs: 60,
-        yinThreshold: 2,
-      },
-      sensitivityLevel: 9,
-    })).toMatchObject({
+    expect(
+      parsePracticeMicrophonePreferences({
+        algorithm: "unknown",
+        debugMode: true,
+        debugParameters: {
+          analysisGain: 20,
+          confidenceThreshold: 1.5,
+          frameIntervalMs: 25,
+          inputRmsThreshold: -1,
+          requiredStableFrames: 5,
+          requiredStableMs: 60,
+          yinThreshold: 2,
+        },
+        sensitivityLevel: 9,
+      })
+    ).toMatchObject({
       algorithm: "mpm-c",
       debugMode: true,
       sensitivityLevel: 3,
@@ -202,9 +259,15 @@ describe("practice microphone preferences", () => {
 
   it("resolves analysis intervals and user-facing labels", () => {
     const base = DEFAULT_PRACTICE_MICROPHONE_PREFERENCES;
-    expect(resolvePracticeMicrophoneFrameIntervalMs({ algorithm: "yin", frameIntervalMs: "auto" })).toBe(50);
-    expect(resolvePracticeMicrophoneFrameIntervalMs({ algorithm: "mpm-c", frameIntervalMs: "auto" })).toBe(30);
-    expect(resolvePracticeMicrophoneFrameIntervalMs({ algorithm: "swiftf0", frameIntervalMs: 20 })).toBe(20);
+    expect(
+      resolvePracticeMicrophoneFrameIntervalMs({ algorithm: "yin", frameIntervalMs: "auto" })
+    ).toBe(50);
+    expect(
+      resolvePracticeMicrophoneFrameIntervalMs({ algorithm: "mpm-c", frameIntervalMs: "auto" })
+    ).toBe(30);
+    expect(
+      resolvePracticeMicrophoneFrameIntervalMs({ algorithm: "swiftf0", frameIntervalMs: 20 })
+    ).toBe(20);
     expect(practiceMicrophoneSensitivityLevelLabel(1)).toBe("1级（敏感）");
     expect(practiceMicrophoneSensitivityLevelLabel(5)).toBe("5级（不敏感）");
     expect(practiceMicrophoneAlgorithmLabel("mpm-c")).toBe("Pitchy（手机/平板不推荐）");

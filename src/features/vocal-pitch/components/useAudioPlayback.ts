@@ -115,11 +115,14 @@ export function useAudioPlayback(material: VocalAudioMaterial | null, volume: nu
 
   const pause = useCallback(() => audioRef.current?.pause(), []);
 
-  const seek = useCallback((timeSeconds: number) => {
-    const clamped = Math.max(0, Math.min(material?.durationSeconds ?? 0, timeSeconds));
-    if (audioRef.current) audioRef.current.currentTime = clamped;
-    setCurrentTime(clamped);
-  }, [material?.durationSeconds]);
+  const seek = useCallback(
+    (timeSeconds: number) => {
+      const clamped = Math.max(0, Math.min(material?.durationSeconds ?? 0, timeSeconds));
+      if (audioRef.current) audioRef.current.currentTime = clamped;
+      setCurrentTime(clamped);
+    },
+    [material?.durationSeconds]
+  );
 
   const toggle = useCallback(async () => {
     const audio = audioRef.current;

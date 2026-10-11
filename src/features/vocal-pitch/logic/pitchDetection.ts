@@ -32,7 +32,7 @@ function semitonesApart(left: number, right: number): number {
 function isVoicedCandidate(
   candidate: ClassifiedPitchFrame["candidate"],
   rms: number,
-  config: VocalPitchAnalysisConfig,
+  config: VocalPitchAnalysisConfig
 ): boolean {
   return (
     rms >= MIN_VOICED_RMS &&
@@ -49,7 +49,7 @@ interface CandidatePathOption {
 
 function getCandidatePathOptions(
   classification: ClassifiedPitchFrame,
-  config: VocalPitchAnalysisConfig,
+  config: VocalPitchAnalysisConfig
 ): CandidatePathOption[] {
   const options: CandidatePathOption[] = [];
   if (isVoicedCandidate(classification.candidate, classification.rms, config)) {
@@ -71,18 +71,24 @@ function getCandidatePathOptions(
 }
 
 function transitionCost(previous: PitchFrameCandidate, next: PitchFrameCandidate): number {
-  return TRANSITION_COST_PER_SEMITONE * Math.max(0, semitonesApart(previous.frequencyHz, next.frequencyHz) - FREE_TRANSITION_SEMITONES);
+  return (
+    TRANSITION_COST_PER_SEMITONE *
+    Math.max(0, semitonesApart(previous.frequencyHz, next.frequencyHz) - FREE_TRANSITION_SEMITONES)
+  );
 }
 
 function selectContinuousCandidates(
   classifications: ClassifiedPitchFrame[],
-  config: VocalPitchAnalysisConfig,
+  config: VocalPitchAnalysisConfig
 ): VocalPitchFrame[] {
   const result = classifications.map((classification) => classification.frame);
   let index = 0;
   while (index < classifications.length) {
     const segmentOptions: CandidatePathOption[][] = [];
-    while (index < classifications.length && getCandidatePathOptions(classifications[index], config).length === 0) {
+    while (
+      index < classifications.length &&
+      getCandidatePathOptions(classifications[index], config).length === 0
+    ) {
       index += 1;
     }
     const segmentStart = index;
@@ -106,11 +112,12 @@ function selectContinuousCandidates(
       const nextBackPointers: number[] = [];
       for (const option of segmentOptions[segmentIndex]) {
         const candidateCosts = previousOptions.map(
-          (previous, previousIndex) => costs[previousIndex] + transitionCost(previous.candidate, option.candidate),
+          (previous, previousIndex) =>
+            costs[previousIndex] + transitionCost(previous.candidate, option.candidate)
         );
         const bestPreviousIndex = candidateCosts.reduce(
           (best, cost, candidateIndex) => (cost < candidateCosts[best] ? candidateIndex : best),
-          0,
+          0
         );
         nextCosts.push(candidateCosts[bestPreviousIndex] + option.observationCost);
         nextBackPointers.push(bestPreviousIndex);
@@ -122,10 +129,11 @@ function selectContinuousCandidates(
     const selectedStates = new Array<number>(segmentOptions.length);
     selectedStates[selectedStates.length - 1] = costs.reduce(
       (best, cost, candidateIndex) => (cost < costs[best] ? candidateIndex : best),
-      0,
+      0
     );
     for (let segmentIndex = selectedStates.length - 1; segmentIndex > 0; segmentIndex -= 1) {
-      selectedStates[segmentIndex - 1] = backPointers[segmentIndex - 1][selectedStates[segmentIndex]];
+      selectedStates[segmentIndex - 1] =
+        backPointers[segmentIndex - 1][selectedStates[segmentIndex]];
     }
     for (let segmentIndex = 0; segmentIndex < segmentOptions.length; segmentIndex += 1) {
       const candidate = segmentOptions[segmentIndex][selectedStates[segmentIndex]].candidate;
@@ -186,25 +194,25 @@ function suppressShortOctaveExcursions(frames: VocalPitchFrame[]): VocalPitchFra
   return result;
 }
 
-function nearestOctave(
-  frequencyHz: number,
-  expectedFrequencyHz: number,
-): number | null {
+function nearestOctave(frequencyHz: number, expectedFrequencyHz: number): number | null {
   const options = [frequencyHz / 2, frequencyHz, frequencyHz * 2].filter(
-    (candidate) => candidate >= VOCAL_PITCH_MIN_FREQUENCY_HZ && candidate <= VOCAL_PITCH_MAX_FREQUENCY_HZ,
+    (candidate) =>
+      candidate >= VOCAL_PITCH_MIN_FREQUENCY_HZ && candidate <= VOCAL_PITCH_MAX_FREQUENCY_HZ
   );
   if (options.length === 0) {
     return null;
   }
   return options.reduce((best, candidate) =>
-    semitonesApart(candidate, expectedFrequencyHz) < semitonesApart(best, expectedFrequencyHz) ? candidate : best,
+    semitonesApart(candidate, expectedFrequencyHz) < semitonesApart(best, expectedFrequencyHz)
+      ? candidate
+      : best
   );
 }
 
 function bridgeReliableShortGaps(
   classifications: ClassifiedPitchFrame[],
   frames: VocalPitchFrame[],
-  config: VocalPitchAnalysisConfig,
+  config: VocalPitchAnalysisConfig
 ): VocalPitchFrame[] {
   const result = [...frames];
   const relaxedThreshold = Math.max(0.55, config.voicingThreshold - 0.12);
@@ -232,7 +240,8 @@ function bridgeReliableShortGaps(
     const replacements: number[] = [];
     for (let gapIndex = start; gapIndex < end; gapIndex += 1) {
       const progress = (gapIndex - start + 1) / (gapSize + 1);
-      const expectedFrequencyHz = 2 ** ((1 - progress) * Math.log2(left) + progress * Math.log2(right));
+      const expectedFrequencyHz =
+        2 ** ((1 - progress) * Math.log2(left) + progress * Math.log2(right));
       const classification = classifications[gapIndex];
       if (classification.rms < MIN_VOICED_RMS) {
         replacements.length = 0;
@@ -241,16 +250,20 @@ function bridgeReliableShortGaps(
       const replacement = [classification.candidate, classification.alternativeCandidate]
         .filter(
           (candidate): candidate is PitchFrameCandidate =>
-            candidate !== undefined && candidate.clarity >= relaxedThreshold && candidate.frequencyHz > 0,
+            candidate !== undefined &&
+            candidate.clarity >= relaxedThreshold &&
+            candidate.frequencyHz > 0
         )
         .map((candidate) => nearestOctave(candidate.frequencyHz, expectedFrequencyHz))
         .filter((candidate): candidate is number => candidate !== null)
         .reduce<number | null>(
           (best, candidate) =>
-            best === null || semitonesApart(candidate, expectedFrequencyHz) < semitonesApart(best, expectedFrequencyHz)
+            best === null ||
+            semitonesApart(candidate, expectedFrequencyHz) <
+              semitonesApart(best, expectedFrequencyHz)
               ? candidate
               : best,
-          null,
+          null
         );
       if (replacement === null || semitonesApart(replacement, expectedFrequencyHz) > 1.5) {
         replacements.length = 0;
@@ -269,12 +282,12 @@ function bridgeReliableShortGaps(
 
 export function postProcessPitchFrames(
   classifications: ClassifiedPitchFrame[],
-  config: VocalPitchAnalysisConfig,
+  config: VocalPitchAnalysisConfig
 ): VocalPitchFrame[] {
   return bridgeReliableShortGaps(
     classifications,
     suppressShortOctaveExcursions(selectContinuousCandidates(classifications, config)),
-    config,
+    config
   );
 }
 
@@ -282,7 +295,7 @@ export function analyzePitchSamples(
   samples: Float32Array,
   sampleRate: number,
   config: VocalPitchAnalysisConfig,
-  onProgress: (progress: number) => void = () => undefined,
+  onProgress: (progress: number) => void = () => undefined
 ): VocalPitchAnalysis {
   const normalizedConfig = normalizeVocalPitchConfig(config);
   const frameSize = getPitchFrameSize(sampleRate);
@@ -296,7 +309,15 @@ export function analyzePitchSamples(
     const offset = frameIndex * hopSize;
     frame.fill(0);
     frame.set(samples.subarray(offset, Math.min(samples.length, offset + frameSize)));
-    classifications.push(classifyPitchFrame(detector, frame, sampleRate, normalizedConfig, (offset + frameSize / 2) / sampleRate));
+    classifications.push(
+      classifyPitchFrame(
+        detector,
+        frame,
+        sampleRate,
+        normalizedConfig,
+        (offset + frameSize / 2) / sampleRate
+      )
+    );
     if (frameIndex % 500 === 0) {
       onProgress(frameIndex / frameCount);
     }

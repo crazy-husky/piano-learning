@@ -51,7 +51,11 @@ function countEntries(entries: readonly VocalAudioBackupEntry[]): VocalAudioCoun
   };
 }
 
-async function writeFile(directory: FileSystemDirectoryHandle, filename: string, data: Blob | string): Promise<void> {
+async function writeFile(
+  directory: FileSystemDirectoryHandle,
+  filename: string,
+  data: Blob | string
+): Promise<void> {
   const handle = await directory.getFileHandle(filename, { create: true });
   const writable = await handle.createWritable();
   try {
@@ -63,7 +67,9 @@ async function writeFile(directory: FileSystemDirectoryHandle, filename: string,
   }
 }
 
-async function readIndex(directory: FileSystemDirectoryHandle): Promise<VocalAudioBackupIndex | null> {
+async function readIndex(
+  directory: FileSystemDirectoryHandle
+): Promise<VocalAudioBackupIndex | null> {
   try {
     const file = await (await directory.getFileHandle("index.json")).getFile();
     const parsed = JSON.parse(await file.text()) as VocalAudioBackupIndex;
@@ -79,7 +85,7 @@ async function readIndex(directory: FileSystemDirectoryHandle): Promise<VocalAud
 async function readOptionalAnalysis(
   directory: FileSystemDirectoryHandle,
   filename: string | undefined,
-  expectedDigest: string | undefined,
+  expectedDigest: string | undefined
 ): Promise<VocalPitchAnalysis | undefined> {
   if (!filename) return undefined;
   const file = await (await directory.getFileHandle(filename)).getFile();
@@ -115,7 +121,9 @@ async function toEntry(material: VocalAudioMaterial): Promise<VocalAudioBackupEn
     config: material.config,
     originalFileName: material.originalFileName,
     audioFileName: `${material.id}.${vocalAudioFileExtension(material)}`,
-    analysisDigest: material.analysis ? await digestText(JSON.stringify(material.analysis)) : undefined,
+    analysisDigest: material.analysis
+      ? await digestText(JSON.stringify(material.analysis))
+      : undefined,
     analysisFileName: material.analysis ? `${material.id}.analysis.json` : undefined,
   };
 }
@@ -145,12 +153,14 @@ function canonicalEntry(entry: VocalAudioBackupEntry): VocalAudioBackupEntry {
 }
 
 async function digestEntries(entries: readonly VocalAudioBackupEntry[]): Promise<string> {
-  return digestText(JSON.stringify([...entries].sort((a, b) => a.id.localeCompare(b.id)).map(canonicalEntry)));
+  return digestText(
+    JSON.stringify([...entries].sort((a, b) => a.id.localeCompare(b.id)).map(canonicalEntry))
+  );
 }
 
 function metadataMatches(
   remembered: Record<string, BackupDayFileMetadata> | undefined,
-  current: Record<string, BackupDayFileMetadata>,
+  current: Record<string, BackupDayFileMetadata>
 ): boolean {
   if (!remembered) return true;
   const filenames = Object.keys(current);
@@ -171,7 +181,7 @@ export async function getVocalAudioLibraryDigest(): Promise<string> {
 export async function inspectVocalAudioBackup(
   directoryHandle: FileSystemDirectoryHandle,
   rememberedMetadata?: Record<string, BackupDayFileMetadata>,
-  verifyContents = false,
+  verifyContents = false
 ): Promise<VocalAudioBackupFacts> {
   let audioDirectory: FileSystemDirectoryHandle;
   try {
@@ -203,7 +213,9 @@ export async function inspectVocalAudioBackup(
 
   const filenames = [
     "index.json",
-    ...index.materials.flatMap((entry) => [entry.audioFileName, entry.analysisFileName].filter(Boolean) as string[]),
+    ...index.materials.flatMap(
+      (entry) => [entry.audioFileName, entry.analysisFileName].filter(Boolean) as string[]
+    ),
   ];
   const fileMetadata: Record<string, BackupDayFileMetadata> = {};
   let filesValid = true;
@@ -229,7 +241,9 @@ export async function inspectVocalAudioBackup(
       }
       if (entry.analysisFileName) {
         try {
-          const analysisText = await (await (await audioDirectory.getFileHandle(entry.analysisFileName)).getFile()).text();
+          const analysisText = await (
+            await (await audioDirectory.getFileHandle(entry.analysisFileName)).getFile()
+          ).text();
           JSON.parse(analysisText);
           if (entry.analysisDigest && (await digestText(analysisText)) !== entry.analysisDigest) {
             filesValid = false;
@@ -254,7 +268,7 @@ export async function inspectVocalAudioBackup(
 }
 
 export async function getVocalAudioBackupStatus(
-  directoryHandle: FileSystemDirectoryHandle | undefined,
+  directoryHandle: FileSystemDirectoryHandle | undefined
 ): Promise<VocalAudioBackupStatus> {
   if (!directoryHandle) {
     return "browser-only";
@@ -263,8 +277,14 @@ export async function getVocalAudioBackupStatus(
     if ((await directoryHandle.queryPermission?.({ mode: "readwrite" })) !== "granted") {
       return "browser-only";
     }
-    const [browserDigest, state] = await Promise.all([getVocalAudioLibraryDigest(), getBackupState()]);
-    const backup = await inspectVocalAudioBackup(directoryHandle, state.lastSeenVocalAudioFileMetadata);
+    const [browserDigest, state] = await Promise.all([
+      getVocalAudioLibraryDigest(),
+      getBackupState(),
+    ]);
+    const backup = await inspectVocalAudioBackup(
+      directoryHandle,
+      state.lastSeenVocalAudioFileMetadata
+    );
     return backup.filesValid && browserDigest === backup.digest ? "backed-up" : "out-of-sync";
   } catch (error) {
     if (error instanceof DOMException && error.name === "NotFoundError") {
@@ -276,7 +296,7 @@ export async function getVocalAudioBackupStatus(
 
 export async function syncVocalAudioLibrary(
   directoryHandle: FileSystemDirectoryHandle | undefined,
-  { forceRewrite = false }: { forceRewrite?: boolean } = {},
+  { forceRewrite = false }: { forceRewrite?: boolean } = {}
 ): Promise<VocalAudioBackupStatus> {
   if (!directoryHandle) {
     return "browser-only";
@@ -308,11 +328,19 @@ export async function syncVocalAudioLibrary(
           previous?.analysisDigest !== entry.analysisDigest ||
           previous?.analysisFileName !== entry.analysisFileName)
       ) {
-        await writeFile(audioDirectory, entry.analysisFileName!, JSON.stringify(material.analysis satisfies VocalPitchAnalysis));
+        await writeFile(
+          audioDirectory,
+          entry.analysisFileName!,
+          JSON.stringify(material.analysis satisfies VocalPitchAnalysis)
+        );
       }
     }
 
-    const nextFiles = new Set(nextEntries.flatMap((entry) => [entry.audioFileName, entry.analysisFileName].filter(Boolean) as string[]));
+    const nextFiles = new Set(
+      nextEntries.flatMap(
+        (entry) => [entry.audioFileName, entry.analysisFileName].filter(Boolean) as string[]
+      )
+    );
     for (const previous of previousIndex?.materials ?? []) {
       for (const filename of [previous.audioFileName, previous.analysisFileName]) {
         if (filename && !nextFiles.has(filename)) {
@@ -325,7 +353,10 @@ export async function syncVocalAudioLibrary(
       }
     }
 
-    if (!previousIndex || (await digestEntries(previousIndex.materials)) !== (await digestEntries(nextEntries))) {
+    if (
+      !previousIndex ||
+      (await digestEntries(previousIndex.materials)) !== (await digestEntries(nextEntries))
+    ) {
       const nextIndex: VocalAudioBackupIndex = {
         schemaVersion: 1,
         updatedAt: new Date().toISOString(),
@@ -340,7 +371,7 @@ export async function syncVocalAudioLibrary(
 }
 
 export async function readVocalAudioLibrary(
-  directoryHandle: FileSystemDirectoryHandle,
+  directoryHandle: FileSystemDirectoryHandle
 ): Promise<VocalAudioMaterial[] | undefined> {
   let audioDirectory: FileSystemDirectoryHandle;
   try {
@@ -370,14 +401,20 @@ export async function readVocalAudioLibrary(
       contentDigest: entry.contentDigest,
       originalFileName: entry.originalFileName,
       config: normalizeVocalPitchConfig(entry.config),
-      analysis: await readOptionalAnalysis(audioDirectory, entry.analysisFileName, entry.analysisDigest),
+      analysis: await readOptionalAnalysis(
+        audioDirectory,
+        entry.analysisFileName,
+        entry.analysisDigest
+      ),
       audioBlob,
     });
   }
   return materials;
 }
 
-export async function restoreVocalAudioLibrary(directoryHandle: FileSystemDirectoryHandle): Promise<boolean> {
+export async function restoreVocalAudioLibrary(
+  directoryHandle: FileSystemDirectoryHandle
+): Promise<boolean> {
   const materials = await readVocalAudioLibrary(directoryHandle);
   if (!materials) return false;
   await replaceVocalAudioMaterials(materials);

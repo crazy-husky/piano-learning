@@ -16,7 +16,7 @@ import type { PracticeSessionRecordV1 } from "./types";
 const REVIEW_NOTE_IDS = ["C4", "D4", "E4", "F4", "G4"] as const;
 
 function makeSession(
-  overrides: Partial<PracticeSessionRecordV1> & { id: string; startedAt: string },
+  overrides: Partial<PracticeSessionRecordV1> & { id: string; startedAt: string }
 ): PracticeSessionRecordV1 {
   const { id, startedAt, ...rest } = overrides;
   return {
@@ -38,7 +38,7 @@ function makeSession(
 function makeSessionReviews(
   sessionId: string,
   activeMsList: number[],
-  answeredSeconds = activeMsList.map((_, index) => index + 1),
+  answeredSeconds = activeMsList.map((_, index) => index + 1)
 ) {
   return activeMsList.map((activeMs, index) => {
     const answeredAt = `2026-07-04T12:00:${String(answeredSeconds[index]).padStart(2, "0")}.000+08:00`;
@@ -78,7 +78,7 @@ describe("session progress", () => {
         ...makeSessionReviews(older.id, [1000, 1000, 1000, 1000, 1000]),
         ...makeSessionReviews(latest.id, [900, 900, 900, 900, 900]),
         ...makeSessionReviews(short.id, [800, 800, 800, 800]),
-      ],
+      ]
     );
 
     expect(groups).toHaveLength(1);
@@ -108,26 +108,34 @@ describe("session progress", () => {
           enabledGroupIds: ["G4-F5", "G3-F4"],
           drillNoteNames: ["D", "C"],
           promptDisplayMode: undefined,
-        }),
-      ),
+        })
+      )
     ).toBe(false);
     expect(
       isComparablePracticeSession(
         { ...reference, includeLedgerVariants: false },
-        makeSession({ ...reference, id: "unknown-ledger-snapshot", includeLedgerVariants: undefined }),
-      ),
+        makeSession({
+          ...reference,
+          id: "unknown-ledger-snapshot",
+          includeLedgerVariants: undefined,
+        })
+      )
     ).toBe(false);
     expect(
       isComparablePracticeSession(
         { ...reference, includeLedgerVariants: false },
-        makeSession({ ...reference, id: "observed-ledger-variant", includeLedgerVariants: undefined }),
-      ),
+        makeSession({
+          ...reference,
+          id: "observed-ledger-variant",
+          includeLedgerVariants: undefined,
+        })
+      )
     ).toBe(false);
     expect(
       isComparablePracticeSession(
         reference,
-        makeSession({ ...reference, id: "different-ledger", includeLedgerVariants: false }),
-      ),
+        makeSession({ ...reference, id: "different-ledger", includeLedgerVariants: false })
+      )
     ).toBe(false);
     expect(
       isComparablePracticeSession(
@@ -137,20 +145,20 @@ describe("session progress", () => {
           queueStrategy: "note-drill",
           drillNoteNames: ["C", "D", "E", "F", "G", "A", "B"],
         }),
-        makeSession({ ...reference, id: "adaptive", queueStrategy: "adaptive", drillNoteNames: [] }),
-      ),
+        makeSession({ ...reference, id: "adaptive", queueStrategy: "adaptive", drillNoteNames: [] })
+      )
     ).toBe(true);
     expect(
       isComparablePracticeSession(
         reference,
-        makeSession({ ...reference, id: "different-display", promptDisplayMode: "single-note" }),
-      ),
+        makeSession({ ...reference, id: "different-display", promptDisplayMode: "single-note" })
+      )
     ).toBe(false);
     expect(
       isComparablePracticeSession(
         reference,
-        makeSession({ ...reference, id: "different-duration", fixedDurationSeconds: 120 }),
-      ),
+        makeSession({ ...reference, id: "different-duration", fixedDurationSeconds: 120 })
+      )
     ).toBe(true);
     expect(
       isComparablePracticeSession(
@@ -161,14 +169,19 @@ describe("session progress", () => {
           mode: "fixed-count",
           fixedCount: 40,
           fixedDurationSeconds: undefined,
-        }),
-      ),
+        })
+      )
     ).toBe(true);
     expect(
       isComparablePracticeSession(
         reference,
-        makeSession({ ...reference, id: "open-ended", mode: "open-ended", fixedDurationSeconds: undefined }),
-      ),
+        makeSession({
+          ...reference,
+          id: "open-ended",
+          mode: "open-ended",
+          fixedDurationSeconds: undefined,
+        })
+      )
     ).toBe(false);
   });
 
@@ -183,13 +196,14 @@ describe("session progress", () => {
     const enoughReviews = makeSessionReviews("current", [1000, 1100, 1200, 1300, 1400]);
     const tooManyHeavyErrorReviews = enoughReviews.map((review, index) => ({
       ...review,
-      wrongAnswers: index < 3
-        ? [
-            { atActiveMs: 100, noteName: "D" as const },
-            { atActiveMs: 200, noteName: "E" as const },
-            { atActiveMs: 300, noteName: "F" as const },
-          ]
-        : [],
+      wrongAnswers:
+        index < 3
+          ? [
+              { atActiveMs: 100, noteName: "D" as const },
+              { atActiveMs: 200, noteName: "E" as const },
+              { atActiveMs: 300, noteName: "F" as const },
+            ]
+          : [],
     }));
     const tooManyErrorReviews = enoughReviews.map((review, index) => ({
       ...review,
@@ -209,7 +223,7 @@ describe("session progress", () => {
         reviews: [],
         historyLimit: 10,
         mode: "actual-order",
-      }),
+      })
     ).toEqual([]);
     expect(
       buildSessionProgressBenchmark({
@@ -217,7 +231,7 @@ describe("session progress", () => {
         currentReviews: tooManyHeavyErrorReviews,
         sessions: [],
         reviews: [],
-      }),
+      })
     ).toBeUndefined();
   });
 
@@ -374,7 +388,7 @@ describe("session progress", () => {
         currentReviews: makeSessionReviews("current-duration", [1000, 1000, 1000, 1000, 1000]),
         sessions: [oldDuration],
         reviews: makeSessionReviews("old-duration", [1000, 1000, 1000, 1000, 1000, 1000, 1000]),
-      }),
+      })
     ).toEqual({
       bestSessionId: "old-duration",
       metric: "completed-count",
@@ -403,7 +417,7 @@ describe("session progress", () => {
         currentReviews: makeSessionReviews("current-count", [1000, 1000, 1000, 1000, 1000]),
         sessions: [oldCount],
         reviews: makeSessionReviews("old-count", [1100, 1100, 1100, 1100, 1100]),
-      }),
+      })
     ).toEqual({
       bestSessionId: "current-count",
       metric: "elapsed-ms",
@@ -434,7 +448,7 @@ describe("session progress", () => {
         currentReviews: makeSessionReviews(current.id, [1000, 1000, 1000, 1000, 1000]),
         sessions: [oldDuration],
         reviews: makeSessionReviews(oldDuration.id, [500, 500, 500, 500, 500]),
-      }),
+      })
     ).toEqual({
       bestSessionId: "old-duration",
       metric: "elapsed-ms",
@@ -465,8 +479,11 @@ describe("session progress", () => {
         currentSession: current,
         currentReviews: makeSessionReviews(current.id, [1000, 1000, 1000, 1000, 1000, 1000]),
         sessions: [oldCount],
-        reviews: makeSessionReviews(oldCount.id, [500, 500, 500, 500, 500, 500, 500, 500, 500, 500]),
-      }),
+        reviews: makeSessionReviews(
+          oldCount.id,
+          [500, 500, 500, 500, 500, 500, 500, 500, 500, 500]
+        ),
+      })
     ).toEqual({
       bestSessionId: "current-duration",
       metric: "completed-count",
@@ -499,7 +516,7 @@ describe("session progress", () => {
         currentReviews: makeSessionReviews(current.id, [1000, 1000, 1000, 1000, 1000]),
         sessions: [stoppedEarly],
         reviews: makeSessionReviews(stoppedEarly.id, [800, 800, 800, 800, 800, 800]),
-      }),
+      })
     ).toEqual({
       bestSessionId: "current-duration",
       metric: "completed-count",
@@ -531,7 +548,7 @@ describe("session progress", () => {
         currentReviews: makeSessionReviews("current", [1000, 1000, 1000, 1000, 1000]),
         sessions: [short],
         reviews: makeSessionReviews("short", [1000, 1000, 1000, 1000]),
-      }),
+      })
     ).toEqual({
       bestSessionId: "current",
       metric: "completed-count",
@@ -613,9 +630,21 @@ describe("session progress", () => {
       mode: "fixed-count",
       startedAt: "2026-07-04T12:00:00.000+08:00",
     });
-    const recent = makeSession({ ...current, id: "recent", startedAt: "2026-07-04T11:00:00.000+08:00" });
-    const best = makeSession({ ...current, id: "best", startedAt: "2026-07-04T10:00:00.000+08:00" });
-    const olderBest = makeSession({ ...current, id: "older-best", startedAt: "2026-07-04T09:00:00.000+08:00" });
+    const recent = makeSession({
+      ...current,
+      id: "recent",
+      startedAt: "2026-07-04T11:00:00.000+08:00",
+    });
+    const best = makeSession({
+      ...current,
+      id: "best",
+      startedAt: "2026-07-04T10:00:00.000+08:00",
+    });
+    const olderBest = makeSession({
+      ...current,
+      id: "older-best",
+      startedAt: "2026-07-04T09:00:00.000+08:00",
+    });
     const reviews = [
       ...makeSessionReviews(current.id, [1000, 1000, 1000, 1000, 1000]),
       ...makeSessionReviews(recent.id, [1200, 1200, 1200, 1200, 1200]),
@@ -632,7 +661,9 @@ describe("session progress", () => {
       mode: "actual-order",
     });
     expect(summarySeries.map((line) => line.sessionId)).toEqual([best.id, recent.id, current.id]);
-    expect(summarySeries.filter((line) => line.isBest).map((line) => line.sessionId)).toEqual([best.id]);
+    expect(summarySeries.filter((line) => line.isBest).map((line) => line.sessionId)).toEqual([
+      best.id,
+    ]);
 
     const groupSeries = buildSessionProgressGroupSeries({
       bestSessionId: best.id,
@@ -644,7 +675,9 @@ describe("session progress", () => {
       sessions: [current, recent, olderBest, best],
     });
     expect(groupSeries.map((line) => line.sessionId)).toEqual([best.id, current.id]);
-    expect(groupSeries.filter((line) => line.isBest).map((line) => line.sessionId)).toEqual([best.id]);
+    expect(groupSeries.filter((line) => line.isBest).map((line) => line.sessionId)).toEqual([
+      best.id,
+    ]);
   });
 
   it("uses the latest eligible session as the progress baseline", () => {
@@ -709,7 +742,7 @@ describe("session progress", () => {
           ...makeSessionReviews("latest-short", [700, 800, 900, 1000]),
           ...makeSessionReviews("latest", [900, 1000, 1100, 1200, 1300]),
         ],
-      }),
+      })
     ).toEqual({
       bestSessionId: "latest",
       metric: "completed-count",

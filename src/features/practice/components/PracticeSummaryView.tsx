@@ -2,9 +2,17 @@ import { BarChart3, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { formatTargetNoteLabel, getNoteById } from "../../../domain/notes";
 import { isCompletedReview } from "../../../domain/reviews";
 import { formatMs, type NoteStat } from "../../../domain/stats";
-import type { SessionProgressBenchmark, SessionProgressMode, SessionProgressSeries } from "../../../domain/sessionProgress";
+import type {
+  SessionProgressBenchmark,
+  SessionProgressMode,
+  SessionProgressSeries,
+} from "../../../domain/sessionProgress";
 import type { PracticeSessionSummary } from "../hooks/usePracticeSessionState";
-import { SessionProgressChart, SessionProgressControls, SessionProgressLegend } from "../../../shared/components/SessionProgressChart";
+import {
+  SessionProgressChart,
+  SessionProgressControls,
+  SessionProgressLegend,
+} from "../../../shared/components/SessionProgressChart";
 
 interface PracticeSummaryViewProps {
   allHistory: boolean;
@@ -57,7 +65,8 @@ export function PracticeSummaryView({
           <p>{summary.session.endReason === "manual-stop" ? "手动结束" : "已完成"}</p>
           {summaryHasTooManyErrors ? (
             <p className="summary-quality-warning">
-              错音有点多{">_<"} 这次先不算~ <br />或许从更少的音区开始练习，或者先去学习页学习/默写一下吧~
+              错音有点多{">_<"} 这次先不算~ <br />
+              或许从更少的音区开始练习，或者先去学习页学习/默写一下吧~
             </p>
           ) : null}
         </div>
@@ -68,7 +77,9 @@ export function PracticeSummaryView({
           </div>
           <div className="metric">
             <span>错误</span>
-            <strong>{summary.reviews.reduce((sum, review) => sum + review.wrongAnswers.length, 0)}</strong>
+            <strong>
+              {summary.reviews.reduce((sum, review) => sum + review.wrongAnswers.length, 0)}
+            </strong>
           </div>
           <div className="metric">
             <span>中位时长</span>
@@ -120,8 +131,21 @@ export function PracticeSummaryView({
           </section>
         ) : null}
         <div className="action-row">
-          <button aria-keyshortcuts="Enter" className="primary" disabled={isBusy} onClick={onStartAgain}>
-            {isBusy ? "检查中" : <><RotateCcw size={18} />再来一次<kbd>Enter</kbd>{isMidiConnected ? <kbd>C4</kbd> : null}</>}
+          <button
+            aria-keyshortcuts="Enter"
+            className="primary"
+            disabled={isBusy}
+            onClick={onStartAgain}
+          >
+            {isBusy ? (
+              "检查中"
+            ) : (
+              <>
+                <RotateCcw size={18} />
+                再来一次<kbd>Enter</kbd>
+                {isMidiConnected ? <kbd>C4</kbd> : null}
+              </>
+            )}
           </button>
           <button onClick={onReturnToSetup}>
             <SlidersHorizontal size={18} />

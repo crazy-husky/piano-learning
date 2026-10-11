@@ -21,7 +21,9 @@ interface StaffGameRouteProps {
     id: number;
     targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal";
   } | null;
-  onNavigationExit?: (targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal") => void;
+  onNavigationExit?: (
+    targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal"
+  ) => void;
 }
 
 export function StaffGameRoute({
@@ -42,17 +44,23 @@ export function StaffGameRoute({
   const answerHandlerRef = useRef<((answer: PracticeAnswerInput) => void) | null>(null);
   const handledNavigationExitRequestIdRef = useRef<number | null>(null);
   const [sessionActive, setSessionActive] = useState(false);
-  const registerAnswerHandler = useCallback((handler: ((answer: PracticeAnswerInput) => void) | null): void => {
-    answerHandlerRef.current = handler;
-  }, []);
+  const registerAnswerHandler = useCallback(
+    (handler: ((answer: PracticeAnswerInput) => void) | null): void => {
+      answerHandlerRef.current = handler;
+    },
+    []
+  );
   const handleMicrophoneAnswer = useCallback((answer: PracticeAnswerInput): void => {
     answerHandlerRef.current?.(answer);
   }, []);
   const microphone = usePracticeMicrophoneInput(handleMicrophoneAnswer, microphonePreferences);
-  const handleSessionActiveChange = useCallback((active: boolean): void => {
-    setSessionActive(active);
-    onRunningChange(active);
-  }, [onRunningChange]);
+  const handleSessionActiveChange = useCallback(
+    (active: boolean): void => {
+      setSessionActive(active);
+      onRunningChange(active);
+    },
+    [onRunningChange]
+  );
 
   useEffect(() => () => onRunningChange(false), [onRunningChange]);
 

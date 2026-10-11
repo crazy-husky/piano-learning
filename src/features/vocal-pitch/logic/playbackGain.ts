@@ -3,7 +3,10 @@ export const PLAYBACK_TARGET_PEAK_DB = -3;
 // 放大上限，避免把近乎无声的录音连同本底噪声一起推满
 export const PLAYBACK_MAX_BOOST = 4;
 
-export function playbackGainIsPreparing(audioBlob: Blob | null, gainPreparedForBlob: Blob | null): boolean {
+export function playbackGainIsPreparing(
+  audioBlob: Blob | null,
+  gainPreparedForBlob: Blob | null
+): boolean {
   return audioBlob !== null && gainPreparedForBlob !== audioBlob;
 }
 

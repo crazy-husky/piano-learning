@@ -14,7 +14,11 @@ function orderGroupIds(groupIds: PracticeGroupId[]): PracticeGroupId[] {
   return PRACTICE_GROUPS.map((group) => group.id).filter((groupId) => selected.has(groupId));
 }
 
-export function GlobalRangeControls({ disabled = false, settings, onSettingsSaved }: GlobalRangeControlsProps): JSX.Element {
+export function GlobalRangeControls({
+  disabled = false,
+  settings,
+  onSettingsSaved,
+}: GlobalRangeControlsProps): JSX.Element {
   const pointerToggleRef = useRef(false);
 
   function markPointerToggle(): void {
@@ -56,13 +60,22 @@ export function GlobalRangeControls({ disabled = false, settings, onSettingsSave
   }
 
   return (
-    <div className={disabled ? "global-range-controls global-range-controls-locked" : "global-range-controls"} aria-label="全局范围">
+    <div
+      className={
+        disabled ? "global-range-controls global-range-controls-locked" : "global-range-controls"
+      }
+      aria-label="全局范围"
+    >
       <div className="global-range-groups">
         {PRACTICE_GROUPS.map((group) => {
           const checked = settings.enabledGroupIds.includes(group.id);
           return (
             <label
-              className={checked ? "choice choice-active global-range-group-choice" : "choice global-range-group-choice"}
+              className={
+                checked
+                  ? "choice choice-active global-range-group-choice"
+                  : "choice global-range-group-choice"
+              }
               key={group.id}
               onPointerDown={markPointerToggle}
             >
@@ -89,11 +102,13 @@ export function GlobalRangeControls({ disabled = false, settings, onSettingsSave
         }
       >
         <div className="segmented global-range-staffs" aria-label="谱表选择">
-          {([
-            ["treble-only", "高音谱表"],
-            ["bass-only", "低音谱表"],
-            ["grand", "大谱表"],
-          ] as const).map(([staffNotationMode, label]) => {
+          {(
+            [
+              ["treble-only", "高音谱表"],
+              ["bass-only", "低音谱表"],
+              ["grand", "大谱表"],
+            ] as const
+          ).map(([staffNotationMode, label]) => {
             return (
               <button
                 aria-pressed={settings.staffNotationMode === staffNotationMode}
@@ -109,10 +124,7 @@ export function GlobalRangeControls({ disabled = false, settings, onSettingsSave
           })}
         </div>
         {settings.staffNotationMode === "grand" ? (
-          <label
-            className="global-range-ledger-choice"
-            onPointerDown={markPointerToggle}
-          >
+          <label className="global-range-ledger-choice" onPointerDown={markPointerToggle}>
             <input
               checked={settings.includeInterStaffLedgerSpellings}
               disabled={disabled}

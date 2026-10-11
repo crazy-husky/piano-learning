@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { writeBackupIfSafe } from "../../../data/backup";
 import { digestBlob } from "../../../data/blobDigest";
-import { deleteVocalAudioMaterial, listVocalAudioMaterials, saveVocalAudioMaterial } from "../../../data/db";
-import { getVocalAudioBackupStatus, type VocalAudioBackupStatus } from "../../../data/vocalAudioBackup";
+import {
+  deleteVocalAudioMaterial,
+  listVocalAudioMaterials,
+  saveVocalAudioMaterial,
+} from "../../../data/db";
+import {
+  getVocalAudioBackupStatus,
+  type VocalAudioBackupStatus,
+} from "../../../data/vocalAudioBackup";
 import type { VocalAudioMaterial } from "../../../domain/vocalPitch";
 import { createSerialTaskQueue, type SerialTaskQueue } from "../../../serialTaskQueue";
 import { decodeAudioBlob } from "./pitchAnalysis";
@@ -22,7 +29,9 @@ export function useVocalAudioLibrary({
   onMessage,
 }: UseVocalAudioLibraryOptions) {
   const [materials, setMaterials] = useState<VocalAudioMaterial[]>([]);
-  const [backupStatus, setBackupStatus] = useState<VocalAudioBackupStatus>(backupDirectory ? "out-of-sync" : "browser-only");
+  const [backupStatus, setBackupStatus] = useState<VocalAudioBackupStatus>(
+    backupDirectory ? "out-of-sync" : "browser-only"
+  );
   const mountedRef = useRef(false);
   const mutationQueueRef = useRef<SerialTaskQueue | null>(null);
   mutationQueueRef.current ??= createSerialTaskQueue();
@@ -63,26 +72,35 @@ export function useVocalAudioLibrary({
       setBackupStatus(status);
       if (status === "failed") onMessage("素材已保存到浏览器，但备份失败");
       if (status === "browser-only") onMessage("素材已保存到浏览器，尚未备份");
-      if (status === "out-of-sync") onMessage("素材已保存到浏览器；备份数据不一致，请先选择保留哪一份");
+      if (status === "out-of-sync")
+        onMessage("素材已保存到浏览器；备份数据不一致，请先选择保留哪一份");
     }
   }, [backupDirectory, onBackupStateChanged, onMessage]);
 
-  const saveLocal = useCallback((material: VocalAudioMaterial): Promise<void> =>
-    enqueueMutation(async () => {
-      await saveVocalAudioMaterial(material);
-      await refresh();
-    }), [enqueueMutation, refresh]);
+  const saveLocal = useCallback(
+    (material: VocalAudioMaterial): Promise<void> =>
+      enqueueMutation(async () => {
+        await saveVocalAudioMaterial(material);
+        await refresh();
+      }),
+    [enqueueMutation, refresh]
+  );
 
   const syncBackup = sync;
 
-  const save = useCallback(async (material: VocalAudioMaterial): Promise<void> => {
-    await saveLocal(material);
-    await sync();
-  }, [saveLocal, sync]);
+  const save = useCallback(
+    async (material: VocalAudioMaterial): Promise<void> => {
+      await saveLocal(material);
+      await sync();
+    },
+    [saveLocal, sync]
+  );
 
   const migrateVideoMaterials = useCallback(async (): Promise<void> => {
     const failed = await enqueueMutation(async (): Promise<number | null> => {
-      const videos = (await listVocalAudioMaterials()).filter((material) => material.mimeType.startsWith("video/"));
+      const videos = (await listVocalAudioMaterials()).filter((material) =>
+        material.mimeType.startsWith("video/")
+      );
       if (videos.length === 0) return null;
       let failed = 0;
       for (const material of videos) {
@@ -113,19 +131,25 @@ export function useVocalAudioLibrary({
     void migrateVideoMaterials().catch(() => undefined);
   }, [migrateVideoMaterials]);
 
-  const rename = useCallback(async (material: VocalAudioMaterial, name: string): Promise<VocalAudioMaterial> => {
-    const updated = { ...material, name, updatedAt: new Date().toISOString() };
-    await save(updated);
-    return updated;
-  }, [save]);
+  const rename = useCallback(
+    async (material: VocalAudioMaterial, name: string): Promise<VocalAudioMaterial> => {
+      const updated = { ...material, name, updatedAt: new Date().toISOString() };
+      await save(updated);
+      return updated;
+    },
+    [save]
+  );
 
-  const remove = useCallback(async (id: string): Promise<void> => {
-    await enqueueMutation(async () => {
-      await deleteVocalAudioMaterial(id);
-      await refresh();
-    });
-    await sync();
-  }, [enqueueMutation, refresh, sync]);
+  const remove = useCallback(
+    async (id: string): Promise<void> => {
+      await enqueueMutation(async () => {
+        await deleteVocalAudioMaterial(id);
+        await refresh();
+      });
+      await sync();
+    },
+    [enqueueMutation, refresh, sync]
+  );
 
   return { backupStatus, materials, refresh, remove, rename, save, saveLocal, syncBackup };
 }

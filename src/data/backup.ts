@@ -1,4 +1,8 @@
-import { buildBackupSnapshot, getBackupDataModifiedAt, getBackupManifestVersion } from "../domain/backupSnapshot";
+import {
+  buildBackupSnapshot,
+  getBackupDataModifiedAt,
+  getBackupManifestVersion,
+} from "../domain/backupSnapshot";
 import {
   decideBackupDomainSync,
   deriveBackupDataStatus,
@@ -41,7 +45,10 @@ import {
   syncVocalAudioLibrary,
 } from "./vocalAudioBackup";
 
-type LegacyBackupState = BackupState & { restoreRequiredBeforeBackup?: boolean; syncRequiredReason?: unknown };
+type LegacyBackupState = BackupState & {
+  restoreRequiredBeforeBackup?: boolean;
+  syncRequiredReason?: unknown;
+};
 
 interface BrowserData {
   settings: AppSettings;
@@ -78,12 +85,7 @@ interface BackupStatusInspection {
 
 export type BackupDirectorySelectionResult = "ready" | "synced-down" | "synced-up" | "diverged";
 export type BackupPreflightResult =
-  | "needs-directory"
-  | "ready"
-  | "synced-down"
-  | "synced-up"
-  | "data-conflict"
-  | "skipped";
+  "needs-directory" | "ready" | "synced-down" | "synced-up" | "data-conflict" | "skipped";
 
 export interface BackupPreflightOutcome {
   result: BackupPreflightResult;
@@ -141,7 +143,11 @@ function cleanBackupState(state: BackupState): BackupState {
 
 function explicitDataConflict(state: BackupState): boolean {
   const stored = state as LegacyBackupState;
-  return Boolean(state.dataConflictBeforeBackup ?? state.syncRequiredBeforeBackup ?? stored.restoreRequiredBeforeBackup);
+  return Boolean(
+    state.dataConflictBeforeBackup ??
+    state.syncRequiredBeforeBackup ??
+    stored.restoreRequiredBeforeBackup
+  );
 }
 
 function conflictDetailsMissing(state: BackupState): boolean {
@@ -156,7 +162,9 @@ function conflictDetailsMissing(state: BackupState): boolean {
   );
 }
 
-function hasBrowserData(data: Pick<BrowserData, "sessions" | "reviews" | "staffRecallRuns">): boolean {
+function hasBrowserData(
+  data: Pick<BrowserData, "sessions" | "reviews" | "staffRecallRuns">
+): boolean {
   return data.sessions.length > 0 || data.reviews.length > 0 || data.staffRecallRuns.length > 0;
 }
 
@@ -164,7 +172,9 @@ function getManifestDataModifiedAt(manifest: BackupManifest | null): string | un
   return manifest?.dataModifiedAt ?? manifest?.lastBackupAt;
 }
 
-function summarizeVocalAudio(materials: readonly Pick<VocalAudioMaterial, "source">[]): VocalAudioCounts {
+function summarizeVocalAudio(
+  materials: readonly Pick<VocalAudioMaterial, "source">[]
+): VocalAudioCounts {
   return {
     materialCount: materials.length,
     recordingCount: materials.filter((material) => material.source === "recording").length,
@@ -175,7 +185,7 @@ function summarizeVocalAudio(materials: readonly Pick<VocalAudioMaterial, "sourc
 function summarizeData(
   reviews: ReviewRecord[],
   staffRecallRuns: StaffRecallRunRecord[],
-  vocalAudioCounts: VocalAudioCounts = { materialCount: 0, recordingCount: 0, uploadCount: 0 },
+  vocalAudioCounts: VocalAudioCounts = { materialCount: 0, recordingCount: 0, uploadCount: 0 }
 ): DataSummary {
   const times = [
     ...reviews.flatMap((review) => [review.startedAt, review.answeredAt, review.endedAt]),
@@ -214,7 +224,10 @@ function backupDataNewerThanBrowser(inspection: BackupStatusInspection): boolean
   return compareTimestamp(inspection.backupModifiedAt, inspection.browserModifiedAt) > 0;
 }
 
-function getBackupDomainDecisions(state: BackupState, inspection: BackupStatusInspection): BackupDomainDecisions {
+function getBackupDomainDecisions(
+  state: BackupState,
+  inspection: BackupStatusInspection
+): BackupDomainDecisions {
   return {
     learningData: decideBackupDomainSync({
       backupDigest: inspection.manifest?.learningDataDigest,
@@ -233,7 +246,9 @@ function domainDecisionNeedsChoice(decision: BackupDomainDecision): boolean {
   return decision === "conflict" || decision === "unknown";
 }
 
-function getConflictRevision(inspection: BackupStatusInspection): NonNullable<BackupState["conflictRevision"]> {
+function getConflictRevision(
+  inspection: BackupStatusInspection
+): NonNullable<BackupState["conflictRevision"]> {
   return {
     backupLearningDataDigest: inspection.manifest?.learningDataDigest,
     backupVersion: inspection.manifest ? getBackupManifestVersion(inspection.manifest) : undefined,
@@ -245,7 +260,7 @@ function getConflictRevision(inspection: BackupStatusInspection): NonNullable<Ba
 
 function conflictRevisionMatches(
   expected: NonNullable<BackupState["conflictRevision"]>,
-  current: NonNullable<BackupState["conflictRevision"]>,
+  current: NonNullable<BackupState["conflictRevision"]>
 ): boolean {
   return (
     expected.backupLearningDataDigest === current.backupLearningDataDigest &&
@@ -259,7 +274,7 @@ function conflictRevisionMatches(
 function vocalAudioBackupUnchanged(
   state: BackupState,
   manifest: BackupManifest | null,
-  browser: BackupBrowserFacts,
+  browser: BackupBrowserFacts
 ): boolean {
   const backupUnchanged = state.lastSeenVocalAudioLibraryDigest
     ? (manifest?.vocalAudioLibraryDigest === undefined ||
@@ -274,7 +289,7 @@ function vocalAudioBackupUnchanged(
 function vocalAudioLibraryConsistent(
   state: BackupState,
   manifest: BackupManifest | null,
-  browser: BackupBrowserFacts,
+  browser: BackupBrowserFacts
 ): boolean {
   return (
     vocalAudioBackupUnchanged(state, manifest, browser) &&
@@ -286,7 +301,10 @@ function vocalAudioLibraryConsistent(
   );
 }
 
-function backupVocalAudioMovesForward(state: BackupState, inspection: BackupStatusInspection): boolean {
+function backupVocalAudioMovesForward(
+  state: BackupState,
+  inspection: BackupStatusInspection
+): boolean {
   const backupDigest = inspection.manifest?.vocalAudioLibraryDigest;
   return Boolean(
     decideBackupDomainSync({
@@ -294,25 +312,25 @@ function backupVocalAudioMovesForward(state: BackupState, inspection: BackupStat
       browserDigest: inspection.browserFacts.vocalAudioLibraryDigest,
       lastSeenDigest: state.lastSeenVocalAudioLibraryDigest,
     }) === "use-backup" &&
-      inspection.browserFacts.vocalAudioBackupDigest === backupDigest &&
-      inspection.browserFacts.vocalAudioBackupFilesValid,
+    inspection.browserFacts.vocalAudioBackupDigest === backupDigest &&
+    inspection.browserFacts.vocalAudioBackupFilesValid
   );
 }
 
 function backupDataConsistent(
   state: BackupState,
   manifest: BackupManifest | null,
-  browser: BackupBrowserFacts,
+  browser: BackupBrowserFacts
 ): boolean {
   return Boolean(
     manifest &&
-      state.lastSeenBackupVersion &&
-      manifest.dataSetId === browser.dataSetId &&
-      getBackupManifestVersion(manifest) === state.lastSeenBackupVersion &&
-      browser.hasPracticeRecords === (manifest.dates.length > 0) &&
-      browser.latestReviewPresent &&
-      browser.latestStaffRecallRunPresent &&
-      vocalAudioBackupUnchanged(state, manifest, browser),
+    state.lastSeenBackupVersion &&
+    manifest.dataSetId === browser.dataSetId &&
+    getBackupManifestVersion(manifest) === state.lastSeenBackupVersion &&
+    browser.hasPracticeRecords === manifest.dates.length > 0 &&
+    browser.latestReviewPresent &&
+    browser.latestStaffRecallRunPresent &&
+    vocalAudioBackupUnchanged(state, manifest, browser)
   );
 }
 
@@ -324,7 +342,7 @@ function getBackupBrowserFacts(
   vocalAudioBackupFilesValid: boolean,
   hasVocalAudioMaterials: boolean,
   hasLocallyChangedLearningData: boolean,
-  hasLocallyChangedVocalAudio: boolean,
+  hasLocallyChangedVocalAudio: boolean
 ): BackupBrowserFacts {
   const lastReviewId = manifest?.lastReviewId;
   const lastStaffRecallRunId = manifest?.lastStaffRecallRunId;
@@ -358,7 +376,10 @@ async function ensureReadWritePermission(handle: FileSystemDirectoryHandle): Pro
   return (await handle.requestPermission(descriptor)) === "granted";
 }
 
-async function hasReadWritePermission(handle: FileSystemDirectoryHandle, requestPermission: boolean): Promise<boolean> {
+async function hasReadWritePermission(
+  handle: FileSystemDirectoryHandle,
+  requestPermission: boolean
+): Promise<boolean> {
   if (!handle.queryPermission || !handle.requestPermission) {
     return true;
   }
@@ -373,11 +394,19 @@ async function hasReadWritePermission(handle: FileSystemDirectoryHandle, request
   return (await handle.requestPermission(descriptor)) === "granted";
 }
 
-async function writeJson(directory: FileSystemDirectoryHandle, filename: string, value: unknown): Promise<void> {
+async function writeJson(
+  directory: FileSystemDirectoryHandle,
+  filename: string,
+  value: unknown
+): Promise<void> {
   await writeText(directory, filename, JSON.stringify(value, null, 2));
 }
 
-async function writeText(directory: FileSystemDirectoryHandle, filename: string, value: string): Promise<void> {
+async function writeText(
+  directory: FileSystemDirectoryHandle,
+  filename: string,
+  value: string
+): Promise<void> {
   const handle = await directory.getFileHandle(filename, { create: true });
   const writable = await handle.createWritable();
   await writable.write(value);
@@ -386,7 +415,9 @@ async function writeText(directory: FileSystemDirectoryHandle, filename: string,
 
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const hex = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
   return `sha256:${hex}`;
 }
 
@@ -399,33 +430,49 @@ function canonicalizeJson(value: unknown): unknown {
       Object.entries(value as Record<string, unknown>)
         .filter(([, entry]) => entry !== undefined)
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, canonicalizeJson(entry)]),
+        .map(([key, entry]) => [key, canonicalizeJson(entry)])
     );
   }
   return value;
 }
 
 async function getLearningDataDigest(
-  manifest: Pick<BackupManifest, "createdAt" | "dataSetId" | "firstReviewAt" | "schemaVersion" | "settings">,
-  dayFileDigests: Record<string, string>,
+  manifest: Pick<
+    BackupManifest,
+    "createdAt" | "dataSetId" | "firstReviewAt" | "schemaVersion" | "settings"
+  >,
+  dayFileDigests: Record<string, string>
 ): Promise<string> {
-  return sha256(JSON.stringify(canonicalizeJson({
-    createdAt: manifest.createdAt,
-    dataSetId: manifest.dataSetId,
-    dayFileDigests,
-    firstReviewAt: manifest.firstReviewAt,
-    schemaVersion: manifest.schemaVersion,
-    settings: manifest.settings,
-  })));
+  return sha256(
+    JSON.stringify(
+      canonicalizeJson({
+        createdAt: manifest.createdAt,
+        dataSetId: manifest.dataSetId,
+        dayFileDigests,
+        firstReviewAt: manifest.firstReviewAt,
+        schemaVersion: manifest.schemaVersion,
+        settings: manifest.settings,
+      })
+    )
+  );
 }
 
 async function getBrowserLearningDataDigest(data: BrowserData): Promise<string> {
-  const snapshot = buildBackupSnapshot(data.settings, data.sessions, data.reviews, undefined, data.staffRecallRuns);
+  const snapshot = buildBackupSnapshot(
+    data.settings,
+    data.sessions,
+    data.reviews,
+    undefined,
+    data.staffRecallRuns
+  );
   const { dayFileDigests } = await serializeBackupDays(snapshot.days);
   return getLearningDataDigest(snapshot.manifest, dayFileDigests);
 }
 
-async function browserDomainsDifferFromManifest(data: BrowserData, manifest: BackupManifest): Promise<boolean> {
+async function browserDomainsDifferFromManifest(
+  data: BrowserData,
+  manifest: BackupManifest
+): Promise<boolean> {
   const [learningDataDigest, vocalAudioLibraryDigest] = await Promise.all([
     getBrowserLearningDataDigest(data),
     getVocalAudioLibraryDigest(),
@@ -446,7 +493,7 @@ async function serializeBackupDays(days: Record<string, BackupDayFile>): Promise
     Object.entries(days).map(async ([date, day]) => {
       const json = JSON.stringify(day, null, 2);
       return { date, digest: await sha256(json), json };
-    }),
+    })
   );
   return {
     dayFileDigests: Object.fromEntries(serializedDays.map(({ date, digest }) => [date, digest])),
@@ -457,7 +504,7 @@ async function serializeBackupDays(days: Record<string, BackupDayFile>): Promise
 function dayFileDigestsMatch(
   dates: string[],
   expected: Record<string, string> | undefined,
-  actual: Record<string, string> | undefined,
+  actual: Record<string, string> | undefined
 ): boolean {
   if (!hasCompleteDayFileDigests(dates, expected) || !hasCompleteDayFileDigests(dates, actual)) {
     return false;
@@ -467,16 +514,19 @@ function dayFileDigestsMatch(
 
 function hasCompleteDayFileDigests(
   dates: string[],
-  digests: Record<string, string> | undefined,
+  digests: Record<string, string> | undefined
 ): digests is Record<string, string> {
   return Boolean(
     digests &&
-      Object.keys(digests).length === dates.length &&
-      dates.every((date) => typeof digests[date] === "string"),
+    Object.keys(digests).length === dates.length &&
+    dates.every((date) => typeof digests[date] === "string")
   );
 }
 
-async function readFileText(directory: FileSystemDirectoryHandle, filename: string): Promise<string> {
+async function readFileText(
+  directory: FileSystemDirectoryHandle,
+  filename: string
+): Promise<string> {
   const handle = await directory.getFileHandle(filename);
   const file = await handle.getFile();
   return file.text();
@@ -489,7 +539,7 @@ async function readJson<T>(directory: FileSystemDirectoryHandle, filename: strin
 async function readBackupDayFiles(
   directory: FileSystemDirectoryHandle,
   dates: string[],
-  expectedDigests?: Record<string, string>,
+  expectedDigests?: Record<string, string>
 ): Promise<Record<string, BackupDayFile> | undefined> {
   if (dates.length === 0) {
     return {};
@@ -502,7 +552,7 @@ async function readBackupDayFiles(
         return undefined;
       }
       return [date, JSON.parse(text) as BackupDayFile] as const;
-    }),
+    })
   );
   if (entries.some((entry) => entry === undefined)) {
     return undefined;
@@ -510,7 +560,10 @@ async function readBackupDayFiles(
   return Object.fromEntries(entries as Array<readonly [string, BackupDayFile]>);
 }
 
-async function fileExists(directory: FileSystemDirectoryHandle, filename: string): Promise<boolean> {
+async function fileExists(
+  directory: FileSystemDirectoryHandle,
+  filename: string
+): Promise<boolean> {
   try {
     await directory.getFileHandle(filename);
     return true;
@@ -522,7 +575,9 @@ async function fileExists(directory: FileSystemDirectoryHandle, filename: string
   }
 }
 
-async function readBackupManifestIfExists(directory: FileSystemDirectoryHandle): Promise<BackupManifest | null> {
+async function readBackupManifestIfExists(
+  directory: FileSystemDirectoryHandle
+): Promise<BackupManifest | null> {
   if (!(await fileExists(directory, "manifest.json"))) {
     return null;
   }
@@ -531,7 +586,7 @@ async function readBackupManifestIfExists(directory: FileSystemDirectoryHandle):
 
 async function readBackupDayFileMetadata(
   directory: FileSystemDirectoryHandle,
-  dates: string[],
+  dates: string[]
 ): Promise<Record<string, BackupDayFileMetadata> | undefined> {
   if (dates.length === 0) {
     return {};
@@ -543,7 +598,7 @@ async function readBackupDayFileMetadata(
         const handle = await daysDirectory.getFileHandle(`${date}.json`);
         const file = await handle.getFile();
         return [date, { size: file.size, lastModified: file.lastModified }] as const;
-      }),
+      })
     );
     return Object.fromEntries(entries);
   } catch (error) {
@@ -557,7 +612,7 @@ async function readBackupDayFileMetadata(
 function backupDayFileMetadataMatches(
   dates: string[],
   remembered: Record<string, BackupDayFileMetadata> | undefined,
-  current: Record<string, BackupDayFileMetadata> | undefined,
+  current: Record<string, BackupDayFileMetadata> | undefined
 ): boolean {
   if (!remembered || !current || Object.keys(remembered).length !== dates.length) {
     return false;
@@ -576,7 +631,7 @@ function backupDayFileMetadataMatches(
 
 async function readReadyBackupManifest(
   directory: FileSystemDirectoryHandle,
-  state: BackupState,
+  state: BackupState
 ): Promise<BackupManifest | undefined> {
   const manifest = await readBackupManifestIfExists(directory);
   if (
@@ -595,13 +650,23 @@ async function readReadyBackupManifest(
     return undefined;
   }
   const dayFileMetadata = await readBackupDayFileMetadata(directory, manifest.dates);
-  if (!backupDayFileMetadataMatches(manifest.dates, state.lastSeenBackupDayFileMetadata, dayFileMetadata)) {
+  if (
+    !backupDayFileMetadataMatches(
+      manifest.dates,
+      state.lastSeenBackupDayFileMetadata,
+      dayFileMetadata
+    )
+  ) {
     return undefined;
   }
   if (
     manifest.dayFileDigests &&
     (state.lastSeenBackupDataSetId !== manifest.dataSetId ||
-      !dayFileDigestsMatch(manifest.dates, manifest.dayFileDigests, state.lastSeenBackupDayFileDigests))
+      !dayFileDigestsMatch(
+        manifest.dates,
+        manifest.dayFileDigests,
+        state.lastSeenBackupDayFileDigests
+      ))
   ) {
     return undefined;
   }
@@ -616,19 +681,25 @@ async function readReadyBackupManifest(
     vocalAudioBackup,
     latestReview,
     latestStaffRecallRun,
-  ] =
-    await Promise.all([
-      ensureSettings(),
-      db.practiceSessions.count(),
-      db.reviews.count(),
-      db.staffRecallRuns.count(),
-      db.vocalAudioMaterials.count(),
-      getVocalAudioLibraryDigest(),
-      inspectVocalAudioBackup(directory, state.lastSeenVocalAudioFileMetadata, !state.lastSeenVocalAudioFileMetadata),
-      manifest.lastReviewId ? db.reviews.get(manifest.lastReviewId) : undefined,
-      manifest.lastStaffRecallRunId ? db.staffRecallRuns.get(manifest.lastStaffRecallRunId) : undefined,
-    ]);
-  const hasBrowserRecords = sessionCount > 0 || reviewCount > 0 || staffRecallRunCount > 0 || vocalAudioMaterialCount > 0;
+  ] = await Promise.all([
+    ensureSettings(),
+    db.practiceSessions.count(),
+    db.reviews.count(),
+    db.staffRecallRuns.count(),
+    db.vocalAudioMaterials.count(),
+    getVocalAudioLibraryDigest(),
+    inspectVocalAudioBackup(
+      directory,
+      state.lastSeenVocalAudioFileMetadata,
+      !state.lastSeenVocalAudioFileMetadata
+    ),
+    manifest.lastReviewId ? db.reviews.get(manifest.lastReviewId) : undefined,
+    manifest.lastStaffRecallRunId
+      ? db.staffRecallRuns.get(manifest.lastStaffRecallRunId)
+      : undefined,
+  ]);
+  const hasBrowserRecords =
+    sessionCount > 0 || reviewCount > 0 || staffRecallRunCount > 0 || vocalAudioMaterialCount > 0;
   if (
     backupDataConsistent(state, manifest, {
       dataSetId: settings.dataSetId,
@@ -649,19 +720,33 @@ async function readReadyBackupManifest(
 
 async function inspectBackupStatus(
   directory: FileSystemDirectoryHandle,
-  state: BackupState,
+  state: BackupState
 ): Promise<BackupStatusInspection> {
-  const [data, manifest, vocalAudioMaterials, vocalAudioLibraryDigest, vocalAudioBackup] = await Promise.all([
-    loadAllData(),
-    readBackupManifestIfExists(directory),
-    db.vocalAudioMaterials.toArray(),
-    getVocalAudioLibraryDigest(),
-    inspectVocalAudioBackup(directory, state.lastSeenVocalAudioFileMetadata, !state.lastSeenVocalAudioFileMetadata),
-  ]);
+  const [data, manifest, vocalAudioMaterials, vocalAudioLibraryDigest, vocalAudioBackup] =
+    await Promise.all([
+      loadAllData(),
+      readBackupManifestIfExists(directory),
+      db.vocalAudioMaterials.toArray(),
+      getVocalAudioLibraryDigest(),
+      inspectVocalAudioBackup(
+        directory,
+        state.lastSeenVocalAudioFileMetadata,
+        !state.lastSeenVocalAudioFileMetadata
+      ),
+    ]);
   const browserLearningDataDigest = await getBrowserLearningDataDigest(data);
-  const browserModifiedAt = getBackupDataModifiedAt(data.settings, data.sessions, data.reviews, data.staffRecallRuns);
+  const browserModifiedAt = getBackupDataModifiedAt(
+    data.settings,
+    data.sessions,
+    data.reviews,
+    data.staffRecallRuns
+  );
   const backupModifiedAt = getManifestDataModifiedAt(manifest);
-  const browserSummary = summarizeData(data.reviews, data.staffRecallRuns, summarizeVocalAudio(vocalAudioMaterials));
+  const browserSummary = summarizeData(
+    data.reviews,
+    data.staffRecallRuns,
+    summarizeVocalAudio(vocalAudioMaterials)
+  );
   const browserFacts = getBackupBrowserFacts(
     data,
     manifest,
@@ -672,7 +757,7 @@ async function inspectBackupStatus(
     state.lastSeenLearningDataDigest !== undefined &&
       state.lastSeenLearningDataDigest !== browserLearningDataDigest,
     state.lastSeenVocalAudioLibraryDigest !== undefined &&
-      state.lastSeenVocalAudioLibraryDigest !== vocalAudioLibraryDigest,
+      state.lastSeenVocalAudioLibraryDigest !== vocalAudioLibraryDigest
   );
   const status = deriveBackupDataStatus({
     hasDirectoryHandle: true,
@@ -707,7 +792,7 @@ function buildReadyBackupState(
   directory: FileSystemDirectoryHandle,
   manifest: BackupManifest | null,
   dayFileMetadata?: Record<string, BackupDayFileMetadata>,
-  vocalAudioFileMetadata?: Record<string, BackupDayFileMetadata>,
+  vocalAudioFileMetadata?: Record<string, BackupDayFileMetadata>
 ): BackupState {
   return {
     ...cleanBackupState(state),
@@ -755,13 +840,19 @@ function buildReadyBackupState(
 async function saveReadyBackupState(
   state: BackupState,
   directory: FileSystemDirectoryHandle,
-  manifest: BackupManifest | null,
+  manifest: BackupManifest | null
 ): Promise<BackupState> {
   const [dayFileMetadata, vocalAudioBackup] = await Promise.all([
     manifest ? readBackupDayFileMetadata(directory, manifest.dates) : undefined,
     inspectVocalAudioBackup(directory),
   ]);
-  const readyState = buildReadyBackupState(state, directory, manifest, dayFileMetadata, vocalAudioBackup.fileMetadata);
+  const readyState = buildReadyBackupState(
+    state,
+    directory,
+    manifest,
+    dayFileMetadata,
+    vocalAudioBackup.fileMetadata
+  );
   await db.backupStates.put(readyState);
   return readyState;
 }
@@ -769,7 +860,7 @@ async function saveReadyBackupState(
 async function saveDivergedBackupState(
   state: BackupState,
   directory: FileSystemDirectoryHandle,
-  inspection: BackupStatusInspection,
+  inspection: BackupStatusInspection
 ): Promise<boolean> {
   const decisions = getBackupDomainDecisions(state, inspection);
   let conflictLearningData = domainDecisionNeedsChoice(decisions.learningData);
@@ -788,11 +879,17 @@ async function saveDivergedBackupState(
 
   const backupSnapshot =
     inspection.backupSnapshot ??
-    (inspection.manifest ? await readBackupSnapshotFromManifest(directory, inspection.manifest) : undefined);
+    (inspection.manifest
+      ? await readBackupSnapshotFromManifest(directory, inspection.manifest)
+      : undefined);
   const backupSummary =
     inspection.backupSummary ??
     (backupSnapshot
-      ? summarizeData(backupSnapshot.reviews, backupSnapshot.staffRecallRuns, inspection.backupVocalAudioCounts)
+      ? summarizeData(
+          backupSnapshot.reviews,
+          backupSnapshot.staffRecallRuns,
+          inspection.backupVocalAudioCounts
+        )
       : undefined);
   await db.backupStates.put({
     ...cleanBackupState(state),
@@ -846,7 +943,7 @@ async function writeBrowserSnapshotToDirectory(
   data: BrowserData,
   backupAt: string | undefined = undefined,
   reuseDayFilesFrom?: BackupManifest,
-  forceVocalAudioRewrite = false,
+  forceVocalAudioRewrite = false
 ): Promise<BackupSnapshot> {
   const now = new Date().toISOString();
   const previousBackupAt = reuseDayFilesFrom?.lastBackupAt;
@@ -860,21 +957,29 @@ async function writeBrowserSnapshotToDirectory(
     data.sessions,
     data.reviews,
     backupAt ?? nextBackupAt,
-    data.staffRecallRuns,
+    data.staffRecallRuns
   );
-  const manifest = await writeBackupSnapshot(directory, snapshot, { deferManifestWrite: true, reuseDayFilesFrom });
-  const vocalAudioStatus = await syncVocalAudioLibrary(directory, { forceRewrite: forceVocalAudioRewrite });
+  const manifest = await writeBackupSnapshot(directory, snapshot, {
+    deferManifestWrite: true,
+    reuseDayFilesFrom,
+  });
+  const vocalAudioStatus = await syncVocalAudioLibrary(directory, {
+    forceRewrite: forceVocalAudioRewrite,
+  });
   if (vocalAudioStatus !== "backed-up") {
     throw new Error("音频素材备份失败");
   }
-  const completeManifest = { ...manifest, vocalAudioLibraryDigest: await getVocalAudioLibraryDigest() };
+  const completeManifest = {
+    ...manifest,
+    vocalAudioLibraryDigest: await getVocalAudioLibraryDigest(),
+  };
   await writeJson(directory, "manifest.json", completeManifest);
   return { ...snapshot, manifest: completeManifest };
 }
 
 async function writeBrowserSnapshotFromReadyBackup(
   state: BackupState,
-  directory: FileSystemDirectoryHandle,
+  directory: FileSystemDirectoryHandle
 ): Promise<boolean> {
   const readyManifest = await readReadyBackupManifest(directory, state);
   if (!readyManifest) {
@@ -903,7 +1008,10 @@ function diffRecords<T extends { id: string }>(current: T[], incoming: T[]): Rec
   };
 }
 
-function collectDayRecords(days: Record<string, BackupDayFile>, dates: string[]): Omit<BrowserData, "settings"> {
+function collectDayRecords(
+  days: Record<string, BackupDayFile>,
+  dates: string[]
+): Omit<BrowserData, "settings"> {
   const dayFiles = dates.flatMap((date) => (days[date] ? [days[date]] : []));
   return {
     sessions: dayFiles.flatMap((day) => day.sessions),
@@ -914,16 +1022,18 @@ function collectDayRecords(days: Record<string, BackupDayFile>, dates: string[])
 
 function getChangedBackupDates(
   previous: Record<string, string>,
-  current: Record<string, string>,
+  current: Record<string, string>
 ): string[] {
   const dates = new Set([...Object.keys(previous), ...Object.keys(current)]);
-  return [...dates].filter((date) => previous[date] !== current[date]).sort((a, b) => a.localeCompare(b));
+  return [...dates]
+    .filter((date) => previous[date] !== current[date])
+    .sort((a, b) => a.localeCompare(b));
 }
 
 async function getBrowserSnapshotMatchingLastSeen(
   state: BackupState,
   data: BrowserData,
-  backupAt: string,
+  backupAt: string
 ): Promise<BackupSnapshot | undefined> {
   const previousDayFileDigests = state.lastSeenBackupDayFileDigests;
   if (!previousDayFileDigests) {
@@ -934,7 +1044,7 @@ async function getBrowserSnapshotMatchingLastSeen(
     data.sessions,
     data.reviews,
     backupAt,
-    data.staffRecallRuns,
+    data.staffRecallRuns
   );
   const browserDates = browserSnapshot.manifest.dates;
   if (!hasCompleteDayFileDigests(browserDates, previousDayFileDigests)) {
@@ -949,7 +1059,7 @@ async function getBrowserSnapshotMatchingLastSeen(
 async function tryImportDirectoryIncrementally(
   directory: FileSystemDirectoryHandle,
   state: BackupState,
-  inspection: BackupStatusInspection,
+  inspection: BackupStatusInspection
 ): Promise<BackupImportedData | undefined> {
   const manifest = inspection.manifest;
   const previousDayFileDigests = state.lastSeenBackupDayFileDigests;
@@ -969,13 +1079,19 @@ async function tryImportDirectoryIncrementally(
     return undefined;
   }
 
-  const browserSnapshot = await getBrowserSnapshotMatchingLastSeen(state, inspection.data, manifest.lastBackupAt);
+  const browserSnapshot = await getBrowserSnapshotMatchingLastSeen(
+    state,
+    inspection.data,
+    manifest.lastBackupAt
+  );
   if (!browserSnapshot) {
     return undefined;
   }
 
   const changedDates = getChangedBackupDates(previousDayFileDigests, currentDayFileDigests);
-  const changedBackupDates = changedDates.filter((date) => currentDayFileDigests[date] !== undefined);
+  const changedBackupDates = changedDates.filter(
+    (date) => currentDayFileDigests[date] !== undefined
+  );
   const [changedBackupDays, settings] = await Promise.all([
     readBackupDayFiles(directory, changedBackupDates, currentDayFileDigests),
     normalizeImportedSettings(manifest),
@@ -993,7 +1109,7 @@ async function tryImportDirectoryIncrementally(
   };
   const mutationCount = Object.values(changes).reduce(
     (total, change) => total + change.deletes.length + change.puts.length,
-    0,
+    0
   );
   if (mutationCount > INCREMENTAL_IMPORT_MAX_MUTATIONS) {
     return undefined;
@@ -1013,7 +1129,7 @@ async function tryImportDirectoryIncrementally(
 async function importDirectorySnapshot(
   directory: FileSystemDirectoryHandle,
   state: BackupState,
-  existingSnapshot?: ImportedBackupSnapshot,
+  existingSnapshot?: ImportedBackupSnapshot
 ): Promise<BackupImportedData> {
   const snapshot = existingSnapshot ?? (await readBackupSnapshot(directory));
   const vocalAudioMaterials = await readVocalAudioLibrary(directory);
@@ -1022,7 +1138,7 @@ async function importDirectorySnapshot(
     snapshot.sessions,
     snapshot.reviews,
     snapshot.staffRecallRuns,
-    vocalAudioMaterials,
+    vocalAudioMaterials
   );
   const backupState = await saveReadyBackupState(state, directory, snapshot.manifest);
   return {
@@ -1045,7 +1161,7 @@ async function applyBackupDomainSources(
   state: BackupState,
   inspection: BackupStatusInspection,
   sources: BackupDomainSources,
-  forceVocalAudioRewrite = false,
+  forceVocalAudioRewrite = false
 ): Promise<BackupImportedData> {
   const manifest = inspection.manifest;
   if (!manifest) {
@@ -1053,7 +1169,9 @@ async function applyBackupDomainSources(
   }
 
   const backupLearningData =
-    sources.learningData === "backup" ? await readBackupSnapshotFromManifest(directory, manifest) : undefined;
+    sources.learningData === "backup"
+      ? await readBackupSnapshotFromManifest(directory, manifest)
+      : undefined;
   const backupVocalMaterials =
     sources.vocalAudio === "backup" ? ((await readVocalAudioLibrary(directory)) ?? []) : undefined;
   const mergedData: BrowserData = backupLearningData ?? inspection.data;
@@ -1064,14 +1182,14 @@ async function applyBackupDomainSources(
       backupLearningData.sessions,
       backupLearningData.reviews,
       backupLearningData.staffRecallRuns,
-      backupVocalMaterials,
+      backupVocalMaterials
     );
   } else if (backupLearningData) {
     await replaceAllData(
       backupLearningData.settings,
       backupLearningData.sessions,
       backupLearningData.reviews,
-      backupLearningData.staffRecallRuns,
+      backupLearningData.staffRecallRuns
     );
   } else if (backupVocalMaterials) {
     await replaceVocalAudioMaterials(backupVocalMaterials);
@@ -1082,7 +1200,7 @@ async function applyBackupDomainSources(
     mergedData,
     undefined,
     manifest,
-    forceVocalAudioRewrite,
+    forceVocalAudioRewrite
   );
   const backupState = await saveReadyBackupState(state, directory, snapshot.manifest);
   return { ...mergedData, backupState };
@@ -1091,7 +1209,7 @@ async function applyBackupDomainSources(
 async function trySyncIndependentBackupDomains(
   directory: FileSystemDirectoryHandle,
   state: BackupState,
-  inspection: BackupStatusInspection,
+  inspection: BackupStatusInspection
 ): Promise<BackupImportedData | undefined> {
   const manifest = inspection.manifest;
   const lastLearningDigest = state.lastSeenLearningDataDigest;
@@ -1114,7 +1232,10 @@ async function trySyncIndependentBackupDomains(
   }
 
   const decisions = getBackupDomainDecisions(state, inspection);
-  if (domainDecisionNeedsChoice(decisions.learningData) || domainDecisionNeedsChoice(decisions.vocalAudio)) {
+  if (
+    domainDecisionNeedsChoice(decisions.learningData) ||
+    domainDecisionNeedsChoice(decisions.vocalAudio)
+  ) {
     return undefined;
   }
   return applyBackupDomainSources(directory, state, inspection, {
@@ -1160,9 +1281,11 @@ async function chooseBackupDirectoryInner(): Promise<BackupDirectorySelectionRes
   return "ready";
 }
 
-export function syncBackupBeforeActivity(options: {
-  requestPermission?: boolean;
-} = {}): Promise<BackupPreflightOutcome> {
+export function syncBackupBeforeActivity(
+  options: {
+    requestPermission?: boolean;
+  } = {}
+): Promise<BackupPreflightOutcome> {
   return enqueueBackupWrite(() => syncBackupBeforeActivityInner(options));
 }
 
@@ -1189,7 +1312,12 @@ async function syncBackupBeforeActivityInner({
   if (readyManifest) {
     const data = await loadAllData();
     if (await browserDomainsDifferFromManifest(data, readyManifest)) {
-      const snapshot = await writeBrowserSnapshotToDirectory(state.directoryHandle, data, undefined, readyManifest);
+      const snapshot = await writeBrowserSnapshotToDirectory(
+        state.directoryHandle,
+        data,
+        undefined,
+        readyManifest
+      );
       await saveReadyBackupState(state, state.directoryHandle, snapshot.manifest);
       return { result: "synced-down", backupStateChanged: true };
     }
@@ -1198,7 +1326,8 @@ async function syncBackupBeforeActivityInner({
 
   const inspection = await inspectBackupStatus(state.directoryHandle, state);
   const backupSnapshotMovesForward =
-    !state.lastBackupAt || compareTimestamp(inspection.manifest?.lastBackupAt, state.lastBackupAt) > 0;
+    !state.lastBackupAt ||
+    compareTimestamp(inspection.manifest?.lastBackupAt, state.lastBackupAt) > 0;
   if (inspection.status === "browser-only") {
     const snapshot = await writeBrowserSnapshotToDirectory(state.directoryHandle, inspection.data);
     await saveReadyBackupState(state, state.directoryHandle, snapshot.manifest);
@@ -1209,11 +1338,19 @@ async function syncBackupBeforeActivityInner({
       const hasConflict = await saveDivergedBackupState(state, state.directoryHandle, inspection);
       return { result: hasConflict ? "data-conflict" : "ready", backupStateChanged: true };
     }
-    const importedData = await importDirectorySnapshot(state.directoryHandle, state, inspection.backupSnapshot);
+    const importedData = await importDirectorySnapshot(
+      state.directoryHandle,
+      state,
+      inspection.backupSnapshot
+    );
     return { result: "synced-up", backupStateChanged: true, importedData };
   }
   if (inspection.status === "diverged") {
-    const mergedData = await trySyncIndependentBackupDomains(state.directoryHandle, state, inspection);
+    const mergedData = await trySyncIndependentBackupDomains(
+      state.directoryHandle,
+      state,
+      inspection
+    );
     if (mergedData) {
       return { result: "synced-up", backupStateChanged: true, importedData: mergedData };
     }
@@ -1225,14 +1362,24 @@ async function syncBackupBeforeActivityInner({
       await saveDivergedBackupState(state, state.directoryHandle, inspection);
       return { result: "data-conflict", backupStateChanged: true };
     }
-    const importedData = await tryImportDirectoryIncrementally(state.directoryHandle, state, inspection);
+    const importedData = await tryImportDirectoryIncrementally(
+      state.directoryHandle,
+      state,
+      inspection
+    );
     if (importedData) {
       return { result: "synced-up", backupStateChanged: true, importedData };
     }
     const vocalAudioMovesForward = backupVocalAudioMovesForward(state, inspection);
     const browserPracticeUnchanged =
       vocalAudioMovesForward && inspection.manifest
-        ? Boolean(await getBrowserSnapshotMatchingLastSeen(state, inspection.data, inspection.manifest.lastBackupAt))
+        ? Boolean(
+            await getBrowserSnapshotMatchingLastSeen(
+              state,
+              inspection.data,
+              inspection.manifest.lastBackupAt
+            )
+          )
         : false;
     if (
       backupSnapshotMovesForward &&
@@ -1273,14 +1420,17 @@ export async function refreshBackupConflictDetails({
 
 async function writeCurrentBrowserDataToBackup(
   state: BackupState,
-  directory: FileSystemDirectoryHandle,
+  directory: FileSystemDirectoryHandle
 ): Promise<boolean> {
   if (await writeBrowserSnapshotFromReadyBackup(state, directory)) {
     return false;
   }
 
   const inspection = await inspectBackupStatus(directory, state);
-  if (inspection.status === "diverged" && await trySyncIndependentBackupDomains(directory, state, inspection)) {
+  if (
+    inspection.status === "diverged" &&
+    (await trySyncIndependentBackupDomains(directory, state, inspection))
+  ) {
     return false;
   }
   if (inspection.status === "backup-only" || inspection.status === "diverged") {
@@ -1384,7 +1534,10 @@ async function resolveBackupConflictInner(resolution: BackupConflictResolution):
     throw new Error(backupText.messages.emptyBackupDirectory);
   }
   const currentRevision = getConflictRevision(inspection);
-  if (!state.conflictRevision || !conflictRevisionMatches(state.conflictRevision, currentRevision)) {
+  if (
+    !state.conflictRevision ||
+    !conflictRevisionMatches(state.conflictRevision, currentRevision)
+  ) {
     await saveDivergedBackupState(state, state.directoryHandle, inspection);
     throw new Error(backupText.messages.conflictChanged);
   }
@@ -1397,19 +1550,21 @@ async function resolveBackupConflictInner(resolution: BackupConflictResolution):
       learningData: resolution.learningData ?? sourceForDomainDecision(decisions.learningData),
       vocalAudio: resolution.vocalAudio ?? sourceForDomainDecision(decisions.vocalAudio),
     },
-    resolution.vocalAudio === "browser" && (state.conflictVocalAudio ?? true),
+    resolution.vocalAudio === "browser" && (state.conflictVocalAudio ?? true)
   );
 }
 
 export async function writeBackupSnapshot(
   directory: FileSystemDirectoryHandle,
   snapshot: BackupSnapshot,
-  { deferManifestWrite = false, reuseDayFilesFrom }: WriteBackupSnapshotOptions = {},
+  { deferManifestWrite = false, reuseDayFilesFrom }: WriteBackupSnapshotOptions = {}
 ): Promise<BackupManifest> {
   const daysDirectory = await directory.getDirectoryHandle("days", { create: true });
   const { dayFileDigests, serializedDays } = await serializeBackupDays(snapshot.days);
   const reusableDayFileDigests =
-    reuseDayFilesFrom?.dataSetId === snapshot.manifest.dataSetId ? reuseDayFilesFrom.dayFileDigests : undefined;
+    reuseDayFilesFrom?.dataSetId === snapshot.manifest.dataSetId
+      ? reuseDayFilesFrom.dayFileDigests
+      : undefined;
   for (const { date, digest, json } of serializedDays) {
     if (
       reusableDayFileDigests &&
@@ -1433,7 +1588,9 @@ export async function writeBackupSnapshot(
 
 async function normalizeImportedSettings(manifest: BackupManifest): Promise<AppSettings> {
   const existingSettings = await db.settings.get("default");
-  const baseSettings = normalizeAppSettings(manifest.settings ?? existingSettings ?? makeDefaultSettings());
+  const baseSettings = normalizeAppSettings(
+    manifest.settings ?? existingSettings ?? makeDefaultSettings()
+  );
   return {
     ...baseSettings,
     schemaVersion: 2,
@@ -1444,7 +1601,8 @@ async function normalizeImportedSettings(manifest: BackupManifest): Promise<AppS
     includeInterStaffLedgerSpellings: baseSettings.includeInterStaffLedgerSpellings,
     queueStrategy: resolveQueueStrategy(baseSettings),
     drillNoteNames: resolveDrillNoteNames(baseSettings),
-    focusedTraining: baseSettings.focusedTraining ?? resolveQueueStrategy(baseSettings) === "focused",
+    focusedTraining:
+      baseSettings.focusedTraining ?? resolveQueueStrategy(baseSettings) === "focused",
     answerKeyboardScale: normalizeAnswerKeyboardScale(baseSettings.answerKeyboardScale),
     pianoVolume: normalizePianoVolume(baseSettings.pianoVolume),
     promptDisplayMode: baseSettings.promptDisplayMode,
@@ -1455,28 +1613,40 @@ async function normalizeImportedSettings(manifest: BackupManifest): Promise<AppS
 function buildBrowserDataFromDays(
   settings: AppSettings,
   dates: string[],
-  days: Record<string, BackupDayFile>,
+  days: Record<string, BackupDayFile>
 ): BrowserData {
   const dayFiles = dates.map((date) => days[date]);
   return {
     settings,
     sessions: dayFiles
       .flatMap((day) => day.sessions)
-      .sort((left, right) => left.startedAt.localeCompare(right.startedAt) || left.id.localeCompare(right.id)),
+      .sort(
+        (left, right) =>
+          left.startedAt.localeCompare(right.startedAt) || left.id.localeCompare(right.id)
+      ),
     reviews: dayFiles
       .flatMap((day) => day.reviews)
-      .sort((left, right) => left.startedAt.localeCompare(right.startedAt) || left.id.localeCompare(right.id)),
+      .sort(
+        (left, right) =>
+          left.startedAt.localeCompare(right.startedAt) || left.id.localeCompare(right.id)
+      ),
     staffRecallRuns: dayFiles
       .flatMap((day) => day.staffRecallRuns ?? [])
-      .sort((left, right) => left.endedAt.localeCompare(right.endedAt) || left.id.localeCompare(right.id)),
+      .sort(
+        (left, right) =>
+          left.endedAt.localeCompare(right.endedAt) || left.id.localeCompare(right.id)
+      ),
   };
 }
 
 async function readBackupSnapshotFromManifest(
   directory: FileSystemDirectoryHandle,
-  manifest: BackupManifest,
+  manifest: BackupManifest
 ): Promise<ImportedBackupSnapshot> {
-  if (manifest.dayFileDigests && !hasCompleteDayFileDigests(manifest.dates, manifest.dayFileDigests)) {
+  if (
+    manifest.dayFileDigests &&
+    !hasCompleteDayFileDigests(manifest.dates, manifest.dayFileDigests)
+  ) {
     throw new Error(backupText.errors.dayFileDigestMismatch);
   }
   if (
@@ -1496,12 +1666,16 @@ async function readBackupSnapshotFromManifest(
   return { manifest, ...buildBrowserDataFromDays(settings, manifest.dates, days) };
 }
 
-export async function readBackupSnapshot(directory: FileSystemDirectoryHandle): Promise<ImportedBackupSnapshot> {
+export async function readBackupSnapshot(
+  directory: FileSystemDirectoryHandle
+): Promise<ImportedBackupSnapshot> {
   const manifest = await readJson<BackupManifest>(directory, "manifest.json");
   return readBackupSnapshotFromManifest(directory, manifest);
 }
 
-export async function restoreBackupFromDirectory(directory: FileSystemDirectoryHandle): Promise<void> {
+export async function restoreBackupFromDirectory(
+  directory: FileSystemDirectoryHandle
+): Promise<void> {
   const granted = await ensureReadWritePermission(directory);
   if (!granted) {
     throw new Error(backupText.errors.readPermissionDenied);

@@ -29,7 +29,13 @@ describe("notes", () => {
   });
 
   it("orders practice groups from low to high while defaulting to the middle group", () => {
-    expect(PRACTICE_GROUPS.map((group) => group.id)).toEqual(["F1-F2", "G2-F3", "G3-F4", "G4-F5", "G5-G6"]);
+    expect(PRACTICE_GROUPS.map((group) => group.id)).toEqual([
+      "F1-F2",
+      "G2-F3",
+      "G3-F4",
+      "G4-F5",
+      "G5-G6",
+    ]);
     expect(DEFAULT_ENABLED_GROUPS).toEqual(["G3-F4"]);
   });
 
@@ -59,7 +65,9 @@ describe("notes", () => {
     expect(formatTargetNoteLabel(getNoteById("E3-treble"))).toBe("E3 · 高音谱号");
     expect(formatTargetNoteLabel(getNoteById("C2"))).toBe("C2 · 低音谱号");
     expect(formatTargetNoteLabel(getNoteById("C2"), new Set(["C2"]))).toBe("C2");
-    expect(formatTargetNoteLabel(getNoteById("C4"), new Set(["C4", "C4-bass"]))).toBe("C4 · 高音谱号");
+    expect(formatTargetNoteLabel(getNoteById("C4"), new Set(["C4", "C4-bass"]))).toBe(
+      "C4 · 高音谱号"
+    );
   });
 
   it("selects all 37 written pitches on either single clef", () => {
@@ -76,7 +84,11 @@ describe("notes", () => {
   });
 
   it("normalizes persisted group ids to the current low-to-high groups", () => {
-    expect(normalizePracticeGroupIds(["C2-B2", "C4-B4", "C6-B6"])).toEqual(["F1-F2", "G3-F4", "G5-G6"]);
+    expect(normalizePracticeGroupIds(["C2-B2", "C4-B4", "C6-B6"])).toEqual([
+      "F1-F2",
+      "G3-F4",
+      "G5-G6",
+    ]);
     expect(normalizePracticeGroupIds(["G4-F5", "F1-F2"])).toEqual(["F1-F2", "G4-F5"]);
     expect(normalizePracticeGroupIds([])).toEqual(["G3-F4"]);
     expect(normalizePracticeGroupIds(["unknown"])).toEqual(["G3-F4"]);

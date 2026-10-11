@@ -16,11 +16,11 @@ SSH 远端命令使用 `C:/...` Windows 盘符绝对路径。此服务器的 SFT
 
 配置文件使用 Bash 赋值格式，包含以下字段：
 
-| 字段 | 用途 | 获取方式 |
-| --- | --- | --- |
-| `REMOTE_HOST` | 远程 Windows 主机的 DNS 名称或 IP | 从服务器提供商控制台或服务器管理员处获取；使用当前 SSH 服务可连接的地址 |
-| `REMOTE_USER` | 可通过 SSH 登录的 Windows 账户 | 从服务器管理员处确认，并确认该账户的公钥登录已启用 |
-| `REMOTE_WEB_ERROR_LOG_WIN` | Web 服务错误日志的绝对文件路径 | 可选；文件不存在或未配置时读取 Windows Application 事件日志最近 50 条错误事件 |
+| 字段                       | 用途                              | 获取方式                                                                      |
+| -------------------------- | --------------------------------- | ----------------------------------------------------------------------------- |
+| `REMOTE_HOST`              | 远程 Windows 主机的 DNS 名称或 IP | 从服务器提供商控制台或服务器管理员处获取；使用当前 SSH 服务可连接的地址       |
+| `REMOTE_USER`              | 可通过 SSH 登录的 Windows 账户    | 从服务器管理员处确认，并确认该账户的公钥登录已启用                            |
+| `REMOTE_WEB_ERROR_LOG_WIN` | Web 服务错误日志的绝对文件路径    | 可选；文件不存在或未配置时读取 Windows Application 事件日志最近 50 条错误事件 |
 
 示意格式如下，尖括号内容需要在本机私有配置文件中替换，不能把实际值复制到此文档：
 
@@ -39,8 +39,8 @@ chmod 600 "$HOME/.config/captcha-recognition/deploy.env"
 
 部署时还需在当前 shell 设置：
 
-| 字段 | 用途 | 获取方式 |
-| --- | --- | --- |
+| 字段               | 用途                                                        | 获取方式                                                                                           |
+| ------------------ | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `PIANO_PUBLIC_URL` | 发布后的 HTTPS 页面完整地址，必须以 `/piano-learning/` 结尾 | 使用已配置 TLS 证书且映射到该站点的公开域名；本项目演示地址为 `https://gohusky.cn/piano-learning/` |
 
 本机部署脚本将 Web 目录固定为 `C:/Users/Administrator/Desktop/code/frontend/homepage/public/piano-learning`，临时上传目录固定为 `C:/Users/Administrator/Desktop/code/frontend/homepage`。这两个路径不是环境覆盖项。

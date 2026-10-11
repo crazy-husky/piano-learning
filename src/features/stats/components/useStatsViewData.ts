@@ -87,13 +87,18 @@ export function useStatsViewData({
   sessionProgressMode,
 }: UseStatsViewDataOptions): StatsViewDataModel {
   const longTermReviews = useMemo(
-    () => primaryContentReady ? filterLongTermReviews(reviews) : [],
-    [primaryContentReady, reviews],
+    () => (primaryContentReady ? filterLongTermReviews(reviews) : []),
+    [primaryContentReady, reviews]
   );
   const staffNotationMode = settings.staffNotationMode;
   const activeNotes = useMemo(
-    () => getNotesForGroups(settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode),
-    [settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode],
+    () =>
+      getNotesForGroups(
+        settings.enabledGroupIds,
+        settings.includeInterStaffLedgerSpellings,
+        staffNotationMode
+      ),
+    [settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode]
   );
   const rangeScopedReviews = useMemo(() => {
     const rangedIds = new Set(activeNotes.map((note) => note.id));
@@ -101,65 +106,69 @@ export function useStatsViewData({
   }, [activeNotes, longTermReviews]);
   const filteredReviews = useMemo(
     () => filterByRange(rangeScopedReviews, range),
-    [range, rangeScopedReviews],
+    [range, rangeScopedReviews]
   );
   const dailyStats = useMemo(
-    () => primaryContentReady ? buildDailyStats(filteredReviews) : [],
-    [filteredReviews, primaryContentReady],
+    () => (primaryContentReady ? buildDailyStats(filteredReviews) : []),
+    [filteredReviews, primaryContentReady]
   );
   const recognitionTrendBySession = useMemo(
-    () => recognitionStatsReady
-      ? buildRecognitionTrend(
-          longTermReviews,
-          sessions,
-          activeNotes.map((note) => note.id),
-          "practice-session",
-        )
-      : [],
-    [activeNotes, longTermReviews, recognitionStatsReady, sessions],
-  );
-  const recognitionRangeTransitions = useMemo(
-    () => findRecognitionRangeTransitions(sessions, activeNotes, recognitionTrendBySession),
-    [activeNotes, recognitionTrendBySession, sessions],
-  );
-  const recognitionTransitionBaselinesBySession = useMemo(
-    () => recognitionRangeTransitions.map((transition) => ({
-      transition,
-      trend: transition.baselineNoteIds.length
+    () =>
+      recognitionStatsReady
         ? buildRecognitionTrend(
             longTermReviews,
             sessions,
-            transition.baselineNoteIds,
-            "practice-session",
+            activeNotes.map((note) => note.id),
+            "practice-session"
           )
         : [],
-    })),
-    [longTermReviews, recognitionRangeTransitions, sessions],
+    [activeNotes, longTermReviews, recognitionStatsReady, sessions]
   );
-  const recognitionTrend = useMemo(
-    () => {
-      const trend = recognitionTimeGrouping === "day"
+  const recognitionRangeTransitions = useMemo(
+    () => findRecognitionRangeTransitions(sessions, activeNotes, recognitionTrendBySession),
+    [activeNotes, recognitionTrendBySession, sessions]
+  );
+  const recognitionTransitionBaselinesBySession = useMemo(
+    () =>
+      recognitionRangeTransitions.map((transition) => ({
+        transition,
+        trend: transition.baselineNoteIds.length
+          ? buildRecognitionTrend(
+              longTermReviews,
+              sessions,
+              transition.baselineNoteIds,
+              "practice-session"
+            )
+          : [],
+      })),
+    [longTermReviews, recognitionRangeTransitions, sessions]
+  );
+  const recognitionTrend = useMemo(() => {
+    const trend =
+      recognitionTimeGrouping === "day"
         ? groupRecognitionTrendByDay(recognitionTrendBySession)
         : recognitionTrendBySession;
-      const baselines = recognitionTransitionBaselinesBySession.map(({ transition, trend: baselineTrend }) => ({
+    const baselines = recognitionTransitionBaselinesBySession.map(
+      ({ transition, trend: baselineTrend }) => ({
         transition,
-        trend: recognitionTimeGrouping === "day"
-          ? groupRecognitionTrendByDay(baselineTrend)
-          : baselineTrend,
-      }));
-      return applyRecognitionRangeTransitions(trend, baselines, recognitionTimeGrouping);
-    },
-    [recognitionTimeGrouping, recognitionTransitionBaselinesBySession, recognitionTrendBySession],
-  );
+        trend:
+          recognitionTimeGrouping === "day"
+            ? groupRecognitionTrendByDay(baselineTrend)
+            : baselineTrend,
+      })
+    );
+    return applyRecognitionRangeTransitions(trend, baselines, recognitionTimeGrouping);
+  }, [recognitionTimeGrouping, recognitionTransitionBaselinesBySession, recognitionTrendBySession]);
   const recognitionTimeStats = useMemo<RecognitionTimeChartStat[]>(() => {
     const cutoff = getStatsRangeCutoff(range);
     const visible = cutoff
       ? recognitionTrend.filter((point) => new Date(point.boundaryAt) >= cutoff)
       : recognitionTrend;
     return visible.map((stat) => {
-      const formatted = recognitionTimeGrouping === "day"
-        ? { label: formatShortDate(stat.key), tooltipLabel: formatShortDate(stat.key) }
-        : formatShortDateTime(stat.boundaryAt);
+      const formatted =
+        recognitionTimeGrouping === "day"
+          ? { label: formatShortDate(stat.key), tooltipLabel: formatShortDate(stat.key) }
+          : formatShortDateTime(stat.boundaryAt);
       return {
         ...formatted,
         boundaryLabel: stat.boundaryLabel,
@@ -173,9 +182,18 @@ export function useStatsViewData({
         p90: stat.p90Ms === undefined ? undefined : stat.p90Ms / 1000,
         relativeBaseline: stat.relativeBaseline
           ? {
-              median: stat.relativeBaseline.medianMs === undefined ? undefined : stat.relativeBaseline.medianMs / 1000,
-              p10: stat.relativeBaseline.p10Ms === undefined ? undefined : stat.relativeBaseline.p10Ms / 1000,
-              p90: stat.relativeBaseline.p90Ms === undefined ? undefined : stat.relativeBaseline.p90Ms / 1000,
+              median:
+                stat.relativeBaseline.medianMs === undefined
+                  ? undefined
+                  : stat.relativeBaseline.medianMs / 1000,
+              p10:
+                stat.relativeBaseline.p10Ms === undefined
+                  ? undefined
+                  : stat.relativeBaseline.p10Ms / 1000,
+              p90:
+                stat.relativeBaseline.p90Ms === undefined
+                  ? undefined
+                  : stat.relativeBaseline.p90Ms / 1000,
             }
           : undefined,
         totalNoteCount: stat.totalNoteCount,
@@ -196,47 +214,59 @@ export function useStatsViewData({
     reviews,
     sessions,
   });
-  const { selection: sessionProgressSelection, selectedSessionIds: sessionProgressSessionIds } = sessionProgressComparison;
+  const { selection: sessionProgressSelection, selectedSessionIds: sessionProgressSessionIds } =
+    sessionProgressComparison;
   const noteRangeReviews = useMemo(() => {
     if (!noteRangeStatsReady) return [];
     if (!sessionProgressSelection) return filteredReviews;
     return filterByRange(
       rangeScopedReviews.filter((review) => sessionProgressSessionIds.has(review.sessionId)),
-      range,
+      range
     );
-  }, [filteredReviews, noteRangeStatsReady, range, rangeScopedReviews, sessionProgressSelection, sessionProgressSessionIds]);
+  }, [
+    filteredReviews,
+    noteRangeStatsReady,
+    range,
+    rangeScopedReviews,
+    sessionProgressSelection,
+    sessionProgressSessionIds,
+  ]);
   const noteStats = useMemo(() => {
     if (!noteRangeStatsReady || activeNotes.length === 0) return [];
     const activeTargetNoteIds = new Set(activeNotes.map((note) => note.id));
-    return buildNoteStats(noteRangeReviews).filter((stat) => activeTargetNoteIds.has(stat.targetNoteId));
+    return buildNoteStats(noteRangeReviews).filter((stat) =>
+      activeTargetNoteIds.has(stat.targetNoteId)
+    );
   }, [activeNotes, noteRangeReviews, noteRangeStatsReady]);
   const rangeStaffNotes = useMemo(() => {
     const statsByNoteId = new Map(noteStats.map((stat) => [stat.targetNoteId, stat]));
     return activeNotes.map((note) => ({ note, stat: statsByNoteId.get(note.id) }));
   }, [activeNotes, noteStats]);
   const errorStaffNotes = useMemo<StaffHeatNote[]>(
-    () => rangeStaffNotes.map(({ note, stat }) => ({
-      confusions: stat?.commonConfusions ?? [],
-      note,
-      value: stat?.errorCount ?? 0,
-    })),
-    [rangeStaffNotes],
+    () =>
+      rangeStaffNotes.map(({ note, stat }) => ({
+        confusions: stat?.commonConfusions ?? [],
+        note,
+        value: stat?.errorCount ?? 0,
+      })),
+    [rangeStaffNotes]
   );
   const timeStaffNotes = useMemo<StaffHeatNote[]>(
-    () => rangeStaffNotes.map(({ note, stat }) => ({
-      durations: { medianMs: stat?.medianMs, p10Ms: stat?.p10Ms, p90Ms: stat?.p90Ms },
-      note,
-      value: stat?.p90Ms,
-    })),
-    [rangeStaffNotes],
+    () =>
+      rangeStaffNotes.map(({ note, stat }) => ({
+        durations: { medianMs: stat?.medianMs, p10Ms: stat?.p10Ms, p90Ms: stat?.p90Ms },
+        note,
+        value: stat?.p90Ms,
+      })),
+    [rangeStaffNotes]
   );
   const timeTertileThresholds = useMemo(
     () => positiveTertileThresholds(positiveStaffHeatValues(timeStaffNotes)),
-    [timeStaffNotes],
+    [timeStaffNotes]
   );
   const errorTertileThresholds = useMemo(
     () => positiveTertileThresholds(positiveStaffHeatValues(errorStaffNotes)),
-    [errorStaffNotes],
+    [errorStaffNotes]
   );
 
   return {

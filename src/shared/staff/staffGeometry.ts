@@ -84,7 +84,9 @@ function targetNoteOrder(note: Pick<TargetNote, "noteName" | "octave">): number 
   return note.octave * 7 + NOTE_NAME_ORDER[note.noteName];
 }
 
-export function getLedgerStemDirection(note: TargetNote): typeof Stem.UP | typeof Stem.DOWN | undefined {
+export function getLedgerStemDirection(
+  note: TargetNote
+): typeof Stem.UP | typeof Stem.DOWN | undefined {
   const bounds = STAFF_PITCH_BOUNDS[note.staff];
   const order = targetNoteOrder(note);
   if (order < targetNoteOrder(bounds.lowest)) {
@@ -100,7 +102,7 @@ export function createStaffRenderSurface(
   target: HTMLDivElement,
   displayWidth: number,
   displayHeight: number,
-  scale = 1,
+  scale = 1
 ): StaffRenderSurface {
   if (!Number.isFinite(scale) || scale < 1) {
     throw new Error(`Staff notation scale must be at least 1, received ${scale}`);
@@ -137,18 +139,18 @@ export function createStaffRenderSurface(
 export function getResponsiveStaffFrame(
   surface: Pick<StaffRenderSurface, "scale" | "width">,
   columnCount: number,
-  profile: ResponsiveStaffHorizontalProfile,
+  profile: ResponsiveStaffHorizontalProfile
 ): StaffFrame {
   const preferredContentWidth = logicalPx(
     profile.clefReservePx +
       Math.max(0, columnCount - 1) * profile.preferredColumnGapPx +
       profile.noteAreaSidePaddingPx * 2,
-    surface.scale,
+    surface.scale
   );
   const desiredStaffSidePadding = logicalPx(profile.staffSidePaddingPx, surface.scale);
   const staffSidePadding = Math.min(
     desiredStaffSidePadding,
-    Math.max(0, (surface.width - preferredContentWidth) / 2),
+    Math.max(0, (surface.width - preferredContentWidth) / 2)
   );
   return {
     staveWidth: Math.max(1, surface.width - staffSidePadding * 2),
@@ -158,7 +160,7 @@ export function getResponsiveStaffFrame(
 
 export function getFixedStaffFrame(
   surface: Pick<StaffRenderSurface, "scale" | "width">,
-  sidePaddingPx: number,
+  sidePaddingPx: number
 ): StaffFrame {
   const x = logicalPx(sidePaddingPx, surface.scale);
   return {
@@ -167,7 +169,11 @@ export function getFixedStaffFrame(
   };
 }
 
-export function getGrandStaffAnchors(scale: number, centerYPx: number, gapPx: number): GrandStaffAnchors {
+export function getGrandStaffAnchors(
+  scale: number,
+  centerYPx: number,
+  gapPx: number
+): GrandStaffAnchors {
   const centerY = logicalPx(centerYPx, scale);
   const halfGap = logicalPx(gapPx, scale) / 2;
   return {
@@ -180,7 +186,7 @@ export function drawGrandStaff(
   context: ReturnType<Renderer["getContext"]>,
   frame: StaffFrame,
   anchors: GrandStaffAnchors,
-  options: { brace?: boolean; yOffset?: number } = {},
+  options: { brace?: boolean; yOffset?: number } = {}
 ): DrawnGrandStaff {
   const yOffset = options.yOffset ?? 0;
   const treble = new Stave(frame.x, yOffset + anchors.trebleY, frame.staveWidth).addClef("treble");
@@ -200,7 +206,7 @@ export function drawSingleStaff(
   frame: StaffFrame,
   staff: "treble" | "bass",
   y: number,
-  options: { yOffset?: number } = {},
+  options: { yOffset?: number } = {}
 ): DrawnSingleStaff {
   const stave = new Stave(frame.x, (options.yOffset ?? 0) + y, frame.staveWidth).addClef(staff);
   stave.setContext(context).draw();
@@ -238,9 +244,9 @@ export function drawStaffSystem({
       getGrandStaffAnchors(
         scale,
         vertical.centerYPx,
-        useLedgerGap ? vertical.ledgerGapPx : vertical.gapPx,
+        useLedgerGap ? vertical.ledgerGapPx : vertical.gapPx
       ),
-      { brace, yOffset },
+      { brace, yOffset }
     );
     const commonNoteStartX = Math.max(staves.treble.getNoteStartX(), staves.bass.getNoteStartX());
     staves.treble.setNoteStartX(commonNoteStartX);
@@ -269,25 +275,22 @@ export function getNoteAreaBounds(
   columnCount: number,
   scale: number,
   profile: Pick<StaffHorizontalProfile, "minNoteAreaSidePaddingPx" | "noteAreaSidePaddingPx"> &
-    Partial<Pick<ResponsiveStaffHorizontalProfile, "preferredColumnGapPx">>,
+    Partial<Pick<ResponsiveStaffHorizontalProfile, "preferredColumnGapPx">>
 ): NoteAreaBounds {
   const availableWidth = Math.max(1, noteEndX - noteStartX);
   const preferredColumnAreaWidth = logicalPx(
     Math.max(0, columnCount - 1) * (profile.preferredColumnGapPx ?? 0),
-    scale,
+    scale
   );
   const maxSidePadding = Math.max(0, (availableWidth - 1) / 2);
   const minSidePadding = Math.min(
     logicalPx(profile.minNoteAreaSidePaddingPx, scale),
-    maxSidePadding,
+    maxSidePadding
   );
   const noteAreaSidePadding = Math.min(
     logicalPx(profile.noteAreaSidePaddingPx, scale),
     maxSidePadding,
-    Math.max(
-      minSidePadding,
-      (availableWidth - preferredColumnAreaWidth) / 2,
-    ),
+    Math.max(minSidePadding, (availableWidth - preferredColumnAreaWidth) / 2)
   );
   const left = noteStartX + noteAreaSidePadding;
   return {
@@ -301,14 +304,14 @@ export function getGrandStaffNoteArea(
   columnCount: number,
   scale: number,
   profile: Pick<StaffHorizontalProfile, "minNoteAreaSidePaddingPx" | "noteAreaSidePaddingPx"> &
-    Partial<Pick<ResponsiveStaffHorizontalProfile, "preferredColumnGapPx">>,
+    Partial<Pick<ResponsiveStaffHorizontalProfile, "preferredColumnGapPx">>
 ): NoteAreaBounds {
   return getNoteAreaBounds(
     Math.max(staves.treble.getNoteStartX(), staves.bass.getNoteStartX()),
     Math.min(staves.treble.getNoteEndX(), staves.bass.getNoteEndX()),
     columnCount,
     scale,
-    profile,
+    profile
   );
 }
 
@@ -317,7 +320,7 @@ export function getSingleStaffNoteArea(
   columnCount: number,
   scale: number,
   profile: Pick<StaffHorizontalProfile, "minNoteAreaSidePaddingPx" | "noteAreaSidePaddingPx"> &
-    Partial<Pick<ResponsiveStaffHorizontalProfile, "preferredColumnGapPx">>,
+    Partial<Pick<ResponsiveStaffHorizontalProfile, "preferredColumnGapPx">>
 ): NoteAreaBounds {
   return getNoteAreaBounds(stave.getNoteStartX(), stave.getNoteEndX(), columnCount, scale, profile);
 }

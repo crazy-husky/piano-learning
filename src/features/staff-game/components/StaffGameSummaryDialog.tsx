@@ -76,16 +76,24 @@ export function StaffGameSummaryDialog({
         ))}
       </div>
       <section className="staff-game-card staff-game-summary-card">
-        <div aria-label={isSongMode ? songTitle : `第 ${level} 关`} className="staff-game-summary-level-badge" role="img">
+        <div
+          aria-label={isSongMode ? songTitle : `第 ${level} 关`}
+          className="staff-game-summary-level-badge"
+          role="img"
+        >
           <img alt="" aria-hidden="true" draggable="false" src={levelBannerImage} />
-          <strong className={isSongMode ? "is-song-title" : undefined}>{isSongMode ? songTitle : `LEVEL ${level}`}</strong>
+          <strong className={isSongMode ? "is-song-title" : undefined}>
+            {isSongMode ? songTitle : `LEVEL ${level}`}
+          </strong>
         </div>
         <div className="staff-game-summary-content">
           <div aria-hidden="true" className="staff-game-summary-celebration">
             {fireworks}
             {mascot}
           </div>
-          {isSongMode || earnedStars > 0 ? <h2>{isSongMode ? "演奏完成！" : "闯关成功！"}</h2> : null}
+          {isSongMode || earnedStars > 0 ? (
+            <h2>{isSongMode ? "演奏完成！" : "闯关成功！"}</h2>
+          ) : null}
           <div className="staff-game-result-stats">
             <div>
               <span>最大连击数</span>
@@ -101,28 +109,49 @@ export function StaffGameSummaryDialog({
                 {isNewScoreRecord ? <em>新纪录</em> : null}
               </strong>
             </div>
-            {isSongMode ? <div><span>首次准确率</span><strong>{accuracy}%</strong></div> : null}
+            {isSongMode ? (
+              <div>
+                <span>首次准确率</span>
+                <strong>{accuracy}%</strong>
+              </div>
+            ) : null}
           </div>
           <div className="staff-game-summary-actions">
             <button className="staff-game-primary" onClick={onRetry} type="button">
-              <RotateCcw size={16} />{isSongMode ? "再弹一次" : "再试一次"}
+              <RotateCcw size={16} />
+              {isSongMode ? "再弹一次" : "再试一次"}
             </button>
             {isSongMode ? (
               <>
                 <button className="staff-game-secondary" onClick={onPlayNextSong} type="button">
-                  <SkipForward size={16} />{hasNextSong ? "下一首" : "回到歌曲列表"}
+                  <SkipForward size={16} />
+                  {hasNextSong ? "下一首" : "回到歌曲列表"}
                 </button>
-                {hasNextSong ? <button className="staff-game-summary-list-button" onClick={onReturnToSongList} type="button">歌曲列表</button> : null}
+                {hasNextSong ? (
+                  <button
+                    className="staff-game-summary-list-button"
+                    onClick={onReturnToSongList}
+                    type="button"
+                  >
+                    歌曲列表
+                  </button>
+                ) : null}
               </>
             ) : (
-              <button className="staff-game-secondary" disabled={isFinalLevel} onClick={onAdvanceLevel} type="button">
-                <SkipForward size={16} />{isFinalLevel ? "已通关" : "下一级"}
+              <button
+                className="staff-game-secondary"
+                disabled={isFinalLevel}
+                onClick={onAdvanceLevel}
+                type="button"
+              >
+                <SkipForward size={16} />
+                {isFinalLevel ? "已通关" : "下一级"}
               </button>
             )}
           </div>
         </div>
       </section>
     </div>,
-    document.body,
+    document.body
   );
 }

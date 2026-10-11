@@ -74,18 +74,21 @@ const metadata: PracticeMicrophoneCaptureMetadata = {
 
 describe("practice microphone capture", () => {
   it("summarizes silence, peak and clipping for a sampled window", () => {
-    expect(summarizePracticeMicrophoneSamples(new Float32Array([-1, -0.5, 0, 0.5, 1])))
-      .toEqual({
-        clippedSampleRatio: 0.4,
-        peak: 1,
-        rms: Math.sqrt(0.5),
-        zeroSampleRatio: 0.2,
-      });
+    expect(summarizePracticeMicrophoneSamples(new Float32Array([-1, -0.5, 0, 0.5, 1]))).toEqual({
+      clippedSampleRatio: 0.4,
+      peak: 1,
+      rms: Math.sqrt(0.5),
+      zeroSampleRatio: 0.2,
+    });
   });
 
   it("returns finite zero values for an empty window", () => {
-    expect(summarizePracticeMicrophoneSamples(new Float32Array()))
-      .toEqual({ clippedSampleRatio: 0, peak: 0, rms: 0, zeroSampleRatio: 0 });
+    expect(summarizePracticeMicrophoneSamples(new Float32Array())).toEqual({
+      clippedSampleRatio: 0,
+      peak: 0,
+      rms: 0,
+      zeroSampleRatio: 0,
+    });
   });
 
   it("amplifies analysis samples with digital clipping while preserving the raw samples", () => {
@@ -140,12 +143,17 @@ describe("practice microphone capture", () => {
         zeroSampleRatio: 0,
       },
     ];
-    const analysis = { counts: { detected: 1, difference: -1, expected: 2 }, events: [{ note: "A4", offsetMs: 120 }] };
+    const analysis = {
+      counts: { detected: 1, difference: -1, expected: 2 },
+      events: [{ note: "A4", offsetMs: 120 }],
+    };
     const blob = createPracticeMicrophoneCaptureBlob(metadata, frames, analysis);
     const exported = JSON.parse(await blob.text());
 
     expect(exported.version).toBe(4);
-    expect(exported.pcmSemantics).toBe("concatenated-time-domain-analysis-windows; windows may overlap");
+    expect(exported.pcmSemantics).toBe(
+      "concatenated-time-domain-analysis-windows; windows may overlap"
+    );
     expect(exported.metadata.analysisGain).toBe(4);
     expect(exported.analysis).toEqual(analysis);
     expect(exported.metadata.pcmCaptureIntervalMs).toBe(50);
@@ -168,9 +176,12 @@ describe("practice microphone capture", () => {
     expect(exported.metadata.requestedConstraints.channelCount).toBe(1);
     expect(exported.metadata.trackSettings.channelCount).toBe(1);
 
-    const decoded = Uint8Array.from(atob(exported.pcmWindowsBase64), (character) => character.charCodeAt(0));
+    const decoded = Uint8Array.from(atob(exported.pcmWindowsBase64), (character) =>
+      character.charCodeAt(0)
+    );
     const pcmView = new DataView(decoded.buffer);
-    expect(Array.from({ length: 4 }, (_, index) => pcmView.getFloat32(index * 4, true)))
-      .toEqual([0.25, -0.25, 1, 0]);
+    expect(Array.from({ length: 4 }, (_, index) => pcmView.getFloat32(index * 4, true))).toEqual([
+      0.25, -0.25, 1, 0,
+    ]);
   });
 });

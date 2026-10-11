@@ -21,7 +21,11 @@ self.addEventListener("message", async (event: MessageEvent<SwiftF0PracticeReque
 
     if (!runtimePromise) throw new Error("SwiftF0 尚未初始化");
     const runtime = await runtimePromise;
-    const result = await analyzeSwiftF0(runtime.session, new Float32Array(message.samples), message.sampleRate);
+    const result = await analyzeSwiftF0(
+      runtime.session,
+      new Float32Array(message.samples),
+      message.sampleRate
+    );
     postResponse({ ...result, generation: message.generation, id: message.id, type: "result" });
   } catch (error) {
     if (message.type === "initialize") runtimePromise = null;

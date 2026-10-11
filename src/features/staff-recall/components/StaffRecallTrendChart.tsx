@@ -15,7 +15,10 @@ function formatSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-export function StaffRecallTrendChart({ currentRunId, runs }: StaffRecallTrendChartProps): JSX.Element {
+export function StaffRecallTrendChart({
+  currentRunId,
+  runs,
+}: StaffRecallTrendChartProps): JSX.Element {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(CHART_WIDTH);
 
@@ -49,7 +52,9 @@ export function StaffRecallTrendChart({ currentRunId, runs }: StaffRecallTrendCh
     PADDING.left + (points.length <= 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth);
   const toY = (value: number): number =>
     PADDING.top + ((maxMs - value) / (maxMs - minMs)) * plotHeight;
-  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${toX(index)} ${toY(point.totalMs)}`).join(" ");
+  const path = points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${toX(index)} ${toY(point.totalMs)}`)
+    .join(" ");
 
   return (
     <div className="staff-recall-trend-wrap" ref={wrapRef}>
@@ -73,7 +78,12 @@ export function StaffRecallTrendChart({ currentRunId, runs }: StaffRecallTrendCh
           y1={PADDING.top + plotHeight}
           y2={PADDING.top + plotHeight}
         />
-        <text className="staff-recall-trend-tick" textAnchor="end" x={PADDING.left - 7} y={PADDING.top + 4}>
+        <text
+          className="staff-recall-trend-tick"
+          textAnchor="end"
+          x={PADDING.left - 7}
+          y={PADDING.top + 4}
+        >
           {formatSeconds(maxMs)}
         </text>
         <text
@@ -87,7 +97,11 @@ export function StaffRecallTrendChart({ currentRunId, runs }: StaffRecallTrendCh
         <path className="staff-recall-trend-line" d={path} />
         {points.map((point, index) => (
           <circle
-            className={point.id === currentRunId ? "staff-recall-trend-point current" : "staff-recall-trend-point"}
+            className={
+              point.id === currentRunId
+                ? "staff-recall-trend-point current"
+                : "staff-recall-trend-point"
+            }
             cx={toX(index)}
             cy={toY(point.totalMs)}
             key={point.id}

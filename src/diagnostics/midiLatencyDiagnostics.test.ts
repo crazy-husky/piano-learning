@@ -91,14 +91,32 @@ describe("MIDI latency metrics", () => {
     ]);
 
     expect(groups).toHaveLength(3);
-    expect(groups[0]).toMatchObject({ measuredCount: 1, outcome: "correct", totalCount: 2, warmupSampleId: 1 });
+    expect(groups[0]).toMatchObject({
+      measuredCount: 1,
+      outcome: "correct",
+      totalCount: 2,
+      warmupSampleId: 1,
+    });
     expect(groups[0].metrics.totalSoftware).toEqual({ median: 50, max: 50 });
-    expect(groups[1]).toMatchObject({ measuredCount: 0, outcome: "correct", totalCount: 1, warmupSampleId: 3 });
-    expect(groups[2]).toMatchObject({ measuredCount: 0, outcome: "wrong", totalCount: 1, warmupSampleId: 4 });
+    expect(groups[1]).toMatchObject({
+      measuredCount: 0,
+      outcome: "correct",
+      totalCount: 1,
+      warmupSampleId: 3,
+    });
+    expect(groups[2]).toMatchObject({
+      measuredCount: 0,
+      outcome: "wrong",
+      totalCount: 1,
+      warmupSampleId: 4,
+    });
   });
 
   it("formats a screenshot-friendly summary and raw sample section", () => {
-    const report = formatMidiLatencyReport([makeSample(1), makeSample(2, staffAudioCondition, 100)]);
+    const report = formatMidiLatencyReport([
+      makeSample(1),
+      makeSample(2, staffAudioCondition, 100),
+    ]);
 
     expect(report).toContain("谱页 / 声音开 / 300ms");
     expect(report).toContain("300ms / 音名 / 正确");

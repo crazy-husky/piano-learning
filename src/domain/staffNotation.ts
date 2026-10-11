@@ -6,7 +6,7 @@ export function staffForSingleClefMode(mode: Exclude<StaffNotationMode, "grand">
 
 export function applicableLedgerSetting(
   mode: StaffNotationMode,
-  includeInterStaffLedgerSpellings: boolean,
+  includeInterStaffLedgerSpellings: boolean
 ): boolean | undefined {
   return mode === "grand" ? includeInterStaffLedgerSpellings : undefined;
 }

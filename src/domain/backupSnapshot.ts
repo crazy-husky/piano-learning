@@ -18,7 +18,9 @@ function latestStaffRecallRun(runs: StaffRecallRunRecord[]): StaffRecallRunRecor
 }
 
 function latestTimestamp(values: Array<string | undefined>): string | undefined {
-  return values.filter((value): value is string => Boolean(value)).sort((a, b) => b.localeCompare(a))[0];
+  return values
+    .filter((value): value is string => Boolean(value))
+    .sort((a, b) => b.localeCompare(a))[0];
 }
 
 function appendByDate<T>(recordsByDate: Map<string, T[]>, date: string, record: T): void {
@@ -34,7 +36,7 @@ export function getBackupDataModifiedAt(
   settings: AppSettings,
   sessions: PracticeSessionRecord[],
   reviews: ReviewRecord[],
-  staffRecallRuns: StaffRecallRunRecord[] = [],
+  staffRecallRuns: StaffRecallRunRecord[] = []
 ): string {
   return (
     latestTimestamp([
@@ -52,7 +54,7 @@ export function buildBackupSnapshot(
   sessions: PracticeSessionRecord[],
   reviews: ReviewRecord[],
   backupAt = new Date().toISOString(),
-  staffRecallRuns: StaffRecallRunRecord[] = [],
+  staffRecallRuns: StaffRecallRunRecord[] = []
 ): BackupSnapshot {
   const days: Record<string, BackupDayFile> = {};
   const sessionsByDate = new Map<string, PracticeSessionRecord[]>();
@@ -74,7 +76,11 @@ export function buildBackupSnapshot(
     appendByDate(staffRecallRunsByDate, date, run);
   }
 
-  const dates = new Set([...sessionsByDate.keys(), ...reviewsByDate.keys(), ...staffRecallRunsByDate.keys()]);
+  const dates = new Set([
+    ...sessionsByDate.keys(),
+    ...reviewsByDate.keys(),
+    ...staffRecallRunsByDate.keys(),
+  ]);
   for (const date of dates) {
     days[date] = {
       schemaVersion: 1,

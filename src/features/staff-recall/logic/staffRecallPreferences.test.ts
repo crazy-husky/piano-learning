@@ -8,7 +8,7 @@ import {
 describe("staff recall preferences", () => {
   it("defaults old preferences to a numeric history limit", () => {
     expect(
-      parseStaffRecallUiPreferences({ historyLimit: 24 }, DEFAULT_STAFF_RECALL_UI_PREFERENCES),
+      parseStaffRecallUiPreferences({ historyLimit: 24 }, DEFAULT_STAFF_RECALL_UI_PREFERENCES)
     ).toEqual({
       allHistory: false,
       historyLimit: 24,
@@ -17,7 +17,10 @@ describe("staff recall preferences", () => {
 
   it("persists the all-history choice independently from the numeric limit", () => {
     expect(
-      parseStaffRecallUiPreferences({ allHistory: true, historyLimit: 24 }, DEFAULT_STAFF_RECALL_UI_PREFERENCES),
+      parseStaffRecallUiPreferences(
+        { allHistory: true, historyLimit: 24 },
+        DEFAULT_STAFF_RECALL_UI_PREFERENCES
+      )
     ).toEqual({
       allHistory: true,
       historyLimit: 24,

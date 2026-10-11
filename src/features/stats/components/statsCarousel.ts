@@ -3,7 +3,10 @@ import { STATS_CAROUSEL_CARD_IDS, type StatsCarouselCardId } from "./statsUiPref
 export type StatsCarouselMoveDirection = -1 | 1;
 
 export function normalizeStatsCarouselIndex(index: number): number {
-  return ((index % STATS_CAROUSEL_CARD_IDS.length) + STATS_CAROUSEL_CARD_IDS.length) % STATS_CAROUSEL_CARD_IDS.length;
+  return (
+    ((index % STATS_CAROUSEL_CARD_IDS.length) + STATS_CAROUSEL_CARD_IDS.length) %
+    STATS_CAROUSEL_CARD_IDS.length
+  );
 }
 
 export function getStatsCarouselOrder(index: number): StatsCarouselCardId[] {
@@ -16,7 +19,7 @@ export function getStatsCarouselOrder(index: number): StatsCarouselCardId[] {
 
 export function getStatsCarouselMoveDirection(
   currentIndex: number,
-  targetIndex: number,
+  targetIndex: number
 ): StatsCarouselMoveDirection | undefined {
   const normalizedCurrentIndex = normalizeStatsCarouselIndex(currentIndex);
   const normalizedTargetIndex = normalizeStatsCarouselIndex(targetIndex);
@@ -35,7 +38,7 @@ export function getStatsCarouselMoveDirection(
 
 export function rotateStatsCarouselOrder(
   order: readonly StatsCarouselCardId[],
-  direction: StatsCarouselMoveDirection,
+  direction: StatsCarouselMoveDirection
 ): StatsCarouselCardId[] {
   if (direction === 1) {
     return [...order.slice(1), order[0]];

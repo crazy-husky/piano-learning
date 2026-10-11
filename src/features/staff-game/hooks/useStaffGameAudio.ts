@@ -1,6 +1,10 @@
 import { useEffect, type MutableRefObject } from "react";
 import { playPianoNote, unlockAudio } from "../../../audio/piano";
-import { playStaffGameSound, playStaffGameStarReveal, setStaffGameSoundsEnabled } from "../audio/staffGameSounds";
+import {
+  playStaffGameSound,
+  playStaffGameStarReveal,
+  setStaffGameSoundsEnabled,
+} from "../audio/staffGameSounds";
 import type { PianoKeyName } from "../../../domain/types";
 
 export type StaffGameSoundName = Parameters<typeof playStaffGameSound>[0];
@@ -42,7 +46,11 @@ export function useStaffGameAudio({
     const audio = backgroundMusicRef.current;
     if (!audio) return undefined;
     audio.volume = 0.06;
-    const shouldPlay = resourceLoadState === "ready" && phase === "running" && backgroundMusicEnabled && inputMode !== "physical";
+    const shouldPlay =
+      resourceLoadState === "ready" &&
+      phase === "running" &&
+      backgroundMusicEnabled &&
+      inputMode !== "physical";
 
     const removeUnlockListeners = (): void => {
       document.removeEventListener("pointerdown", unlockMusic);

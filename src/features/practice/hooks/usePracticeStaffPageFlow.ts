@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import { selectNotePage, type AdaptiveNoteScheduler } from "../../../domain/scheduler";
 import type { MelodyGenerationState } from "../../../domain/melody";
 import type {
@@ -58,7 +65,12 @@ interface UsePracticeStaffPageFlowOptions {
   values: PracticeStaffPageFlowValues;
 }
 
-export function usePracticeStaffPageFlow({ runtime, services, ui, values }: UsePracticeStaffPageFlowOptions) {
+export function usePracticeStaffPageFlow({
+  runtime,
+  services,
+  ui,
+  values,
+}: UsePracticeStaffPageFlowOptions) {
   const {
     drillNoteNames,
     enabledNotes,
@@ -120,7 +132,7 @@ export function usePracticeStaffPageFlow({ runtime, services, ui, values }: UseP
       }
       return Math.min(STAFF_PAGE_SIZE, Math.max(0, fixedCount - nextCompletedCount));
     },
-    [fixedCount, mode],
+    [fixedCount, mode]
   );
 
   const markCurrentStaffPageNoteComplete = useCallback((): void => {
@@ -148,7 +160,7 @@ export function usePracticeStaffPageFlow({ runtime, services, ui, values }: UseP
       startPrompt(nextPage.notes[index]);
       return true;
     },
-    [startPrompt, syncStaffPage],
+    [startPrompt, syncStaffPage]
   );
 
   const startStaffPage = useCallback(
@@ -169,30 +181,33 @@ export function usePracticeStaffPageFlow({ runtime, services, ui, values }: UseP
       if (count <= 0) {
         return;
       }
-      const notes = sourceQueueStrategy !== "melody"
-        ? adaptiveSchedulerRef.current?.selectPage(count, { lastTargetNoteId: lastTargetNoteIdRef.current }) ??
-          selectNotePage({
-            notes: sourceNotes,
-            reviews: sourceReviews,
-            sessions,
-            currentSessionId: sessionRef.current?.id,
-            queueStrategy: sourceQueueStrategy,
-            drillNoteNames: sourceDrillNoteNames,
-            lastTargetNoteId: lastTargetNoteIdRef.current,
-            melodyState: melodyGenerationStateRef.current,
-            count,
-          })
-        : selectNotePage({
-            notes: sourceNotes,
-            reviews: sourceReviews,
-            sessions,
-            currentSessionId: sessionRef.current?.id,
-            queueStrategy: sourceQueueStrategy,
-            drillNoteNames: sourceDrillNoteNames,
-            lastTargetNoteId: lastTargetNoteIdRef.current,
-            melodyState: melodyGenerationStateRef.current,
-            count,
-          });
+      const notes =
+        sourceQueueStrategy !== "melody"
+          ? (adaptiveSchedulerRef.current?.selectPage(count, {
+              lastTargetNoteId: lastTargetNoteIdRef.current,
+            }) ??
+            selectNotePage({
+              notes: sourceNotes,
+              reviews: sourceReviews,
+              sessions,
+              currentSessionId: sessionRef.current?.id,
+              queueStrategy: sourceQueueStrategy,
+              drillNoteNames: sourceDrillNoteNames,
+              lastTargetNoteId: lastTargetNoteIdRef.current,
+              melodyState: melodyGenerationStateRef.current,
+              count,
+            }))
+          : selectNotePage({
+              notes: sourceNotes,
+              reviews: sourceReviews,
+              sessions,
+              currentSessionId: sessionRef.current?.id,
+              queueStrategy: sourceQueueStrategy,
+              drillNoteNames: sourceDrillNoteNames,
+              lastTargetNoteId: lastTargetNoteIdRef.current,
+              melodyState: melodyGenerationStateRef.current,
+              count,
+            });
       const page = {
         notes,
         index: 0,
@@ -201,7 +216,7 @@ export function usePracticeStaffPageFlow({ runtime, services, ui, values }: UseP
       syncStaffPage(page);
       startPrompt(notes[0]);
     },
-    [getNextStaffPageCount, sessions, startPrompt, syncStaffPage],
+    [getNextStaffPageCount, sessions, startPrompt, syncStaffPage]
   );
 
   const startStaffPageScroll = useCallback(
@@ -234,12 +249,13 @@ export function usePracticeStaffPageFlow({ runtime, services, ui, values }: UseP
         melodyState: melodyGenerationStateRef.current,
         count: nextRowCount,
       };
-      const nextRow = queueStrategy !== "melody"
-        ? adaptiveSchedulerRef.current?.selectPage(nextRowCount, {
-            lastTargetNoteId: pageSelectionOptions.lastTargetNoteId,
-            plannedTargetNoteIds: pageSelectionOptions.plannedTargetNoteIds,
-          }) ?? selectNotePage(pageSelectionOptions)
-        : selectNotePage(pageSelectionOptions);
+      const nextRow =
+        queueStrategy !== "melody"
+          ? (adaptiveSchedulerRef.current?.selectPage(nextRowCount, {
+              lastTargetNoteId: pageSelectionOptions.lastTargetNoteId,
+              plannedTargetNoteIds: pageSelectionOptions.plannedTargetNoteIds,
+            }) ?? selectNotePage(pageSelectionOptions))
+          : selectNotePage(pageSelectionOptions);
       const sessionId = sessionRef.current?.id;
       syncStaffPage({
         ...page,
@@ -262,7 +278,9 @@ export function usePracticeStaffPageFlow({ runtime, services, ui, values }: UseP
           completedCount:
             scrolledPage.completedCount - PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
         };
-        setStaffPageFirstNoteOffset((offset) => offset + PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow);
+        setStaffPageFirstNoteOffset(
+          (offset) => offset + PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
+        );
         syncStaffPage(rebasedPage);
         setIsStaffPageScrolling(false);
         const startNextPrompt = (): void => {
@@ -279,7 +297,10 @@ export function usePracticeStaffPageFlow({ runtime, services, ui, values }: UseP
       staffPageScrollFrameRef.current = window.requestAnimationFrame(() => {
         staffPageScrollFrameRef.current = null;
         setIsStaffPageScrolling(true);
-        staffPageScrollTimeoutRef.current = window.setTimeout(finishScroll, staffPageScrollDurationMs);
+        staffPageScrollTimeoutRef.current = window.setTimeout(
+          finishScroll,
+          staffPageScrollDurationMs
+        );
       });
       return true;
     },
@@ -296,9 +317,8 @@ export function usePracticeStaffPageFlow({ runtime, services, ui, values }: UseP
       staffPageScrollDurationMs,
       startPrompt,
       syncStaffPage,
-    ],
+    ]
   );
-
 
   return {
     clearStaffPageScrollSchedule,

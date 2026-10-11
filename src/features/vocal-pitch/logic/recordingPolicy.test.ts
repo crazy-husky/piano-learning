@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getVocalRecordingSpaceAction, shouldFinishVocalRecordingWhenHidden } from "./recordingPolicy";
+import {
+  getVocalRecordingSpaceAction,
+  shouldFinishVocalRecordingWhenHidden,
+} from "./recordingPolicy";
 
 describe("vocal recording policy", () => {
   it("uses Space to finish recording and otherwise toggle playback", () => {

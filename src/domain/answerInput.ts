@@ -22,7 +22,7 @@ export interface PracticeAnswerInput {
 
 export function normalizeAnswerPitchMode(
   value: unknown,
-  fallback: AnswerPitchMode = "note-name",
+  fallback: AnswerPitchMode = "note-name"
 ): AnswerPitchMode {
   if (value === "microphone") {
     return "microphone";
@@ -35,7 +35,7 @@ export function normalizeAnswerPitchMode(
 
 export function resolveAvailableAnswerPitchMode(
   configuredMode: AnswerPitchMode,
-  midiConnected: boolean,
+  midiConnected: boolean
 ): AnswerPitchMode {
   if (configuredMode === "microphone") {
     return configuredMode;
@@ -45,7 +45,7 @@ export function resolveAvailableAnswerPitchMode(
 
 export function isPracticeAnswerSourceAllowed(
   answer: PracticeAnswerInput,
-  mode: AnswerPitchMode,
+  mode: AnswerPitchMode
 ): boolean {
   if (mode === "microphone") {
     return answer.source === "microphone";
@@ -63,7 +63,7 @@ export function getTargetMidiNoteNumber(target: Pick<TargetNote, "noteName" | "o
 export function isPracticeAnswerCorrect(
   answer: PracticeAnswerInput,
   target: Pick<TargetNote, "noteName" | "octave">,
-  mode: AnswerPitchMode,
+  mode: AnswerPitchMode
 ): boolean {
   if (answer.noteName !== target.noteName) {
     return false;

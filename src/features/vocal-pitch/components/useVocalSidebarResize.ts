@@ -24,7 +24,7 @@ export function useVocalSidebarResize() {
   const [sidebarWidth, setSidebarWidth] = useLocalStorageState(
     "anki-note.vocalPitch.sidebarWidth",
     DEFAULT_SIDEBAR_WIDTH,
-    { parse: parseSidebarWidth },
+    { parse: parseSidebarWidth }
   );
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const resizeRef = useRef<{
@@ -39,24 +39,30 @@ export function useVocalSidebarResize() {
     workspaceRef.current?.style.setProperty("--vocal-sidebar-width", `${sidebarWidth}px`);
   }, [sidebarWidth]);
 
-  useEffect(() => () => {
-    mouseCleanupRef.current?.();
-    const resize = resizeRef.current;
-    if (resize?.frame !== null && resize?.frame !== undefined) {
-      cancelAnimationFrame(resize.frame);
-    }
-    document.documentElement.classList.remove("vocal-sidebar-resizing");
-  }, []);
+  useEffect(
+    () => () => {
+      mouseCleanupRef.current?.();
+      const resize = resizeRef.current;
+      if (resize?.frame !== null && resize?.frame !== undefined) {
+        cancelAnimationFrame(resize.frame);
+      }
+      document.documentElement.classList.remove("vocal-sidebar-resizing");
+    },
+    []
+  );
 
-  const startResize = useCallback((clientX: number) => {
-    resizeRef.current = {
-      frame: null,
-      latestWidth: sidebarWidth,
-      startWidth: sidebarWidth,
-      startX: clientX,
-    };
-    document.documentElement.classList.add("vocal-sidebar-resizing");
-  }, [sidebarWidth]);
+  const startResize = useCallback(
+    (clientX: number) => {
+      resizeRef.current = {
+        frame: null,
+        latestWidth: sidebarWidth,
+        startWidth: sidebarWidth,
+        startX: clientX,
+      };
+      document.documentElement.classList.add("vocal-sidebar-resizing");
+    },
+    [sidebarWidth]
+  );
 
   const moveResize = useCallback((clientX: number) => {
     const resize = resizeRef.current;
@@ -81,43 +87,55 @@ export function useVocalSidebarResize() {
     setSidebarWidth(resize.latestWidth);
   }, [setSidebarWidth]);
 
-  const beginMouseResize = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    startResize(event.clientX);
-    const handleMove = (moveEvent: MouseEvent) => moveResize(moveEvent.clientX);
-    const cleanup = () => {
-      document.removeEventListener("mousemove", handleMove);
-      document.removeEventListener("mouseup", handleUp);
-      mouseCleanupRef.current = null;
-    };
-    const handleUp = () => {
-      cleanup();
+  const beginMouseResize = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      startResize(event.clientX);
+      const handleMove = (moveEvent: MouseEvent) => moveResize(moveEvent.clientX);
+      const cleanup = () => {
+        document.removeEventListener("mousemove", handleMove);
+        document.removeEventListener("mouseup", handleUp);
+        mouseCleanupRef.current = null;
+      };
+      const handleUp = () => {
+        cleanup();
+        finishResize();
+      };
+      mouseCleanupRef.current?.();
+      mouseCleanupRef.current = cleanup;
+      document.addEventListener("mousemove", handleMove);
+      document.addEventListener("mouseup", handleUp);
+    },
+    [finishResize, moveResize, startResize]
+  );
+
+  const beginTouchResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType !== "touch") return;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      startResize(event.clientX);
+    },
+    [startResize]
+  );
+
+  const moveTouchResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType === "touch") moveResize(event.clientX);
+    },
+    [moveResize]
+  );
+
+  const finishTouchResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType !== "touch") return;
       finishResize();
-    };
-    mouseCleanupRef.current?.();
-    mouseCleanupRef.current = cleanup;
-    document.addEventListener("mousemove", handleMove);
-    document.addEventListener("mouseup", handleUp);
-  }, [finishResize, moveResize, startResize]);
-
-  const beginTouchResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== "touch") return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    startResize(event.clientX);
-  }, [startResize]);
-
-  const moveTouchResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch") moveResize(event.clientX);
-  }, [moveResize]);
-
-  const finishTouchResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== "touch") return;
-    finishResize();
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  }, [finishResize]);
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    [finishResize]
+  );
 
   const resetSidebarWidth = useCallback(() => {
     workspaceRef.current?.style.setProperty("--vocal-sidebar-width", `${DEFAULT_SIDEBAR_WIDTH}px`);

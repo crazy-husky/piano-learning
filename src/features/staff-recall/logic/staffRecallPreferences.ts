@@ -1,4 +1,7 @@
-import { DEFAULT_HISTORY_LIMIT, normalizeHistoryLimit } from "../../../shared/components/HistoryLimitControl";
+import {
+  DEFAULT_HISTORY_LIMIT,
+  normalizeHistoryLimit,
+} from "../../../shared/components/HistoryLimitControl";
 
 export const STAFF_RECALL_UI_PREFERENCES_KEY = "anki-note.staffRecallUiPreferences";
 
@@ -18,7 +21,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function parseStaffRecallUiPreferences(
   value: unknown,
-  fallback: StaffRecallUiPreferences,
+  fallback: StaffRecallUiPreferences
 ): StaffRecallUiPreferences {
   if (!isRecord(value)) {
     return fallback;

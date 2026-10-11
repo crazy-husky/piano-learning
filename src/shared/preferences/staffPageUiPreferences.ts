@@ -35,18 +35,23 @@ export function getPausedPlaybackIntervalMs(bpm: number, noteDuration: PromptNot
 
 export function parseStaffPageUiPreferences(
   value: unknown,
-  fallback: StaffPageUiPreferences,
+  fallback: StaffPageUiPreferences
 ): StaffPageUiPreferences {
   if (!isRecord(value)) {
     return fallback;
   }
   return {
-    pausedPlaybackBpm: normalizePausedPlaybackBpm(value.pausedPlaybackBpm, fallback.pausedPlaybackBpm),
+    pausedPlaybackBpm: normalizePausedPlaybackBpm(
+      value.pausedPlaybackBpm,
+      fallback.pausedPlaybackBpm
+    ),
     smoothStaffPageScroll:
       typeof value.smoothStaffPageScroll === "boolean"
         ? value.smoothStaffPageScroll
         : fallback.smoothStaffPageScroll,
     startPausedReading:
-      typeof value.startPausedReading === "boolean" ? value.startPausedReading : fallback.startPausedReading,
+      typeof value.startPausedReading === "boolean"
+        ? value.startPausedReading
+        : fallback.startPausedReading,
   };
 }

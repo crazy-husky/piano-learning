@@ -62,7 +62,10 @@ function getMelodyPitches(notes: TargetNote[]): MelodyPitch[] {
     });
   }
   return [...byPitch.values()]
-    .map((pitch) => ({ ...pitch, notes: [...pitch.notes].sort((a, b) => a.id.localeCompare(b.id)) }))
+    .map((pitch) => ({
+      ...pitch,
+      notes: [...pitch.notes].sort((a, b) => a.id.localeCompare(b.id)),
+    }))
     .sort((a, b) => a.degree - b.degree || a.pitchId.localeCompare(b.pitchId));
 }
 
@@ -76,7 +79,10 @@ function getMelodyRegisters(pitches: MelodyPitch[]): MelodyRegister[] {
 }
 
 function indexesForRegister(register: MelodyRegister): number[] {
-  return Array.from({ length: register.endIndex - register.startIndex + 1 }, (_, offset) => register.startIndex + offset);
+  return Array.from(
+    { length: register.endIndex - register.startIndex + 1 },
+    (_, offset) => register.startIndex + offset
+  );
 }
 
 function chooseFromIndexes(indexes: number[], rng: () => number): number {
@@ -87,15 +93,19 @@ function chooseRegisterAnchorIndex(
   pitches: MelodyPitch[],
   register: MelodyRegister,
   pitchVisitCounts: MelodyGenerationState["pitchVisitCounts"],
-  rng: () => number,
+  rng: () => number
 ): number {
   const indexes = indexesForRegister(register);
-  const stableIndexes = indexes.filter((index) => CADENCE_NOTE_NAMES.has(pitches[index].notes[0].noteName));
+  const stableIndexes = indexes.filter((index) =>
+    CADENCE_NOTE_NAMES.has(pitches[index].notes[0].noteName)
+  );
   const source = stableIndexes.length > 0 ? stableIndexes : indexes;
-  const minimumVisits = Math.min(...source.map((index) => pitchVisitCounts[pitches[index].pitchId] ?? 0));
+  const minimumVisits = Math.min(
+    ...source.map((index) => pitchVisitCounts[pitches[index].pitchId] ?? 0)
+  );
   return chooseFromIndexes(
     source.filter((index) => (pitchVisitCounts[pitches[index].pitchId] ?? 0) === minimumVisits),
-    rng,
+    rng
   );
 }
 
@@ -104,19 +114,20 @@ function chooseCadenceIndex(
   register: MelodyRegister,
   previousIndex: number,
   isFinalCadence: boolean,
-  rng: () => number,
+  rng: () => number
 ): number {
   const indexes = indexesForRegister(register);
   const preferredNames = isFinalCadence ? FINAL_CADENCE_NOTE_NAMES : CADENCE_NOTE_NAMES;
   const preferred = indexes.filter((index) => preferredNames.has(pitches[index].notes[0].noteName));
-  const fallback = preferred.length > 0
-    ? preferred
-    : indexes.filter((index) => CADENCE_NOTE_NAMES.has(pitches[index].notes[0].noteName));
+  const fallback =
+    preferred.length > 0
+      ? preferred
+      : indexes.filter((index) => CADENCE_NOTE_NAMES.has(pitches[index].notes[0].noteName));
   const source = fallback.length > 0 ? fallback : indexes;
   const nearestDistance = Math.min(...source.map((index) => Math.abs(index - previousIndex)));
   return chooseFromIndexes(
     source.filter((index) => Math.abs(index - previousIndex) === nearestDistance),
-    rng,
+    rng
   );
 }
 
@@ -125,7 +136,7 @@ function chooseCoverageAwareMelodicIndex(
   register: MelodyRegister,
   previousIndex: number,
   pitchVisitCounts: MelodyGenerationState["pitchVisitCounts"],
-  rng: () => number,
+  rng: () => number
 ): number {
   const roll = rng();
   if (roll >= 0.9) {
@@ -133,12 +144,14 @@ function chooseCoverageAwareMelodicIndex(
   }
   const magnitude = roll < 0.65 ? 1 : rng() < 0.5 ? 2 : 3;
   const candidates = [previousIndex - magnitude, previousIndex + magnitude].filter(
-    (index) => index >= register.startIndex && index <= register.endIndex,
+    (index) => index >= register.startIndex && index <= register.endIndex
   );
   if (candidates.length === 0) {
     return previousIndex;
   }
-  const weights = candidates.map((index) => 1 / (1 + (pitchVisitCounts[pitches[index].pitchId] ?? 0)));
+  const weights = candidates.map(
+    (index) => 1 / (1 + (pitchVisitCounts[pitches[index].pitchId] ?? 0))
+  );
   let cursor = rng() * weights.reduce((sum, weight) => sum + weight, 0);
   for (let index = 0; index < candidates.length; index += 1) {
     cursor -= weights[index];
@@ -181,18 +194,22 @@ function moveWithinRange(index: number, delta: number, minIndex: number, maxInde
 function chooseNextRegisterIndex(
   currentRegisterIndex: number,
   registerVisitCounts: number[],
-  rng: () => number,
+  rng: () => number
 ): number {
-  const otherIndexes = registerVisitCounts.map((_, index) => index).filter((index) => index !== currentRegisterIndex);
+  const otherIndexes = registerVisitCounts
+    .map((_, index) => index)
+    .filter((index) => index !== currentRegisterIndex);
   const minimumVisits = Math.min(...otherIndexes.map((index) => registerVisitCounts[index]));
   const leastVisited = otherIndexes.filter((index) => registerVisitCounts[index] === minimumVisits);
   if (rng() >= NEAREST_REGISTER_RATE) {
     return chooseFromIndexes(leastVisited, rng);
   }
-  const nearestDistance = Math.min(...leastVisited.map((index) => Math.abs(index - currentRegisterIndex)));
+  const nearestDistance = Math.min(
+    ...leastVisited.map((index) => Math.abs(index - currentRegisterIndex))
+  );
   return chooseFromIndexes(
     leastVisited.filter((index) => Math.abs(index - currentRegisterIndex) === nearestDistance),
-    rng,
+    rng
   );
 }
 
@@ -214,12 +231,12 @@ function chooseTransitionPitchIds(
   pitches: MelodyPitch[],
   startIndex: number,
   targetIndex: number,
-  rng: () => number,
+  rng: () => number
 ): PitchId[] {
   const direction = Math.sign(targetIndex - startIndex);
   const candidates = Array.from(
     { length: Math.max(0, Math.abs(targetIndex - startIndex) - 1) },
-    (_, offset) => startIndex + direction * (offset + 1),
+    (_, offset) => startIndex + direction * (offset + 1)
   );
   const count = Math.min(chooseTransitionIntermediateCount(rng), candidates.length);
   const selected: number[] = [];
@@ -258,9 +275,10 @@ export function selectMelodyNotes({
     state.currentRegisterIndex = undefined;
     state.registerVisitCounts = Array.from({ length: registers.length }, () => 0);
   }
-  let previousIndex = lastTargetNoteId === undefined
-    ? -1
-    : pitches.findIndex((pitch) => pitch.notes.some((note) => note.id === lastTargetNoteId));
+  let previousIndex =
+    lastTargetNoteId === undefined
+      ? -1
+      : pitches.findIndex((pitch) => pitch.notes.some((note) => note.id === lastTargetNoteId));
   const selected: TargetNote[] = [];
 
   for (let index = 0; index < count; index += 1) {
@@ -272,19 +290,32 @@ export function selectMelodyNotes({
       state.motifDeltas = [];
       state.transitionPitchIds = [];
       if (state.currentRegisterIndex === undefined) {
-        state.currentRegisterIndex = previousIndex >= 0
-          ? registers.findIndex((register) => previousIndex >= register.startIndex && previousIndex <= register.endIndex)
-          : Math.floor(rng() * registers.length);
+        state.currentRegisterIndex =
+          previousIndex >= 0
+            ? registers.findIndex(
+                (register) =>
+                  previousIndex >= register.startIndex && previousIndex <= register.endIndex
+              )
+            : Math.floor(rng() * registers.length);
       } else if (registers.length > 1 && rng() < REGISTER_TRANSFER_RATE) {
-        const nextRegisterIndex = chooseNextRegisterIndex(state.currentRegisterIndex, state.registerVisitCounts, rng);
+        const nextRegisterIndex = chooseNextRegisterIndex(
+          state.currentRegisterIndex,
+          state.registerVisitCounts,
+          rng
+        );
         const targetIndex = chooseRegisterAnchorIndex(
           pitches,
           registers[nextRegisterIndex],
           state.pitchVisitCounts,
-          rng,
+          rng
         );
         if (previousIndex >= 0) {
-          state.transitionPitchIds = chooseTransitionPitchIds(pitches, previousIndex, targetIndex, rng);
+          state.transitionPitchIds = chooseTransitionPitchIds(
+            pitches,
+            previousIndex,
+            targetIndex,
+            rng
+          );
         }
         state.currentRegisterIndex = nextRegisterIndex;
       }
@@ -300,18 +331,28 @@ export function selectMelodyNotes({
     } else if (previousIndex < 0) {
       nextIndex = chooseRegisterAnchorIndex(pitches, register, state.pitchVisitCounts, rng);
       initialPitch = true;
-    } else if (positionInPhrase === MELODY_PHRASE_LENGTH - 1 || (count > 1 && index === count - 1)) {
+    } else if (
+      positionInPhrase === MELODY_PHRASE_LENGTH - 1 ||
+      (count > 1 && index === count - 1)
+    ) {
       nextIndex = chooseCadenceIndex(pitches, register, previousIndex, index === count - 1, rng);
     } else {
       const motifDelta = state.motifDeltas[positionInPhrase - MELODY_MOTIF_LENGTH];
-      nextIndex = motifDelta !== undefined && rng() < 0.72
-        ? moveWithinRange(
-            previousIndex,
-            varyMotifDelta(motifDelta, rng),
-            register.startIndex,
-            register.endIndex,
-          )
-        : chooseCoverageAwareMelodicIndex(pitches, register, previousIndex, state.pitchVisitCounts, rng);
+      nextIndex =
+        motifDelta !== undefined && rng() < 0.72
+          ? moveWithinRange(
+              previousIndex,
+              varyMotifDelta(motifDelta, rng),
+              register.startIndex,
+              register.endIndex
+            )
+          : chooseCoverageAwareMelodicIndex(
+              pitches,
+              register,
+              previousIndex,
+              state.pitchVisitCounts,
+              rng
+            );
     }
 
     const actualDelta = previousIndex < 0 ? 0 : nextIndex - previousIndex;

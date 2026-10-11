@@ -135,7 +135,9 @@ function summarizeValues(values: readonly number[]): MidiLatencyMetricSummary | 
   return values.length === 0 ? undefined : { max: Math.max(...values), median: median(values) };
 }
 
-export function isMidiLatencyDiagnosticsEnabled(search = typeof window === "undefined" ? "" : window.location.search): boolean {
+export function isMidiLatencyDiagnosticsEnabled(
+  search = typeof window === "undefined" ? "" : window.location.search
+): boolean {
   const value = new URLSearchParams(search).get("midiTiming");
   return value === "1";
 }
@@ -176,7 +178,7 @@ export function startMidiLatencySample(input: {
 export function markMidiLatencyStage(
   id: number | undefined,
   stage: MidiLatencyStage,
-  value?: number,
+  value?: number
 ): void {
   if (!MIDI_LATENCY_DIAGNOSTICS_ENABLED) {
     return;
@@ -184,7 +186,10 @@ export function markMidiLatencyStage(
   markAt(id, stage, value ?? now());
 }
 
-export function setMidiLatencyCondition(id: number | undefined, condition: MidiLatencyCondition): void {
+export function setMidiLatencyCondition(
+  id: number | undefined,
+  condition: MidiLatencyCondition
+): void {
   if (!MIDI_LATENCY_DIAGNOSTICS_ENABLED) {
     return;
   }
@@ -194,7 +199,10 @@ export function setMidiLatencyCondition(id: number | undefined, condition: MidiL
   }
 }
 
-export function completeMidiLatencySample(id: number | undefined, outcome: "correct" | "wrong"): void {
+export function completeMidiLatencySample(
+  id: number | undefined,
+  outcome: "correct" | "wrong"
+): void {
   if (!MIDI_LATENCY_DIAGNOSTICS_ENABLED) {
     return;
   }
@@ -209,7 +217,11 @@ export function completeMidiLatencySample(id: number | undefined, outcome: "corr
 export function getMidiLatencySamples(): MidiLatencySample[] {
   return samples
     .filter((sample) => sample.outcome !== undefined)
-    .map((sample) => ({ ...sample, condition: sample.condition ? { ...sample.condition } : undefined, timestamps: { ...sample.timestamps } }));
+    .map((sample) => ({
+      ...sample,
+      condition: sample.condition ? { ...sample.condition } : undefined,
+      timestamps: { ...sample.timestamps },
+    }));
 }
 
 export function subscribeMidiLatencySamples(listener: () => void): () => void {
@@ -227,7 +239,9 @@ export function clearMidiLatencySamples(): void {
   notify();
 }
 
-export function calculateMidiLatencyMetrics(sample: MidiLatencySample): Partial<Record<MidiLatencyMetric, number>> {
+export function calculateMidiLatencyMetrics(
+  sample: MidiLatencySample
+): Partial<Record<MidiLatencyMetric, number>> {
   const timestamps = sample.timestamps;
   return {
     nativeToHandler: validDelta(timestamps.nativeEvent, timestamps.midiHandler),
@@ -255,7 +269,9 @@ export function midiLatencyConditionKey(condition: MidiLatencyCondition): string
   ].join("|");
 }
 
-export function summarizeMidiLatencySamples(input: readonly MidiLatencySample[]): MidiLatencySummaryGroup[] {
+export function summarizeMidiLatencySamples(
+  input: readonly MidiLatencySample[]
+): MidiLatencySummaryGroup[] {
   const grouped = new Map<
     string,
     { condition: MidiLatencyCondition; outcome: "correct" | "wrong"; samples: MidiLatencySample[] }
@@ -265,7 +281,11 @@ export function summarizeMidiLatencySamples(input: readonly MidiLatencySample[])
       continue;
     }
     const key = `${midiLatencyConditionKey(sample.condition)}|${sample.outcome}`;
-    const group = grouped.get(key) ?? { condition: sample.condition, outcome: sample.outcome, samples: [] };
+    const group = grouped.get(key) ?? {
+      condition: sample.condition,
+      outcome: sample.outcome,
+      samples: [],
+    };
     group.samples.push(sample);
     grouped.set(key, group);
   }
@@ -293,7 +313,7 @@ export function summarizeMidiLatencySamples(input: readonly MidiLatencySample[])
       const summary = summarizeValues(
         sampleMetrics
           .map((metric) => metric[metricName])
-          .filter((value): value is number => value !== undefined),
+          .filter((value): value is number => value !== undefined)
       );
       if (summary) {
         metrics[metricName] = summary;
@@ -315,14 +335,18 @@ function formatMs(value: number | undefined): string {
   return value === undefined ? "-" : `${value.toFixed(1)}ms`;
 }
 
-export function formatMidiLatencyCondition(condition: MidiLatencyCondition, separator = " / "): string {
+export function formatMidiLatencyCondition(
+  condition: MidiLatencyCondition,
+  separator = " / "
+): string {
   const display = condition.promptDisplayMode === "staff-page" ? "谱页" : "单音";
   const audio = condition.playAnswerNote ? "声音开" : "声音关";
-  const pitch = condition.answerPitchMode === "microphone"
-    ? "麦克风单音"
-    : condition.answerPitchMode === "exact-pitch"
-      ? "MIDI 精确音高"
-      : "音名";
+  const pitch =
+    condition.answerPitchMode === "microphone"
+      ? "麦克风单音"
+      : condition.answerPitchMode === "exact-pitch"
+        ? "MIDI 精确音高"
+        : "音名";
   return [display, audio, `${condition.correctDelayMs}ms`, pitch].join(separator);
 }
 
@@ -359,15 +383,18 @@ export function formatMidiLatencyReport(input: readonly MidiLatencySample[]): st
       `谱页重绘: ${metric("staffRender")}`,
       `音频调用: ${metric("audioReady")}`,
       `记录保存: ${metric("reviewFinalize")}`,
-      `原生事件→画面近似: ${metric("totalSoftware")}`,
+      `原生事件→画面近似: ${metric("totalSoftware")}`
     );
   }
 
   lines.push("", "最近样本");
   for (const sample of [...input].reverse().slice(0, 20)) {
     const metrics = calculateMidiLatencyMetrics(sample);
-    const condition = sample.condition ? formatMidiLatencyCondition(sample.condition) : "未进入练习";
-    const outcome = sample.outcome === "correct" ? "正确" : sample.outcome === "wrong" ? "答错" : "待定";
+    const condition = sample.condition
+      ? formatMidiLatencyCondition(sample.condition)
+      : "未进入练习";
+    const outcome =
+      sample.outcome === "correct" ? "正确" : sample.outcome === "wrong" ? "答错" : "待定";
     lines.push(
       "",
       `#${sample.id} ${sample.noteName}${sample.octave} ${outcome}${warmupIds.has(sample.id) ? " [预热]" : ""}`,
@@ -375,7 +402,7 @@ export function formatMidiLatencyReport(input: readonly MidiLatencySample[]): st
       `原生→回调 ${formatMs(metrics.nativeToHandler)} | 原生→按下画面 ${formatMs(metrics.nativeToPressedPaint)} | 订阅→判定 ${formatMs(metrics.subscriberToVerdict)}`,
       `判定→提交 ${formatMs(metrics.verdictToCommit)} | 提交→画面 ${formatMs(metrics.commitToPaint)} | 总软件 ${formatMs(metrics.totalSoftware)}`,
       `过渡 ${formatMs(metrics.transition)} | 谱页着色 ${formatMs(metrics.staffColorUpdate)} | 谱页重绘 ${formatMs(metrics.staffRender)}`,
-      `音频 ${formatMs(metrics.audioReady)} | 保存 ${formatMs(metrics.reviewFinalize)}`,
+      `音频 ${formatMs(metrics.audioReady)} | 保存 ${formatMs(metrics.reviewFinalize)}`
     );
   }
   return lines.join("\n");

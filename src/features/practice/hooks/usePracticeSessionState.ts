@@ -24,19 +24,24 @@ export function usePracticeSessionState() {
     setPhase("running");
   }, []);
 
-  const finishSessionState = useCallback((input: {
-    finalSession: PracticeSessionRecord;
-    reviews: ReviewRecord[];
-    shouldKeepSession: boolean;
-    showSummary: boolean;
-  }): void => {
-    setSession(input.shouldKeepSession ? input.finalSession : null);
-    setSummary(input.shouldKeepSession && input.showSummary
-      ? { session: input.finalSession, reviews: input.reviews }
-      : null);
-    setCurrentNote(null);
-    setPhase(input.shouldKeepSession && input.showSummary ? "summary" : "setup");
-  }, []);
+  const finishSessionState = useCallback(
+    (input: {
+      finalSession: PracticeSessionRecord;
+      reviews: ReviewRecord[];
+      shouldKeepSession: boolean;
+      showSummary: boolean;
+    }): void => {
+      setSession(input.shouldKeepSession ? input.finalSession : null);
+      setSummary(
+        input.shouldKeepSession && input.showSummary
+          ? { session: input.finalSession, reviews: input.reviews }
+          : null
+      );
+      setCurrentNote(null);
+      setPhase(input.shouldKeepSession && input.showSummary ? "summary" : "setup");
+    },
+    []
+  );
 
   return {
     beginSessionState,

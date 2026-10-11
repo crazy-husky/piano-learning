@@ -99,8 +99,14 @@ export function ResponsiveDataTable<Row>({
                     const Cell = column.rowHeader ? "th" : "td";
                     return (
                       <Cell
-                        className={joinClassNames(column.className, column.getCellClassName?.(row, rowIndex))}
-                        data-mobile-label={column.mobileLabel ?? (typeof column.header === "string" ? column.header : undefined)}
+                        className={joinClassNames(
+                          column.className,
+                          column.getCellClassName?.(row, rowIndex)
+                        )}
+                        data-mobile-label={
+                          column.mobileLabel ??
+                          (typeof column.header === "string" ? column.header : undefined)
+                        }
                         key={column.id}
                         scope={column.rowHeader ? "row" : undefined}
                         style={{ textAlign: column.align }}
@@ -112,7 +118,10 @@ export function ResponsiveDataTable<Row>({
                 </tr>
                 {details !== null && details !== undefined && details !== false ? (
                   <tr className={joinClassNames("ui-data-table-details-row", detailsRowClassName)}>
-                    <td className={joinClassNames("ui-data-table-details-cell", detailsCellClassName)} colSpan={columns.length}>
+                    <td
+                      className={joinClassNames("ui-data-table-details-cell", detailsCellClassName)}
+                      colSpan={columns.length}
+                    >
                       {details}
                     </td>
                   </tr>

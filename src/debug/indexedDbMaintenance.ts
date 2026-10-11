@@ -52,12 +52,18 @@ declare global {
 function groupReviewsBySession(reviews: ReviewRecord[]): Map<string, ReviewRecord[]> {
   const reviewsBySession = new Map<string, ReviewRecord[]>();
   for (const review of reviews) {
-    reviewsBySession.set(review.sessionId, [...(reviewsBySession.get(review.sessionId) ?? []), review]);
+    reviewsBySession.set(review.sessionId, [
+      ...(reviewsBySession.get(review.sessionId) ?? []),
+      review,
+    ]);
   }
   return reviewsBySession;
 }
 
-function isEmptyPersistedSession(session: PracticeSessionRecord, sessionReviews: ReviewRecord[]): boolean {
+function isEmptyPersistedSession(
+  session: PracticeSessionRecord,
+  sessionReviews: ReviewRecord[]
+): boolean {
   if (!session.endedAt) {
     return false;
   }
@@ -73,7 +79,10 @@ function isEmptyPersistedSession(session: PracticeSessionRecord, sessionReviews:
   return !sessionReviews.some(isStatisticalReview);
 }
 
-function makeCandidate(session: PracticeSessionRecord, sessionReviews: ReviewRecord[]): EmptySessionCandidate {
+function makeCandidate(
+  session: PracticeSessionRecord,
+  sessionReviews: ReviewRecord[]
+): EmptySessionCandidate {
   return {
     session,
     reviewCount: sessionReviews.length,
@@ -81,7 +90,9 @@ function makeCandidate(session: PracticeSessionRecord, sessionReviews: ReviewRec
     statisticalReviewCount: sessionReviews.filter(isStatisticalReview).length,
     ignoredReviewCount: sessionReviews.filter((review) => review.ignored).length,
     interruptedReviewCount: sessionReviews.filter((review) => review.interrupted).length,
-    reason: isSingleNoteNameDrill(session) ? "single-note-drill-without-completed-count" : "no-statistical-review",
+    reason: isSingleNoteNameDrill(session)
+      ? "single-note-drill-without-completed-count"
+      : "no-statistical-review",
   };
 }
 
@@ -106,7 +117,9 @@ export async function listEmptySessions(): Promise<EmptySessionReport> {
   };
 }
 
-async function writeBackupIfAlreadyPermitted(enabled: boolean): Promise<EmptySessionDeleteResult["backup"]> {
+async function writeBackupIfAlreadyPermitted(
+  enabled: boolean
+): Promise<EmptySessionDeleteResult["backup"]> {
   if (!enabled) {
     return { status: "skipped", reason: "disabled" };
   }
@@ -132,10 +145,14 @@ async function writeBackupIfAlreadyPermitted(enabled: boolean): Promise<EmptySes
   }
 }
 
-export async function deleteEmptySessions(options: DeleteEmptySessionsOptions = {}): Promise<EmptySessionDeleteResult> {
+export async function deleteEmptySessions(
+  options: DeleteEmptySessionsOptions = {}
+): Promise<EmptySessionDeleteResult> {
   const report = await listEmptySessions();
   const sessionIds = new Set(report.candidates.map((candidate) => candidate.session.id));
-  const deletedReviewIds = await db.reviews.filter((review) => sessionIds.has(review.sessionId)).primaryKeys();
+  const deletedReviewIds = await db.reviews
+    .filter((review) => sessionIds.has(review.sessionId))
+    .primaryKeys();
 
   await db.transaction("rw", db.settings, db.practiceSessions, db.reviews, async () => {
     await db.practiceSessions.bulkDelete([...sessionIds]);
@@ -146,7 +163,9 @@ export async function deleteEmptySessions(options: DeleteEmptySessionsOptions = 
       return;
     }
 
-    const [firstRemainingReview] = await db.reviews.filter((review) => !review.ignored).sortBy("startedAt");
+    const [firstRemainingReview] = await db.reviews
+      .filter((review) => !review.ignored)
+      .sortBy("startedAt");
     const nextSettings = { ...settings };
     if (firstRemainingReview) {
       nextSettings.firstReviewAt = firstRemainingReview.startedAt;

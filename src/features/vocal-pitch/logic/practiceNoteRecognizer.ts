@@ -88,7 +88,9 @@ export function frequencyToNaturalPracticeNote(frequencyHz: number): RecognizedP
   };
 }
 
-export function frequencyToChromaticPracticeNote(frequencyHz: number): RecognizedPracticeNote | null {
+export function frequencyToChromaticPracticeNote(
+  frequencyHz: number
+): RecognizedPracticeNote | null {
   if (!Number.isFinite(frequencyHz) || frequencyHz <= 0) return null;
   const midiValue = frequencyToMidi(frequencyHz);
   const midiNoteNumber = Math.round(midiValue);
@@ -96,8 +98,11 @@ export function frequencyToChromaticPracticeNote(frequencyHz: number): Recognize
     midiNoteNumber < PRACTICE_NOTE_MIN_MIDI ||
     midiNoteNumber > PRACTICE_NOTE_MAX_MIDI ||
     Math.abs(midiValue - midiNoteNumber) * 100 > MAX_NOTE_DEVIATION_CENTS
-  ) return null;
-  const noteName = (["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const)[((midiNoteNumber % 12) + 12) % 12];
+  )
+    return null;
+  const noteName = (["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const)[
+    ((midiNoteNumber % 12) + 12) % 12
+  ];
   return {
     midiNoteNumber,
     noteName,
@@ -107,12 +112,14 @@ export function frequencyToChromaticPracticeNote(frequencyHz: number): Recognize
 
 export function createPracticeNoteRecognizer(
   minConfidence = DEFAULT_MIN_NOTE_CONFIDENCE,
-  stability: PracticeNoteRecognizerStabilityOptions = {},
+  stability: PracticeNoteRecognizerStabilityOptions = {}
 ): PracticeNoteRecognizer {
   const requiredStableFrames = stability.requiredFrames ?? REQUIRED_STABLE_FRAMES;
   const requiredStableMs = stability.requiredMs ?? REQUIRED_STABLE_MS;
   const continuityConfidence = stability.continuityConfidence ?? minConfidence;
-  const convertFrequency = stability.includeAccidentals ? frequencyToChromaticPracticeNote : frequencyToNaturalPracticeNote;
+  const convertFrequency = stability.includeAccidentals
+    ? frequencyToChromaticPracticeNote
+    : frequencyToNaturalPracticeNote;
   let candidateMidi: number | null = null;
   let candidateFrames = 0;
   let candidateStartedAt = 0;
@@ -136,23 +143,26 @@ export function createPracticeNoteRecognizer(
   };
 
   const process = (observation: PracticeNoteObservation): RecognizedPracticeNote | null => {
-    const detectedCandidate = observation.frequencyHz === null || observation.ambiguous
-      ? null
-      : convertFrequency(observation.frequencyHz);
+    const detectedCandidate =
+      observation.frequencyHz === null || observation.ambiguous
+        ? null
+        : convertFrequency(observation.frequencyHz);
     const isConfidentCandidate = observation.confidence >= minConfidence;
     const continuityReferenceAgeMs = observation.timeMs - continuityReferenceAt;
-    const hasRecentContinuityReference = continuityReferenceMidi !== null &&
+    const hasRecentContinuityReference =
+      continuityReferenceMidi !== null &&
       continuityReferenceAgeMs >= 0 &&
       continuityReferenceAgeMs <= CONTINUITY_REFERENCE_WINDOW_MS;
     const continuityAnchorMidi = hasRecentContinuityReference ? continuityReferenceMidi : null;
     // MPM-C can return a neighboring note's octave when the fundamental is weak.
     // Only use that lower-confidence path near a recently confirmed melody pitch;
     // the ordinary confidence gate still applies to unrelated notes.
-    const canUsePitchContinuity = continuityAnchorMidi !== null &&
-      observation.confidence >= continuityConfidence;
-    let candidate = detectedCandidate && (isConfidentCandidate || canUsePitchContinuity)
-      ? detectedCandidate
-      : null;
+    const canUsePitchContinuity =
+      continuityAnchorMidi !== null && observation.confidence >= continuityConfidence;
+    let candidate =
+      detectedCandidate && (isConfidentCandidate || canUsePitchContinuity)
+        ? detectedCandidate
+        : null;
     let wasOctaveNormalized = false;
 
     if (candidate && continuityAnchorMidi !== null) {
@@ -163,14 +173,17 @@ export function createPracticeNoteRecognizer(
         candidate.midiNoteNumber + 12,
         candidate.midiNoteNumber + 24,
       ].filter((midi) => midi >= PRACTICE_NOTE_MIN_MIDI && midi <= PRACTICE_NOTE_MAX_MIDI);
-      const nearestMidi = nearbyOctaves.sort((left, right) =>
-        Math.abs(left - continuityAnchorMidi) - Math.abs(right - continuityAnchorMidi),
+      const nearestMidi = nearbyOctaves.sort(
+        (left, right) =>
+          Math.abs(left - continuityAnchorMidi) - Math.abs(right - continuityAnchorMidi)
       )[0];
-      const nearestDistance = nearestMidi === undefined
-        ? Number.POSITIVE_INFINITY
-        : Math.abs(nearestMidi - continuityAnchorMidi);
+      const nearestDistance =
+        nearestMidi === undefined
+          ? Number.POSITIVE_INFINITY
+          : Math.abs(nearestMidi - continuityAnchorMidi);
       const isOctaveChange = isOctaveRegisterChange(candidate.midiNoteNumber, continuityAnchorMidi);
-      const shouldUseNearbyOctave = !isConfidentCandidate &&
+      const shouldUseNearbyOctave =
+        !isConfidentCandidate &&
         !isOctaveChange &&
         nearestDistance <= MAX_CONTINUITY_STEP_SEMITONES;
       if (!isConfidentCandidate && !shouldUseNearbyOctave && !isOctaveChange) {
@@ -217,7 +230,8 @@ export function createPracticeNoteRecognizer(
     }
     previousRms = observation.rms;
 
-    const isRecentOctaveChange = hasRecentContinuityReference &&
+    const isRecentOctaveChange =
+      hasRecentContinuityReference &&
       continuityAnchorMidi !== null &&
       isOctaveRegisterChange(candidate.midiNoteNumber, continuityAnchorMidi);
     // Require more sustained evidence for an octave jump, but don't use loudness

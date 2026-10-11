@@ -8,13 +8,14 @@ export function announceLocalStoragePreferenceChange(key: string): void {
 
 export function clearLocalPreferenceStorage(
   storage: Pick<Storage, "key" | "length" | "removeItem">,
-  preservedKeys: readonly string[] = [],
+  preservedKeys: readonly string[] = []
 ): { clearedKeys: string[]; failedKeys: string[] } {
   const preserved = new Set(preservedKeys);
   let keys: string[];
   try {
-    keys = Array.from({ length: storage.length }, (_, index) => storage.key(index))
-      .filter((key): key is string => key !== null && key.startsWith("anki-note.") && !preserved.has(key));
+    keys = Array.from({ length: storage.length }, (_, index) => storage.key(index)).filter(
+      (key): key is string => key !== null && key.startsWith("anki-note.") && !preserved.has(key)
+    );
   } catch {
     return { clearedKeys: [], failedKeys: ["<localStorage enumeration>"] };
   }

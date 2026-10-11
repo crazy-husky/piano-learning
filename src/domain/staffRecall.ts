@@ -30,10 +30,12 @@ export function compareTargetNotePitch(left: TargetNote, right: TargetNote): num
 
 export function buildNoteNameColumns(
   notes: TargetNote[],
-  columnDefinitions: readonly NoteNameColumnDefinition[],
+  columnDefinitions: readonly NoteNameColumnDefinition[]
 ): NoteNameColumn[] {
   return columnDefinitions.map((column) => {
-    const columnNotes = notes.filter((note) => note.noteName === column.noteName).sort(compareTargetNotePitch);
+    const columnNotes = notes
+      .filter((note) => note.noteName === column.noteName)
+      .sort(compareTargetNotePitch);
     return {
       ...column,
       bassNotes: columnNotes.filter((note) => note.staff === "bass"),
@@ -65,12 +67,14 @@ export function shuffleNoteNames(random: () => number = Math.random): NoteName[]
 
 export function sortNoteNamesByActiveMs(
   noteNames: readonly NoteName[],
-  activeMsByNoteName: Readonly<Record<NoteName, number>>,
+  activeMsByNoteName: Readonly<Record<NoteName, number>>
 ): NoteName[] {
   return [...noteNames].sort((left, right) => activeMsByNoteName[right] - activeMsByNoteName[left]);
 }
 
-export function columnDefinitionsForNoteNames(noteNames: readonly NoteName[]): NoteNameColumnDefinition[] {
+export function columnDefinitionsForNoteNames(
+  noteNames: readonly NoteName[]
+): NoteNameColumnDefinition[] {
   return noteNames.map((noteName) => {
     const column = NOTE_NAME_COLUMNS.find((candidate) => candidate.noteName === noteName);
     if (!column) {
@@ -92,12 +96,14 @@ export function buildStaffRecallTargetNoteIds(notes: readonly TargetNote[]): Tar
   return notes.map((note) => note.id).sort();
 }
 
-export function totalStaffRecallActiveMs(run: Pick<StaffRecallRunRecord, "columnActiveMs">): number {
+export function totalStaffRecallActiveMs(
+  run: Pick<StaffRecallRunRecord, "columnActiveMs">
+): number {
   return NOTE_NAMES.reduce((total, noteName) => total + run.columnActiveMs[noteName], 0);
 }
 
 export function formatStaffRecallDeltaMs(
-  deltaMs: number,
+  deltaMs: number
 ): { direction: "faster" | "slower"; text: string } | undefined {
   const roundedSeconds = Number((deltaMs / 1000).toFixed(1));
   if (roundedSeconds === 0) {
@@ -115,7 +121,7 @@ export function formatStaffRecallPerNoteMs(totalMs: number, noteCount: number): 
 
 export function formatStaffRecallPerNoteDeltaMs(
   totalDeltaMs: number,
-  noteCount: number,
+  noteCount: number
 ): { direction: "faster" | "slower"; text: string } | undefined {
   if (noteCount <= 0) {
     return undefined;
@@ -132,9 +138,11 @@ export function formatStaffRecallPerNoteDeltaMs(
 
 export function comparableStaffRecallRuns(
   runs: readonly StaffRecallRunRecord[],
-  targetNoteSetKey: string,
+  targetNoteSetKey: string
 ): StaffRecallRunRecord[] {
   return runs
     .filter((run) => getStaffRecallTargetNoteSetKey(run) === targetNoteSetKey)
-    .sort((left, right) => left.endedAt.localeCompare(right.endedAt) || left.id.localeCompare(right.id));
+    .sort(
+      (left, right) => left.endedAt.localeCompare(right.endedAt) || left.id.localeCompare(right.id)
+    );
 }

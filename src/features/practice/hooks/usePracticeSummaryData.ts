@@ -28,50 +28,51 @@ export function usePracticeSummaryData({
   mode: SessionProgressMode;
 }) {
   const sessionQualifiedTimes = useMemo(
-    () => (summary?.reviews ?? [])
-      .filter(isCompletedReview)
-      .map((review) => review.activeMs),
-    [summary],
+    () => (summary?.reviews ?? []).filter(isCompletedReview).map((review) => review.activeMs),
+    [summary]
   );
   const summaryStatsEligibility = useMemo(
-    () => summary ? getLongTermStatsEligibility(summary.reviews) : undefined,
-    [summary],
+    () => (summary ? getLongTermStatsEligibility(summary.reviews) : undefined),
+    [summary]
   );
   const summaryHasTooManyErrors =
     summaryStatsEligibility?.reason === "too-many-heavy-error-reviews" ||
     summaryStatsEligibility?.reason === "too-many-error-reviews";
   const weakestNotes = useMemo(
-    () => summary
-      ? buildNoteStats(summary.reviews)
-          .filter((stat) => stat.reviewCount > 0)
-          .sort((a, b) => b.weaknessScore - a.weaknessScore)
-          .slice(0, 4)
-      : [],
-    [summary],
+    () =>
+      summary
+        ? buildNoteStats(summary.reviews)
+            .filter((stat) => stat.reviewCount > 0)
+            .sort((a, b) => b.weaknessScore - a.weaknessScore)
+            .slice(0, 4)
+        : [],
+    [summary]
   );
   const summaryProgressSeries = useMemo(
-    () => summary
-      ? buildSessionProgressSeries({
-          currentSession: summary.session,
-          currentReviews: summary.reviews,
-          sessions,
-          reviews,
-          historyLimit,
-          mode,
-        })
-      : [],
-    [historyLimit, mode, reviews, sessions, summary],
+    () =>
+      summary
+        ? buildSessionProgressSeries({
+            currentSession: summary.session,
+            currentReviews: summary.reviews,
+            sessions,
+            reviews,
+            historyLimit,
+            mode,
+          })
+        : [],
+    [historyLimit, mode, reviews, sessions, summary]
   );
   const summaryProgressBenchmark = useMemo(
-    () => summary
-      ? buildSessionProgressBenchmark({
-          currentSession: summary.session,
-          currentReviews: summary.reviews,
-          sessions,
-          reviews,
-        })
-      : undefined,
-    [reviews, sessions, summary],
+    () =>
+      summary
+        ? buildSessionProgressBenchmark({
+            currentSession: summary.session,
+            currentReviews: summary.reviews,
+            sessions,
+            reviews,
+          })
+        : undefined,
+    [reviews, sessions, summary]
   );
 
   return {

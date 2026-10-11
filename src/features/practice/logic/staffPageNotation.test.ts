@@ -51,8 +51,8 @@ describe("staff-page notation", () => {
     expect(
       getStaffPageBeamRuns(
         [note("treble"), note("treble"), note("bass"), note("treble"), note("bass"), note("bass")],
-        "eighth",
-      ),
+        "eighth"
+      )
     ).toEqual([
       { size: 2, startIndex: 0 },
       { size: 2, startIndex: 2 },
@@ -73,8 +73,8 @@ describe("staff-page notation", () => {
           note("treble"),
           note("bass"),
         ],
-        "sixteenth",
-      ),
+        "sixteenth"
+      )
     ).toEqual([
       { size: 4, startIndex: 0 },
       { size: 4, startIndex: 4 },
@@ -84,9 +84,17 @@ describe("staff-page notation", () => {
   it("keeps a short final sixteenth-note group aligned to the beat", () => {
     expect(
       getStaffPageBeamRuns(
-        [note("treble"), note("treble"), note("treble"), note("bass"), note("bass"), note("bass"), note("bass")],
-        "sixteenth",
-      ),
+        [
+          note("treble"),
+          note("treble"),
+          note("treble"),
+          note("bass"),
+          note("bass"),
+          note("bass"),
+          note("bass"),
+        ],
+        "sixteenth"
+      )
     ).toEqual([
       { size: 4, startIndex: 0 },
       { size: 3, startIndex: 4 },
@@ -97,8 +105,8 @@ describe("staff-page notation", () => {
     expect(
       getStaffPageBeamRuns(
         [note("treble"), note("bass"), note("bass"), note("treble"), note("bass")],
-        "sixteenth",
-      ),
+        "sixteenth"
+      )
     ).toEqual([{ size: 4, startIndex: 0 }]);
   });
 
@@ -117,8 +125,8 @@ describe("staff-page notation", () => {
           note("treble"),
           note("treble"),
         ],
-        "sixteenth",
-      ),
+        "sixteenth"
+      )
     ).toEqual([
       { size: 4, startIndex: 0 },
       { size: 4, startIndex: 4 },
@@ -133,22 +141,28 @@ describe("staff-page notation", () => {
 
   it("prioritizes keeping every beam inside the visible row", () => {
     expect(getVisibleBeamStemDirection([{ y: 20 }, { y: 70 }], { bottomY: 200, topY: 0 }, 35)).toBe(
-      "down",
+      "down"
     );
-    expect(getVisibleBeamStemDirection([{ y: 50 }, { y: 180 }], { bottomY: 200, topY: 0 }, 35)).toBe(
-      "up",
-    );
+    expect(
+      getVisibleBeamStemDirection([{ y: 50 }, { y: 180 }], { bottomY: 200, topY: 0 }, 35)
+    ).toBe("up");
     expect(getVisibleBeamStemDirection([{ y: 10 }, { y: 70 }], { bottomY: 90, topY: 0 }, 35)).toBe(
-      "down",
+      "down"
     );
   });
 
   it("leaves the direction open when both sides have enough room", () => {
-    expect(getVisibleBeamStemDirection([{ y: 50 }, { y: 75 }], { bottomY: 200, topY: 0 }, 35)).toBeUndefined();
+    expect(
+      getVisibleBeamStemDirection([{ y: 50 }, { y: 75 }], { bottomY: 200, topY: 0 }, 35)
+    ).toBeUndefined();
   });
 
   it("optimizes total stem length for a cross-staff beam", () => {
-    expect(getCrossStaffOuterStemDirection([{ y: 50 }, { y: 55 }, { y: 60 }, { y: 75 }])).toBe("up");
-    expect(getCrossStaffOuterStemDirection([{ y: 50 }, { y: 65 }, { y: 70 }, { y: 75 }])).toBe("down");
+    expect(getCrossStaffOuterStemDirection([{ y: 50 }, { y: 55 }, { y: 60 }, { y: 75 }])).toBe(
+      "up"
+    );
+    expect(getCrossStaffOuterStemDirection([{ y: 50 }, { y: 65 }, { y: 70 }, { y: 75 }])).toBe(
+      "down"
+    );
   });
 });

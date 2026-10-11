@@ -11,16 +11,23 @@ import { makeReview } from "./testFactories";
 import { buildTargetNoteSetKey } from "./targetNoteSet";
 import type { PracticeSessionRecordV2, ReviewRecord, TargetNote, TargetNoteId } from "./types";
 
-function reviewsFor(note: TargetNote, count: number, activeMs: number, sessionId = "session-1"): ReviewRecord[] {
-  return Array.from({ length: count }, (_, index) => makeReview({
-    activeMs,
-    answeredAt: `2026-07-04T12:${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}.000+08:00`,
-    endedAt: `2026-07-04T12:${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}.000+08:00`,
-    id: `${note.id}-${index}`,
-    sessionId,
-    startedAt: `2026-07-04T12:${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}.000+08:00`,
-    targetNoteId: note.id,
-  }));
+function reviewsFor(
+  note: TargetNote,
+  count: number,
+  activeMs: number,
+  sessionId = "session-1"
+): ReviewRecord[] {
+  return Array.from({ length: count }, (_, index) =>
+    makeReview({
+      activeMs,
+      answeredAt: `2026-07-04T12:${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}.000+08:00`,
+      endedAt: `2026-07-04T12:${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}.000+08:00`,
+      id: `${note.id}-${index}`,
+      sessionId,
+      startedAt: `2026-07-04T12:${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}.000+08:00`,
+      targetNoteId: note.id,
+    })
+  );
 }
 
 function makeSession(notes: TargetNote[], id = "session-1"): PracticeSessionRecordV2 {
@@ -45,7 +52,10 @@ function makeSession(notes: TargetNote[], id = "session-1"): PracticeSessionReco
 describe("adaptive-v2 scheduler", () => {
   it("matches the shared adjusted-score and tier-weight fixtures", () => {
     const cases = JSON.parse(
-      readFileSync(new URL("../../analysis/fixtures/adaptive_v2_tiers.json", import.meta.url), "utf8"),
+      readFileSync(
+        new URL("../../analysis/fixtures/adaptive_v2_tiers.json", import.meta.url),
+        "utf8"
+      )
     ) as Array<{
       adjustedMedianMs: Record<string, number>;
       notes: Array<{ count: number; id: string; medianMs: number }>;
@@ -63,22 +73,33 @@ describe("adaptive-v2 scheduler", () => {
         staff: "treble" as const,
       }));
       const reviews = fixture.notes.flatMap((entry, index) =>
-        reviewsFor(notes[index], entry.count, entry.medianMs, `fixture-${index}`),
+        reviewsFor(notes[index], entry.count, entry.medianMs, `fixture-${index}`)
       );
       const performance = getAdaptiveNotePerformance(notes, reviews);
       const weights = getAdaptiveTierWeights(notes, performance);
 
-      expect(Object.fromEntries(notes.map((note) => [note.id, performance.get(note.id)?.adjustedMedianMs]))).toEqual(
-        fixture.adjustedMedianMs,
+      expect(
+        Object.fromEntries(
+          notes.map((note) => [note.id, performance.get(note.id)?.adjustedMedianMs])
+        )
+      ).toEqual(fixture.adjustedMedianMs);
+      expect(Object.fromEntries(notes.map((note) => [note.id, weights.get(note.id)]))).toEqual(
+        fixture.weights
       );
-      expect(Object.fromEntries(notes.map((note) => [note.id, weights.get(note.id)]))).toEqual(fixture.weights);
     }
   });
 
   it("avoids only the exact previous target", () => {
-    const notes = getNotesForGroups(["G3-F4", "G4-F5"], false).filter((note) => note.noteName === "C");
+    const notes = getNotesForGroups(["G3-F4", "G4-F5"], false).filter(
+      (note) => note.noteName === "C"
+    );
 
-    const selected = selectNextNote({ notes, reviews: [], lastTargetNoteId: notes[0].id, rng: () => 0 });
+    const selected = selectNextNote({
+      notes,
+      reviews: [],
+      lastTargetNoteId: notes[0].id,
+      rng: () => 0,
+    });
 
     expect(selected.id).toBe(notes[1].id);
     expect(selected.noteName).toBe("C");
@@ -88,7 +109,11 @@ describe("adaptive-v2 scheduler", () => {
     const [note] = getNotesForGroups(["G4-F5"], false);
     const reviews = [
       ...reviewsFor(note, 1, 99_000),
-      ...reviewsFor(note, 100, 800).map((review, index) => ({ ...review, id: `recent-${index}`, answeredAt: `2026-07-05T12:${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}.000+08:00` })),
+      ...reviewsFor(note, 100, 800).map((review, index) => ({
+        ...review,
+        id: `recent-${index}`,
+        answeredAt: `2026-07-05T12:${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}.000+08:00`,
+      })),
     ];
 
     expect(getAdaptiveNotePerformance([note], reviews).get(note.id)).toMatchObject({
@@ -128,7 +153,9 @@ describe("adaptive-v2 scheduler", () => {
     const notes = getNotesForGroups(["G4-F5"], false).slice(0, 3);
 
     const selected = selectNotePage({ notes, reviews: [], count: 15, rng: () => 0 });
-    const counts = new Map(notes.map((note) => [note.id, selected.filter((draw) => draw.id === note.id).length]));
+    const counts = new Map(
+      notes.map((note) => [note.id, selected.filter((draw) => draw.id === note.id).length])
+    );
 
     expect([...counts.values()]).toEqual([5, 5, 5]);
   });
@@ -168,13 +195,12 @@ describe("adaptive-v2 scheduler", () => {
 
   it("uses the newcomer channel only for targets below five reviews", () => {
     const notes = getNotesForGroups(["G4-F5"], false).slice(0, 3);
-    const reviews = [
-      ...reviewsFor(notes[0], 100, 3000),
-      ...reviewsFor(notes[1], 100, 1000),
-    ];
+    const reviews = [...reviewsFor(notes[0], 100, 3000), ...reviewsFor(notes[1], 100, 1000)];
     const rngValues = [0.1, 0];
 
-    expect(selectNextNote({ notes, reviews, rng: () => rngValues.shift() ?? 0 }).id).toBe(notes[2].id);
+    expect(selectNextNote({ notes, reviews, rng: () => rngValues.shift() ?? 0 }).id).toBe(
+      notes[2].id
+    );
   });
 
   it("does not add an explicit penalty for wrong answers", () => {
@@ -184,7 +210,10 @@ describe("adaptive-v2 scheduler", () => {
       ...review,
       wrongAnswers: [{ atActiveMs: 200, noteName: "C" as const }],
     }));
-    const weights = getAdaptiveTierWeights(notes, getAdaptiveNotePerformance(notes, [...clean, ...errorProne]));
+    const weights = getAdaptiveTierWeights(
+      notes,
+      getAdaptiveNotePerformance(notes, [...clean, ...errorProne])
+    );
 
     expect(weights.get(notes[0].id)).toBe(weights.get(notes[1].id));
   });
@@ -199,13 +228,15 @@ describe("adaptive-v2 scheduler", () => {
       id: `later-${index}`,
     }));
 
-    expect(selectNextNote({
-      notes,
-      reviews: [...earlier, ...later],
-      sessions: [makeSession(notes)],
-      lastTargetNoteId: notes[0].id,
-      rng: () => 0,
-    }).id).toBe(notes[1].id);
+    expect(
+      selectNextNote({
+        notes,
+        reviews: [...earlier, ...later],
+        sessions: [makeSession(notes)],
+        lastTargetNoteId: notes[0].id,
+        rng: () => 0,
+      }).id
+    ).toBe(notes[1].id);
   });
 
   it("does not infer maintenance debt from history without a target-set snapshot", () => {
@@ -248,12 +279,14 @@ describe("adaptive-v2 scheduler", () => {
     const notes = getNotesForGroups(["G3-F4"], false);
     const rngValues = [0, 0];
 
-    expect(selectNextNote({
-      notes,
-      reviews: [],
-      queueStrategy: "melody",
-      lastTargetNoteId: "C4",
-      rng: () => rngValues.shift() ?? 0,
-    }).id).toBe("B3");
+    expect(
+      selectNextNote({
+        notes,
+        reviews: [],
+        queueStrategy: "melody",
+        lastTargetNoteId: "C4",
+        rng: () => rngValues.shift() ?? 0,
+      }).id
+    ).toBe("B3");
   });
 });

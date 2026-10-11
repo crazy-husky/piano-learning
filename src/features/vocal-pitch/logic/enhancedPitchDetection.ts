@@ -23,7 +23,7 @@ ort.env.wasm.wasmPaths = { wasm: new URL(ortWasmUrl, globalThis.location.href).h
 
 function resampleLinear(samples: Float32Array, sourceRate: number): Float32Array {
   if (sourceRate === MODEL_SAMPLE_RATE) return samples.slice();
-  const outputLength = Math.max(1, Math.round(samples.length * MODEL_SAMPLE_RATE / sourceRate));
+  const outputLength = Math.max(1, Math.round((samples.length * MODEL_SAMPLE_RATE) / sourceRate));
   const result = new Float32Array(outputLength);
   const sourceStep = sourceRate / MODEL_SAMPLE_RATE;
   for (let index = 0; index < outputLength; index += 1) {
@@ -59,13 +59,19 @@ function chunkBounds(coreStart: number, durationSeconds: number, contextSeconds:
   const inputEnd = Math.min(durationSeconds, coreEnd + contextSeconds);
   return {
     coreEnd,
-    inputEndSample: Math.min(Math.round(inputEnd * MODEL_SAMPLE_RATE), Math.round(durationSeconds * MODEL_SAMPLE_RATE)),
+    inputEndSample: Math.min(
+      Math.round(inputEnd * MODEL_SAMPLE_RATE),
+      Math.round(durationSeconds * MODEL_SAMPLE_RATE)
+    ),
     inputStart,
     inputStartSample: Math.max(0, Math.round(inputStart * MODEL_SAMPLE_RATE)),
   };
 }
 
-function decodeFcpeLatent(latent: Float32Array): { confidence: Float32Array; frequenciesHz: Float32Array } {
+function decodeFcpeLatent(latent: Float32Array): {
+  confidence: Float32Array;
+  frequenciesHz: Float32Array;
+} {
   const bins = 360;
   const frameCount = latent.length / bins;
   const minCent = 1200 * Math.log2(32.7 / 10);
@@ -97,7 +103,7 @@ function decodeFcpeLatent(latent: Float32Array): { confidence: Float32Array; fre
 async function runFcpe(
   session: ort.InferenceSession,
   samples: Float32Array,
-  onProgress: (progress: number) => void,
+  onProgress: (progress: number) => void
 ): Promise<NeuralPitchTrack> {
   const durationSeconds = samples.length / MODEL_SAMPLE_RATE;
   const times: number[] = [];
@@ -137,7 +143,7 @@ async function runFcpe(
 async function runSwiftF0(
   session: ort.InferenceSession,
   samples: Float32Array,
-  onProgress: (progress: number) => void,
+  onProgress: (progress: number) => void
 ): Promise<NeuralPitchTrack> {
   const durationSeconds = samples.length / MODEL_SAMPLE_RATE;
   const times: number[] = [];
@@ -155,22 +161,37 @@ async function runSwiftF0(
     }
     const output = await session.run({
       [session.inputNames[0]]: new ort.Tensor("float32", chunk, [1, chunk.length]),
-      [session.inputNames[1]]: new ort.Tensor("float32", Float32Array.of(SWIFTF0_MIN_FREQUENCY_HZ), []),
-      [session.inputNames[2]]: new ort.Tensor("float32", Float32Array.of(SWIFTF0_MAX_FREQUENCY_HZ), []),
+      [session.inputNames[1]]: new ort.Tensor(
+        "float32",
+        Float32Array.of(SWIFTF0_MIN_FREQUENCY_HZ),
+        []
+      ),
+      [session.inputNames[2]]: new ort.Tensor(
+        "float32",
+        Float32Array.of(SWIFTF0_MAX_FREQUENCY_HZ),
+        []
+      ),
     });
     const pitchHz = output[session.outputNames[0]].data as Float64Array;
     const modelConfidence = output[session.outputNames[1]].data as Float32Array;
     for (let frame = 0; frame < pitchHz.length; frame += 1) {
-      const timeSeconds = bounds.inputStart + frame * 256 / MODEL_SAMPLE_RATE;
+      const timeSeconds = bounds.inputStart + (frame * 256) / MODEL_SAMPLE_RATE;
       if (timeSeconds + 1e-7 < coreStart || timeSeconds >= bounds.coreEnd - 1e-7) continue;
       const frameStart = frame * 256;
       let framePeak = 0;
-      for (let sample = frameStart; sample < Math.min(frameStart + 256, chunk.length); sample += 1) {
+      for (
+        let sample = frameStart;
+        sample < Math.min(frameStart + 256, chunk.length);
+        sample += 1
+      ) {
         framePeak = Math.max(framePeak, Math.abs(chunk[sample]));
       }
-      const frameConfidence = framePeak < SWIFTF0_SILENCE_PEAK_THRESHOLD ? 0 : modelConfidence[frame];
-      const voiced = frameConfidence >= SWIFTF0_CONFIDENCE_THRESHOLD &&
-        pitchHz[frame] >= SWIFTF0_MIN_FREQUENCY_HZ && pitchHz[frame] <= SWIFTF0_MAX_FREQUENCY_HZ;
+      const frameConfidence =
+        framePeak < SWIFTF0_SILENCE_PEAK_THRESHOLD ? 0 : modelConfidence[frame];
+      const voiced =
+        frameConfidence >= SWIFTF0_CONFIDENCE_THRESHOLD &&
+        pitchHz[frame] >= SWIFTF0_MIN_FREQUENCY_HZ &&
+        pitchHz[frame] <= SWIFTF0_MAX_FREQUENCY_HZ;
       times.push(timeSeconds);
       frequencies.push(voiced ? pitchHz[frame] : Number.NaN);
       confidence.push(frameConfidence);
@@ -189,10 +210,14 @@ export async function analyzeEnhancedPitchSamples(
   sampleRate: number,
   config: VocalPitchAnalysisConfig,
   onProgress: (progress: number) => void,
-  preparedSamples16k?: Float32Array,
+  preparedSamples16k?: Float32Array
 ): Promise<VocalPitchAnalysis> {
-  const mpmAnalysis = analyzePitchSamples(samples, sampleRate, config, (progress) => onProgress(progress * 0.35));
-  const samples16k = attenuateCodecOvershoot(preparedSamples16k ?? resampleLinear(samples, sampleRate));
+  const mpmAnalysis = analyzePitchSamples(samples, sampleRate, config, (progress) =>
+    onProgress(progress * 0.35)
+  );
+  const samples16k = attenuateCodecOvershoot(
+    preparedSamples16k ?? resampleLinear(samples, sampleRate)
+  );
   onProgress(0.36);
   const [fcpeModel, swiftModel] = await Promise.all([
     loadEnhancedPitchModel("fcpe"),
@@ -202,9 +227,19 @@ export async function analyzeEnhancedPitchSamples(
   const swiftSession = await createSession(swiftModel);
   try {
     onProgress(0.42);
-    const fcpe = await runFcpe(fcpeSession, samples16k, (progress) => onProgress(0.42 + progress * 0.4));
-    const swiftf0 = await runSwiftF0(swiftSession, samples16k, (progress) => onProgress(0.82 + progress * 0.18));
-    return createEnhancedPitchAnalysis(mpmAnalysis, swiftf0, fcpe, samples16k.length / MODEL_SAMPLE_RATE, mpmAnalysis.config);
+    const fcpe = await runFcpe(fcpeSession, samples16k, (progress) =>
+      onProgress(0.42 + progress * 0.4)
+    );
+    const swiftf0 = await runSwiftF0(swiftSession, samples16k, (progress) =>
+      onProgress(0.82 + progress * 0.18)
+    );
+    return createEnhancedPitchAnalysis(
+      mpmAnalysis,
+      swiftf0,
+      fcpe,
+      samples16k.length / MODEL_SAMPLE_RATE,
+      mpmAnalysis.config
+    );
   } finally {
     await Promise.all([fcpeSession.release(), swiftSession.release()]);
   }

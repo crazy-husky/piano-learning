@@ -24,6 +24,6 @@ if (!browserSupport.supported) {
           <App />
         </ConfirmDialogProvider>
       </AppErrorBoundary>
-    </React.StrictMode>,
+    </React.StrictMode>
   );
 }

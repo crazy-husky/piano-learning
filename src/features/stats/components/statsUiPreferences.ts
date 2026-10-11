@@ -12,7 +12,11 @@ import {
 } from "./recognitionTrend";
 import { parseStatsRange, parseStatsRangeDays, type StatsRange } from "./statsRange";
 
-export const STATS_CAROUSEL_CARD_IDS = ["recognition-time", "session-progress", "note-range"] as const;
+export const STATS_CAROUSEL_CARD_IDS = [
+  "recognition-time",
+  "session-progress",
+  "note-range",
+] as const;
 export type StatsCarouselCardId = (typeof STATS_CAROUSEL_CARD_IDS)[number];
 
 export interface StatsUiPreferences {
@@ -43,49 +47,70 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isRecognitionTimeGrouping(value: unknown): value is RecognitionTimeGrouping {
-  return typeof value === "string" && RECOGNITION_TIME_GROUPINGS.includes(value as RecognitionTimeGrouping);
+  return (
+    typeof value === "string" &&
+    RECOGNITION_TIME_GROUPINGS.includes(value as RecognitionTimeGrouping)
+  );
 }
 
 function isRecognitionTimeMetric(value: unknown): value is RecognitionTimeMetric {
-  return typeof value === "string" && RECOGNITION_TIME_METRICS.includes(value as RecognitionTimeMetric);
+  return (
+    typeof value === "string" && RECOGNITION_TIME_METRICS.includes(value as RecognitionTimeMetric)
+  );
 }
 
-function isRecognitionRelativeBaselineMode(value: unknown): value is RecognitionRelativeBaselineMode {
-  return typeof value === "string" &&
-    RECOGNITION_RELATIVE_BASELINE_MODES.includes(value as RecognitionRelativeBaselineMode);
+function isRecognitionRelativeBaselineMode(
+  value: unknown
+): value is RecognitionRelativeBaselineMode {
+  return (
+    typeof value === "string" &&
+    RECOGNITION_RELATIVE_BASELINE_MODES.includes(value as RecognitionRelativeBaselineMode)
+  );
 }
 
 function isRecognitionTimeValueMode(value: unknown): value is RecognitionTimeValueMode {
-  return typeof value === "string" && RECOGNITION_TIME_VALUE_MODES.includes(value as RecognitionTimeValueMode);
+  return (
+    typeof value === "string" &&
+    RECOGNITION_TIME_VALUE_MODES.includes(value as RecognitionTimeValueMode)
+  );
 }
 
 export function parseHiddenRecognitionSeries(
   value: unknown,
-  fallback: RecognitionSeriesKey[] = [],
+  fallback: RecognitionSeriesKey[] = []
 ): RecognitionSeriesKey[] {
   if (!Array.isArray(value)) {
     return fallback;
   }
 
-  const hiddenSeries = RECOGNITION_SERIES_KEYS.filter((seriesKey) => value.some((item) => item === seriesKey));
+  const hiddenSeries = RECOGNITION_SERIES_KEYS.filter((seriesKey) =>
+    value.some((item) => item === seriesKey)
+  );
   return hiddenSeries.length === RECOGNITION_SERIES_KEYS.length ? fallback : hiddenSeries;
 }
 
 function isStatsCarouselCardId(value: unknown): value is StatsCarouselCardId {
-  return typeof value === "string" && STATS_CAROUSEL_CARD_IDS.includes(value as StatsCarouselCardId);
+  return (
+    typeof value === "string" && STATS_CAROUSEL_CARD_IDS.includes(value as StatsCarouselCardId)
+  );
 }
 
-export function parseStatsUiPreferences(value: unknown, fallback: StatsUiPreferences): StatsUiPreferences {
+export function parseStatsUiPreferences(
+  value: unknown,
+  fallback: StatsUiPreferences
+): StatsUiPreferences {
   if (!isRecord(value)) {
     return fallback;
   }
 
   return {
-    carouselCardId: isStatsCarouselCardId(value.carouselCardId) ? value.carouselCardId : fallback.carouselCardId,
+    carouselCardId: isStatsCarouselCardId(value.carouselCardId)
+      ? value.carouselCardId
+      : fallback.carouselCardId,
     customRangeDays: parseStatsRangeDays(value.customRangeDays) ?? fallback.customRangeDays,
     hiddenRecognitionSeries: parseHiddenRecognitionSeries(
       value.hiddenRecognitionSeries,
-      fallback.hiddenRecognitionSeries,
+      fallback.hiddenRecognitionSeries
     ),
     range: parseStatsRange(value.range, fallback.range),
     recognitionTimeGrouping: isRecognitionTimeGrouping(value.recognitionTimeGrouping)
@@ -94,7 +119,9 @@ export function parseStatsUiPreferences(value: unknown, fallback: StatsUiPrefere
     recognitionTimeMetric: isRecognitionTimeMetric(value.recognitionTimeMetric)
       ? value.recognitionTimeMetric
       : fallback.recognitionTimeMetric,
-    recognitionTimeRelativeBaselineMode: isRecognitionRelativeBaselineMode(value.recognitionTimeRelativeBaselineMode)
+    recognitionTimeRelativeBaselineMode: isRecognitionRelativeBaselineMode(
+      value.recognitionTimeRelativeBaselineMode
+    )
       ? value.recognitionTimeRelativeBaselineMode
       : typeof value.recognitionTimeResetNewRangeAtFirstPoint === "boolean"
         ? value.recognitionTimeResetNewRangeAtFirstPoint

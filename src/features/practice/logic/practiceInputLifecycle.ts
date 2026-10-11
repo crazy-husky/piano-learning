@@ -2,7 +2,7 @@ import type { AnswerPitchMode } from "../../../domain/types";
 
 export function releasePracticeMicrophoneOnPause(
   answerPitchMode: AnswerPitchMode,
-  stopMicrophone: () => void,
+  stopMicrophone: () => void
 ): void {
   if (answerPitchMode === "microphone") {
     stopMicrophone();

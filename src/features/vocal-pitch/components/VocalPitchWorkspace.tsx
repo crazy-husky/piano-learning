@@ -103,17 +103,28 @@ export function VocalPitchWorkspace({
         <div className="vocal-current-pitch">
           <strong>{currentPitch?.note ?? "无音高"}</strong>
           <span>{currentPitch ? `${currentPitch.frequencyHz.toFixed(2)} Hz` : "— Hz"}</span>
-          <span className={currentPitch && Math.abs(currentPitch.cents) <= 10 ? "in-tune" : undefined}>
-            {currentPitch ? `${currentPitch.cents >= 0 ? "+" : ""}${currentPitch.cents.toFixed(1)} ¢` : "— ¢"}
+          <span
+            className={currentPitch && Math.abs(currentPitch.cents) <= 10 ? "in-tune" : undefined}
+          >
+            {currentPitch
+              ? `${currentPitch.cents >= 0 ? "+" : ""}${currentPitch.cents.toFixed(1)} ¢`
+              : "— ¢"}
           </span>
           <span>{currentFrame ? `${Math.round(currentFrame.confidence * 100)}%` : "—%"}</span>
         </div>
         <div className="vocal-readout-status">
           <span>{statusLabel}</span>
-          <time>{formatDuration(effectiveTime)} / {formatDuration(recordingBusy ? recordingSeconds : material?.durationSeconds ?? 0)}</time>
+          <time>
+            {formatDuration(effectiveTime)} /{" "}
+            {formatDuration(recordingBusy ? recordingSeconds : (material?.durationSeconds ?? 0))}
+          </time>
         </div>
         {!sidebarOpen ? (
-          <button className="vocal-sidebar-open icon-button" title="展开边栏" onClick={onSetSidebarOpen}>
+          <button
+            className="vocal-sidebar-open icon-button"
+            title="展开边栏"
+            onClick={onSetSidebarOpen}
+          >
             <PanelRightOpen size={19} />
           </button>
         ) : null}
@@ -129,7 +140,9 @@ export function VocalPitchWorkspace({
         <PitchPreview
           currentPitchHz={currentFrame?.frequencyHz ?? null}
           currentTime={effectiveTime}
-          duration={recordingBusy ? Math.max(0.01, recordingSeconds) : material?.durationSeconds ?? 10}
+          duration={
+            recordingBusy ? Math.max(0.01, recordingSeconds) : (material?.durationSeconds ?? 10)
+          }
           followResetKey={followResetKey}
           frames={displayedFrames}
           followEnabled={recordingActive || playbackIsPlaying}
@@ -141,7 +154,11 @@ export function VocalPitchWorkspace({
         {!material && !recordingBusy ? (
           <div className="vocal-empty-overlay">
             <div className="vocal-empty-actions">
-              <button className="record-button" disabled={backupPreflightPending} onClick={onStartRecording}>
+              <button
+                className="record-button"
+                disabled={backupPreflightPending}
+                onClick={onStartRecording}
+              >
                 <Mic size={18} /> 录一段清唱
               </button>
               <button disabled={backupPreflightPending} onClick={onOpenUploadPicker}>
@@ -189,11 +206,18 @@ export function VocalPitchWorkspace({
         <button disabled={mutationBusy} onClick={onOpenUploadPicker}>
           <FolderUp size={17} /> 上传音视频
         </button>
-        <button disabled={mutationBusy || analysisProgress !== null || !material || !dirty} onClick={onSaveCurrentMaterial}>
+        <button
+          disabled={mutationBusy || analysisProgress !== null || !material || !dirty}
+          onClick={onSaveCurrentMaterial}
+        >
           <Save size={17} /> 保存
         </button>
         {controlStatusMessage || analysisProgress !== null ? (
-          <span className="vocal-control-status" aria-live="polite" title={controlStatusMessage ?? undefined}>
+          <span
+            className="vocal-control-status"
+            aria-live="polite"
+            title={controlStatusMessage ?? undefined}
+          >
             {controlStatusMessage}
             {analysisProgress !== null ? <progress max={1} value={analysisProgress} /> : null}
           </span>

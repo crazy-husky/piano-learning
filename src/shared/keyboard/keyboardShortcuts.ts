@@ -1,6 +1,13 @@
 export type GlobalEnterKeyboardEvent = Pick<
   KeyboardEvent,
-  "altKey" | "ctrlKey" | "defaultPrevented" | "isComposing" | "key" | "metaKey" | "repeat" | "shiftKey"
+  | "altKey"
+  | "ctrlKey"
+  | "defaultPrevented"
+  | "isComposing"
+  | "key"
+  | "metaKey"
+  | "repeat"
+  | "shiftKey"
 >;
 
 export function isInteractiveShortcutTarget(target: EventTarget | null): boolean {
@@ -10,7 +17,10 @@ export function isInteractiveShortcutTarget(target: EventTarget | null): boolean
   );
 }
 
-export function shouldHandleGlobalEnter(event: GlobalEnterKeyboardEvent, interactiveTarget: boolean): boolean {
+export function shouldHandleGlobalEnter(
+  event: GlobalEnterKeyboardEvent,
+  interactiveTarget: boolean
+): boolean {
   return (
     event.key === "Enter" &&
     !event.repeat &&

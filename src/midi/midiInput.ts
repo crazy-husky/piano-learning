@@ -18,13 +18,7 @@ const PIANO_KEY_NAMES: readonly PianoKeyName[] = [
 export const MIDI_START_NOTE_NUMBER = 60;
 
 export type MidiAccessStatus =
-  | "denied"
-  | "error"
-  | "idle"
-  | "insecure-context"
-  | "ready"
-  | "requesting"
-  | "unsupported";
+  "denied" | "error" | "idle" | "insecure-context" | "ready" | "requesting" | "unsupported";
 
 export interface MidiNoteInput {
   diagnosticSampleId?: number;
@@ -35,8 +29,7 @@ export interface MidiNoteInput {
 }
 
 export type MidiNoteInputEvent =
-  | { note: MidiNoteInput; type: "press" | "release" }
-  | { type: "reset" };
+  { note: MidiNoteInput; type: "press" | "release" } | { type: "reset" };
 
 export function isPianoKeyName(value: string): value is PianoKeyName {
   return PIANO_KEY_NAMES.includes(value as PianoKeyName);
@@ -56,7 +49,7 @@ export function registerMidiPress<T>(pressed: Map<string, T>, keyId: string, val
 
 export function getInitialMidiAccessStatus(
   isSecureContext: boolean,
-  hasNativeMidiAccess: boolean,
+  hasNativeMidiAccess: boolean
 ): MidiAccessStatus {
   if (!isSecureContext) {
     return "insecure-context";
@@ -65,7 +58,7 @@ export function getInitialMidiAccessStatus(
 }
 
 export async function isMidiPermissionGranted(
-  permissions: Pick<Permissions, "query"> | undefined,
+  permissions: Pick<Permissions, "query"> | undefined
 ): Promise<boolean> {
   if (!permissions) {
     return false;

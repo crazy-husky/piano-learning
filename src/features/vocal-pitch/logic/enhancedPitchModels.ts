@@ -35,14 +35,14 @@ export function enhancedPitchModelUrl(name: EnhancedPitchModelName): string {
 
 export function isEnhancedPitchReminderSuppressedToday(
   storage: Pick<Storage, "getItem"> = localStorage,
-  now = new Date(),
+  now = new Date()
 ): boolean {
   return storage.getItem(ENHANCED_PITCH_REMINDER_KEY) === localDateKey(now);
 }
 
 export function suppressEnhancedPitchReminderToday(
   storage: Pick<Storage, "setItem"> = localStorage,
-  now = new Date(),
+  now = new Date()
 ): void {
   storage.setItem(ENHANCED_PITCH_REMINDER_KEY, localDateKey(now));
 }
@@ -51,15 +51,21 @@ export async function areEnhancedPitchModelsCached(): Promise<boolean> {
   if (!("caches" in globalThis)) return false;
   const cache = await caches.open(ENHANCED_PITCH_MODEL_CACHE);
   const matches = await Promise.all(
-    (Object.keys(MODEL_DEFINITIONS) as EnhancedPitchModelName[]).map((name) => cache.match(enhancedPitchModelUrl(name))),
+    (Object.keys(MODEL_DEFINITIONS) as EnhancedPitchModelName[]).map((name) =>
+      cache.match(enhancedPitchModelUrl(name))
+    )
   );
   return matches.every((response, index) => {
-    const definition = MODEL_DEFINITIONS[(Object.keys(MODEL_DEFINITIONS) as EnhancedPitchModelName[])[index]];
+    const definition =
+      MODEL_DEFINITIONS[(Object.keys(MODEL_DEFINITIONS) as EnhancedPitchModelName[])[index]];
     return response?.ok && response.headers.get("X-Anki-Note-SHA256") === definition.sha256;
   });
 }
 
-async function verifiedModelResponse(name: EnhancedPitchModelName, bytes: ArrayBuffer): Promise<Response> {
+async function verifiedModelResponse(
+  name: EnhancedPitchModelName,
+  bytes: ArrayBuffer
+): Promise<Response> {
   const definition = MODEL_DEFINITIONS[name];
   if (bytes.byteLength !== definition.bytes) {
     throw new Error(`音高模型文件大小不符：${definition.fileName}`);
@@ -81,7 +87,7 @@ async function verifiedModelResponse(name: EnhancedPitchModelName, bytes: ArrayB
 
 async function fetchModel(
   name: EnhancedPitchModelName,
-  onBytes: (downloaded: number) => void,
+  onBytes: (downloaded: number) => void
 ): Promise<Response> {
   const response = await fetch(enhancedPitchModelUrl(name), { cache: "no-cache" });
   if (!response.ok) {
@@ -112,7 +118,9 @@ async function fetchModel(
   return verifiedModelResponse(name, bytes.buffer);
 }
 
-export async function downloadEnhancedPitchModels(onProgress: (progress: number) => void): Promise<void> {
+export async function downloadEnhancedPitchModels(
+  onProgress: (progress: number) => void
+): Promise<void> {
   if (!("caches" in globalThis)) {
     throw new Error("当前浏览器不支持模型缓存");
   }
@@ -138,9 +146,10 @@ export async function downloadEnhancedPitchModels(onProgress: (progress: number)
 
 export async function loadEnhancedPitchModel(name: EnhancedPitchModelName): Promise<ArrayBuffer> {
   const url = enhancedPitchModelUrl(name);
-  const cached = "caches" in globalThis
-    ? await (await caches.open(ENHANCED_PITCH_MODEL_CACHE)).match(url)
-    : undefined;
+  const cached =
+    "caches" in globalThis
+      ? await (await caches.open(ENHANCED_PITCH_MODEL_CACHE)).match(url)
+      : undefined;
   if (!cached?.ok || cached.headers.get("X-Anki-Note-SHA256") !== MODEL_DEFINITIONS[name].sha256) {
     throw new Error("增强模型缓存已丢失，请重新下载");
   }

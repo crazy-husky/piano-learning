@@ -2,7 +2,9 @@ import { createUuid } from "./id";
 import { DEFAULT_ENABLED_GROUPS, findNoteById } from "./notes";
 import type { NoteName, ReviewRecord, TargetNoteId } from "./types";
 
-export function makeReview(overrides: Partial<ReviewRecord> & { targetNoteId: TargetNoteId }): ReviewRecord {
+export function makeReview(
+  overrides: Partial<ReviewRecord> & { targetNoteId: TargetNoteId }
+): ReviewRecord {
   const note = findNoteById(overrides.targetNoteId);
   const noteName = note?.noteName ?? (overrides.targetNoteId[0] as NoteName);
   const octave = note?.octave ?? (Number(overrides.targetNoteId[1]) as ReviewRecord["octave"]);

@@ -18,49 +18,49 @@
 
 ## 已切素材
 
-| 分类 | 文件 | 像素 | 状态 / 用途 |
-| --- | --- | ---: | --- |
-| 角色参考 | `characters/mascot-idle.webp` | 445×475 | 保留；动作图集的待机造型参考 |
-| 角色参考 | `characters/mascot-cheer.webp` | 432×450 | 保留；动作图集的欢呼造型参考，原图含装饰星 |
-| 角色参考 | `characters/mascot-wink.webp` | 423×459 | 保留；动作图集的眨眼造型参考，原图含提示线 |
-| 角色参考 | `characters/mascot-level-celebration.webp` | 483×509 | 保留；动作图集的通关庆祝造型参考，含音符、星光和云朵 |
-| 角色动画 | `characters/mascot-neutral-idle.webp` | 260×260 | 中性表情源图；已合入难过图集第 6 帧，运行时待机与动画共用该帧；透明 WebP，约 17 KiB |
-| 角色动画 | `characters/mascot-idle-frames.webp` | 780×780 | 保留未接入；旧待机图集所有帧均为张嘴笑脸 |
-| 角色动画 | `characters/mascot-idle-frames-16.webp` | 1024×1024 | 保留未接入；4×4 扩帧候选，约 223 KiB；与难过图集色调和比例有差异 |
-| 角色动画 | `characters/mascot-cheer-frames.webp` | 780×780 | 可用；3×3 九帧答对欢呼序列；每格 260×260，含 256×256 帧及四周 2px 透明隔离边 |
-| 角色动画 | `characters/mascot-sad-frames.webp` | 780×780 | 可用；运行时使用索引 1–6 完成答错与恢复动画，索引 6 和待机共用；未使用的微笑索引 0、7、8 已替换为中性表情，保留图集坐标以防误引用时闪出笑脸 |
-| 角色动画 | `characters/mascot-pause-frames.webp` | 780×780 | 可用；3×3 九帧暂停眨眼序列；每格 260×260，含 256×256 帧及四周 2px 透明隔离边 |
-| 角色动画 | `characters/mascot-celebration-frames.webp` | 780×780 | 可用；3×3 九帧结算庆祝序列；每格 260×260，含 256×256 帧及四周 2px 透明隔离边 |
-| UI | `ui/hud-frame.webp` | 872×246 | 可用；顶部信息面板底图 |
-| UI | `ui/button-primary-base.webp` | 663×191 | 可用；主操作按钮底图 |
-| UI | `ui/button-secondary-base.webp` | 499×153 | 可用；次操作按钮底图 |
-| UI | `ui/modal-frame.webp` | 393×353 | 可用；弹窗面板底图 |
-| UI | `ui/settings-paw.webp` | 144×144 | 可用；设置弹窗顶部熊掌装饰，约 5.8 KB |
-| UI | `ui/level-medal-frame.webp` | 432×470 | 可用；结算/关卡奖章框，内部可叠加星级或文字 |
-| 特效 | `ui/star-particle.webp` | 289×266 | 可用；单颗发光五角星及自带小光点，可复制后做散开、缩放和淡出 |
-| 特效 | `effects/bubble-shell-empty-center.webp` | 512×512 | 可用；空心玻璃圆环，WebP 透明中心孔保留，可叠加音符 |
-| 特效 | `effects/cloud-decoration-1.webp` | 495×171 | 可用；云朵装饰，可用 CSS 横向漂移 |
-| 特效 | `effects/cloud-decoration-2.webp` | 510×177 | 可用；云朵装饰 |
-| 特效 | `effects/cloud-decoration-3.webp` | 500×179 | 可用；云朵装饰 |
-| 谱面 | `notation/treble-staff-c4-note.webp` | 451×284 | 可用；高音谱号与中央 C 音符参考图，可用于气泡内容示意 |
-| 场景 | `backgrounds/meadow-desktop.webp` | 1095×492 | 已接入；横向草地场景，宽屏 cover 裁切 |
-| 场景 | `backgrounds/meadow-mobile.webp` | 863×1822 | 已接入；窄屏使用独立 9:19 竖屏构图 |
+| 分类     | 文件                                        |      像素 | 状态 / 用途                                                                                                                                 |
+| -------- | ------------------------------------------- | --------: | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 角色参考 | `characters/mascot-idle.webp`               |   445×475 | 保留；动作图集的待机造型参考                                                                                                                |
+| 角色参考 | `characters/mascot-cheer.webp`              |   432×450 | 保留；动作图集的欢呼造型参考，原图含装饰星                                                                                                  |
+| 角色参考 | `characters/mascot-wink.webp`               |   423×459 | 保留；动作图集的眨眼造型参考，原图含提示线                                                                                                  |
+| 角色参考 | `characters/mascot-level-celebration.webp`  |   483×509 | 保留；动作图集的通关庆祝造型参考，含音符、星光和云朵                                                                                        |
+| 角色动画 | `characters/mascot-neutral-idle.webp`       |   260×260 | 中性表情源图；已合入难过图集第 6 帧，运行时待机与动画共用该帧；透明 WebP，约 17 KiB                                                         |
+| 角色动画 | `characters/mascot-idle-frames.webp`        |   780×780 | 保留未接入；旧待机图集所有帧均为张嘴笑脸                                                                                                    |
+| 角色动画 | `characters/mascot-idle-frames-16.webp`     | 1024×1024 | 保留未接入；4×4 扩帧候选，约 223 KiB；与难过图集色调和比例有差异                                                                            |
+| 角色动画 | `characters/mascot-cheer-frames.webp`       |   780×780 | 可用；3×3 九帧答对欢呼序列；每格 260×260，含 256×256 帧及四周 2px 透明隔离边                                                                |
+| 角色动画 | `characters/mascot-sad-frames.webp`         |   780×780 | 可用；运行时使用索引 1–6 完成答错与恢复动画，索引 6 和待机共用；未使用的微笑索引 0、7、8 已替换为中性表情，保留图集坐标以防误引用时闪出笑脸 |
+| 角色动画 | `characters/mascot-pause-frames.webp`       |   780×780 | 可用；3×3 九帧暂停眨眼序列；每格 260×260，含 256×256 帧及四周 2px 透明隔离边                                                                |
+| 角色动画 | `characters/mascot-celebration-frames.webp` |   780×780 | 可用；3×3 九帧结算庆祝序列；每格 260×260，含 256×256 帧及四周 2px 透明隔离边                                                                |
+| UI       | `ui/hud-frame.webp`                         |   872×246 | 可用；顶部信息面板底图                                                                                                                      |
+| UI       | `ui/button-primary-base.webp`               |   663×191 | 可用；主操作按钮底图                                                                                                                        |
+| UI       | `ui/button-secondary-base.webp`             |   499×153 | 可用；次操作按钮底图                                                                                                                        |
+| UI       | `ui/modal-frame.webp`                       |   393×353 | 可用；弹窗面板底图                                                                                                                          |
+| UI       | `ui/settings-paw.webp`                      |   144×144 | 可用；设置弹窗顶部熊掌装饰，约 5.8 KB                                                                                                       |
+| UI       | `ui/level-medal-frame.webp`                 |   432×470 | 可用；结算/关卡奖章框，内部可叠加星级或文字                                                                                                 |
+| 特效     | `ui/star-particle.webp`                     |   289×266 | 可用；单颗发光五角星及自带小光点，可复制后做散开、缩放和淡出                                                                                |
+| 特效     | `effects/bubble-shell-empty-center.webp`    |   512×512 | 可用；空心玻璃圆环，WebP 透明中心孔保留，可叠加音符                                                                                         |
+| 特效     | `effects/cloud-decoration-1.webp`           |   495×171 | 可用；云朵装饰，可用 CSS 横向漂移                                                                                                           |
+| 特效     | `effects/cloud-decoration-2.webp`           |   510×177 | 可用；云朵装饰                                                                                                                              |
+| 特效     | `effects/cloud-decoration-3.webp`           |   500×179 | 可用；云朵装饰                                                                                                                              |
+| 谱面     | `notation/treble-staff-c4-note.webp`        |   451×284 | 可用；高音谱号与中央 C 音符参考图，可用于气泡内容示意                                                                                       |
+| 场景     | `backgrounds/meadow-desktop.webp`           |  1095×492 | 已接入；横向草地场景，宽屏 cover 裁切                                                                                                       |
+| 场景     | `backgrounds/meadow-mobile.webp`            |  863×1822 | 已接入；窄屏使用独立 9:19 竖屏构图                                                                                                          |
 
 ## 已接入的音效与背景音乐
 
-| 文件 | 时长 | 用途 | 音效质量评估 |
-| --- | ---: | --- | --- |
-| `audio/bubble-pop.wav` | 0.67 秒 | 答对音符，气泡破裂 | VSS 生成成功；基础 WAV 检查通过 |
-| `audio/combo-streak.wav` | 0.89 秒 | 每 3 连击播放一次 | 89/100 |
-| `audio/combo-excellent.mp3` | 0.75 秒 | 10 连击语音鼓励 | 用户提供；与其他连击语音响度平衡 |
-| `audio/combo-amazing.mp3` | 0.98 秒 | 25 连击语音鼓励 | 用户提供；与其他连击语音响度平衡 |
-| `audio/combo-unbelievable.mp3` | 1.15 秒 | 50 连击及之后每增加 20 连击时播放 | 用户提供；与其他连击语音响度平衡 |
-| `audio/menu-click.mp3` | 0.40 秒 | 菜单和按钮点击；替换原合成弹动音 | 用户提供；已裁去前后静音 |
-| `audio/note-missed-soft.wav` | 0.32 秒 | 答错或气泡超时；低音木琴后接短促下行合成音 | 定制合成；48 kHz、24-bit、单声道 |
-| `audio/note-missed-unpitched.wav` | 0.07 秒 | 麦克风输入下漏音反馈 | 48 kHz、16-bit、单声道；来源与音质评估未归档 |
-| `audio/level-clear.wav` | 1.22 秒 | 本局达到至少 1 星 | 85/100 |
-| `audio/microphone-ready.wav` | 0.87 秒 | 麦克风连接成功或恢复 | 85/100 |
-| `audio/relaxed-game-bgm.mp3` | 56.24 秒 | 闯关背景音乐，循环播放 | 用户提供；从 2.4 MB WAV 转为约 330 KB MP3，并做响度处理 |
+| 文件                              |     时长 | 用途                                       | 音效质量评估                                            |
+| --------------------------------- | -------: | ------------------------------------------ | ------------------------------------------------------- |
+| `audio/bubble-pop.wav`            |  0.67 秒 | 答对音符，气泡破裂                         | VSS 生成成功；基础 WAV 检查通过                         |
+| `audio/combo-streak.wav`          |  0.89 秒 | 每 3 连击播放一次                          | 89/100                                                  |
+| `audio/combo-excellent.mp3`       |  0.75 秒 | 10 连击语音鼓励                            | 用户提供；与其他连击语音响度平衡                        |
+| `audio/combo-amazing.mp3`         |  0.98 秒 | 25 连击语音鼓励                            | 用户提供；与其他连击语音响度平衡                        |
+| `audio/combo-unbelievable.mp3`    |  1.15 秒 | 50 连击及之后每增加 20 连击时播放          | 用户提供；与其他连击语音响度平衡                        |
+| `audio/menu-click.mp3`            |  0.40 秒 | 菜单和按钮点击；替换原合成弹动音           | 用户提供；已裁去前后静音                                |
+| `audio/note-missed-soft.wav`      |  0.32 秒 | 答错或气泡超时；低音木琴后接短促下行合成音 | 定制合成；48 kHz、24-bit、单声道                        |
+| `audio/note-missed-unpitched.wav` |  0.07 秒 | 麦克风输入下漏音反馈                       | 48 kHz、16-bit、单声道；来源与音质评估未归档            |
+| `audio/level-clear.wav`           |  1.22 秒 | 本局达到至少 1 星                          | 85/100                                                  |
+| `audio/microphone-ready.wav`      |  0.87 秒 | 麦克风连接成功或恢复                       | 85/100                                                  |
+| `audio/relaxed-game-bgm.mp3`      | 56.24 秒 | 闯关背景音乐，循环播放                     | 用户提供；从 2.4 MB WAV 转为约 330 KB MP3，并做响度处理 |
 
 `bubble-pop.wav`、`combo-streak.wav`、`level-clear.wav` 和 `microphone-ready.wav` 为 44.1 kHz、16-bit、单声道；`note-missed-soft.wav` 按新提示制作成 48 kHz、24-bit、单声道，峰值约 -1.2 dBFS。游戏播放层会按用途调整音量；连击只在第 3、6、9…次连续答对时播放，避免音效叠得太密。
 

@@ -66,7 +66,7 @@ export function useRemainingNotePlayback({
         updateState("idle");
       }
     },
-    [updateState],
+    [updateState]
   );
 
   const start = useCallback((): void => {
@@ -134,7 +134,7 @@ export function useRemainingNotePlayback({
     }
     const action = getRemainingPlaybackToggleAction(
       stateRef.current,
-      runtime.nextIndex < runtime.notes.length,
+      runtime.nextIndex < runtime.notes.length
     );
     if (action === "start") {
       start();
@@ -167,7 +167,7 @@ export function useRemainingNotePlayback({
       }
       runtime?.activeNote?.release();
     },
-    [],
+    []
   );
 
   return { cancel, state, toggle };

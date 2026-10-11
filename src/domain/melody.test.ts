@@ -32,7 +32,10 @@ describe("melody generator", () => {
   });
 
   it("covers every register once before revisiting one when every phrase transfers", () => {
-    const notes = getNotesForGroups(PRACTICE_GROUPS.map((group) => group.id), false);
+    const notes = getNotesForGroups(
+      PRACTICE_GROUPS.map((group) => group.id),
+      false
+    );
     const state = createMelodyGenerationState();
     const selected = selectMelodyNotes({ notes, count: 40, state, rng: () => 0 });
 
@@ -42,7 +45,10 @@ describe("melody generator", () => {
   });
 
   it("can keep consecutive phrases in the same register", () => {
-    const notes = getNotesForGroups(PRACTICE_GROUPS.map((group) => group.id), false);
+    const notes = getNotesForGroups(
+      PRACTICE_GROUPS.map((group) => group.id),
+      false
+    );
     const state = createMelodyGenerationState();
     selectMelodyNotes({ notes, count: 24, state, rng: () => 0.99 });
 
@@ -69,7 +75,10 @@ describe("melody generator", () => {
   });
 
   it("can carry two non-equidistant transition notes into the next phrase", () => {
-    const notes = getNotesForGroups(PRACTICE_GROUPS.map((group) => group.id), false);
+    const notes = getNotesForGroups(
+      PRACTICE_GROUPS.map((group) => group.id),
+      false
+    );
     const previousNote = notes.find((note) => note.pitchId === "F1");
     const state = createMelodyGenerationState();
     state.currentRegisterIndex = 0;

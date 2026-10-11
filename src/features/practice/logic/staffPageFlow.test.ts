@@ -8,13 +8,13 @@ import {
 describe("rolling staff-page flow", () => {
   it("refills one row when eight visible notes remain", () => {
     expect(
-      getStaffPageRefillCount({ completedSessionCount: 40, nextIndex: 40, plannedNoteCount: 48 }),
+      getStaffPageRefillCount({ completedSessionCount: 40, nextIndex: 40, plannedNoteCount: 48 })
     ).toBe(24);
   });
 
   it("does not refill before the eight-note threshold", () => {
     expect(
-      getStaffPageRefillCount({ completedSessionCount: 39, nextIndex: 39, plannedNoteCount: 48 }),
+      getStaffPageRefillCount({ completedSessionCount: 39, nextIndex: 39, plannedNoteCount: 48 })
     ).toBe(0);
   });
 
@@ -25,7 +25,7 @@ describe("rolling staff-page flow", () => {
         fixedSessionCount: 60,
         nextIndex: 40,
         plannedNoteCount: 48,
-      }),
+      })
     ).toBe(12);
     expect(
       getStaffPageRefillCount({
@@ -33,7 +33,7 @@ describe("rolling staff-page flow", () => {
         fixedSessionCount: 48,
         nextIndex: 40,
         plannedNoteCount: 48,
-      }),
+      })
     ).toBe(0);
   });
 });
@@ -44,7 +44,7 @@ describe("mobile staff-page pagination", () => {
 
     expect(MOBILE_STAFF_PAGE_NOTE_COUNT).toBe(8);
     expect(
-      buildMobileStaffPageView({ notes, currentIndex: 7, firstNoteOffset: 0, completedCount: 7 }),
+      buildMobileStaffPageView({ notes, currentIndex: 7, firstNoteOffset: 0, completedCount: 7 })
     ).toMatchObject({
       currentPage: 1,
       noteIndexInPage: 7,
@@ -52,7 +52,7 @@ describe("mobile staff-page pagination", () => {
       totalPages: 6,
     });
     expect(
-      buildMobileStaffPageView({ notes, currentIndex: 8, firstNoteOffset: 0, completedCount: 8 }),
+      buildMobileStaffPageView({ notes, currentIndex: 8, firstNoteOffset: 0, completedCount: 8 })
     ).toMatchObject({
       currentPage: 2,
       noteIndexInPage: 0,

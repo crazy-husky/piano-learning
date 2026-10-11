@@ -48,8 +48,12 @@ interface PreparedServiceWorkerUpdate {
   result: Extract<ServiceWorkerReadyResult, { state: "waiting" | "activated" }>;
 }
 
-function waitForWorkerReady(registration: ServiceWorkerRegistration, timeoutMs: number): Promise<ServiceWorkerReadyResult> {
-  if (registration.waiting) return Promise.resolve({ state: "waiting", worker: registration.waiting });
+function waitForWorkerReady(
+  registration: ServiceWorkerRegistration,
+  timeoutMs: number
+): Promise<ServiceWorkerReadyResult> {
+  if (registration.waiting)
+    return Promise.resolve({ state: "waiting", worker: registration.waiting });
 
   return new Promise((resolve) => {
     let observedWorker: ServiceWorker | null = null;
@@ -69,9 +73,11 @@ function waitForWorkerReady(registration: ServiceWorkerRegistration, timeoutMs: 
       if (registration.waiting) {
         finish({ state: "waiting", worker: registration.waiting });
       } else if (observedWorker?.state === "activated") {
-        finish(registration.active
-          ? { state: "activated", worker: registration.active }
-          : { state: "failed", worker: null });
+        finish(
+          registration.active
+            ? { state: "activated", worker: registration.active }
+            : { state: "failed", worker: null }
+        );
       } else if (observedWorker?.state === "redundant") {
         finish({ state: "failed", worker: null });
       }
@@ -87,9 +93,15 @@ function waitForWorkerReady(registration: ServiceWorkerRegistration, timeoutMs: 
     const onUpdateFound = (): void => watchInstallingWorker();
 
     registration.addEventListener("updatefound", onUpdateFound);
-    timeoutId = window.setTimeout(() => finish(registration.waiting
-      ? { state: "waiting", worker: registration.waiting }
-      : { state: "timeout", worker: null }), timeoutMs);
+    timeoutId = window.setTimeout(
+      () =>
+        finish(
+          registration.waiting
+            ? { state: "waiting", worker: registration.waiting }
+            : { state: "timeout", worker: null }
+        ),
+      timeoutMs
+    );
     watchInstallingWorker();
   });
 }
@@ -142,7 +154,11 @@ async function checkRemoteVersion(): Promise<VersionCheckResult> {
     if (!response.ok) return { status: "error" };
 
     const payload: unknown = await response.json();
-    if (!isBuildVersionResponse(payload) || typeof payload.buildId !== "string" || !payload.buildId) {
+    if (
+      !isBuildVersionResponse(payload) ||
+      typeof payload.buildId !== "string" ||
+      !payload.buildId
+    ) {
       return { status: "error" };
     }
     if (payload.buildId === __APP_BUILD_ID__) return { status: "up-to-date" };
@@ -253,7 +269,13 @@ export function useAppUpdateNotice(): AppUpdateController {
     let updateFound = false;
 
     const checkForUpdate = async (): Promise<void> => {
-      if (disposed || updateFound || preparedUpdateRef.current || document.visibilityState === "hidden") return;
+      if (
+        disposed ||
+        updateFound ||
+        preparedUpdateRef.current ||
+        document.visibilityState === "hidden"
+      )
+        return;
 
       try {
         const result = await runVersionCheck();

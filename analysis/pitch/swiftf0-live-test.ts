@@ -7,7 +7,20 @@ import {
 } from "../../src/features/vocal-pitch/logic/swiftF0Config";
 import "./swiftf0-live-test.css";
 
-const NATURAL_AND_ACCIDENTAL_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const NATURAL_AND_ACCIDENTAL_NOTES = [
+  "C",
+  "C#",
+  "D",
+  "D#",
+  "E",
+  "F",
+  "F#",
+  "G",
+  "G#",
+  "A",
+  "A#",
+  "B",
+];
 
 const elements = {
   audioFile: document.querySelector<HTMLInputElement>("#audio-file")!,
@@ -28,7 +41,9 @@ const elements = {
   swiftNote: document.querySelector<HTMLElement>("#swift-note")!,
 };
 
-const worker = new Worker(new URL("./swiftf0-live-test.worker.ts", import.meta.url), { type: "module" });
+const worker = new Worker(new URL("./swiftf0-live-test.worker.ts", import.meta.url), {
+  type: "module",
+});
 let audioContext: AudioContext | null = null;
 let analyser: AnalyserNode | null = null;
 let inputSource: MediaStreamAudioSourceNode | MediaElementAudioSourceNode | null = null;
@@ -50,11 +65,14 @@ let currentMpm: { frequencyHz: number; clarity: number; note: string | null } | 
 let pitchDetector = createPitchFrameDetector(SWIFTF0_INPUT_FRAME_SIZE);
 const sampleBuffer = new Float32Array(SWIFTF0_INPUT_FRAME_SIZE);
 const historyRows: HTMLTableRowElement[] = [];
-const pendingRequests = new Map<number, {
-  generation: number;
-  inputTimeSeconds: number;
-  mpm: { frequencyHz: number; clarity: number; note: string | null };
-}>();
+const pendingRequests = new Map<
+  number,
+  {
+    generation: number;
+    inputTimeSeconds: number;
+    mpm: { frequencyHz: number; clarity: number; note: string | null };
+  }
+>();
 
 function setStatus(message: string, kind: "default" | "error" = "default"): void {
   elements.modelStatus.textContent = message;
@@ -66,7 +84,7 @@ function frequencyToNote(frequencyHz: number): string | null {
   const midi = 69 + 12 * Math.log2(frequencyHz / 440);
   const nearestMidi = Math.round(midi);
   if (Math.abs(midi - nearestMidi) > 0.45) return null;
-  const noteName = NATURAL_AND_ACCIDENTAL_NOTES[(nearestMidi % 12 + 12) % 12];
+  const noteName = NATURAL_AND_ACCIDENTAL_NOTES[((nearestMidi % 12) + 12) % 12];
   return `${noteName}${Math.floor(nearestMidi / 12) - 1}`;
 }
 
@@ -83,7 +101,7 @@ function getInputTimeSeconds(): number {
 function appendHistoryRow(
   timeSeconds: number,
   mpm: { frequencyHz: number; clarity: number; note: string | null } | null,
-  swift: { frequencyHz: number; confidence: number; inferenceMs: number; note: string | null },
+  swift: { frequencyHz: number; confidence: number; inferenceMs: number; note: string | null }
 ): void {
   if (historyRows.length === 0) elements.history.replaceChildren();
   const row = document.createElement("tr");
@@ -97,7 +115,8 @@ function appendHistoryRow(
   for (const [index, value] of values.entries()) {
     const cell = document.createElement("td");
     cell.textContent = value;
-    if (index === 3 && swift.confidence < SWIFTF0_CONFIDENCE_THRESHOLD) cell.className = "low-confidence";
+    if (index === 3 && swift.confidence < SWIFTF0_CONFIDENCE_THRESHOLD)
+      cell.className = "low-confidence";
     row.append(cell);
   }
   elements.history.prepend(row);
@@ -107,7 +126,7 @@ function appendHistoryRow(
 
 function updateRuntime(sampleRate: number): void {
   elements.runtimeInput.textContent = `输入：${sampleRate.toLocaleString()} Hz`;
-  elements.runtimeWindow.textContent = `窗口：${(SWIFTF0_INPUT_FRAME_SIZE / sampleRate * 1000).toFixed(1)} ms · ${SWIFTF0_FRAME_INTERVAL_MS} ms 更新`;
+  elements.runtimeWindow.textContent = `窗口：${((SWIFTF0_INPUT_FRAME_SIZE / sampleRate) * 1000).toFixed(1)} ms · ${SWIFTF0_FRAME_INTERVAL_MS} ms 更新`;
 }
 
 function runAnalysisLoop(): void {
@@ -118,7 +137,8 @@ function runAnalysisLoop(): void {
     analyser.getFloatTimeDomainData(sampleBuffer);
     const sampleRate = analyser.context.sampleRate;
     const detection = pitchDetector.detect(sampleBuffer, sampleRate).fallback;
-    const inPracticeRange = detection.frequencyHz >= PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz &&
+    const inPracticeRange =
+      detection.frequencyHz >= PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz &&
       detection.frequencyHz <= PRACTICE_NOTE_FREQUENCY_RANGE.maxFrequencyHz;
     const mpm = {
       clarity: detection.clarity,
@@ -137,13 +157,16 @@ function runAnalysisLoop(): void {
       const samples = sampleBuffer.slice();
       const inputTimeSeconds = getInputTimeSeconds();
       pendingRequests.set(requestId, { generation: inputGeneration, inputTimeSeconds, mpm });
-      worker.postMessage({
-        type: "analyze",
-        id: requestId,
-        generation: inputGeneration,
-        samples: samples.buffer,
-        sampleRate,
-      }, [samples.buffer]);
+      worker.postMessage(
+        {
+          type: "analyze",
+          id: requestId,
+          generation: inputGeneration,
+          samples: samples.buffer,
+          sampleRate,
+        },
+        [samples.buffer]
+      );
     }
   }
   animationFrame = requestAnimationFrame(runAnalysisLoop);
@@ -180,7 +203,10 @@ async function ensureAudioContext(): Promise<AudioContext> {
   return audioContext;
 }
 
-async function connectInput(source: MediaStreamAudioSourceNode | MediaElementAudioSourceNode, kind: "file" | "microphone"): Promise<void> {
+async function connectInput(
+  source: MediaStreamAudioSourceNode | MediaElementAudioSourceNode,
+  kind: "file" | "microphone"
+): Promise<void> {
   stopAnalysis();
   const context = await ensureAudioContext();
   const nextAnalyser = context.createAnalyser();
@@ -216,7 +242,12 @@ elements.startMicrophone.addEventListener("click", async () => {
   let stream: MediaStream | null = null;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: { autoGainControl: false, channelCount: 1, echoCancellation: false, noiseSuppression: false },
+      audio: {
+        autoGainControl: false,
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+      },
     });
     const context = await ensureAudioContext();
     await connectInput(context.createMediaStreamSource(stream), "microphone");
@@ -317,10 +348,18 @@ worker.addEventListener("message", (event: MessageEvent) => {
   const inferenceMs = message.inferenceMs ?? 0;
   elements.swiftNote.textContent = formatNote(note, frequencyHz);
   elements.swiftDetail.textContent = `置信度 ${confidence.toFixed(3)}${confidence < SWIFTF0_CONFIDENCE_THRESHOLD ? " · 低于 0.60" : ""}`;
-  elements.swiftDetail.classList.toggle("low-confidence", confidence < SWIFTF0_CONFIDENCE_THRESHOLD);
+  elements.swiftDetail.classList.toggle(
+    "low-confidence",
+    confidence < SWIFTF0_CONFIDENCE_THRESHOLD
+  );
   elements.runtimeInference.textContent = `推理：${inferenceMs.toFixed(1)} ms`;
   elements.runtimeBackend.textContent = `后端：${selectedBackend}`;
-  appendHistoryRow(request.inputTimeSeconds, request.mpm, { confidence, frequencyHz, inferenceMs, note });
+  appendHistoryRow(request.inputTimeSeconds, request.mpm, {
+    confidence,
+    frequencyHz,
+    inferenceMs,
+    note,
+  });
 });
 
 worker.addEventListener("error", (event) => {

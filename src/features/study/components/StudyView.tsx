@@ -12,10 +12,7 @@ import {
   STUDY_COLUMN_ORDER_OPTIONS,
   type StudyColumnOrderId,
 } from "./StudyDisplayControls";
-import {
-  getUniqueStudyPitches,
-  type StudyPlaybackMode,
-} from "../logic/studyListeningSelfCheck";
+import { getUniqueStudyPitches, type StudyPlaybackMode } from "../logic/studyListeningSelfCheck";
 import { StaffRecallView } from "../../staff-recall/components/StaffRecallView";
 import { useStudyPlayback } from "../hooks/useStudyPlayback";
 import { StudyNoteMap } from "./StudyNoteMap";
@@ -66,8 +63,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isStudyColumnOrderId(value: unknown): value is StudyColumnOrderId {
   return (
-    typeof value === "string" &&
-    STUDY_COLUMN_ORDER_OPTIONS.some((option) => option.id === value)
+    typeof value === "string" && STUDY_COLUMN_ORDER_OPTIONS.some((option) => option.id === value)
   );
 }
 
@@ -81,12 +77,16 @@ function parseStudyUiPreferences(value: unknown, fallback: StudyUiPreferences): 
   }
 
   return {
-    columnOrderId: isStudyColumnOrderId(value.columnOrderId) ? value.columnOrderId : fallback.columnOrderId,
+    columnOrderId: isStudyColumnOrderId(value.columnOrderId)
+      ? value.columnOrderId
+      : fallback.columnOrderId,
     isColumnOrderReversed:
       typeof value.isColumnOrderReversed === "boolean"
         ? value.isColumnOrderReversed
         : fallback.isColumnOrderReversed,
-    playbackMode: isStudyPlaybackMode(value.playbackMode) ? value.playbackMode : fallback.playbackMode,
+    playbackMode: isStudyPlaybackMode(value.playbackMode)
+      ? value.playbackMode
+      : fallback.playbackMode,
     showLabels: typeof value.showLabels === "boolean" ? value.showLabels : fallback.showLabels,
   };
 }
@@ -95,7 +95,10 @@ function shuffleStudyAnswerNumbers(): string[] {
   const answerNumbers = NOTE_NAME_COLUMNS.map((column) => column.answerNumber);
   for (let index = answerNumbers.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
-    [answerNumbers[index], answerNumbers[swapIndex]] = [answerNumbers[swapIndex], answerNumbers[index]];
+    [answerNumbers[index], answerNumbers[swapIndex]] = [
+      answerNumbers[swapIndex],
+      answerNumbers[index],
+    ];
   }
   return answerNumbers;
 }
@@ -103,9 +106,10 @@ function shuffleStudyAnswerNumbers(): string[] {
 function getStudyColumnDefinitions(
   orderId: StudyColumnOrderId,
   isReversed: boolean,
-  randomAnswerNumbers: readonly string[],
+  randomAnswerNumbers: readonly string[]
 ): NoteNameColumnDefinition[] {
-  const answerNumbers = orderId === "random" ? randomAnswerNumbers : FIXED_STUDY_COLUMN_ANSWER_NUMBERS[orderId];
+  const answerNumbers =
+    orderId === "random" ? randomAnswerNumbers : FIXED_STUDY_COLUMN_ANSWER_NUMBERS[orderId];
   const orderedAnswerNumbers = isReversed ? [...answerNumbers].reverse() : answerNumbers;
   return orderedAnswerNumbers.map((answerNumber) => {
     const column = NOTE_NAME_COLUMNS.find((candidate) => candidate.answerNumber === answerNumber);
@@ -120,7 +124,7 @@ function StudyMapContent({ settings }: StudyMapContentProps): JSX.Element {
   const [studyUiPreferences, setStudyUiPreferences] = useLocalStorageState(
     STUDY_UI_PREFERENCES_KEY,
     DEFAULT_STUDY_UI_PREFERENCES,
-    { parse: parseStudyUiPreferences },
+    { parse: parseStudyUiPreferences }
   );
   const [randomAnswerNumbers, setRandomAnswerNumbers] = useState(() => shuffleStudyAnswerNumbers());
   const columnOrderId = studyUiPreferences.columnOrderId;
@@ -134,7 +138,10 @@ function StudyMapContent({ settings }: StudyMapContentProps): JSX.Element {
     setStudyUiPreferences((current) => ({ ...current, columnOrderId: nextColumnOrderId }));
   };
   const setIsColumnOrderReversed = (nextIsColumnOrderReversed: boolean): void => {
-    setStudyUiPreferences((current) => ({ ...current, isColumnOrderReversed: nextIsColumnOrderReversed }));
+    setStudyUiPreferences((current) => ({
+      ...current,
+      isColumnOrderReversed: nextIsColumnOrderReversed,
+    }));
   };
   const setPlaybackMode = (nextPlaybackMode: StudyPlaybackMode): void => {
     setStudyUiPreferences((current) => ({ ...current, playbackMode: nextPlaybackMode }));
@@ -144,15 +151,23 @@ function StudyMapContent({ settings }: StudyMapContentProps): JSX.Element {
   };
   const columnDefinitions = useMemo(
     () => getStudyColumnDefinitions(columnOrderId, isColumnOrderReversed, randomAnswerNumbers),
-    [columnOrderId, isColumnOrderReversed, randomAnswerNumbers],
+    [columnOrderId, isColumnOrderReversed, randomAnswerNumbers]
   );
   const staffNotationMode = settings.staffNotationMode;
   const studyNotes = useMemo(
-    () => getNotesForGroups(settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode),
-    [settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode],
+    () =>
+      getNotesForGroups(
+        settings.enabledGroupIds,
+        settings.includeInterStaffLedgerSpellings,
+        staffNotationMode
+      ),
+    [settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode]
   );
   const studyPitches = useMemo(() => getUniqueStudyPitches(studyNotes), [studyNotes]);
-  const columns = useMemo(() => buildNoteNameColumns(studyNotes, columnDefinitions), [columnDefinitions, studyNotes]);
+  const columns = useMemo(
+    () => buildNoteNameColumns(studyNotes, columnDefinitions),
+    [columnDefinitions, studyNotes]
+  );
   const showInterStaffLedger = studyNotes.some((note) => note.isInterStaffLedgerSpelling);
 
   const {
@@ -221,9 +236,7 @@ function StudyMapContent({ settings }: StudyMapContentProps): JSX.Element {
               useLedgerGap={showInterStaffLedger}
             />
           ) : (
-            <div className="staff-notation-empty">
-              请选择至少一个音域组
-            </div>
+            <div className="staff-notation-empty">请选择至少一个音域组</div>
           )}
         </figure>
       </div>
@@ -240,7 +253,8 @@ export function StudyView({
   staffRecallRuns,
 }: StudyViewProps): JSX.Element {
   const [mode, setMode] = useState<"study" | "staff-recall">("study");
-  const { isBusyVisible: showEnteringStaffRecallStatus, run: runStaffRecallEntry } = useDelayedBusy();
+  const { isBusyVisible: showEnteringStaffRecallStatus, run: runStaffRecallEntry } =
+    useDelayedBusy();
   const [staffRecallRangeLocked, setStaffRecallRangeLocked] = useState(false);
 
   const enterStaffRecall = useCallback(async (): Promise<void> => {

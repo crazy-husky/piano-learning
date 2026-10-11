@@ -60,12 +60,15 @@ function isStatsCarouselDragBlockedTarget(target: EventTarget | null): boolean {
         ".session-progress-condition-bar",
         "canvas",
         "svg",
-      ].join(", "),
-    ),
+      ].join(", ")
+    )
   );
 }
 
-export function useStatsCarousel({ carouselCardId, setStatsUiPreferences }: UseStatsCarouselOptions) {
+export function useStatsCarousel({
+  carouselCardId,
+  setStatsUiPreferences,
+}: UseStatsCarouselOptions) {
   const statsCarouselDragRef = useRef<{
     dragging: boolean;
     pointerId: number;
@@ -76,7 +79,9 @@ export function useStatsCarousel({ carouselCardId, setStatsUiPreferences }: UseS
   const statsCarouselMoveDirectionRef = useRef<StatsCarouselMoveDirection | null>(null);
   const [singleCardCarousel, setSingleCardCarousel] = useState(false);
   const statsCarouselIndex = STATS_CAROUSEL_CARD_IDS.indexOf(carouselCardId);
-  const [statsCarouselOrder, setStatsCarouselOrder] = useState(() => getStatsCarouselOrder(statsCarouselIndex));
+  const [statsCarouselOrder, setStatsCarouselOrder] = useState(() =>
+    getStatsCarouselOrder(statsCarouselIndex)
+  );
   const [statsCarouselOffset, setStatsCarouselOffset] = useState<0 | 1>(0);
   const [statsCarouselTransitionEnabled, setStatsCarouselTransitionEnabled] = useState(true);
 
@@ -234,7 +239,9 @@ export function useStatsCarousel({ carouselCardId, setStatsUiPreferences }: UseS
   };
   const visibleStatsCarouselCardIds = new Set([
     STATS_CAROUSEL_CARD_IDS[statsCarouselIndex],
-    ...(singleCardCarousel ? [] : [STATS_CAROUSEL_CARD_IDS[normalizeStatsCarouselIndex(statsCarouselIndex + 1)]]),
+    ...(singleCardCarousel
+      ? []
+      : [STATS_CAROUSEL_CARD_IDS[normalizeStatsCarouselIndex(statsCarouselIndex + 1)]]),
   ]);
 
   return {

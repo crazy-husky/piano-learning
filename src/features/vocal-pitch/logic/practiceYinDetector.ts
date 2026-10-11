@@ -22,7 +22,9 @@ function getDownsampleFactor(sampleRate: number): number {
 export function getPracticeYinInputFrameSize(sampleRate: number, minFrequencyHz: number): number {
   const factor = getDownsampleFactor(sampleRate);
   const targetRate = sampleRate / factor;
-  const analysisFrameSize = nextPowerOfTwo(Math.max(2048, Math.ceil(targetRate / minFrequencyHz * FRAME_PERIODS)));
+  const analysisFrameSize = nextPowerOfTwo(
+    Math.max(2048, Math.ceil((targetRate / minFrequencyHz) * FRAME_PERIODS))
+  );
   return nextPowerOfTwo(analysisFrameSize * factor);
 }
 
@@ -32,11 +34,11 @@ function createLowPassKernel(factor: number): Float64Array {
   let sum = 0;
 
   for (let tap = -LOW_PASS_RADIUS; tap <= LOW_PASS_RADIUS; tap += 1) {
-    const sinc = tap === 0
-      ? 2 * cutoff
-      : Math.sin(2 * Math.PI * cutoff * tap) / (Math.PI * tap);
-    const window = 0.42 + 0.5 * Math.cos(Math.PI * tap / LOW_PASS_RADIUS) +
-      0.08 * Math.cos(2 * Math.PI * tap / LOW_PASS_RADIUS);
+    const sinc = tap === 0 ? 2 * cutoff : Math.sin(2 * Math.PI * cutoff * tap) / (Math.PI * tap);
+    const window =
+      0.42 +
+      0.5 * Math.cos((Math.PI * tap) / LOW_PASS_RADIUS) +
+      0.08 * Math.cos((2 * Math.PI * tap) / LOW_PASS_RADIUS);
     const coefficient = sinc * window;
     kernel[tap + LOW_PASS_RADIUS] = coefficient;
     sum += coefficient;
@@ -50,7 +52,7 @@ function downsample(
   samples: Float32Array,
   factor: number,
   kernel: Float64Array,
-  output: Float32Array,
+  output: Float32Array
 ): Float32Array {
   for (let outputIndex = 0; outputIndex < output.length; outputIndex += 1) {
     const center = outputIndex * factor;
@@ -73,7 +75,7 @@ function emptyCandidate(): PitchFrameCandidate {
 export function createPracticeYinDetector(
   frameSize: number,
   sampleRate: number,
-  options: PracticeYinDetectorOptions,
+  options: PracticeYinDetectorOptions
 ): PitchFrameDetector {
   const factor = getDownsampleFactor(sampleRate);
   const targetRate = sampleRate / factor;
@@ -82,9 +84,8 @@ export function createPracticeYinDetector(
 
   return {
     detect: (samples) => {
-      const input = kernel && outputBuffer
-        ? downsample(samples, factor, kernel, outputBuffer)
-        : samples;
+      const input =
+        kernel && outputBuffer ? downsample(samples, factor, kernel, outputBuffer) : samples;
       const result = yin(input, {
         fs: targetRate,
         maxFreq: options.maxFrequencyHz,

@@ -95,7 +95,11 @@ function findMissingFeatures(): string[] {
   ) {
     missing.push("Pointer Events");
   }
-  if (!window.CSS || typeof window.CSS.supports !== "function" || !window.CSS.supports("height: 100dvh")) {
+  if (
+    !window.CSS ||
+    typeof window.CSS.supports !== "function" ||
+    !window.CSS.supports("height: 100dvh")
+  ) {
     missing.push("动态视口高度单位 dvh");
   }
   if (!supportsWasmSimd()) {
@@ -106,19 +110,15 @@ function findMissingFeatures(): string[] {
 }
 
 function supportsWasmSimd(): boolean {
-  if (typeof WebAssembly === "undefined" || typeof WebAssembly.validate !== "function") return false;
+  if (typeof WebAssembly === "undefined" || typeof WebAssembly.validate !== "function")
+    return false;
 
   // A minimal module returning v128.const. Engines without SIMD reject it.
   return WebAssembly.validate(
     new Uint8Array([
-      0, 97, 115, 109, 1, 0, 0, 0,
-      1, 5, 1, 96, 0, 1, 123,
-      3, 2, 1, 0,
-      10, 22, 1, 20, 0, 253, 12,
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0,
-      11,
-    ]),
+      0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 22, 1, 20, 0, 253, 12, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11,
+    ])
   );
 }
 

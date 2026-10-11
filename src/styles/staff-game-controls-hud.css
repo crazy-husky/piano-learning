@@ -39,7 +39,9 @@
   border-bottom: 5px solid #9aaeb5;
   border-radius: 0 0 10px 10px;
   background: linear-gradient(180deg, #fff 0%, #fbfbf7 75%, #e9eff0 100%);
-  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.9), 0 3px 5px rgba(45, 75, 82, 0.14);
+  box-shadow:
+    inset 0 -2px 0 rgba(255, 255, 255, 0.9),
+    0 3px 5px rgba(45, 75, 82, 0.14);
   color: #315a67;
   cursor: pointer;
   font-size: clamp(15px, 4vw, 21px);
@@ -145,7 +147,9 @@
   border: 1px solid rgba(52, 146, 179, 0.32);
   border-radius: 50%;
   background: linear-gradient(180deg, #7cddf1, #32b8da);
-  box-shadow: 0 4px 0 rgba(29, 133, 170, 0.52), 0 6px 12px rgba(30, 104, 132, 0.2);
+  box-shadow:
+    0 4px 0 rgba(29, 133, 170, 0.52),
+    0 6px 12px rgba(30, 104, 132, 0.2);
   color: #fff;
   cursor: pointer;
 }
@@ -229,7 +233,9 @@
 .staff-game-input-option.is-selected {
   border-color: #42bdd6;
   background: #d9f5fa;
-  box-shadow: 0 0 0 3px rgba(79, 198, 218, 0.17), 0 5px 12px rgba(34, 126, 156, 0.15);
+  box-shadow:
+    0 0 0 3px rgba(79, 198, 218, 0.17),
+    0 5px 12px rgba(34, 126, 156, 0.15);
   color: #126d8d;
 }
 
@@ -484,7 +490,9 @@
   box-shadow: none;
   color: transparent;
   cursor: pointer;
-  transition: transform 160ms ease, filter 160ms ease;
+  transition:
+    transform 160ms ease,
+    filter 160ms ease;
 }
 
 .staff-game-action-button img {
@@ -580,14 +588,19 @@
   border: 2px solid rgba(57, 94, 112, 0.55);
   border-radius: 50%;
   background: linear-gradient(145deg, #f1f7fa, #9caeb8);
-  box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.88), 0 2px 4px rgba(48, 86, 101, 0.18);
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.88),
+    0 2px 4px rgba(48, 86, 101, 0.18);
   color: #415d6a;
   cursor: pointer;
   font-size: clamp(10px, 1.15vw, 14px);
   font-weight: 900;
   line-height: 1;
   padding: 0;
-  transition: transform 150ms ease, filter 150ms ease, box-shadow 150ms ease;
+  transition:
+    transform 150ms ease,
+    filter 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .staff-game-display-options button:hover {
@@ -598,7 +611,10 @@
 .staff-game-display-options button.is-selected {
   border-color: #238d58;
   background: linear-gradient(145deg, #7beb91, #1eb65f 58%, #138c4c);
-  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.82), 0 0 0 2px rgba(74, 202, 112, 0.28), 0 3px 6px rgba(23, 112, 67, 0.24);
+  box-shadow:
+    inset 0 2px 4px rgba(255, 255, 255, 0.82),
+    0 0 0 2px rgba(74, 202, 112, 0.28),
+    0 3px 6px rgba(23, 112, 67, 0.24);
   color: #fff;
 }
 
@@ -658,7 +674,9 @@
   z-index: 1;
   left: 50%;
   transform: translateX(-50%);
-  text-shadow: 0 2px 1px rgba(104, 68, 42, 0.55), 0 0 4px rgba(255, 255, 255, 0.8);
+  text-shadow:
+    0 2px 1px rgba(104, 68, 42, 0.55),
+    0 0 4px rgba(255, 255, 255, 0.8);
 }
 
 .staff-game-level-medal > span {
@@ -676,7 +694,9 @@
   font-weight: 1000;
   line-height: 1;
   -webkit-text-stroke: 1px rgba(255, 255, 255, 0.88);
-  text-shadow: 0 2px 1px rgba(255, 255, 255, 0.85), 0 3px 3px rgba(83, 47, 26, 0.2);
+  text-shadow:
+    0 2px 1px rgba(255, 255, 255, 0.85),
+    0 3px 3px rgba(83, 47, 26, 0.2);
 }
 
 .staff-game-level-stars {
@@ -709,7 +729,9 @@
 .staff-game-help-dialog button.staff-game-dialog-close:hover:not(:disabled) {
   background: linear-gradient(180deg, #49c4df, #168caf);
   border-color: rgba(52, 146, 179, 0.58);
-  box-shadow: 0 3px 0 rgba(22, 107, 139, 0.58), 0 5px 10px rgba(23, 83, 111, 0.28);
+  box-shadow:
+    0 3px 0 rgba(22, 107, 139, 0.58),
+    0 5px 10px rgba(23, 83, 111, 0.28);
   color: #fff;
   transform: translateY(-1px);
 }
@@ -863,7 +885,9 @@
   border: 3px solid #326844;
   border-radius: 4px;
   background: #326844;
-  box-shadow: 0 4px 0 rgba(29, 80, 50, 0.76), 0 7px 15px rgba(24, 72, 76, 0.22);
+  box-shadow:
+    0 4px 0 rgba(29, 80, 50, 0.76),
+    0 7px 15px rgba(24, 72, 76, 0.22);
   margin: 0 auto;
   padding: 2px;
   touch-action: manipulation;
@@ -927,7 +951,9 @@
   border: 1px solid #080e17;
   border-radius: 0 0 7px 7px;
   background: linear-gradient(90deg, #090c11 0%, #252c3d 46%, #070a0f 100%);
-  box-shadow: 0 4px 4px rgba(12, 20, 26, 0.45), inset 0 -5px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 4px 4px rgba(12, 20, 26, 0.45),
+    inset 0 -5px 0 rgba(255, 255, 255, 0.08);
   color: #fff;
   cursor: pointer;
   font-size: clamp(8px, 1.2vw, 11px);
@@ -959,11 +985,21 @@
   opacity: 0.82;
 }
 
-.staff-game-black-key.key-cs { left: calc(14.2857% - 4.5%); }
-.staff-game-black-key.key-ds { left: calc(28.5714% - 4.5%); }
-.staff-game-black-key.key-fs { left: calc(57.1428% - 4.5%); }
-.staff-game-black-key.key-gs { left: calc(71.4285% - 4.5%); }
-.staff-game-black-key.key-as { left: calc(85.7142% - 4.5%); }
+.staff-game-black-key.key-cs {
+  left: calc(14.2857% - 4.5%);
+}
+.staff-game-black-key.key-ds {
+  left: calc(28.5714% - 4.5%);
+}
+.staff-game-black-key.key-fs {
+  left: calc(57.1428% - 4.5%);
+}
+.staff-game-black-key.key-gs {
+  left: calc(71.4285% - 4.5%);
+}
+.staff-game-black-key.key-as {
+  left: calc(85.7142% - 4.5%);
+}
 
 @media (max-width: 820px) {
   .staff-game-controls.is-touch-layout {
@@ -1056,7 +1092,11 @@
     border: 3px solid #ffd05b;
     border-radius: 50%;
     background: radial-gradient(circle at 34% 25%, #fffef0, #fff4cf 55%, #f4d58a);
-    box-shadow: 0 0 0 6px #f08098, 0 0 0 9px #ffc74e, inset 0 3px 8px rgba(255, 255, 255, 0.96), 0 4px 7px rgba(120, 75, 41, 0.25);
+    box-shadow:
+      0 0 0 6px #f08098,
+      0 0 0 9px #ffc74e,
+      inset 0 3px 8px rgba(255, 255, 255, 0.96),
+      0 4px 7px rgba(120, 75, 41, 0.25);
     content: "";
   }
 
@@ -1067,7 +1107,18 @@
     width: 25%;
     aspect-ratio: 1;
     background: linear-gradient(145deg, #fff38b, #ffad20);
-    clip-path: polygon(50% 0, 62% 34%, 98% 36%, 70% 59%, 80% 96%, 50% 74%, 20% 96%, 30% 59%, 2% 36%, 38% 34%);
+    clip-path: polygon(
+      50% 0,
+      62% 34%,
+      98% 36%,
+      70% 59%,
+      80% 96%,
+      50% 74%,
+      20% 96%,
+      30% 59%,
+      2% 36%,
+      38% 34%
+    );
     content: "";
     filter: drop-shadow(0 1px 1px rgba(126, 73, 17, 0.6));
     transform: translateX(-50%);
@@ -1272,7 +1323,9 @@
 .staff-game-display-options button:hover:not(.is-selected) {
   border-color: rgba(57, 94, 112, 0.7);
   background: linear-gradient(145deg, #f1f7fa, #9caeb8);
-  box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.88), 0 2px 4px rgba(48, 86, 101, 0.18);
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.88),
+    0 2px 4px rgba(48, 86, 101, 0.18);
   color: #415d6a;
   filter: brightness(1.04);
   transform: translateY(-1px);
@@ -1281,7 +1334,10 @@
 .staff-game-display-options button.is-selected:hover {
   border-color: #238d58;
   background: linear-gradient(145deg, #7beb91, #1eb65f 58%, #138c4c);
-  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.82), 0 0 0 2px rgba(74, 202, 112, 0.28), 0 3px 6px rgba(23, 112, 67, 0.24);
+  box-shadow:
+    inset 0 2px 4px rgba(255, 255, 255, 0.82),
+    0 0 0 2px rgba(74, 202, 112, 0.28),
+    0 3px 6px rgba(23, 112, 67, 0.24);
   color: #fff;
   filter: brightness(1.04);
 }
@@ -1407,7 +1463,11 @@
     border: 2px solid #ffd05b;
     border-radius: 50%;
     background: radial-gradient(circle at 34% 25%, #fffef0, #fff3cd 58%, #efcc80);
-    box-shadow: 0 0 0 4px #f08098, 0 0 0 6px #ffc74e, inset 0 2px 5px rgba(255, 255, 255, 0.94), 0 3px 5px rgba(120, 75, 41, 0.28);
+    box-shadow:
+      0 0 0 4px #f08098,
+      0 0 0 6px #ffc74e,
+      inset 0 2px 5px rgba(255, 255, 255, 0.94),
+      0 3px 5px rgba(120, 75, 41, 0.28);
     content: "";
   }
 
@@ -1418,7 +1478,18 @@
     width: 25%;
     aspect-ratio: 1;
     background: linear-gradient(145deg, #fff38b, #ffad20);
-    clip-path: polygon(50% 0, 62% 34%, 98% 36%, 70% 59%, 80% 96%, 50% 74%, 20% 96%, 30% 59%, 2% 36%, 38% 34%);
+    clip-path: polygon(
+      50% 0,
+      62% 34%,
+      98% 36%,
+      70% 59%,
+      80% 96%,
+      50% 74%,
+      20% 96%,
+      30% 59%,
+      2% 36%,
+      38% 34%
+    );
     content: "";
     filter: drop-shadow(0 1px 1px rgba(126, 73, 17, 0.65));
     transform: translateX(-50%);

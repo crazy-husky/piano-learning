@@ -36,7 +36,7 @@ class MemoryFileHandle {
 
   constructor(
     readonly name: string,
-    private readonly directory: MemoryDirectoryHandle,
+    private readonly directory: MemoryDirectoryHandle
   ) {}
 
   async getFile(): Promise<File> {
@@ -82,7 +82,10 @@ class MemoryDirectoryHandle {
     return new MemoryFileHandle(name, this) as unknown as FileSystemFileHandle;
   }
 
-  async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FileSystemDirectoryHandle> {
+  async getDirectoryHandle(
+    name: string,
+    options?: { create?: boolean }
+  ): Promise<FileSystemDirectoryHandle> {
     let directory = this.directories.get(name);
     if (!directory) {
       if (!options?.create) {
@@ -145,7 +148,10 @@ class MemoryDirectoryHandle {
   totalReadCount(): number {
     return (
       [...this.readCounts.values()].reduce((total, count) => total + count, 0) +
-      [...this.directories.values()].reduce((total, directory) => total + directory.totalReadCount(), 0)
+      [...this.directories.values()].reduce(
+        (total, directory) => total + directory.totalReadCount(),
+        0
+      )
     );
   }
 
@@ -198,7 +204,9 @@ function makeSession(overrides: Partial<PracticeSessionRecordV1> = {}): Practice
   };
 }
 
-function makeStaffRecallRun(overrides: Partial<StaffRecallRunRecordV1> = {}): StaffRecallRunRecordV1 {
+function makeStaffRecallRun(
+  overrides: Partial<StaffRecallRunRecordV1> = {}
+): StaffRecallRunRecordV1 {
   return {
     id: "recall-backup",
     schemaVersion: 1,
@@ -220,7 +228,11 @@ async function seedBrowserData({
   dataSetId?: string;
   reviewEndedAt?: string;
   reviewId?: string;
-} = {}): Promise<{ reviews: ReviewRecord[]; sessions: PracticeSessionRecord[]; settings: AppSettings }> {
+} = {}): Promise<{
+  reviews: ReviewRecord[];
+  sessions: PracticeSessionRecord[];
+  settings: AppSettings;
+}> {
   const settings = makeSettings({ dataSetId });
   const sessions = [makeSession()];
   const reviews = [
@@ -251,7 +263,7 @@ async function seedBackupDirectory(
     dataSetId?: string;
     reviewEndedAt?: string;
     reviewId?: string;
-  } = {},
+  } = {}
 ): Promise<void> {
   const settings = makeSettings({
     dataSetId,
@@ -274,7 +286,10 @@ async function seedBackupDirectory(
       answeredAt: reviewEndedAt,
     }),
   ];
-  await writeBackupSnapshot(directory.handle(), buildBackupSnapshot(settings, sessions, reviews, backupAt));
+  await writeBackupSnapshot(
+    directory.handle(),
+    buildBackupSnapshot(settings, sessions, reviews, backupAt)
+  );
 }
 
 function makeVocalAudioMaterial(id: string, source: VocalAudioSource): VocalAudioMaterial {
@@ -320,10 +335,14 @@ describe("file backup side effects", () => {
     await db.delete();
     await db.open();
     storedBackupState = undefined;
-    vi.spyOn(db.backupStates as unknown as { get: (id: string) => Promise<BackupState | undefined> }, "get").mockImplementation(
-      async (id: string) => (id === "default" ? storedBackupState : undefined),
-    );
-    vi.spyOn(db.backupStates as unknown as { put: (state: BackupState) => Promise<string> }, "put").mockImplementation(async (state) => {
+    vi.spyOn(
+      db.backupStates as unknown as { get: (id: string) => Promise<BackupState | undefined> },
+      "get"
+    ).mockImplementation(async (id: string) => (id === "default" ? storedBackupState : undefined));
+    vi.spyOn(
+      db.backupStates as unknown as { put: (state: BackupState) => Promise<string> },
+      "put"
+    ).mockImplementation(async (state) => {
       storedBackupState = state;
       return state.id;
     });
@@ -390,7 +409,9 @@ describe("file backup side effects", () => {
     await rememberDirectory(directory);
     await writeBackupNow();
 
-    directory.child("audio").writeText("vocal-analyzed.analysis.json", JSON.stringify({ frames: [] }));
+    directory
+      .child("audio")
+      .writeText("vocal-analyzed.analysis.json", JSON.stringify({ frames: [] }));
 
     await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
       result: "data-conflict",
@@ -402,9 +423,10 @@ describe("file backup side effects", () => {
 
     await resolveBackupConflict({ vocalAudio: "browser" });
 
-    expect(directory.child("audio").readJson<{ frames: unknown[] }>("vocal-analyzed.analysis.json").frames).toEqual([
-      { confidence: 1, frequencyHz: 440, timeSeconds: 0 },
-    ]);
+    expect(
+      directory.child("audio").readJson<{ frames: unknown[] }>("vocal-analyzed.analysis.json")
+        .frames
+    ).toEqual([{ confidence: 1, frequencyHz: 440, timeSeconds: 0 }]);
     await expect(db.backupStates.get("default")).resolves.toMatchObject({
       dataConflictBeforeBackup: false,
       syncRequiredBeforeBackup: false,
@@ -448,7 +470,9 @@ describe("file backup side effects", () => {
     });
     expect(directory.child("days").readCount("2026-07-05.json")).toBe(1);
     await expect(db.reviews.toArray()).resolves.toMatchObject([{ id: "review-backup" }]);
-    await expect(db.settings.get("default")).resolves.toMatchObject({ dataSetId: "dataset-backup" });
+    await expect(db.settings.get("default")).resolves.toMatchObject({
+      dataSetId: "dataset-backup",
+    });
   });
 
   it("rejects a complete digest manifest when a day file no longer matches it", async () => {
@@ -459,7 +483,7 @@ describe("file backup side effects", () => {
     await rememberDirectory(directory);
 
     await expect(syncBackupBeforeActivity({ requestPermission: true })).rejects.toThrow(
-      backupText.errors.dayFileDigestMismatch,
+      backupText.errors.dayFileDigestMismatch
     );
 
     await expect(db.reviews.count()).resolves.toBe(0);
@@ -470,16 +494,24 @@ describe("file backup side effects", () => {
     await seedBackupDirectory(directory);
     const manifest = directory.readJson<BackupManifest>("manifest.json");
     delete manifest.learningDataDigest;
-    (manifest.settings as unknown as { answerPitchMode: string }).answerPitchMode = "absolute-pitch";
+    (manifest.settings as unknown as { answerPitchMode: string }).answerPitchMode =
+      "absolute-pitch";
     directory.writeText("manifest.json", JSON.stringify(manifest));
     await rememberDirectory(directory);
 
-    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({ result: "synced-up" });
+    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
+      result: "synced-up",
+    });
 
-    await expect(db.settings.get("default")).resolves.toMatchObject({ answerPitchMode: "exact-pitch" });
+    await expect(db.settings.get("default")).resolves.toMatchObject({
+      answerPitchMode: "exact-pitch",
+    });
     expect(
-      (directory.readJson<BackupManifest>("manifest.json").settings as unknown as { answerPitchMode: string })
-        .answerPitchMode,
+      (
+        directory.readJson<BackupManifest>("manifest.json").settings as unknown as {
+          answerPitchMode: string;
+        }
+      ).answerPitchMode
     ).toBe("absolute-pitch");
   });
 
@@ -487,10 +519,15 @@ describe("file backup side effects", () => {
     const directory = new MemoryDirectoryHandle("backup");
     const settings = makeSettings({ dataSetId: "dataset-backup" });
     const run = makeStaffRecallRun();
-    await writeBackupSnapshot(directory.handle(), buildBackupSnapshot(settings, [], [], run.endedAt, [run]));
+    await writeBackupSnapshot(
+      directory.handle(),
+      buildBackupSnapshot(settings, [], [], run.endedAt, [run])
+    );
     await rememberDirectory(directory);
 
-    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({ result: "synced-up" });
+    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
+      result: "synced-up",
+    });
     await expect(db.staffRecallRuns.toArray()).resolves.toEqual([run]);
   });
 
@@ -526,7 +563,9 @@ describe("file backup side effects", () => {
 
     expect(directory.child("days").totalReadCount()).toBeGreaterThan(0);
     await expect(db.backupStates.get("default")).resolves.toMatchObject({
-      lastSeenBackupDayFileMetadata: { "2026-07-04": { size: expect.any(Number), lastModified: expect.any(Number) } },
+      lastSeenBackupDayFileMetadata: {
+        "2026-07-04": { size: expect.any(Number), lastModified: expect.any(Number) },
+      },
     });
 
     directory.resetReadCounts();
@@ -599,7 +638,7 @@ describe("file backup side effects", () => {
         startedAt: "2026-07-05T10:00:01.000+08:00",
         answeredAt: "2026-07-05T10:00:02.000+08:00",
         endedAt: "2026-07-05T10:00:02.000+08:00",
-      }),
+      })
     );
     directory.resetReadCounts();
 
@@ -608,7 +647,10 @@ describe("file backup side effects", () => {
       backupStateChanged: true,
     });
     const state = await db.backupStates.get("default");
-    expect(Object.keys(state?.lastSeenBackupDayFileMetadata ?? {})).toEqual(["2026-07-04", "2026-07-05"]);
+    expect(Object.keys(state?.lastSeenBackupDayFileMetadata ?? {})).toEqual([
+      "2026-07-04",
+      "2026-07-05",
+    ]);
     directory.resetReadCounts();
 
     await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toEqual({
@@ -629,7 +671,7 @@ describe("file backup side effects", () => {
         startedAt: "2026-07-05T10:00:00.000+08:00",
         answeredAt: "2026-07-05T10:00:02.000+08:00",
         endedAt: "2026-07-05T10:00:02.000+08:00",
-      }),
+      })
     );
     await rememberDirectory(directory);
     await writeBackupNow();
@@ -663,7 +705,7 @@ describe("file backup side effects", () => {
         startedAt: "2026-07-05T10:00:00.000+08:00",
         answeredAt: "2026-07-05T10:00:02.000+08:00",
         endedAt: "2026-07-05T10:00:02.000+08:00",
-      }),
+      })
     );
     await rememberDirectory(directory);
     await writeBackupNow();
@@ -753,8 +795,8 @@ describe("file backup side effects", () => {
         settings,
         sessions,
         [reviews[0], updatedReview, addedReview],
-        "2099-01-01T00:00:00.000Z",
-      ),
+        "2099-01-01T00:00:00.000Z"
+      )
     );
     directory.resetReadCounts();
     const clearReviews = vi.spyOn(db.reviews, "clear");
@@ -774,7 +816,11 @@ describe("file backup side effects", () => {
     expect(clearReviews).not.toHaveBeenCalled();
     expect(deleteReviews).toHaveBeenCalledWith(["review-deleted"]);
     expect(putReviews).toHaveBeenCalledWith([updatedReview, addedReview]);
-    await expect(db.reviews.orderBy("startedAt").toArray()).resolves.toEqual([reviews[0], updatedReview, addedReview]);
+    await expect(db.reviews.orderBy("startedAt").toArray()).resolves.toEqual([
+      reviews[0],
+      updatedReview,
+      addedReview,
+    ]);
   });
 
   it("imports remote vocal audio changes with the whole snapshot", async () => {
@@ -788,7 +834,12 @@ describe("file backup side effects", () => {
 
     const remoteMaterial = {
       ...(await makeBackedVocalAudioMaterial("vocal-remote")),
-      config: { ...DEFAULT_VOCAL_PITCH_CONFIG, minFrequencyHz: 30, maxFrequencyHz: 300, smoothing: 0.8 },
+      config: {
+        ...DEFAULT_VOCAL_PITCH_CONFIG,
+        minFrequencyHz: 30,
+        maxFrequencyHz: 300,
+        smoothing: 0.8,
+      },
     };
     await db.vocalAudioMaterials.clear();
     await db.vocalAudioMaterials.put(remoteMaterial);
@@ -801,13 +852,15 @@ describe("file backup side effects", () => {
     const outcome = await syncBackupBeforeActivity({ requestPermission: true });
 
     expect(outcome.result).toBe("synced-up");
-    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([{
-      id: "vocal-remote",
-      config: {
-        minFrequencyHz: VOCAL_PITCH_MIN_FREQUENCY_HZ,
-        maxFrequencyHz: VOCAL_PITCH_MAX_FREQUENCY_HZ,
+    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([
+      {
+        id: "vocal-remote",
+        config: {
+          minFrequencyHz: VOCAL_PITCH_MIN_FREQUENCY_HZ,
+          maxFrequencyHz: VOCAL_PITCH_MAX_FREQUENCY_HZ,
+        },
       },
-    }]);
+    ]);
   });
 
   it("merges newer backup practice data with a local vocal audio change", async () => {
@@ -828,17 +881,23 @@ describe("file backup side effects", () => {
     };
     const remoteManifest = await writeBackupSnapshot(
       directory.handle(),
-      buildBackupSnapshot(settings, sessions, [remoteReview], "2099-01-01T00:01:00.000Z"),
+      buildBackupSnapshot(settings, sessions, [remoteReview], "2099-01-01T00:01:00.000Z")
     );
-    directory.writeText("manifest.json", JSON.stringify({
-      ...remoteManifest,
-      vocalAudioLibraryDigest: (await db.backupStates.get("default"))?.lastSeenVocalAudioLibraryDigest,
-    }));
+    directory.writeText(
+      "manifest.json",
+      JSON.stringify({
+        ...remoteManifest,
+        vocalAudioLibraryDigest: (await db.backupStates.get("default"))
+          ?.lastSeenVocalAudioLibraryDigest,
+      })
+    );
 
     await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
       result: "synced-up",
     });
-    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([{ id: localMaterial.id }]);
+    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([
+      { id: localMaterial.id },
+    ]);
     await expect(db.reviews.toArray()).resolves.toMatchObject([{ endedAt: remoteReview.endedAt }]);
   });
 
@@ -872,7 +931,9 @@ describe("file backup side effects", () => {
       result: "synced-up",
     });
     await expect(db.reviews.get(localReview.id)).resolves.toMatchObject({ id: localReview.id });
-    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([{ id: remoteMaterial.id }]);
+    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([
+      { id: remoteMaterial.id },
+    ]);
   });
 
   it("preserves local settings while importing newer backup vocal audio", async () => {
@@ -898,7 +959,9 @@ describe("file backup side effects", () => {
       result: "synced-up",
     });
     await expect(db.settings.get("default")).resolves.toMatchObject({ pianoVolume: 0.21 });
-    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([{ id: remoteMaterial.id }]);
+    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([
+      { id: remoteMaterial.id },
+    ]);
   });
 
   it("preserves a locally emptied learning domain while importing newer backup vocal audio", async () => {
@@ -924,7 +987,9 @@ describe("file backup side effects", () => {
     await expect(db.practiceSessions.count()).resolves.toBe(0);
     await expect(db.reviews.count()).resolves.toBe(0);
     await expect(db.staffRecallRuns.count()).resolves.toBe(0);
-    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([{ id: remoteMaterial.id }]);
+    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([
+      { id: remoteMaterial.id },
+    ]);
   });
 
   it("reports a conflict when local learning data is emptied and backup learning data changes", async () => {
@@ -942,7 +1007,7 @@ describe("file backup side effects", () => {
         startedAt: "2026-07-05T11:00:00.000+08:00",
         answeredAt: "2026-07-05T11:00:02.000+08:00",
         endedAt: "2026-07-05T11:00:02.000+08:00",
-      }),
+      })
     );
     await writeBackupNow();
 
@@ -1002,7 +1067,9 @@ describe("file backup side effects", () => {
 
     await expect(db.settings.get("default")).resolves.toMatchObject({ pianoVolume: 0.21 });
     await expect(db.reviews.get(remoteReview.id)).resolves.toBeUndefined();
-    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([{ id: remoteMaterial.id }]);
+    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([
+      { id: remoteMaterial.id },
+    ]);
   });
 
   it("imports a remote vocal audio deletion", async () => {
@@ -1020,7 +1087,9 @@ describe("file backup side effects", () => {
     await db.vocalAudioMaterials.put(originalMaterial);
     await db.backupStates.put({ ...localBackupState!, lastBackupAt: "2000-01-01T00:00:00.000Z" });
 
-    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({ result: "synced-up" });
+    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
+      result: "synced-up",
+    });
     await expect(db.vocalAudioMaterials.count()).resolves.toBe(0);
   });
 
@@ -1038,10 +1107,13 @@ describe("file backup side effects", () => {
     await db.vocalAudioMaterials.put(olderMaterial);
     await writeBackupNow();
     const olderManifest = directory.readJson<BackupManifest>("manifest.json");
-    directory.writeText("manifest.json", JSON.stringify({
-      ...olderManifest,
-      lastBackupAt: "2000-01-01T00:00:00.000Z",
-    }));
+    directory.writeText(
+      "manifest.json",
+      JSON.stringify({
+        ...olderManifest,
+        lastBackupAt: "2000-01-01T00:00:00.000Z",
+      })
+    );
 
     await db.vocalAudioMaterials.clear();
     await db.vocalAudioMaterials.put(originalMaterial);
@@ -1054,7 +1126,9 @@ describe("file backup side effects", () => {
       conflictLearningData: false,
       conflictVocalAudio: true,
     });
-    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([{ id: originalMaterial.id }]);
+    await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([
+      { id: originalMaterial.id },
+    ]);
   });
 
   it("backs up a local vocal audio deletion as the next library version", async () => {
@@ -1067,7 +1141,9 @@ describe("file backup side effects", () => {
     await db.vocalAudioMaterials.clear();
     await writeBackupNow();
 
-    expect(directory.child("audio").readJson<{ materials: unknown[] }>("index.json").materials).toEqual([]);
+    expect(
+      directory.child("audio").readJson<{ materials: unknown[] }>("index.json").materials
+    ).toEqual([]);
     await expect(db.backupStates.get("default")).resolves.toMatchObject({
       dataConflictBeforeBackup: false,
       syncRequiredBeforeBackup: false,
@@ -1085,7 +1161,9 @@ describe("file backup side effects", () => {
     await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
       result: "synced-down",
     });
-    expect(directory.readJson<BackupManifest>("manifest.json").settings).toMatchObject({ pianoVolume: 0.21 });
+    expect(directory.readJson<BackupManifest>("manifest.json").settings).toMatchObject({
+      pianoVolume: 0.21,
+    });
   });
 
   it("writes a local vocal audio deletion during the next activity preflight", async () => {
@@ -1100,7 +1178,9 @@ describe("file backup side effects", () => {
     await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
       result: "synced-down",
     });
-    expect(directory.child("audio").readJson<{ materials: unknown[] }>("index.json").materials).toEqual([]);
+    expect(
+      directory.child("audio").readJson<{ materials: unknown[] }>("index.json").materials
+    ).toEqual([]);
   });
 
   it("resolves learning and vocal audio conflicts from different sources", async () => {
@@ -1149,14 +1229,18 @@ describe("file backup side effects", () => {
       updatedAt: "2099-01-02T00:00:00.000Z",
     };
     await db.vocalAudioMaterials.put(revisedLocalMaterial);
-    await expect(resolveBackupConflict({ learningData: "backup", vocalAudio: "browser" })).rejects.toThrow(
-      backupText.messages.conflictChanged,
+    await expect(
+      resolveBackupConflict({ learningData: "backup", vocalAudio: "browser" })
+    ).rejects.toThrow(backupText.messages.conflictChanged);
+    expect((await db.backupStates.get("default"))?.conflictRevision).not.toEqual(
+      conflictState?.conflictRevision
     );
-    expect((await db.backupStates.get("default"))?.conflictRevision).not.toEqual(conflictState?.conflictRevision);
 
     await resolveBackupConflict({ learningData: "backup", vocalAudio: "browser" });
 
-    await expect(db.reviews.get(remoteReview.id)).resolves.toMatchObject({ endedAt: remoteReview.endedAt });
+    await expect(db.reviews.get(remoteReview.id)).resolves.toMatchObject({
+      endedAt: remoteReview.endedAt,
+    });
     await expect(db.vocalAudioMaterials.toArray()).resolves.toMatchObject([
       { id: revisedLocalMaterial.id, name: revisedLocalMaterial.name },
     ]);
@@ -1181,14 +1265,18 @@ describe("file backup side effects", () => {
 
     await writeBackupSnapshot(
       directory.handle(),
-      buildBackupSnapshot(settings, sessions, reviews, "2099-01-01T00:00:00.000Z"),
+      buildBackupSnapshot(settings, sessions, reviews, "2099-01-01T00:00:00.000Z")
     );
     const deletionManifest = directory.readJson<BackupManifest>("manifest.json");
-    expect(deletionManifest.dataModifiedAt!.localeCompare(previousManifest.dataModifiedAt!)).toBeLessThan(0);
+    expect(
+      deletionManifest.dataModifiedAt!.localeCompare(previousManifest.dataModifiedAt!)
+    ).toBeLessThan(0);
     const clearSessions = vi.spyOn(db.practiceSessions, "clear");
     const deleteSessions = vi.spyOn(db.practiceSessions, "bulkDelete");
 
-    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({ result: "synced-up" });
+    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
+      result: "synced-up",
+    });
 
     expect(clearSessions).not.toHaveBeenCalled();
     expect(deleteSessions).toHaveBeenCalledWith(["session-empty"]);
@@ -1196,10 +1284,17 @@ describe("file backup side effects", () => {
 
     await writeBackupSnapshot(
       directory.handle(),
-      buildBackupSnapshot(settings, [emptySession, ...sessions], reviews, "2000-01-01T00:00:00.000Z"),
+      buildBackupSnapshot(
+        settings,
+        [emptySession, ...sessions],
+        reviews,
+        "2000-01-01T00:00:00.000Z"
+      )
     );
     const rollbackManifest = directory.readJson<BackupManifest>("manifest.json");
-    expect(rollbackManifest.dataModifiedAt!.localeCompare(deletionManifest.dataModifiedAt!)).toBeGreaterThan(0);
+    expect(
+      rollbackManifest.dataModifiedAt!.localeCompare(deletionManifest.dataModifiedAt!)
+    ).toBeGreaterThan(0);
 
     await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
       result: "data-conflict",
@@ -1216,11 +1311,13 @@ describe("file backup side effects", () => {
 
     await writeBackupSnapshot(
       directory.handle(),
-      buildBackupSnapshot(settings, [], [], "2099-01-01T00:00:00.000Z"),
+      buildBackupSnapshot(settings, [], [], "2099-01-01T00:00:00.000Z")
     );
     const emptyManifest = directory.readJson<BackupManifest>("manifest.json");
 
-    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({ result: "synced-up" });
+    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
+      result: "synced-up",
+    });
     await expect(db.practiceSessions.count()).resolves.toBe(0);
     await expect(db.reviews.count()).resolves.toBe(0);
     await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toEqual({
@@ -1230,10 +1327,12 @@ describe("file backup side effects", () => {
 
     await writeBackupSnapshot(
       directory.handle(),
-      buildBackupSnapshot(settings, sessions, reviews, "2000-01-01T00:00:00.000Z"),
+      buildBackupSnapshot(settings, sessions, reviews, "2000-01-01T00:00:00.000Z")
     );
     const rollbackManifest = directory.readJson<BackupManifest>("manifest.json");
-    expect(rollbackManifest.dataModifiedAt!.localeCompare(emptyManifest.dataModifiedAt!)).toBeGreaterThan(0);
+    expect(
+      rollbackManifest.dataModifiedAt!.localeCompare(emptyManifest.dataModifiedAt!)
+    ).toBeGreaterThan(0);
 
     await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
       result: "data-conflict",
@@ -1259,7 +1358,7 @@ describe("file backup side effects", () => {
     });
     await writeBackupSnapshot(
       directory.handle(),
-      buildBackupSnapshot(settings, sessions, [reviews[0], addedReview], "2099-01-01T00:00:00.000Z"),
+      buildBackupSnapshot(settings, sessions, [reviews[0], addedReview], "2099-01-01T00:00:00.000Z")
     );
     directory.resetReadCounts();
     const clearReviews = vi.spyOn(db.reviews, "clear");
@@ -1287,7 +1386,9 @@ describe("file backup side effects", () => {
     });
     directory.resetReadCounts();
 
-    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({ result: "synced-up" });
+    await expect(syncBackupBeforeActivity({ requestPermission: true })).resolves.toMatchObject({
+      result: "synced-up",
+    });
 
     expect(directory.child("days").totalReadCount()).toBeGreaterThan(0);
     await expect(db.reviews.toArray()).resolves.toMatchObject([{ id: "review-backup" }]);
@@ -1394,17 +1495,26 @@ describe("file backup side effects", () => {
       makeVocalAudioMaterial("backup-recording", "recording"),
       makeVocalAudioMaterial("backup-upload", "upload"),
     ];
-    const audioDirectory = (await directory.getDirectoryHandle("audio", { create: true })) as unknown as MemoryDirectoryHandle;
+    const audioDirectory = (await directory.getDirectoryHandle("audio", {
+      create: true,
+    })) as unknown as MemoryDirectoryHandle;
     audioDirectory.writeText(
       "index.json",
       JSON.stringify({
         schemaVersion: 1,
         updatedAt: "2026-07-05T12:00:00.000+08:00",
-        materials: backupMaterials.map(({ analysis: _analysis, audioBlob: _audioBlob, schemaVersion: _schemaVersion, ...material }) => ({
-          ...material,
-          audioFileName: `${material.id}.webm`,
-        })),
-      }),
+        materials: backupMaterials.map(
+          ({
+            analysis: _analysis,
+            audioBlob: _audioBlob,
+            schemaVersion: _schemaVersion,
+            ...material
+          }) => ({
+            ...material,
+            audioFileName: `${material.id}.webm`,
+          })
+        ),
+      })
     );
     await db.backupStates.put({
       id: "default",

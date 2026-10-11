@@ -26,7 +26,10 @@ interface SoundPlayer {
   ready: Promise<void>;
 }
 
-const soundSources: Record<SampledStaffGameSound, { url: string; volumeDb: number; label: string }> = {
+const soundSources: Record<
+  SampledStaffGameSound,
+  { url: string; volumeDb: number; label: string }
+> = {
   bubblePop: { url: bubblePopUrl, volumeDb: -13, label: "泡泡破裂音效" },
   comboAmazing: { url: comboAmazingUrl, volumeDb: -8, label: "连击 Amazing 音效" },
   comboExcellent: { url: comboExcellentUrl, volumeDb: -8, label: "连击 Excellent 音效" },
@@ -38,10 +41,11 @@ const soundSources: Record<SampledStaffGameSound, { url: string; volumeDb: numbe
   noteMissedUnpitched: { url: noteMissedRubberyUrl, volumeDb: -6, label: "答错音效（无音高）" },
 };
 
-export const STAFF_GAME_SOUND_RESOURCES = (Object.entries(soundSources) as Array<[
-  SampledStaffGameSound,
-  (typeof soundSources)[SampledStaffGameSound],
-]>).map(([sound, source]) => ({
+export const STAFF_GAME_SOUND_RESOURCES = (
+  Object.entries(soundSources) as Array<
+    [SampledStaffGameSound, (typeof soundSources)[SampledStaffGameSound]]
+  >
+).map(([sound, source]) => ({
   id: `sound:${sound}`,
   label: source.label,
   sound,
@@ -105,7 +109,7 @@ function getSoundPlayer(sound: SampledStaffGameSound): SoundPlayer {
     if (typeof window !== "undefined") {
       timeout = window.setTimeout(
         () => settle(new Error(`Timed out while loading staff game sound: ${sound}`)),
-        STAFF_GAME_SOUND_LOAD_TIMEOUT_MS,
+        STAFF_GAME_SOUND_LOAD_TIMEOUT_MS
       );
     }
   });
@@ -130,7 +134,9 @@ function getSoundPlayer(sound: SampledStaffGameSound): SoundPlayer {
   return result;
 }
 
-export async function preloadStaffGameSounds(onProgress?: (update: StaffGameSoundLoadUpdate) => void): Promise<number> {
+export async function preloadStaffGameSounds(
+  onProgress?: (update: StaffGameSoundLoadUpdate) => void
+): Promise<number> {
   if (typeof window === "undefined") return 0;
   const results = await Promise.allSettled(
     (Object.keys(soundSources) as SampledStaffGameSound[]).map(async (sound) => {
@@ -146,7 +152,7 @@ export async function preloadStaffGameSounds(onProgress?: (update: StaffGameSoun
         });
         throw error;
       }
-    }),
+    })
   );
   return results.filter((result) => result.status === "rejected").length;
 }
@@ -162,7 +168,10 @@ export function playStaffGameSound(sound: StaffGameSound): void {
     .catch(() => undefined);
 }
 
-export function playStaffGameStarReveal(starIndex: number, enabled = soundEffectsEnabled): Promise<void> {
+export function playStaffGameStarReveal(
+  starIndex: number,
+  enabled = soundEffectsEnabled
+): Promise<void> {
   if (typeof window === "undefined" || !enabled || !canPlayAudio()) return Promise.resolve();
   const notes = ["C6", "E6", "G6"] as const;
   const note = notes[Math.max(0, Math.min(notes.length - 1, Math.floor(starIndex)))];

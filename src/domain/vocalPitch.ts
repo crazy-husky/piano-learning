@@ -51,7 +51,9 @@ export interface VocalAudioMaterial {
   updatedAt: string;
 }
 
-export function vocalAudioFileExtension(material: Pick<VocalAudioMaterial, "mimeType" | "originalFileName">): string {
+export function vocalAudioFileExtension(
+  material: Pick<VocalAudioMaterial, "mimeType" | "originalFileName">
+): string {
   if (material.mimeType.startsWith("audio/")) {
     if (material.mimeType.includes("wav")) return "wav";
     if (material.mimeType.includes("mpeg")) return "mp3";
@@ -92,7 +94,7 @@ export function formatMidiNote(midi: number): string {
 
 export function describeFrequency(
   frequencyHz: number | null,
-  referencePitchHz: number,
+  referencePitchHz: number
 ): { cents: number; frequencyHz: number; note: string } | null {
   if (frequencyHz === null || !Number.isFinite(frequencyHz) || frequencyHz <= 0) {
     return null;
@@ -107,7 +109,7 @@ export function describeFrequency(
 
 export function getPitchFrameAtTime(
   frames: readonly VocalPitchFrame[],
-  timeSeconds: number,
+  timeSeconds: number
 ): VocalPitchFrame | null {
   if (frames.length === 0) {
     return null;
@@ -128,7 +130,9 @@ export function getPitchFrameAtTime(
   return frames[low];
 }
 
-export function getLatestVoicedPitchFrame(frames: readonly VocalPitchFrame[]): VocalPitchFrame | null {
+export function getLatestVoicedPitchFrame(
+  frames: readonly VocalPitchFrame[]
+): VocalPitchFrame | null {
   for (let index = frames.length - 1; index >= 0; index -= 1) {
     if (frames[index].frequencyHz !== null) {
       return frames[index];
@@ -137,7 +141,9 @@ export function getLatestVoicedPitchFrame(frames: readonly VocalPitchFrame[]): V
   return null;
 }
 
-export function normalizeVocalPitchConfig(config: VocalPitchAnalysisConfig): VocalPitchAnalysisConfig {
+export function normalizeVocalPitchConfig(
+  config: VocalPitchAnalysisConfig
+): VocalPitchAnalysisConfig {
   return {
     referencePitchHz: Math.min(460, Math.max(420, config.referencePitchHz)),
     minFrequencyHz: VOCAL_PITCH_MIN_FREQUENCY_HZ,
@@ -148,7 +154,7 @@ export function normalizeVocalPitchConfig(config: VocalPitchAnalysisConfig): Voc
 
 export function detectorConfigChanged(
   previous: VocalPitchAnalysisConfig,
-  next: VocalPitchAnalysisConfig,
+  next: VocalPitchAnalysisConfig
 ): boolean {
   return previous.voicingThreshold !== next.voicingThreshold;
 }

@@ -28,7 +28,12 @@
 .route-loading-panel::before,
 .route-loading-panel > i,
 .echarts-loading-grid {
-  background: linear-gradient(100deg, color-mix(in srgb, var(--muted) 24%, var(--surface-soft)) 25%, var(--surface) 45%, color-mix(in srgb, var(--muted) 24%, var(--surface-soft)) 65%);
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--muted) 24%, var(--surface-soft)) 25%,
+    var(--surface) 45%,
+    color-mix(in srgb, var(--muted) 24%, var(--surface-soft)) 65%
+  );
   background-size: 240% 100%;
   animation: loading-skeleton-shimmer 1.5s ease-in-out infinite;
 }
@@ -133,7 +138,12 @@
 .app-startup-skeleton-choice-row i,
 .app-startup-skeleton-panel > i {
   animation: loading-skeleton-shimmer 1.5s ease-in-out infinite;
-  background: linear-gradient(100deg, color-mix(in srgb, var(--muted) 24%, var(--surface-soft)) 25%, var(--surface) 45%, color-mix(in srgb, var(--muted) 24%, var(--surface-soft)) 65%);
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--muted) 24%, var(--surface-soft)) 25%,
+    var(--surface) 45%,
+    color-mix(in srgb, var(--muted) 24%, var(--surface-soft)) 65%
+  );
   background-size: 240% 100%;
   border-radius: 8px;
   display: block;
@@ -156,7 +166,12 @@
 
 .app-startup-skeleton-panel::before {
   animation: loading-skeleton-shimmer 1.5s ease-in-out infinite;
-  background: linear-gradient(100deg, color-mix(in srgb, var(--muted) 28%, var(--surface-soft)) 25%, var(--surface) 45%, color-mix(in srgb, var(--muted) 28%, var(--surface-soft)) 65%);
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--muted) 28%, var(--surface-soft)) 25%,
+    var(--surface) 45%,
+    color-mix(in srgb, var(--muted) 28%, var(--surface-soft)) 65%
+  );
   background-size: 240% 100%;
   border-radius: 6px;
   content: "";
@@ -237,7 +252,12 @@
 
 .echarts-loading-grid::after {
   animation: loading-skeleton-shimmer 1.5s ease-in-out infinite;
-  background: linear-gradient(100deg, transparent 25%, color-mix(in srgb, var(--surface) 76%, transparent) 50%, transparent 75%);
+  background: linear-gradient(
+    100deg,
+    transparent 25%,
+    color-mix(in srgb, var(--surface) 76%, transparent) 50%,
+    transparent 75%
+  );
   background-size: 240% 100%;
   content: "";
   inset: 0;
@@ -256,8 +276,12 @@
 }
 
 @keyframes loading-skeleton-shimmer {
-  from { background-position: 100% 0; }
-  to { background-position: -140% 0; }
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -140% 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

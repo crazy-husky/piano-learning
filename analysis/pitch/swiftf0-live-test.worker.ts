@@ -1,6 +1,9 @@
 /// <reference lib="webworker" />
 
-import { analyzeSwiftF0, createSwiftF0Runtime } from "../../src/features/vocal-pitch/logic/swiftF0Inference";
+import {
+  analyzeSwiftF0,
+  createSwiftF0Runtime,
+} from "../../src/features/vocal-pitch/logic/swiftF0Inference";
 
 let runtimePromise: ReturnType<typeof createSwiftF0Runtime> | null = null;
 
@@ -22,7 +25,11 @@ self.addEventListener("message", async (event: MessageEvent) => {
 
     if (!runtimePromise || !message.samples || !message.sampleRate) throw new Error("模型尚未就绪");
     const runtime = await runtimePromise;
-    const result = await analyzeSwiftF0(runtime.session, new Float32Array(message.samples), message.sampleRate);
+    const result = await analyzeSwiftF0(
+      runtime.session,
+      new Float32Array(message.samples),
+      message.sampleRate
+    );
     self.postMessage({
       type: "result",
       id: message.id,

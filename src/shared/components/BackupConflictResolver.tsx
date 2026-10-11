@@ -1,6 +1,10 @@
 import { useEffect, useId, useState } from "react";
 import type { BackupConflictResolution, BackupConflictSource } from "../../data/backup";
-import { backupText, getBackupConflictDataSummaries, type BackupConflictDataSummary } from "../../domain/backupText";
+import {
+  backupText,
+  getBackupConflictDataSummaries,
+  type BackupConflictDataSummary,
+} from "../../domain/backupText";
 import type { BackupState } from "../../domain/types";
 
 interface BackupConflictResolverProps {
@@ -55,7 +59,7 @@ export function BackupConflictResolver({
   function renderChoice(
     domain: keyof BackupConflictResolution,
     source: BackupConflictSource,
-    summary: string,
+    summary: string
   ): JSX.Element {
     const selected = resolution[domain] === source;
     return (
@@ -69,7 +73,9 @@ export function BackupConflictResolver({
           value={source}
         />
         <span>
-          <strong>{source === "browser" ? backupText.labels.browser : backupText.labels.backupDirectory}</strong>
+          <strong>
+            {source === "browser" ? backupText.labels.browser : backupText.labels.backupDirectory}
+          </strong>
           <small>{summary}</small>
         </span>
       </label>
@@ -111,7 +117,11 @@ export function BackupConflictResolver({
           </div>
         </fieldset>
       ) : null}
-      <button className="primary backup-domain-apply" disabled={disabled || !complete} type="submit">
+      <button
+        className="primary backup-domain-apply"
+        disabled={disabled || !complete}
+        type="submit"
+      >
         {backupText.labels.applyDomainChoices}
       </button>
     </form>

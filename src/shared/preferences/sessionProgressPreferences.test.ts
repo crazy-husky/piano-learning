@@ -10,8 +10,8 @@ describe("session progress preferences", () => {
     expect(
       parseSessionProgressUiPreferences(
         { historyLimit: 18, mode: "duration-cumsum" },
-        DEFAULT_SESSION_PROGRESS_UI_PREFERENCES,
-      ),
+        DEFAULT_SESSION_PROGRESS_UI_PREFERENCES
+      )
     ).toEqual({
       allHistory: false,
       historyLimit: 18,
@@ -23,8 +23,8 @@ describe("session progress preferences", () => {
     expect(
       parseSessionProgressUiPreferences(
         { allHistory: true, historyLimit: 18, mode: "actual-order" },
-        DEFAULT_SESSION_PROGRESS_UI_PREFERENCES,
-      ),
+        DEFAULT_SESSION_PROGRESS_UI_PREFERENCES
+      )
     ).toEqual({
       allHistory: true,
       historyLimit: 18,

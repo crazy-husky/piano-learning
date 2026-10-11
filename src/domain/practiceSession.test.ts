@@ -32,7 +32,9 @@ describe("practice session rules", () => {
 
     expect(isSingleNoteNameDrill(session)).toBe(true);
     expect(shouldIgnoreReviewForSession(session)).toBe(true);
-    expect(shouldKeepPracticeSession(session, [makeReview({ targetNoteId: "C4", ignored: true })])).toBe(true);
+    expect(
+      shouldKeepPracticeSession(session, [makeReview({ targetNoteId: "C4", ignored: true })])
+    ).toBe(true);
   });
 
   it("drops a single selected note-name drill session with no completed prompt", () => {

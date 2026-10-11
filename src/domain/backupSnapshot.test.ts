@@ -58,10 +58,18 @@ describe("backup snapshot", () => {
       settings,
       [session],
       [
-        makeReview({ targetNoteId: "C4", startedAt: "2026-07-04T10:00:00.000+08:00", endedAt: "2026-07-04T10:00:02.000+08:00" }),
-        makeReview({ targetNoteId: "D4", startedAt: "2026-07-05T10:00:00.000+08:00", endedAt: "2026-07-05T10:00:02.000+08:00" }),
+        makeReview({
+          targetNoteId: "C4",
+          startedAt: "2026-07-04T10:00:00.000+08:00",
+          endedAt: "2026-07-04T10:00:02.000+08:00",
+        }),
+        makeReview({
+          targetNoteId: "D4",
+          startedAt: "2026-07-05T10:00:00.000+08:00",
+          endedAt: "2026-07-05T10:00:02.000+08:00",
+        }),
       ],
-      "2026-07-05T23:00:00.000+08:00",
+      "2026-07-05T23:00:00.000+08:00"
     );
 
     expect(snapshot.manifest.dates).toEqual(["2026-07-04", "2026-07-05"]);
@@ -73,7 +81,9 @@ describe("backup snapshot", () => {
   });
 
   it("includes staff-recall runs in dated backup data", () => {
-    const snapshot = buildBackupSnapshot(settings, [], [], "2026-07-05T23:00:00.000+08:00", [staffRecallRun]);
+    const snapshot = buildBackupSnapshot(settings, [], [], "2026-07-05T23:00:00.000+08:00", [
+      staffRecallRun,
+    ]);
 
     expect(snapshot.manifest.dates).toEqual(["2026-07-05"]);
     expect(snapshot.manifest.lastStaffRecallRunId).toBe("recall-1");
@@ -90,7 +100,7 @@ describe("backup snapshot", () => {
         lastBackupAt: "2026-07-05T23:00:00.000+08:00",
         lastReviewId: "review-1",
         dates: ["2026-07-04", "2026-07-05"],
-      }),
+      })
     ).toBe("legacy:dataset-1:2026-07-05T23:00:00.000+08:00:review-1:2026-07-04,2026-07-05");
   });
 });

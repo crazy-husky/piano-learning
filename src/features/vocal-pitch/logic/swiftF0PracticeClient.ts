@@ -1,7 +1,4 @@
-import type {
-  SwiftF0PracticeRequest,
-  SwiftF0PracticeResponse,
-} from "./swiftF0PracticeProtocol";
+import type { SwiftF0PracticeRequest, SwiftF0PracticeResponse } from "./swiftF0PracticeProtocol";
 
 type MessageListener = (message: SwiftF0PracticeResponse) => void;
 
@@ -27,7 +24,9 @@ function dispatch(message: SwiftF0PracticeResponse): void {
 function getWorker(): Worker {
   if (worker) return worker;
 
-  const nextWorker = new Worker(new URL("./swiftF0Practice.worker.ts", import.meta.url), { type: "module" });
+  const nextWorker = new Worker(new URL("./swiftF0Practice.worker.ts", import.meta.url), {
+    type: "module",
+  });
   nextWorker.addEventListener("message", (event: MessageEvent<SwiftF0PracticeResponse>) => {
     const message = event.data;
     if (message.type === "ready") {

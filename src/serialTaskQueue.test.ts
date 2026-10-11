@@ -28,9 +28,11 @@ describe("createSerialTaskQueue", () => {
 
   it("continues after a task fails", async () => {
     const enqueue = createSerialTaskQueue();
-    await expect(enqueue(async () => {
-      throw new Error("failed");
-    })).rejects.toThrow("failed");
+    await expect(
+      enqueue(async () => {
+        throw new Error("failed");
+      })
+    ).rejects.toThrow("failed");
     await expect(enqueue(async () => 42)).resolves.toBe(42);
   });
 

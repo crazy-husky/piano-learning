@@ -1,4 +1,5 @@
-export type BackupDataStatus = "needs-directory" | "ready" | "browser-only" | "backup-only" | "diverged";
+export type BackupDataStatus =
+  "needs-directory" | "ready" | "browser-only" | "backup-only" | "diverged";
 export type BackupDomainDecision = "conflict" | "same" | "unknown" | "use-backup" | "use-browser";
 
 export interface BackupDataStatusInput {
@@ -51,6 +52,9 @@ export function decideBackupDomainSync({
   return "conflict";
 }
 
-export function shouldRunBackupEntryPreflight(view: "practice" | "vocal" | null, practiceRunning: boolean): boolean {
+export function shouldRunBackupEntryPreflight(
+  view: "practice" | "vocal" | null,
+  practiceRunning: boolean
+): boolean {
   return view === "vocal" || (view === "practice" && !practiceRunning);
 }

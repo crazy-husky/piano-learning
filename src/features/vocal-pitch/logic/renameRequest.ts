@@ -6,7 +6,7 @@ export interface VocalRenameRequest {
 
 export function consumeVocalRenameRequest(
   request: VocalRenameRequest | null,
-  token: number,
+  token: number
 ): VocalRenameRequest | null {
   return request?.token === token ? null : request;
 }

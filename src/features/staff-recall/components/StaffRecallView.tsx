@@ -20,9 +20,21 @@ import {
 import { applicableLedgerSetting } from "../../../domain/staffNotation";
 import { buildTargetNoteSetKey } from "../../../domain/targetNoteSet";
 import { formatMs, percentile } from "../../../domain/stats";
-import type { AppSettings, NoteName, StaffRecallRunRecord, TargetNote, TargetNoteId } from "../../../domain/types";
-import { HistoryLimitControl, resolveHistoryLimit } from "../../../shared/components/HistoryLimitControl";
-import { isInteractiveShortcutTarget, shouldHandleGlobalEnter } from "../../../shared/keyboard/keyboardShortcuts";
+import type {
+  AppSettings,
+  NoteName,
+  StaffRecallRunRecord,
+  TargetNote,
+  TargetNoteId,
+} from "../../../domain/types";
+import {
+  HistoryLimitControl,
+  resolveHistoryLimit,
+} from "../../../shared/components/HistoryLimitControl";
+import {
+  isInteractiveShortcutTarget,
+  shouldHandleGlobalEnter,
+} from "../../../shared/keyboard/keyboardShortcuts";
 import { PauseOverlay } from "../../../shared/components/PauseOverlay";
 import { StaffRecallMap, type StaffRecallColumnState } from "./StaffRecallMap";
 import { StaffRecallTrendChart } from "./StaffRecallTrendChart";
@@ -54,7 +66,9 @@ function createColumnStates(): Record<NoteName, StaffRecallColumnState> {
   };
 }
 
-function completeColumnActiveMs(states: Record<NoteName, StaffRecallColumnState>): Record<NoteName, number> {
+function completeColumnActiveMs(
+  states: Record<NoteName, StaffRecallColumnState>
+): Record<NoteName, number> {
   return Object.fromEntries(
     NOTE_NAMES.map((noteName) => {
       const activeMs = states[noteName].activeMs;
@@ -62,15 +76,18 @@ function completeColumnActiveMs(states: Record<NoteName, StaffRecallColumnState>
         throw new Error(`Staff recall column ${noteName} is incomplete`);
       }
       return [noteName, activeMs];
-    }),
+    })
   ) as Record<NoteName, number>;
 }
 
 function medianColumnActiveMs(
-  runs: readonly StaffRecallRunRecord[],
+  runs: readonly StaffRecallRunRecord[]
 ): Record<NoteName, number | undefined> {
   const medianFor = (noteName: NoteName): number | undefined =>
-    percentile(runs.map((run) => run.columnActiveMs[noteName]), 0.5);
+    percentile(
+      runs.map((run) => run.columnActiveMs[noteName]),
+      0.5
+    );
   return {
     C: medianFor("C"),
     D: medianFor("D"),
@@ -92,10 +109,11 @@ export function StaffRecallView({
   const [uiPreferences, setUiPreferences] = useLocalStorageState(
     STAFF_RECALL_UI_PREFERENCES_KEY,
     DEFAULT_STAFF_RECALL_UI_PREFERENCES,
-    { parse: parseStaffRecallUiPreferences },
+    { parse: parseStaffRecallUiPreferences }
   );
   const [columnOrder, setColumnOrder] = useState<NoteName[]>(() => shuffleNoteNames());
-  const [columnStates, setColumnStates] = useState<Record<NoteName, StaffRecallColumnState>>(createColumnStates);
+  const [columnStates, setColumnStates] =
+    useState<Record<NoteName, StaffRecallColumnState>>(createColumnStates);
   const [activeNoteName, setActiveNoteName] = useState<NoteName | undefined>();
   const [completedRun, setCompletedRun] = useState<StaffRecallRunRecord | undefined>();
   const [localRuns, setLocalRuns] = useState(runs);
@@ -113,36 +131,42 @@ export function StaffRecallView({
 
   const staffNotationMode = settings.staffNotationMode;
   const inputNotes = useMemo(
-    () => getNotesForGroups(settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode),
-    [settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode],
+    () =>
+      getNotesForGroups(
+        settings.enabledGroupIds,
+        settings.includeInterStaffLedgerSpellings,
+        staffNotationMode
+      ),
+    [settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode]
   );
   const targetNoteIds = useMemo(() => buildStaffRecallTargetNoteIds(inputNotes), [inputNotes]);
   const targetNoteSetKey = useMemo(() => buildTargetNoteSetKey(targetNoteIds), [targetNoteIds]);
   const targetNoteSetKeyRef = useRef(targetNoteSetKey);
-  const columnDefinitions = useMemo(() => columnDefinitionsForNoteNames(columnOrder), [columnOrder]);
+  const columnDefinitions = useMemo(
+    () => columnDefinitionsForNoteNames(columnOrder),
+    [columnOrder]
+  );
   const columns = useMemo(
     () => buildNoteNameColumns(inputNotes, columnDefinitions),
-    [columnDefinitions, inputNotes],
+    [columnDefinitions, inputNotes]
   );
   const comparableRuns = useMemo(
     () => comparableStaffRecallRuns(localRuns, targetNoteSetKey),
-    [localRuns, targetNoteSetKey],
+    [localRuns, targetNoteSetKey]
   );
   const comparisonHistoryLimit = resolveHistoryLimit(
     uiPreferences.historyLimit,
     uiPreferences.allHistory,
-    comparableRuns.length,
+    comparableRuns.length
   );
   const comparisonRuns = useMemo(
     () =>
-      comparableRuns
-        .filter((run) => run.id !== completedRun?.id)
-        .slice(-comparisonHistoryLimit),
-    [comparableRuns, comparisonHistoryLimit, completedRun?.id],
+      comparableRuns.filter((run) => run.id !== completedRun?.id).slice(-comparisonHistoryLimit),
+    [comparableRuns, comparisonHistoryLimit, completedRun?.id]
   );
   const comparisonColumnMedianMs = useMemo(
     () => medianColumnActiveMs(comparisonRuns),
-    [comparisonRuns],
+    [comparisonRuns]
   );
 
   const setStates = useCallback((nextStates: Record<NoteName, StaffRecallColumnState>): void => {
@@ -281,7 +305,10 @@ export function StaffRecallView({
         resumeRecall();
         return;
       }
-      if (!completedRun || !shouldHandleGlobalEnter(event, isInteractiveShortcutTarget(event.target))) {
+      if (
+        !completedRun ||
+        !shouldHandleGlobalEnter(event, isInteractiveShortcutTarget(event.target))
+      ) {
         return;
       }
       event.preventDefault();
@@ -307,7 +334,7 @@ export function StaffRecallView({
         enabledGroupIds: settings.enabledGroupIds,
         includeInterStaffLedgerSpellings: applicableLedgerSetting(
           staffNotationMode,
-          settings.includeInterStaffLedgerSpellings,
+          settings.includeInterStaffLedgerSpellings
         ),
         staffNotationMode,
         columnOrder,
@@ -340,24 +367,27 @@ export function StaffRecallView({
       staffNotationMode,
       targetNoteIds,
       targetNoteSetKey,
-    ],
+    ]
   );
 
-  const startColumn = useCallback((noteName: NoteName): boolean => {
-    if (activeNoteNameRef.current && activeNoteNameRef.current !== noteName) {
-      return false;
-    }
-    if (!activeNoteNameRef.current) {
-      activeNoteNameRef.current = noteName;
-      activeAccumulatedMsRef.current = 0;
-      activeStartedAtRef.current = undefined;
-      runStartedAtRef.current ??= new Date().toISOString();
-      setActiveNoteName(noteName);
-      onRangeLockedChange(true);
-      resumeActiveTimer();
-    }
-    return true;
-  }, [onRangeLockedChange, resumeActiveTimer]);
+  const startColumn = useCallback(
+    (noteName: NoteName): boolean => {
+      if (activeNoteNameRef.current && activeNoteNameRef.current !== noteName) {
+        return false;
+      }
+      if (!activeNoteNameRef.current) {
+        activeNoteNameRef.current = noteName;
+        activeAccumulatedMsRef.current = 0;
+        activeStartedAtRef.current = undefined;
+        runStartedAtRef.current ??= new Date().toISOString();
+        setActiveNoteName(noteName);
+        onRangeLockedChange(true);
+        resumeActiveTimer();
+      }
+      return true;
+    },
+    [onRangeLockedChange, resumeActiveTimer]
+  );
 
   const handlePlacement = useCallback(
     (columnNoteName: NoteName, note: TargetNote): void => {
@@ -399,39 +429,45 @@ export function StaffRecallView({
       const nextStates = { ...currentStates, [columnNoteName]: nextColumn };
       setStates(nextStates);
 
-      if (columnComplete && NOTE_NAMES.every((noteName) => nextStates[noteName].activeMs !== undefined)) {
+      if (
+        columnComplete &&
+        NOTE_NAMES.every((noteName) => nextStates[noteName].activeMs !== undefined)
+      ) {
         void persistCompletedRun(nextStates);
       }
     },
-    [columns, completedRun, finishActiveTimer, persistCompletedRun, setStates, startColumn],
+    [columns, completedRun, finishActiveTimer, persistCompletedRun, setStates, startColumn]
   );
 
   const completedComparableRuns = completedRun
     ? comparableStaffRecallRuns(
         [...localRuns.filter((run) => run.id !== completedRun.id), completedRun],
-        targetNoteSetKey,
+        targetNoteSetKey
       )
     : [];
   const currentTotalMs = completedRun ? totalStaffRecallActiveMs(completedRun) : undefined;
   const comparisonMedianTotalMs = percentile(comparisonRuns.map(totalStaffRecallActiveMs), 0.5);
-  const totalDifferenceMs = currentTotalMs !== undefined && comparisonMedianTotalMs !== undefined
-    ? currentTotalMs - comparisonMedianTotalMs
-    : undefined;
-  const totalDelta = totalDifferenceMs !== undefined ? formatStaffRecallDeltaMs(totalDifferenceMs) : undefined;
-  const perNoteDelta = totalDifferenceMs !== undefined
-    ? formatStaffRecallPerNoteDeltaMs(totalDifferenceMs, targetNoteIds.length)
-    : undefined;
-  const bestTotalMs = completedComparableRuns.length > 0
-    ? Math.min(...completedComparableRuns.map(totalStaffRecallActiveMs))
-    : undefined;
+  const totalDifferenceMs =
+    currentTotalMs !== undefined && comparisonMedianTotalMs !== undefined
+      ? currentTotalMs - comparisonMedianTotalMs
+      : undefined;
+  const totalDelta =
+    totalDifferenceMs !== undefined ? formatStaffRecallDeltaMs(totalDifferenceMs) : undefined;
+  const perNoteDelta =
+    totalDifferenceMs !== undefined
+      ? formatStaffRecallPerNoteDeltaMs(totalDifferenceMs, targetNoteIds.length)
+      : undefined;
+  const bestTotalMs =
+    completedComparableRuns.length > 0
+      ? Math.min(...completedComparableRuns.map(totalStaffRecallActiveMs))
+      : undefined;
   const previousComparableTotals = completedRun
     ? completedComparableRuns
         .filter((run) => run.id !== completedRun.id)
         .map(totalStaffRecallActiveMs)
     : [];
-  const previousBestTotalMs = previousComparableTotals.length > 0
-    ? Math.min(...previousComparableTotals)
-    : undefined;
+  const previousBestTotalMs =
+    previousComparableTotals.length > 0 ? Math.min(...previousComparableTotals) : undefined;
   const isNewBest =
     currentTotalMs !== undefined &&
     previousBestTotalMs !== undefined &&
@@ -439,7 +475,7 @@ export function StaffRecallView({
   const trendHistoryLimit = resolveHistoryLimit(
     uiPreferences.historyLimit,
     uiPreferences.allHistory,
-    completedComparableRuns.length,
+    completedComparableRuns.length
   );
   const visibleTrendRuns = completedComparableRuns.slice(-trendHistoryLimit);
 
@@ -493,10 +529,15 @@ export function StaffRecallView({
                 <span>本次总时间</span>
                 <strong>
                   {formatMs(currentTotalMs)}
-                  {totalDelta ? <small className={totalDelta.direction}>{totalDelta.text}</small> : null}
+                  {totalDelta ? (
+                    <small className={totalDelta.direction}>{totalDelta.text}</small>
+                  ) : null}
                   <small className="staff-recall-summary-per-note">
-                    每音用时 <b>{formatStaffRecallPerNoteMs(currentTotalMs, targetNoteIds.length)}</b>
-                    {perNoteDelta ? <span className={perNoteDelta.direction}>{perNoteDelta.text}</span> : null}
+                    每音用时{" "}
+                    <b>{formatStaffRecallPerNoteMs(currentTotalMs, targetNoteIds.length)}</b>
+                    {perNoteDelta ? (
+                      <span className={perNoteDelta.direction}>{perNoteDelta.text}</span>
+                    ) : null}
                   </small>
                 </strong>
               </div>
@@ -509,13 +550,19 @@ export function StaffRecallView({
                   {formatMs(bestTotalMs)}
                   {bestTotalMs !== undefined ? (
                     <small className="staff-recall-summary-per-note">
-                      每音用时 <b>{formatStaffRecallPerNoteMs(bestTotalMs, targetNoteIds.length)}</b>
+                      每音用时{" "}
+                      <b>{formatStaffRecallPerNoteMs(bestTotalMs, targetNoteIds.length)}</b>
                     </small>
                   ) : null}
                 </strong>
               </div>
             </div>
-            <button aria-keyshortcuts="Enter" className="primary" onClick={restartRun} type="button">
+            <button
+              aria-keyshortcuts="Enter"
+              className="primary"
+              onClick={restartRun}
+              type="button"
+            >
               <RotateCcw size={18} />
               再来一次<kbd>Enter</kbd>
             </button>
@@ -527,7 +574,9 @@ export function StaffRecallView({
               allHistoryCount={completedComparableRuns.length}
               ariaLabel="默写历史次数"
               historyLimit={uiPreferences.historyLimit}
-              onAllHistoryChange={(allHistory) => setUiPreferences((current) => ({ ...current, allHistory }))}
+              onAllHistoryChange={(allHistory) =>
+                setUiPreferences((current) => ({ ...current, allHistory }))
+              }
               onHistoryLimitChange={(historyLimit) =>
                 setUiPreferences((current) => ({ ...current, historyLimit }))
               }

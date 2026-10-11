@@ -71,7 +71,7 @@ function makeChord(
   staff: Staff,
   highlightedNoteNames: ReadonlySet<NoteName> | undefined,
   highlightedNoteId: string | undefined,
-  colors: StudyNotationColors,
+  colors: StudyNotationColors
 ): StaveNote {
   const columnHighlighted = notes.some((note) => highlightedNoteNames?.has(note.noteName) ?? false);
   const hasNotes = notes.length > 0;
@@ -80,7 +80,11 @@ function makeChord(
     duration: NOTE_DURATION,
     keys: hasNotes ? notes.map(noteToVexKey) : [staff === "treble" ? "b/4" : "d/3"],
   });
-  const baseColor = hasNotes ? (columnHighlighted ? colors.active : colors.ink) : TRANSPARENT_NOTE_COLOR;
+  const baseColor = hasNotes
+    ? columnHighlighted
+      ? colors.active
+      : colors.ink
+    : TRANSPARENT_NOTE_COLOR;
   chord.setStyle({ fillStyle: baseColor, strokeStyle: baseColor });
   chord.setLedgerLineStyle({ fillStyle: baseColor, strokeStyle: baseColor });
   if (hasNotes && !columnHighlighted && highlightedNoteId) {
@@ -93,7 +97,12 @@ function makeChord(
   return chord;
 }
 
-function drawCenteredText(context: ReturnType<Renderer["getContext"]>, text: string, x: number, y: number): void {
+function drawCenteredText(
+  context: ReturnType<Renderer["getContext"]>,
+  text: string,
+  x: number,
+  y: number
+): void {
   const { width } = context.measureText(text);
   context.fillText(text, x - width / 2, y);
 }
@@ -107,17 +116,16 @@ function noteHeadHitRadius(chord: StaveNote, index: number): number {
   return chord.noteHeads[index]?.getWidth() ?? chord.getGlyphWidth();
 }
 
-function getStudyMapMetrics(
-  surface: StaffRenderSurface,
-  columnCount: number,
-): StudyMapMetrics {
+function getStudyMapMetrics(surface: StaffRenderSurface, columnCount: number): StudyMapMetrics {
   const frame = getResponsiveStaffFrame(surface, columnCount, STUDY_STAFF_LAYOUT.horizontal);
   const noteNameY = logicalPx(STUDY_STAFF_LAYOUT.labels.noteNameYPx, surface.scale);
   const fixedDoNumberY = noteNameY + logicalPx(STUDY_STAFF_LAYOUT.labels.lineGapPx, surface.scale);
-  const labelHitTop = noteNameY - logicalPx(
-    STUDY_STAFF_LAYOUT.labels.noteNameFontSizePx + STUDY_STAFF_LAYOUT.labelHitPaddingPx,
-    surface.scale,
-  );
+  const labelHitTop =
+    noteNameY -
+    logicalPx(
+      STUDY_STAFF_LAYOUT.labels.noteNameFontSizePx + STUDY_STAFF_LAYOUT.labelHitPaddingPx,
+      surface.scale
+    );
   return {
     fixedDoNumberY,
     height: surface.height,
@@ -126,7 +134,7 @@ function getStudyMapMetrics(
       labelHitTop +
       logicalPx(
         STUDY_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx + STUDY_STAFF_LAYOUT.labelHitPaddingPx,
-        surface.scale,
+        surface.scale
       ),
     labelHitTop,
     staveWidth: frame.staveWidth,
@@ -146,9 +154,7 @@ function getStudyColumnLayouts(tickables: StaveNote[], scale: number): StudyColu
       index < centers.length - 1 ? centers[index + 1] - centerX : undefined,
     ].filter((distance): distance is number => distance !== undefined);
     const spacingWidth =
-      (neighborDistances.length > 0
-        ? Math.min(...neighborDistances) - spacingPadding * 2
-        : maxWidth);
+      neighborDistances.length > 0 ? Math.min(...neighborDistances) - spacingPadding * 2 : maxWidth;
     return {
       centerX,
       highlightWidth: Math.max(1, Math.min(maxWidth, spacingWidth)),
@@ -160,7 +166,7 @@ function addColumnHighlight(
   svg: SVGSVGElement,
   layout: StudyColumnLayout,
   metrics: StudyMapMetrics,
-  colors: StudyNotationColors,
+  colors: StudyNotationColors
 ): void {
   const highlight = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   highlight.setAttribute("class", "study-column-highlight");
@@ -174,9 +180,9 @@ function addColumnHighlight(
         metrics.labelHitTop -
         logicalPx(
           STUDY_STAFF_LAYOUT.columnHighlight.bottomPaddingPx,
-          STUDY_STAFF_LAYOUT.notationScale,
-        ),
-    ),
+          STUDY_STAFF_LAYOUT.notationScale
+        )
+    )
   );
   highlight.setAttribute("rx", "8");
   highlight.setAttribute("fill", colors.activeFill);
@@ -309,15 +315,18 @@ export function StudyNoteMap({
   const frameRef = useRef<HTMLDivElement | null>(null);
   const rendererTargetRef = useRef<HTMLDivElement | null>(null);
   const isNightMode = useNightMode();
-  const colors = useMemo<StudyNotationColors>(() => ({
-    active: isNightMode ? "#80cbb4" : ACTIVE_COLOR,
-    activeFill: isNightMode ? "rgba(128, 203, 180, 0.18)" : ACTIVE_FILL,
-    ink: isNightMode ? "#bcc6be" : NEUTRAL_COLOR,
-    muted: isNightMode ? "#b2beb5" : MUTED_COLOR,
-  }), [isNightMode]);
+  const colors = useMemo<StudyNotationColors>(
+    () => ({
+      active: isNightMode ? "#80cbb4" : ACTIVE_COLOR,
+      activeFill: isNightMode ? "rgba(128, 203, 180, 0.18)" : ACTIVE_FILL,
+      ink: isNightMode ? "#bcc6be" : NEUTRAL_COLOR,
+      muted: isNightMode ? "#b2beb5" : MUTED_COLOR,
+    }),
+    [isNightMode]
+  );
   const effectiveTargetNoteIds = useMemo(
     () => new Set(columns.flatMap((column) => column.notes.map((note) => note.id))),
-    [columns],
+    [columns]
   );
 
   useEffect(() => {
@@ -333,14 +342,19 @@ export function StudyNoteMap({
       }
 
       rendererTarget.innerHTML = "";
-      const measuredWidth = frame.getBoundingClientRect().width || frame.clientWidth || frame.parentElement?.clientWidth || 1;
+      const measuredWidth =
+        frame.getBoundingClientRect().width ||
+        frame.clientWidth ||
+        frame.parentElement?.clientWidth ||
+        1;
       const containerWidth = Math.max(1, Math.floor(measuredWidth));
-      const vertical = containerWidth < 520 ? MOBILE_STUDY_STAFF_VERTICAL : STUDY_STAFF_LAYOUT.vertical;
+      const vertical =
+        containerWidth < 520 ? MOBILE_STUDY_STAFF_VERTICAL : STUDY_STAFF_LAYOUT.vertical;
       const surface = createStaffRenderSurface(
         rendererTarget,
         containerWidth,
         vertical.viewHeightPx,
-        STUDY_STAFF_LAYOUT.notationScale,
+        STUDY_STAFF_LAYOUT.notationScale
       );
       const metrics = getStudyMapMetrics(surface, columns.length);
       const { context, svg } = surface;
@@ -362,30 +376,45 @@ export function StudyNoteMap({
       let layoutTickables: StaveNote[];
       if (system.mode === "grand") {
         const { bass, treble } = system;
-        trebleTickables.push(...columns.map((column) =>
-          makeChord(column.trebleNotes, "treble", highlightedNoteNames, highlightedNoteId, colors),
-        ));
-        bassTickables.push(...columns.map((column) =>
-          makeChord(column.bassNotes, "bass", highlightedNoteNames, highlightedNoteId, colors),
-        ));
+        trebleTickables.push(
+          ...columns.map((column) =>
+            makeChord(column.trebleNotes, "treble", highlightedNoteNames, highlightedNoteId, colors)
+          )
+        );
+        bassTickables.push(
+          ...columns.map((column) =>
+            makeChord(column.bassNotes, "bass", highlightedNoteNames, highlightedNoteId, colors)
+          )
+        );
         const trebleVoice = new Voice(voiceOptions).addTickables(trebleTickables);
         const bassVoice = new Voice(voiceOptions).addTickables(bassTickables);
         treble.setNoteStartX(noteArea.left);
         bass.setNoteStartX(noteArea.left);
         treble.setWidth(Math.max(1, noteArea.right - metrics.x));
         bass.setWidth(Math.max(1, noteArea.right - metrics.x));
-        new Formatter().joinVoices([trebleVoice, bassVoice]).formatToStave([trebleVoice, bassVoice], treble, {
-          context,
-          stave: treble,
-        });
-        alignStaveNotesToCenters(trebleTickables, getEvenlySpacedCenters(columns.length, noteArea.left, noteArea.right));
+        new Formatter()
+          .joinVoices([trebleVoice, bassVoice])
+          .formatToStave([trebleVoice, bassVoice], treble, {
+            context,
+            stave: treble,
+          });
+        alignStaveNotesToCenters(
+          trebleTickables,
+          getEvenlySpacedCenters(columns.length, noteArea.left, noteArea.right)
+        );
         trebleVoice.draw(context, treble);
         bassVoice.draw(context, bass);
         layoutTickables = trebleTickables;
       } else {
         const { staff, stave } = system;
         const tickables = columns.map((column) =>
-          makeChord(staff === "treble" ? column.trebleNotes : column.bassNotes, staff, highlightedNoteNames, highlightedNoteId, colors),
+          makeChord(
+            staff === "treble" ? column.trebleNotes : column.bassNotes,
+            staff,
+            highlightedNoteNames,
+            highlightedNoteId,
+            colors
+          )
         );
         if (staff === "treble") {
           trebleTickables.push(...tickables);
@@ -396,7 +425,10 @@ export function StudyNoteMap({
         stave.setNoteStartX(noteArea.left);
         stave.setWidth(Math.max(1, noteArea.right - metrics.x));
         new Formatter().joinVoices([voice]).formatToStave([voice], stave, { context, stave });
-        alignStaveNotesToCenters(tickables, getEvenlySpacedCenters(columns.length, noteArea.left, noteArea.right));
+        alignStaveNotesToCenters(
+          tickables,
+          getEvenlySpacedCenters(columns.length, noteArea.left, noteArea.right)
+        );
         voice.draw(context, stave);
         layoutTickables = tickables;
       }
@@ -412,14 +444,22 @@ export function StudyNoteMap({
 
       if (showLabels) {
         context
-          .setFont("FredokaSystemDigits, Inter", logicalPx(STUDY_STAFF_LAYOUT.labels.noteNameFontSizePx, surface.scale), 800)
+          .setFont(
+            "FredokaSystemDigits, Inter",
+            logicalPx(STUDY_STAFF_LAYOUT.labels.noteNameFontSizePx, surface.scale),
+            800
+          )
           .setFillStyle(colors.ink);
         columns.forEach((column, index) => {
           const centerX = columnLayouts[index].centerX;
           drawCenteredText(context, column.noteName, centerX, metrics.noteNameY);
         });
         context
-          .setFont("FredokaSystemDigits, Inter", logicalPx(STUDY_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale), 700)
+          .setFont(
+            "FredokaSystemDigits, Inter",
+            logicalPx(STUDY_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale),
+            700
+          )
           .setFillStyle(colors.muted);
         columns.forEach((column, index) => {
           const centerX = columnLayouts[index].centerX;

@@ -44,13 +44,15 @@ function formatPracticeDuration(ms: number): string {
     hours > 0 ? `${hours} 小时` : "",
     minutes > 0 ? `${minutes} 分钟` : "",
     seconds > 0 || totalSeconds === 0 ? `${seconds} 秒` : "",
-  ].filter(Boolean).join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 export function averageDailyPracticeMs(
   dailyStats: readonly DailyStat[],
   range: StatsRange,
-  today = new Date(),
+  today = new Date()
 ): number {
   const cutoff = getStatsRangeCutoff(range, today);
   const cutoffKey = cutoff ? formatDateKey(cutoff) : undefined;
@@ -65,7 +67,9 @@ export function averageDailyPracticeMs(
 
 function HeatMap({ dailyStats }: { dailyStats: readonly DailyStat[] }): JSX.Element {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [tooltip, setTooltip] = useState<{ label: string; left: number; top: number } | undefined>();
+  const [tooltip, setTooltip] = useState<
+    { label: string; left: number; top: number } | undefined
+  >();
   const isNightMode = useNightMode();
   const todayKey = formatDateKey(new Date());
   const { days, weekStarts } = useMemo(() => {
@@ -135,15 +139,21 @@ function HeatMap({ dailyStats }: { dailyStats: readonly DailyStat[] }): JSX.Elem
                     const tooltipWidth = 150;
                     setTooltip({
                       label: `${day.key} · ${practiceDuration}`,
-                      left: Math.max(8, Math.min(event.clientX + 10, window.innerWidth - tooltipWidth - 8)),
+                      left: Math.max(
+                        8,
+                        Math.min(event.clientX + 10, window.innerWidth - tooltipWidth - 8)
+                      ),
                       top: Math.max(8, event.clientY - 36),
                     });
                   }}
                   onPointerLeave={() => setTooltip(undefined)}
                   style={{
-                    backgroundColor: heatLevel === 0
-                      ? isNightMode ? "#303a33" : STATS_COLORS.heatmap[0]
-                      : STATS_COLORS.heatmap[heatLevel],
+                    backgroundColor:
+                      heatLevel === 0
+                        ? isNightMode
+                          ? "#303a33"
+                          : STATS_COLORS.heatmap[0]
+                        : STATS_COLORS.heatmap[heatLevel],
                   }}
                 />
               );
@@ -152,7 +162,11 @@ function HeatMap({ dailyStats }: { dailyStats: readonly DailyStat[] }): JSX.Elem
         </div>
       </div>
       {tooltip ? (
-        <div className="heatmap-tooltip" role="tooltip" style={{ left: tooltip.left, top: tooltip.top }}>
+        <div
+          className="heatmap-tooltip"
+          role="tooltip"
+          style={{ left: tooltip.left, top: tooltip.top }}
+        >
           {tooltip.label}
         </div>
       ) : null}
@@ -160,8 +174,17 @@ function HeatMap({ dailyStats }: { dailyStats: readonly DailyStat[] }): JSX.Elem
   );
 }
 
-export function PracticeHeatmap({ dailyStats, range }: { dailyStats: DailyStat[]; range: StatsRange }): JSX.Element {
-  const averageDailyActiveMs = useMemo(() => averageDailyPracticeMs(dailyStats, range), [dailyStats, range]);
+export function PracticeHeatmap({
+  dailyStats,
+  range,
+}: {
+  dailyStats: DailyStat[];
+  range: StatsRange;
+}): JSX.Element {
+  const averageDailyActiveMs = useMemo(
+    () => averageDailyPracticeMs(dailyStats, range),
+    [dailyStats, range]
+  );
 
   return (
     <div className="panel heatmap-panel stats-heatmap-panel">

@@ -38,7 +38,11 @@ interface ListeningSelfCheckSession {
 }
 
 function isFormControlTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLSelectElement ||
+    target instanceof HTMLTextAreaElement
+  );
 }
 
 function delay(ms: number): Promise<void> {
@@ -49,7 +53,7 @@ function delay(ms: number): Promise<void> {
 
 function collectHighlightedNoteNames(
   heldKeys: Map<string, HeldKeyboardPlayback>,
-  flashedNoteName?: NoteName,
+  flashedNoteName?: NoteName
 ): Set<NoteName> {
   const noteNames = new Set<NoteName>();
   heldKeys.forEach((held) => {
@@ -70,7 +74,9 @@ interface UseStudyPlaybackOptions {
 }
 
 export function useStudyPlayback({ columns, playbackMode, studyPitches }: UseStudyPlaybackOptions) {
-  const [highlightedNoteNames, setHighlightedNoteNames] = useState<ReadonlySet<NoteName>>(() => new Set());
+  const [highlightedNoteNames, setHighlightedNoteNames] = useState<ReadonlySet<NoteName>>(
+    () => new Set()
+  );
   const [highlightedNoteId, setHighlightedNoteId] = useState<string | undefined>();
   const [listeningSelfCheckStarted, setListeningSelfCheckStarted] = useState(false);
   const columnFlashTimerRef = useRef<number | undefined>();
@@ -96,7 +102,10 @@ export function useStudyPlayback({ columns, playbackMode, studyPitches }: UseStu
   const flashNote = useCallback((note: TargetNote): void => {
     window.clearTimeout(noteFlashTimerRef.current);
     setHighlightedNoteId(note.id);
-    noteFlashTimerRef.current = window.setTimeout(() => setHighlightedNoteId(undefined), NOTE_FLASH_MS);
+    noteFlashTimerRef.current = window.setTimeout(
+      () => setHighlightedNoteId(undefined),
+      NOTE_FLASH_MS
+    );
   }, []);
 
   const playNote = useCallback(
@@ -104,7 +113,7 @@ export function useStudyPlayback({ columns, playbackMode, studyPitches }: UseStu
       flashNote(note);
       void playTargetNote(note).catch(() => undefined);
     },
-    [flashNote],
+    [flashNote]
   );
 
   const playColumn = useCallback(
@@ -121,7 +130,7 @@ export function useStudyPlayback({ columns, playbackMode, studyPitches }: UseStu
         }
       })();
     },
-    [columns, flashColumn],
+    [columns, flashColumn]
   );
 
   const releaseHeldKey = useCallback((inputId: string): Promise<void> | undefined => {
@@ -131,7 +140,9 @@ export function useStudyPlayback({ columns, playbackMode, studyPitches }: UseStu
     }
     heldKeysRef.current.delete(inputId);
     const settled = releaseHeldNoteSequence(held);
-    setHighlightedNoteNames(collectHighlightedNoteNames(heldKeysRef.current, flashedColumnRef.current));
+    setHighlightedNoteNames(
+      collectHighlightedNoteNames(heldKeysRef.current, flashedColumnRef.current)
+    );
     return settled;
   }, []);
 
@@ -145,7 +156,7 @@ export function useStudyPlayback({ columns, playbackMode, studyPitches }: UseStu
       notes: readonly TargetNote[],
       kind: HeldKeyboardPlayback["kind"],
       highlightedNoteName?: NoteName,
-      beforeStart: Promise<void> = Promise.resolve(),
+      beforeStart: Promise<void> = Promise.resolve()
     ): void => {
       if (heldKeysRef.current.has(inputId) || notes.length === 0) {
         return;
@@ -159,7 +170,9 @@ export function useStudyPlayback({ columns, playbackMode, studyPitches }: UseStu
         settled: Promise.resolve(),
       };
       heldKeysRef.current.set(inputId, held);
-      setHighlightedNoteNames(collectHighlightedNoteNames(heldKeysRef.current, flashedColumnRef.current));
+      setHighlightedNoteNames(
+        collectHighlightedNoteNames(heldKeysRef.current, flashedColumnRef.current)
+      );
 
       beginHeldNoteSequence(
         held,
@@ -167,10 +180,12 @@ export function useStudyPlayback({ columns, playbackMode, studyPitches }: UseStu
         beforeStart,
         (note) => startTargetNote(note).catch(() => undefined),
         () =>
-          STUDY_STAFF_LAYOUT.columnNoteDelayMs > 0 ? delay(STUDY_STAFF_LAYOUT.columnNoteDelayMs) : undefined,
+          STUDY_STAFF_LAYOUT.columnNoteDelayMs > 0
+            ? delay(STUDY_STAFF_LAYOUT.columnNoteDelayMs)
+            : undefined
       );
     },
-    [],
+    []
   );
 
   const resetListeningSelfCheck = useCallback((): void => {
@@ -241,7 +256,7 @@ export function useStudyPlayback({ columns, playbackMode, studyPitches }: UseStu
         ? selectListeningSelfCheckTarget(
             playbackMode,
             studyPitches,
-            current.target?.mode === playbackMode ? current.target : undefined,
+            current.target?.mode === playbackMode ? current.target : undefined
           )
         : current.target;
       if (!target) {

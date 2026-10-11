@@ -1,11 +1,13 @@
-import type { AnswerPitchMode, PromptDisplayMode, PromptNoteDuration, QueueComparisonFamily } from "./types";
+import type {
+  AnswerPitchMode,
+  PromptDisplayMode,
+  PromptNoteDuration,
+  QueueComparisonFamily,
+} from "./types";
 import type { SessionProgressGroup, SessionProgressGroupKey } from "./sessionProgress";
 
 export type SessionProgressConditionValue =
-  | AnswerPitchMode
-  | PromptDisplayMode
-  | QueueComparisonFamily
-  | PromptNoteDuration;
+  AnswerPitchMode | PromptDisplayMode | QueueComparisonFamily | PromptNoteDuration;
 
 export interface SessionProgressSelection {
   answerPitchModes: AnswerPitchMode[];
@@ -17,9 +19,9 @@ export interface SessionProgressSelection {
 }
 
 type SessionProgressSelectionValueKey = {
-  [Key in keyof SessionProgressSelection]: SessionProgressSelection[Key] extends readonly SessionProgressConditionValue[]
-    ? Key
-    : never;
+  [
+    Key in keyof SessionProgressSelection
+  ]: SessionProgressSelection[Key] extends readonly SessionProgressConditionValue[] ? Key : never;
 }[keyof SessionProgressSelection];
 
 const SESSION_PROGRESS_DIMENSION_DESCRIPTORS = {
@@ -38,12 +40,12 @@ export interface ResolveSessionProgressSelectionResult {
 }
 
 export const SESSION_PROGRESS_CONDITION_DIMENSIONS = Object.keys(
-  SESSION_PROGRESS_DIMENSION_DESCRIPTORS,
+  SESSION_PROGRESS_DIMENSION_DESCRIPTORS
 ) as SessionProgressConditionDimension[];
 
 export function getSessionProgressSelectionValues(
   selection: SessionProgressSelection,
-  dimension: SessionProgressConditionDimension,
+  dimension: SessionProgressConditionDimension
 ): SessionProgressConditionValue[] {
   const { selectionKey } = SESSION_PROGRESS_DIMENSION_DESCRIPTORS[dimension];
   return selection[selectionKey] as SessionProgressConditionValue[];
@@ -51,7 +53,7 @@ export function getSessionProgressSelectionValues(
 
 export function getSessionProgressGroupDimensionValue(
   key: SessionProgressGroupKey,
-  dimension: SessionProgressConditionDimension,
+  dimension: SessionProgressConditionDimension
 ): SessionProgressConditionValue {
   return key[dimension];
 }
@@ -59,35 +61,42 @@ export function getSessionProgressGroupDimensionValue(
 function withDimensionValues(
   selection: SessionProgressSelection,
   dimension: SessionProgressConditionDimension,
-  values: readonly SessionProgressConditionValue[],
+  values: readonly SessionProgressConditionValue[]
 ): SessionProgressSelection {
   const { selectionKey } = SESSION_PROGRESS_DIMENSION_DESCRIPTORS[dimension];
   return { ...selection, [selectionKey]: [...values] } as SessionProgressSelection;
 }
 
-function groupMatchesSelection(group: SessionProgressGroup, selection: SessionProgressSelection): boolean {
-  return group.key.targetNoteSetKey === selection.targetNoteSetKey &&
+function groupMatchesSelection(
+  group: SessionProgressGroup,
+  selection: SessionProgressSelection
+): boolean {
+  return (
+    group.key.targetNoteSetKey === selection.targetNoteSetKey &&
     SESSION_PROGRESS_CONDITION_DIMENSIONS.every((dimension) =>
       getSessionProgressSelectionValues(selection, dimension).includes(
-        getSessionProgressGroupDimensionValue(group.key, dimension),
-      ),
-    );
-}
-
-export function getSessionProgressComparisonDimension(
-  selection: SessionProgressSelection,
-): SessionProgressConditionDimension | undefined {
-  return SESSION_PROGRESS_CONDITION_DIMENSIONS.find(
-    (dimension) => getSessionProgressSelectionValues(selection, dimension).length > 1,
+        getSessionProgressGroupDimensionValue(group.key, dimension)
+      )
+    )
   );
 }
 
-export function createSessionProgressSelection(group: SessionProgressGroup): SessionProgressSelection {
+export function getSessionProgressComparisonDimension(
+  selection: SessionProgressSelection
+): SessionProgressConditionDimension | undefined {
+  return SESSION_PROGRESS_CONDITION_DIMENSIONS.find(
+    (dimension) => getSessionProgressSelectionValues(selection, dimension).length > 1
+  );
+}
+
+export function createSessionProgressSelection(
+  group: SessionProgressGroup
+): SessionProgressSelection {
   const dimensionValues = Object.fromEntries(
     SESSION_PROGRESS_CONDITION_DIMENSIONS.map((dimension) => [
       SESSION_PROGRESS_DIMENSION_DESCRIPTORS[dimension].selectionKey,
       [getSessionProgressGroupDimensionValue(group.key, dimension)],
-    ]),
+    ])
   ) as Pick<SessionProgressSelection, SessionProgressSelectionValueKey>;
   return {
     chartBenchmarkGroupKey: group.keyString,
@@ -98,7 +107,7 @@ export function createSessionProgressSelection(group: SessionProgressGroup): Ses
 
 export function getSelectedSessionProgressGroups(
   groups: SessionProgressGroup[],
-  selection: SessionProgressSelection,
+  selection: SessionProgressSelection
 ): SessionProgressGroup[] {
   return groups.filter((group) => groupMatchesSelection(group, selection));
 }
@@ -119,8 +128,12 @@ export function resolveSessionProgressSelection({
   if (values.length === 0) {
     return { changedDimensions: [], rejected: true, selection: current };
   }
-  const availableGroups = groups.filter((group) => group.key.targetNoteSetKey === current.targetNoteSetKey);
-  const currentBenchmark = availableGroups.find((group) => group.keyString === current.chartBenchmarkGroupKey);
+  const availableGroups = groups.filter(
+    (group) => group.key.targetNoteSetKey === current.targetNoteSetKey
+  );
+  const currentBenchmark = availableGroups.find(
+    (group) => group.keyString === current.chartBenchmarkGroupKey
+  );
   if (!currentBenchmark) {
     return { changedDimensions: [], rejected: true, selection: current };
   }
@@ -140,9 +153,11 @@ export function resolveSessionProgressSelection({
 
   const candidateSelections = new Map<string, SessionProgressSelection>();
   for (const candidate of availableGroups) {
-    if (!getSessionProgressSelectionValues(requested, dimension).includes(
-      getSessionProgressGroupDimensionValue(candidate.key, dimension),
-    )) {
+    if (
+      !getSessionProgressSelectionValues(requested, dimension).includes(
+        getSessionProgressGroupDimensionValue(candidate.key, dimension)
+      )
+    ) {
       continue;
     }
     let candidateSelection = requested;
@@ -153,22 +168,38 @@ export function resolveSessionProgressSelection({
         ]);
       }
     }
-    const selectedGroups = availableGroups.filter((group) => groupMatchesSelection(group, candidateSelection));
+    const selectedGroups = availableGroups.filter((group) =>
+      groupMatchesSelection(group, candidateSelection)
+    );
     const expectedGroupCount = activeDimension
       ? getSessionProgressSelectionValues(candidateSelection, activeDimension).length
       : 1;
     if (selectedGroups.length !== expectedGroupCount) {
       continue;
     }
-    const preferredBenchmark = selectedGroups.find(
-      (group) => getSessionProgressGroupDimensionValue(group.key, activeDimension ?? dimension) ===
-        (getSessionProgressSelectionValues(candidateSelection, activeDimension ?? dimension).includes(
-          getSessionProgressGroupDimensionValue(currentBenchmark.key, activeDimension ?? dimension),
-        )
-          ? getSessionProgressGroupDimensionValue(currentBenchmark.key, activeDimension ?? dimension)
-          : preferredValue),
-    ) ?? selectedGroups[0];
-    candidateSelection = { ...candidateSelection, chartBenchmarkGroupKey: preferredBenchmark.keyString };
+    const preferredBenchmark =
+      selectedGroups.find(
+        (group) =>
+          getSessionProgressGroupDimensionValue(group.key, activeDimension ?? dimension) ===
+          (getSessionProgressSelectionValues(
+            candidateSelection,
+            activeDimension ?? dimension
+          ).includes(
+            getSessionProgressGroupDimensionValue(
+              currentBenchmark.key,
+              activeDimension ?? dimension
+            )
+          )
+            ? getSessionProgressGroupDimensionValue(
+                currentBenchmark.key,
+                activeDimension ?? dimension
+              )
+            : preferredValue)
+      ) ?? selectedGroups[0];
+    candidateSelection = {
+      ...candidateSelection,
+      chartBenchmarkGroupKey: preferredBenchmark.keyString,
+    };
     const signature = JSON.stringify({
       answerPitchModes: candidateSelection.answerPitchModes,
       queueComparisonFamilies: candidateSelection.queueComparisonFamilies,
@@ -180,16 +211,21 @@ export function resolveSessionProgressSelection({
   }
 
   const ranked = [...candidateSelections.values()].sort((left, right) => {
-    const leftBenchmark = availableGroups.find((group) => group.keyString === left.chartBenchmarkGroupKey)!;
-    const rightBenchmark = availableGroups.find((group) => group.keyString === right.chartBenchmarkGroupKey)!;
+    const leftBenchmark = availableGroups.find(
+      (group) => group.keyString === left.chartBenchmarkGroupKey
+    )!;
+    const rightBenchmark = availableGroups.find(
+      (group) => group.keyString === right.chartBenchmarkGroupKey
+    )!;
     const changedCount = (selection: SessionProgressSelection): number =>
       SESSION_PROGRESS_CONDITION_DIMENSIONS.filter(
         (candidateDimension) =>
           candidateDimension !== dimension &&
           getSessionProgressGroupDimensionValue(
-            availableGroups.find((group) => group.keyString === selection.chartBenchmarkGroupKey)!.key,
-            candidateDimension,
-          ) !== getSessionProgressGroupDimensionValue(currentBenchmark.key, candidateDimension),
+            availableGroups.find((group) => group.keyString === selection.chartBenchmarkGroupKey)!
+              .key,
+            candidateDimension
+          ) !== getSessionProgressGroupDimensionValue(currentBenchmark.key, candidateDimension)
       ).length;
     return (
       changedCount(left) - changedCount(right) ||
@@ -206,7 +242,7 @@ export function resolveSessionProgressSelection({
     changedDimensions: SESSION_PROGRESS_CONDITION_DIMENSIONS.filter(
       (candidateDimension) =>
         JSON.stringify(getSessionProgressSelectionValues(selection, candidateDimension)) !==
-        JSON.stringify(getSessionProgressSelectionValues(current, candidateDimension)),
+        JSON.stringify(getSessionProgressSelectionValues(current, candidateDimension))
     ),
     rejected: false,
     selection,

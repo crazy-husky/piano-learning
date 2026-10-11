@@ -1,12 +1,16 @@
 export type PracticeMicrophoneAlgorithm = "mpm-c" | "swiftf0" | "yin";
 export const PRACTICE_MICROPHONE_SENSITIVITY_LEVELS = [1, 2, 3, 4, 5] as const;
-export type PracticeMicrophoneSensitivityLevel = (typeof PRACTICE_MICROPHONE_SENSITIVITY_LEVELS)[number];
+export type PracticeMicrophoneSensitivityLevel =
+  (typeof PRACTICE_MICROPHONE_SENSITIVITY_LEVELS)[number];
 export const PRACTICE_MICROPHONE_FRAME_INTERVALS = [20, 30, 50] as const;
-export type PracticeMicrophoneFrameInterval = (typeof PRACTICE_MICROPHONE_FRAME_INTERVALS)[number] | "auto";
+export type PracticeMicrophoneFrameInterval =
+  (typeof PRACTICE_MICROPHONE_FRAME_INTERVALS)[number] | "auto";
 export const PRACTICE_MICROPHONE_STABLE_FRAME_COUNTS = [2, 3, 4] as const;
-export type PracticeMicrophoneStableFrameCount = (typeof PRACTICE_MICROPHONE_STABLE_FRAME_COUNTS)[number];
+export type PracticeMicrophoneStableFrameCount =
+  (typeof PRACTICE_MICROPHONE_STABLE_FRAME_COUNTS)[number];
 export const PRACTICE_MICROPHONE_STABLE_DURATIONS = [50, 80] as const;
-export type PracticeMicrophoneStableDuration = (typeof PRACTICE_MICROPHONE_STABLE_DURATIONS)[number];
+export type PracticeMicrophoneStableDuration =
+  (typeof PRACTICE_MICROPHONE_STABLE_DURATIONS)[number];
 export const PRACTICE_MICROPHONE_ANALYSIS_GAINS = [1, 4, 8, 10, 15] as const;
 export type PracticeMicrophoneAnalysisGain = (typeof PRACTICE_MICROPHONE_ANALYSIS_GAINS)[number];
 
@@ -62,7 +66,7 @@ export const DEFAULT_PRACTICE_MICROPHONE_PREFERENCES: PracticeMicrophonePreferen
 };
 
 export function createDefaultPracticeMicrophonePreferences(
-  sensitivityLevel: PracticeMicrophoneSensitivityLevel = 3,
+  sensitivityLevel: PracticeMicrophoneSensitivityLevel = 3
 ): PracticeMicrophonePreferences {
   return {
     ...DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
@@ -74,20 +78,22 @@ export function createDefaultPracticeMicrophonePreferences(
 export function isTouchPracticeDevice(
   userAgent: string,
   platform: string,
-  maxTouchPoints: number,
+  maxTouchPoints: number
 ): boolean {
-  return /iPhone|iPad|iPod|Android/i.test(userAgent) || (platform === "MacIntel" && maxTouchPoints > 1);
+  return (
+    /iPhone|iPad|iPod|Android/i.test(userAgent) || (platform === "MacIntel" && maxTouchPoints > 1)
+  );
 }
 
 export function normalizePracticeMicrophoneDebugParameters(
-  value: Partial<PracticeMicrophoneDebugParameters>,
+  value: Partial<PracticeMicrophoneDebugParameters>
 ): PracticeMicrophoneDebugParameters {
   return parseDebugParameters(value, DEFAULT_DEBUG_PARAMETERS);
 }
 
 export function withPracticeMicrophoneAlgorithm(
   preferences: PracticeMicrophonePreferences,
-  algorithm: PracticeMicrophoneAlgorithm,
+  algorithm: PracticeMicrophoneAlgorithm
 ): PracticeMicrophonePreferences {
   return {
     ...preferences,
@@ -96,7 +102,7 @@ export function withPracticeMicrophoneAlgorithm(
       ? {
           debugParameters: practiceMicrophoneDebugParametersForSensitivityLevel(
             algorithm,
-            preferences.sensitivityLevel,
+            preferences.sensitivityLevel
           ),
         }
       : {}),
@@ -172,35 +178,48 @@ function parseBoundedNumber(value: unknown, fallback: number, min: number, max: 
 
 function parseDebugParameters(
   value: unknown,
-  fallback: PracticeMicrophoneDebugParameters,
+  fallback: PracticeMicrophoneDebugParameters
 ): PracticeMicrophoneDebugParameters {
   if (typeof value !== "object" || value === null) return fallback;
   const stored = value as Partial<PracticeMicrophoneDebugParameters>;
   return {
-    analysisGain: PRACTICE_MICROPHONE_ANALYSIS_GAINS.includes(stored.analysisGain as PracticeMicrophoneAnalysisGain)
-      ? stored.analysisGain as PracticeMicrophoneAnalysisGain
+    analysisGain: PRACTICE_MICROPHONE_ANALYSIS_GAINS.includes(
+      stored.analysisGain as PracticeMicrophoneAnalysisGain
+    )
+      ? (stored.analysisGain as PracticeMicrophoneAnalysisGain)
       : fallback.analysisGain,
-    confidenceThreshold: parseBoundedNumber(stored.confidenceThreshold, fallback.confidenceThreshold, 0, 1),
-    frameIntervalMs: stored.frameIntervalMs === "auto" ||
-        PRACTICE_MICROPHONE_FRAME_INTERVALS.some((interval) => interval === stored.frameIntervalMs)
-      ? stored.frameIntervalMs as PracticeMicrophoneFrameInterval
-      : fallback.frameIntervalMs,
-    inputRmsThreshold: parseBoundedNumber(stored.inputRmsThreshold, fallback.inputRmsThreshold, 0, 0.01),
+    confidenceThreshold: parseBoundedNumber(
+      stored.confidenceThreshold,
+      fallback.confidenceThreshold,
+      0,
+      1
+    ),
+    frameIntervalMs:
+      stored.frameIntervalMs === "auto" ||
+      PRACTICE_MICROPHONE_FRAME_INTERVALS.some((interval) => interval === stored.frameIntervalMs)
+        ? (stored.frameIntervalMs as PracticeMicrophoneFrameInterval)
+        : fallback.frameIntervalMs,
+    inputRmsThreshold: parseBoundedNumber(
+      stored.inputRmsThreshold,
+      fallback.inputRmsThreshold,
+      0,
+      0.01
+    ),
     primaryClarityThreshold: parseBoundedNumber(
       stored.primaryClarityThreshold,
       fallback.primaryClarityThreshold,
       0,
-      1,
+      1
     ),
     requiredStableFrames: PRACTICE_MICROPHONE_STABLE_FRAME_COUNTS.includes(
-      stored.requiredStableFrames as PracticeMicrophoneStableFrameCount,
+      stored.requiredStableFrames as PracticeMicrophoneStableFrameCount
     )
-      ? stored.requiredStableFrames as PracticeMicrophoneStableFrameCount
+      ? (stored.requiredStableFrames as PracticeMicrophoneStableFrameCount)
       : fallback.requiredStableFrames,
     requiredStableMs: PRACTICE_MICROPHONE_STABLE_DURATIONS.includes(
-      stored.requiredStableMs as PracticeMicrophoneStableDuration,
+      stored.requiredStableMs as PracticeMicrophoneStableDuration
     )
-      ? stored.requiredStableMs as PracticeMicrophoneStableDuration
+      ? (stored.requiredStableMs as PracticeMicrophoneStableDuration)
       : fallback.requiredStableMs,
     yinThreshold: parseBoundedNumber(stored.yinThreshold, fallback.yinThreshold, 0.01, 1),
   };
@@ -208,14 +227,14 @@ function parseDebugParameters(
 
 export function parsePracticeMicrophonePreferences(
   value: unknown,
-  fallback: PracticeMicrophonePreferences = DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
+  fallback: PracticeMicrophonePreferences = DEFAULT_PRACTICE_MICROPHONE_PREFERENCES
 ): PracticeMicrophonePreferences {
   if (typeof value !== "object" || value === null) return fallback;
   const stored = value as Record<string, unknown>;
   const sensitivityLevel = PRACTICE_MICROPHONE_SENSITIVITY_LEVELS.includes(
-    stored.sensitivityLevel as PracticeMicrophoneSensitivityLevel,
+    stored.sensitivityLevel as PracticeMicrophoneSensitivityLevel
   )
-    ? stored.sensitivityLevel as PracticeMicrophoneSensitivityLevel
+    ? (stored.sensitivityLevel as PracticeMicrophoneSensitivityLevel)
     : fallback.sensitivityLevel;
   return {
     algorithm: isAlgorithm(stored.algorithm) ? stored.algorithm : fallback.algorithm,
@@ -227,7 +246,7 @@ export function parsePracticeMicrophonePreferences(
 
 function resolveProfileThresholds(
   algorithm: PracticeMicrophoneAlgorithm,
-  sensitivityLevel: PracticeMicrophoneSensitivityLevel,
+  sensitivityLevel: PracticeMicrophoneSensitivityLevel
 ): PracticeMicrophoneThresholds {
   const profile = SENSITIVITY_PROFILES[sensitivityLevel];
   const confidenceThreshold = profile.confidenceThresholds[algorithm];
@@ -235,7 +254,12 @@ function resolveProfileThresholds(
     confidenceThreshold,
     inputRmsThreshold: profile.inputRmsThreshold,
     ...(algorithm === "mpm-c"
-      ? { primaryClarityThreshold: Math.min(0.99, Math.round((confidenceThreshold + profile.primaryClarityOffset) * 100) / 100) }
+      ? {
+          primaryClarityThreshold: Math.min(
+            0.99,
+            Math.round((confidenceThreshold + profile.primaryClarityOffset) * 100) / 100
+          ),
+        }
       : {}),
     ...(algorithm === "yin" ? { yinThreshold: profile.yinThreshold } : {}),
   };
@@ -243,7 +267,7 @@ function resolveProfileThresholds(
 
 export function practiceMicrophoneDebugParametersForSensitivityLevel(
   algorithm: PracticeMicrophoneAlgorithm,
-  sensitivityLevel: PracticeMicrophoneSensitivityLevel,
+  sensitivityLevel: PracticeMicrophoneSensitivityLevel
 ): PracticeMicrophoneDebugParameters {
   const profile = SENSITIVITY_PROFILES[sensitivityLevel];
   const thresholds = resolveProfileThresholds(algorithm, sensitivityLevel);
@@ -252,7 +276,8 @@ export function practiceMicrophoneDebugParametersForSensitivityLevel(
     confidenceThreshold: thresholds.confidenceThreshold,
     frameIntervalMs: "auto",
     inputRmsThreshold: thresholds.inputRmsThreshold,
-    primaryClarityThreshold: thresholds.primaryClarityThreshold ??
+    primaryClarityThreshold:
+      thresholds.primaryClarityThreshold ??
       Math.min(0.99, thresholds.confidenceThreshold + profile.primaryClarityOffset),
     requiredStableFrames: profile.requiredStableFrames,
     requiredStableMs: profile.requiredStableMs,
@@ -261,12 +286,12 @@ export function practiceMicrophoneDebugParametersForSensitivityLevel(
 }
 
 export function resolvePracticeMicrophoneConfiguration(
-  preferences: PracticeMicrophonePreferences,
+  preferences: PracticeMicrophonePreferences
 ): PracticeMicrophoneConfiguration {
   const normalized = parsePracticeMicrophonePreferences(preferences);
   const profileParameters = practiceMicrophoneDebugParametersForSensitivityLevel(
     normalized.algorithm,
-    normalized.sensitivityLevel,
+    normalized.sensitivityLevel
   );
   const parameters = normalized.debugMode ? normalized.debugParameters : profileParameters;
   return {
@@ -285,14 +310,14 @@ export function resolvePracticeMicrophoneConfiguration(
 }
 
 export function resolvePracticeMicrophoneFrameIntervalMs(
-  preferences: Pick<PracticeMicrophoneConfiguration, "algorithm" | "frameIntervalMs">,
+  preferences: Pick<PracticeMicrophoneConfiguration, "algorithm" | "frameIntervalMs">
 ): number {
   if (preferences.frameIntervalMs !== "auto") return preferences.frameIntervalMs;
   return preferences.algorithm === "yin" ? 50 : 30;
 }
 
 export function resolvePracticeMicrophoneThresholds(
-  configuration: PracticeMicrophoneConfiguration,
+  configuration: PracticeMicrophoneConfiguration
 ): PracticeMicrophoneThresholds {
   return {
     confidenceThreshold: configuration.confidenceThreshold,
@@ -304,7 +329,9 @@ export function resolvePracticeMicrophoneThresholds(
   };
 }
 
-export function practiceMicrophoneSensitivityLevelLabel(level: PracticeMicrophoneSensitivityLevel): string {
+export function practiceMicrophoneSensitivityLevelLabel(
+  level: PracticeMicrophoneSensitivityLevel
+): string {
   const labels: Record<PracticeMicrophoneSensitivityLevel, string> = {
     1: "1级（敏感）",
     2: "2级（较敏感）",

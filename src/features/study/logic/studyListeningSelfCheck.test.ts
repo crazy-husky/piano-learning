@@ -29,7 +29,15 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 
 describe("study listening self-check", () => {
   it("deduplicates staff spellings before selecting audible pitches", () => {
-    expect(middlePitches.map((pitch) => pitch.pitchId)).toEqual(["G3", "A3", "B3", "C4", "D4", "E4", "F4"]);
+    expect(middlePitches.map((pitch) => pitch.pitchId)).toEqual([
+      "G3",
+      "A3",
+      "B3",
+      "C4",
+      "D4",
+      "E4",
+      "F4",
+    ]);
   });
 
   it("selects single pitches uniformly while avoiding the previous pitch on a reroll", () => {

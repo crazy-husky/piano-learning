@@ -20,15 +20,14 @@ function formatMetric(summary: MidiLatencyMetricSummary | undefined): string {
   return summary ? `${summary.median.toFixed(1)} / ${summary.max.toFixed(1)}` : "—";
 }
 
-function conditionLabel(
-  condition: MidiLatencyCondition,
-  outcome: "correct" | "wrong",
-): string {
+function conditionLabel(condition: MidiLatencyCondition, outcome: "correct" | "wrong"): string {
   const result = outcome === "correct" ? "正确" : "答错";
   return `${formatMidiLatencyCondition(condition, " · ")} · ${result}`;
 }
 
-export function MidiLatencyDiagnosticsPanel({ correctDelayMs }: MidiLatencyDiagnosticsPanelProps): JSX.Element | null {
+export function MidiLatencyDiagnosticsPanel({
+  correctDelayMs,
+}: MidiLatencyDiagnosticsPanelProps): JSX.Element | null {
   const [open, setOpen] = useState(false);
   const [samples, setSamples] = useState(getMidiLatencySamples);
   const [copyStatus, setCopyStatus] = useState("");
@@ -66,18 +65,26 @@ export function MidiLatencyDiagnosticsPanel({ correctDelayMs }: MidiLatencyDiagn
         延迟日志 · {samples.length}
       </button>
       {open ? (
-        <section aria-label="MIDI 延迟诊断" aria-modal="false" className="midi-latency-panel" role="dialog">
+        <section
+          aria-label="MIDI 延迟诊断"
+          aria-modal="false"
+          className="midi-latency-panel"
+          role="dialog"
+        >
           <header>
             <div>
               <strong>MIDI 延迟诊断</strong>
               <span>正确/答错分别分组；每组首个样本作为预热，不计入汇总</span>
             </div>
-            <button type="button" onClick={() => setOpen(false)}>关闭</button>
+            <button type="button" onClick={() => setOpen(false)}>
+              关闭
+            </button>
           </header>
 
           {correctDelayMs < 300 ? (
             <p className="midi-latency-warning">
-              当前正确后延迟为 {correctDelayMs}ms。仍可测判定，但绿色过渡可能被下一题提前清除；建议测试时统一设为 300ms。
+              当前正确后延迟为 {correctDelayMs}
+              ms。仍可测判定，但绿色过渡可能被下一题提前清除；建议测试时统一设为 300ms。
             </p>
           ) : null}
 
@@ -105,7 +112,8 @@ export function MidiLatencyDiagnosticsPanel({ correctDelayMs }: MidiLatencyDiagn
                 </thead>
                 <tbody>
                   {groups.map((group) => {
-                    const metric = (name: MidiLatencyMetric): string => formatMetric(group.metrics[name]);
+                    const metric = (name: MidiLatencyMetric): string =>
+                      formatMetric(group.metrics[name]);
                     return (
                       <tr key={group.key}>
                         <th>{conditionLabel(group.condition, group.outcome)}</th>
@@ -124,12 +132,18 @@ export function MidiLatencyDiagnosticsPanel({ correctDelayMs }: MidiLatencyDiagn
               </table>
             </div>
           ) : (
-            <p className="midi-latency-empty">开始练习并使用 MIDI 答题后，这里会按“谱页/单音”“声音开/关”和“正确/答错”自动分组。</p>
+            <p className="midi-latency-empty">
+              开始练习并使用 MIDI 答题后，这里会按“谱页/单音”“声音开/关”和“正确/答错”自动分组。
+            </p>
           )}
 
           <div className="midi-latency-actions">
-            <button type="button" onClick={() => void copyReport()}>复制日志</button>
-            <button type="button" onClick={downloadReport}>下载 TXT</button>
+            <button type="button" onClick={() => void copyReport()}>
+              复制日志
+            </button>
+            <button type="button" onClick={downloadReport}>
+              下载 TXT
+            </button>
             <button
               type="button"
               onClick={() => {

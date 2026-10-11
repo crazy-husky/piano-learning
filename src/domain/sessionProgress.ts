@@ -79,27 +79,33 @@ export interface SessionProgressBenchmark {
   metric: "completed-count" | "elapsed-ms";
 }
 
-function areFinitePracticeSessions(reference: PracticeSessionRecord, candidate: PracticeSessionRecord): boolean {
+function areFinitePracticeSessions(
+  reference: PracticeSessionRecord,
+  candidate: PracticeSessionRecord
+): boolean {
   return reference.mode !== "open-ended" && candidate.mode !== "open-ended";
 }
 
-export function isProgressChartEligible(session: PracticeSessionRecord, sessionReviews: ReviewRecord[]): boolean {
+export function isProgressChartEligible(
+  session: PracticeSessionRecord,
+  sessionReviews: ReviewRecord[]
+): boolean {
   return session.mode !== "open-ended" && isLongTermStatsEligible(sessionReviews);
 }
 
 function sameComparisonSnapshot(
   reference: PracticeComparisonSnapshot | undefined,
-  candidate: PracticeComparisonSnapshot | undefined,
+  candidate: PracticeComparisonSnapshot | undefined
 ): boolean {
   return Boolean(
     reference &&
-      candidate &&
-      reference.answerPitchMode === candidate.answerPitchMode &&
-      reference.targetNoteSetKey === candidate.targetNoteSetKey &&
-      reference.promptDisplayMode === candidate.promptDisplayMode &&
-      reference.promptNoteDuration === candidate.promptNoteDuration &&
-      getQueueComparisonFamily(reference.effectiveQueueAlgorithm) ===
-        getQueueComparisonFamily(candidate.effectiveQueueAlgorithm),
+    candidate &&
+    reference.answerPitchMode === candidate.answerPitchMode &&
+    reference.targetNoteSetKey === candidate.targetNoteSetKey &&
+    reference.promptDisplayMode === candidate.promptDisplayMode &&
+    reference.promptNoteDuration === candidate.promptNoteDuration &&
+    getQueueComparisonFamily(reference.effectiveQueueAlgorithm) ===
+      getQueueComparisonFamily(candidate.effectiveQueueAlgorithm)
   );
 }
 
@@ -114,7 +120,7 @@ export function serializeSessionProgressGroupKey(key: SessionProgressGroupKey): 
 }
 
 export function getSessionProgressGroupKey(
-  session: PracticeSessionRecord,
+  session: PracticeSessionRecord
 ): SessionProgressGroupKey | undefined {
   const snapshot = getPracticeSessionComparisonSnapshot(session);
   return snapshot
@@ -130,21 +136,21 @@ export function getSessionProgressGroupKey(
 
 export function sameSessionProgressGroupKey(
   left: SessionProgressGroupKey,
-  right: SessionProgressGroupKey,
+  right: SessionProgressGroupKey
 ): boolean {
   return serializeSessionProgressGroupKey(left) === serializeSessionProgressGroupKey(right);
 }
 
 export function isComparablePracticeSession(
   reference: PracticeSessionRecord,
-  candidate: PracticeSessionRecord,
+  candidate: PracticeSessionRecord
 ): boolean {
   if (reference.id === candidate.id || !areFinitePracticeSessions(reference, candidate)) {
     return false;
   }
   return sameComparisonSnapshot(
     getPracticeSessionComparisonSnapshot(reference),
-    getPracticeSessionComparisonSnapshot(candidate),
+    getPracticeSessionComparisonSnapshot(candidate)
   );
 }
 
@@ -157,7 +163,7 @@ function getStatisticalReviewsInAnswerOrder(reviews: ReviewRecord[]): ReviewReco
         new Date(a.review.answeredAt ?? a.review.endedAt).getTime() -
           new Date(b.review.answeredAt ?? b.review.endedAt).getTime() ||
         new Date(a.review.startedAt).getTime() - new Date(b.review.startedAt).getTime() ||
-        a.index - b.index,
+        a.index - b.index
     )
     .map(({ review }) => review);
 }
@@ -199,14 +205,19 @@ function buildDurationCumsumPoints(reviews: ReviewRecord[]): SessionProgressPoin
   ];
 }
 
-function buildSessionProgressPoints(reviews: ReviewRecord[], mode: SessionProgressMode): SessionProgressPoint[] {
-  return mode === "actual-order" ? buildActualOrderPoints(reviews) : buildDurationCumsumPoints(reviews);
+function buildSessionProgressPoints(
+  reviews: ReviewRecord[],
+  mode: SessionProgressMode
+): SessionProgressPoint[] {
+  return mode === "actual-order"
+    ? buildActualOrderPoints(reviews)
+    : buildDurationCumsumPoints(reviews);
 }
 
 export function getSessionProgressChartWindowMs(
   session: PracticeSessionRecord,
   sessionReviews: ReviewRecord[],
-  mode: SessionProgressMode,
+  mode: SessionProgressMode
 ): number {
   const points = buildSessionProgressPoints(sessionReviews, mode);
   if (session.mode === "fixed-duration" && session.fixedDurationSeconds !== undefined) {
@@ -215,14 +226,20 @@ export function getSessionProgressChartWindowMs(
   return points[points.length - 1]?.elapsedMs ?? 0;
 }
 
-function getComparisonDurationMs(session: PracticeSessionRecord, points: SessionProgressPoint[]): number {
+function getComparisonDurationMs(
+  session: PracticeSessionRecord,
+  points: SessionProgressPoint[]
+): number {
   if (session.mode === "fixed-duration" && session.fixedDurationSeconds !== undefined) {
     return Math.max(0, session.fixedDurationSeconds * 1000);
   }
   return points[points.length - 1]?.elapsedMs ?? 0;
 }
 
-function truncateReviewsByActualElapsedMs(reviews: ReviewRecord[], maxElapsedMs: number): ReviewRecord[] {
+function truncateReviewsByActualElapsedMs(
+  reviews: ReviewRecord[],
+  maxElapsedMs: number
+): ReviewRecord[] {
   let elapsedMs = 0;
   const truncatedReviews: ReviewRecord[] = [];
   for (const review of getStatisticalReviewsInAnswerOrder(reviews)) {
@@ -239,18 +256,27 @@ function truncateReviewsByActualElapsedMs(reviews: ReviewRecord[], maxElapsedMs:
 function groupReviewsBySession(reviews: ReviewRecord[]): Map<string, ReviewRecord[]> {
   const reviewsBySession = new Map<string, ReviewRecord[]>();
   for (const review of reviews) {
-    reviewsBySession.set(review.sessionId, [...(reviewsBySession.get(review.sessionId) ?? []), review]);
+    reviewsBySession.set(review.sessionId, [
+      ...(reviewsBySession.get(review.sessionId) ?? []),
+      review,
+    ]);
   }
   return reviewsBySession;
 }
 
-function compareSessionsNewestFirst(left: PracticeSessionRecord, right: PracticeSessionRecord): number {
-  return new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime() || right.id.localeCompare(left.id);
+function compareSessionsNewestFirst(
+  left: PracticeSessionRecord,
+  right: PracticeSessionRecord
+): number {
+  return (
+    new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime() ||
+    right.id.localeCompare(left.id)
+  );
 }
 
 function findNewestBestSessionId(
   candidates: { session: PracticeSessionRecord; value: number | undefined }[],
-  bestValue: number | undefined,
+  bestValue: number | undefined
 ): string | undefined {
   if (bestValue === undefined) {
     return undefined;
@@ -264,7 +290,7 @@ function findNewestBestSessionId(
 function selectRecentSessionsWithBest(
   sessionsNewestFirst: PracticeSessionRecord[],
   historyLimit: number,
-  bestSessionId: string | undefined,
+  bestSessionId: string | undefined
 ): PracticeSessionRecord[] {
   const selected = sessionsNewestFirst.slice(0, Math.max(1, Math.floor(historyLimit)));
   const bestSession = bestSessionId
@@ -278,10 +304,13 @@ function selectRecentSessionsWithBest(
 
 export function buildSessionProgressGroups(
   sessions: PracticeSessionRecord[],
-  reviews: ReviewRecord[],
+  reviews: ReviewRecord[]
 ): SessionProgressGroup[] {
   const reviewsBySession = groupReviewsBySession(reviews);
-  const grouped = new Map<string, { key: SessionProgressGroupKey; sessions: PracticeSessionRecord[] }>();
+  const grouped = new Map<
+    string,
+    { key: SessionProgressGroupKey; sessions: PracticeSessionRecord[] }
+  >();
   for (const session of sessions) {
     const sessionReviews = reviewsBySession.get(session.id) ?? [];
     const key = getSessionProgressGroupKey(session);
@@ -312,14 +341,15 @@ export function buildSessionProgressGroups(
 
 function findLatestProgressSession(
   sessions: PracticeSessionRecord[],
-  reviewsBySession: Map<string, ReviewRecord[]>,
+  reviewsBySession: Map<string, ReviewRecord[]>
 ): PracticeSessionRecord | undefined {
   // Follow qualified activity, not mutable app settings, so abandoned or short sessions cannot switch the chart.
   return [...sessions]
     .filter((session) => isProgressChartEligible(session, reviewsBySession.get(session.id) ?? []))
     .sort(
       (a, b) =>
-        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime() || b.id.localeCompare(a.id),
+        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime() ||
+        b.id.localeCompare(a.id)
     )[0];
 }
 
@@ -356,22 +386,26 @@ export function buildSessionProgressBenchmark({
     const candidates = comparableSessions.map(({ reviews: sessionReviews, session }) => {
       const statisticalActiveMs = getStatisticalReviewsInAnswerOrder(sessionReviews).reduce(
         (total, review) => total + Math.max(0, review.activeMs),
-        0,
+        0
       );
-      const coveredMs = session.activePracticeMs ??
+      const coveredMs =
+        session.activePracticeMs ??
         (session.mode === "fixed-duration" && session.endReason === "completed-duration"
           ? (session.fixedDurationSeconds ?? 0) * 1000
           : statisticalActiveMs);
       return {
         session,
-        value: coveredMs >= durationMs
-          ? truncateReviewsByActualElapsedMs(sessionReviews, durationMs).length
-          : undefined,
+        value:
+          coveredMs >= durationMs
+            ? truncateReviewsByActualElapsedMs(sessionReviews, durationMs).length
+            : undefined,
       };
     });
     const values = candidates.map((candidate) => candidate.value);
     const completedValues = values.filter((value): value is number => value !== undefined);
-    const historicalValues = values.slice(1).filter((value): value is number => value !== undefined);
+    const historicalValues = values
+      .slice(1)
+      .filter((value): value is number => value !== undefined);
     const bestValue = completedValues.length > 0 ? Math.max(...completedValues) : undefined;
     return {
       bestSessionId: findNewestBestSessionId(candidates, bestValue),
@@ -379,7 +413,9 @@ export function buildSessionProgressBenchmark({
       currentValue: values[0],
       bestValue,
       isNewBest:
-        values[0] !== undefined && historicalValues.length > 0 && values[0] > Math.max(...historicalValues),
+        values[0] !== undefined &&
+        historicalValues.length > 0 &&
+        values[0] > Math.max(...historicalValues),
     };
   }
 
@@ -401,7 +437,9 @@ export function buildSessionProgressBenchmark({
   });
   const values = candidates.map((candidate) => candidate.value);
   const completedValues = values.filter((value): value is number => value !== undefined);
-  const historicalCompletedValues = values.slice(1).filter((value): value is number => value !== undefined);
+  const historicalCompletedValues = values
+    .slice(1)
+    .filter((value): value is number => value !== undefined);
   const bestValue = completedValues.length > 0 ? Math.min(...completedValues) : undefined;
   return {
     bestSessionId: findNewestBestSessionId(candidates, bestValue),
@@ -435,7 +473,12 @@ export function buildSessionProgressSeries({
   const comparisonDurationMs = getComparisonDurationMs(currentSession, currentPoints);
   const currentStartedAt = new Date(currentSession.startedAt).getTime();
   const reviewsBySession = groupReviewsBySession(reviews);
-  const benchmark = buildSessionProgressBenchmark({ currentSession, currentReviews, sessions, reviews });
+  const benchmark = buildSessionProgressBenchmark({
+    currentSession,
+    currentReviews,
+    sessions,
+    reviews,
+  });
 
   const historySessions = sessions
     .filter((session) => {
@@ -448,9 +491,14 @@ export function buildSessionProgressSeries({
     })
     .sort(
       (a, b) =>
-        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime() || b.id.localeCompare(a.id),
+        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime() ||
+        b.id.localeCompare(a.id)
     );
-  const historySeries = selectRecentSessionsWithBest(historySessions, historyLimit, benchmark?.bestSessionId)
+  const historySeries = selectRecentSessionsWithBest(
+    historySessions,
+    historyLimit,
+    benchmark?.bestSessionId
+  )
     .reverse()
     .map((session) => {
       const sessionReviews = reviewsBySession.get(session.id) ?? [];
@@ -459,7 +507,10 @@ export function buildSessionProgressSeries({
         startedAt: session.startedAt,
         isBest: session.id === benchmark?.bestSessionId,
         isCurrent: false,
-        points: buildSessionProgressPoints(truncateReviewsByActualElapsedMs(sessionReviews, comparisonDurationMs), mode),
+        points: buildSessionProgressPoints(
+          truncateReviewsByActualElapsedMs(sessionReviews, comparisonDurationMs),
+          mode
+        ),
       };
     })
     .filter((series) => series.points.length > 1);
@@ -530,15 +581,15 @@ export interface BuildSessionProgressGroupSeriesOptions {
 function sessionsForProgressGroup(
   groupKey: SessionProgressGroupKey,
   sessions: PracticeSessionRecord[],
-  reviewsBySession: Map<string, ReviewRecord[]>,
+  reviewsBySession: Map<string, ReviewRecord[]>
 ): PracticeSessionRecord[] {
   return sessions
     .filter((session) => {
       const candidateKey = getSessionProgressGroupKey(session);
       return Boolean(
         candidateKey &&
-          sameSessionProgressGroupKey(groupKey, candidateKey) &&
-          isProgressChartEligible(session, reviewsBySession.get(session.id) ?? []),
+        sameSessionProgressGroupKey(groupKey, candidateKey) &&
+        isProgressChartEligible(session, reviewsBySession.get(session.id) ?? [])
       );
     })
     .sort(compareSessionsNewestFirst);
@@ -562,7 +613,7 @@ export function buildSessionProgressGroupSeries({
       const sessionReviews = reviewsBySession.get(session.id) ?? [];
       const points = buildSessionProgressPoints(
         truncateReviewsByActualElapsedMs(sessionReviews, chartWindowMs),
-        mode,
+        mode
       );
       return {
         durationMs: session.id === currentSession?.id ? chartWindowMs : undefined,
@@ -582,8 +633,7 @@ export function buildSessionProgressGroupBenchmark({
   reviews,
   sessions,
 }: Pick<BuildSessionProgressGroupSeriesOptions, "groupKey" | "reviews" | "sessions">):
-  | SessionProgressBenchmark
-  | undefined {
+  SessionProgressBenchmark | undefined {
   const reviewsBySession = groupReviewsBySession(reviews);
   const groupSessions = sessionsForProgressGroup(groupKey, sessions, reviewsBySession);
   const currentSession = groupSessions[0];

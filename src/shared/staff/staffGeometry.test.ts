@@ -15,17 +15,13 @@ describe("staff geometry", () => {
   it("keeps display-space tuning values stable across notation scales", () => {
     expect(logicalPx(80, 2)).toBe(40);
     expect(
-      getResponsiveStaffFrame(
-        { scale: 2, width: 600 },
-        7,
-        {
-          clefReservePx: 144,
-          preferredColumnGapPx: 72,
-          staffSidePaddingPx: 100,
-          noteAreaSidePaddingPx: 80,
-          minNoteAreaSidePaddingPx: 36,
-        },
-      ),
+      getResponsiveStaffFrame({ scale: 2, width: 600 }, 7, {
+        clefReservePx: 144,
+        preferredColumnGapPx: 72,
+        staffSidePaddingPx: 100,
+        noteAreaSidePaddingPx: 80,
+        minNoteAreaSidePaddingPx: 36,
+      })
     ).toEqual({ x: 50, staveWidth: 500 });
   });
 
@@ -35,7 +31,7 @@ describe("staff geometry", () => {
         preferredColumnGapPx: 72,
         noteAreaSidePaddingPx: 80,
         minNoteAreaSidePaddingPx: 36,
-      }),
+      })
     ).toEqual({ left: 96, right: 504 });
     expect(getEvenlySpacedCenters(3, 10, 30)).toEqual([10, 20, 30]);
     expect(getEvenlySpacedCenters(1, 10, 30)).toEqual([20]);
@@ -48,7 +44,7 @@ describe("staff geometry", () => {
         preferredColumnGapPx: 72,
         noteAreaSidePaddingPx: 80,
         minNoteAreaSidePaddingPx: 36,
-      }),
+      })
     ).toEqual({ left: 19.5, right: 20.5 });
   });
 

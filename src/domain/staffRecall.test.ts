@@ -46,11 +46,11 @@ describe("staff recall", () => {
   it("uses the same note-name columns as the study map", () => {
     const withoutLedger = buildNoteNameColumns(
       getNotesForGroups(["G3-F4"], false),
-      columnDefinitionsForNoteNames(noteNames),
+      columnDefinitionsForNoteNames(noteNames)
     );
     const withLedger = buildNoteNameColumns(
       getNotesForGroups(["G3-F4"], true),
-      columnDefinitionsForNoteNames(noteNames),
+      columnDefinitionsForNoteNames(noteNames)
     );
 
     expect(withoutLedger.every((column) => column.notes.length === 1)).toBe(true);
@@ -65,17 +65,17 @@ describe("staff recall", () => {
     expect(
       comparableStaffRecallRuns(
         [laterComparable, otherRange, run],
-        getStaffRecallTargetNoteSetKey(run),
-      ).map((item) => item.id),
-    ).toEqual([
-      "recall-1",
-      "recall-2",
-    ]);
+        getStaffRecallTargetNoteSetKey(run)
+      ).map((item) => item.id)
+    ).toEqual(["recall-1", "recall-2"]);
     expect(totalStaffRecallActiveMs(run)).toBe(9100);
     expect(formatStaffRecallDeltaMs(-640)).toEqual({ direction: "faster", text: "(−0.6s)" });
     expect(formatStaffRecallDeltaMs(20)).toBeUndefined();
     expect(formatStaffRecallPerNoteMs(10150, 14)).toBe("725ms");
-    expect(formatStaffRecallPerNoteDeltaMs(-420, 14)).toEqual({ direction: "faster", text: "(−30ms)" });
+    expect(formatStaffRecallPerNoteDeltaMs(-420, 14)).toEqual({
+      direction: "faster",
+      text: "(−30ms)",
+    });
     expect(formatStaffRecallPerNoteDeltaMs(6, 14)).toBeUndefined();
   });
 
@@ -89,7 +89,7 @@ describe("staff recall", () => {
         G: 500,
         A: 900,
         B: 300,
-      }),
+      })
     ).toEqual(["F", "D", "C", "A", "E", "G", "B"]);
   });
 });

@@ -98,7 +98,11 @@ interface PianoKeyboardProps {
   keyOctave?: number;
   onKeyPress: (key: PianoKeyboardKey, inputId: PianoKeyInputId) => void;
   onKeyRelease?: (key: PianoKeyboardKey, inputId: PianoKeyInputId) => void;
-  onFeedbackTransitionEnd?: (keyName: PianoKeyName, type: PianoKeyFeedback["type"], propertyName: string) => void;
+  onFeedbackTransitionEnd?: (
+    keyName: PianoKeyName,
+    type: PianoKeyFeedback["type"],
+    propertyName: string
+  ) => void;
   pressedKeys?: ReadonlySet<PianoKeyId>;
   scale: number;
   touchLabels?: boolean;
@@ -123,7 +127,11 @@ function clampPanX(value: number, viewportWidth: number, keybedWidth: number): n
   return Math.min(0, Math.max(viewportWidth - keybedWidth, value));
 }
 
-export function getCenteredPianoPanX(viewportWidth: number, keybedWidth: number, includeUpperC: boolean): number {
+export function getCenteredPianoPanX(
+  viewportWidth: number,
+  keybedWidth: number,
+  includeUpperC: boolean
+): number {
   if (!includeUpperC) {
     return (viewportWidth - keybedWidth) / 2;
   }
@@ -177,7 +185,7 @@ export function PianoKeyboard({
       onKeyReleaseRef.current?.(key, inputId);
       syncActiveInputKeys();
     },
-    [syncActiveInputKeys],
+    [syncActiveInputKeys]
   );
 
   const releaseAllInputs = useCallback(
@@ -190,7 +198,7 @@ export function PianoKeyboard({
         syncActiveInputKeys();
       }
     },
-    [syncActiveInputKeys],
+    [syncActiveInputKeys]
   );
 
   const pressInput = useCallback(
@@ -202,7 +210,7 @@ export function PianoKeyboard({
       onKeyPressRef.current(key, inputId);
       syncActiveInputKeys();
     },
-    [syncActiveInputKeys],
+    [syncActiveInputKeys]
   );
 
   useLayoutEffect(() => {
@@ -213,7 +221,10 @@ export function PianoKeyboard({
     }
 
     const measure = (): void => {
-      setDimensions({ keybedWidth: keybed.getBoundingClientRect().width, viewportWidth: viewport.clientWidth });
+      setDimensions({
+        keybedWidth: keybed.getBoundingClientRect().width,
+        viewportWidth: viewport.clientWidth,
+      });
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -226,7 +237,10 @@ export function PianoKeyboard({
     const previous = previousDimensionsRef.current;
     if (!overflowing) {
       setPanX(0);
-    } else if (!previous.overflowing || Math.abs(previous.keybedWidth - dimensions.keybedWidth) > 0.5) {
+    } else if (
+      !previous.overflowing ||
+      Math.abs(previous.keybedWidth - dimensions.keybedWidth) > 0.5
+    ) {
       setPanX((dimensions.viewportWidth - dimensions.keybedWidth) / 2);
     } else {
       setPanX((current) => clampPanX(current, dimensions.viewportWidth, dimensions.keybedWidth));
@@ -274,14 +288,18 @@ export function PianoKeyboard({
       "--piano-preferred-white-key-width": `${WHITE_KEY_WIDTH_PX * scale}px`,
       "--piano-white-key-count": includeUpperC ? 8 : 7,
     }),
-    [includeUpperC, scale],
+    [includeUpperC, scale]
   );
 
   function beginDrag(event: ReactPointerEvent<HTMLDivElement>): void {
     if (event.button !== 0 || dragRef.current) {
       return;
     }
-    dragRef.current = { pointerId: event.pointerId, startPanX: panXRef.current, startX: event.clientX };
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startPanX: panXRef.current,
+      startX: event.clientX,
+    };
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging(true);
     event.preventDefault();
@@ -292,7 +310,13 @@ export function PianoKeyboard({
     if (!drag || drag.pointerId !== event.pointerId) {
       return;
     }
-    setPanX(clampPanX(drag.startPanX + event.clientX - drag.startX, dimensions.viewportWidth, dimensions.keybedWidth));
+    setPanX(
+      clampPanX(
+        drag.startPanX + event.clientX - drag.startX,
+        dimensions.viewportWidth,
+        dimensions.keybedWidth
+      )
+    );
   }
 
   function endDrag(event: ReactPointerEvent<HTMLDivElement>): void {
@@ -322,7 +346,10 @@ export function PianoKeyboard({
     setPanX(clampPanX(nextPanX, dimensions.viewportWidth, dimensions.keybedWidth));
   }
 
-  function handleKeyPointerDown(event: ReactPointerEvent<HTMLButtonElement>, key: PianoKeyboardKey): void {
+  function handleKeyPointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    key: PianoKeyboardKey
+  ): void {
     if (event.button !== 0 || !enabledKeys.has(key.keyName)) {
       return;
     }
@@ -340,8 +367,15 @@ export function PianoKeyboard({
     }
   }
 
-  function handleKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, key: PianoKeyboardKey): void {
-    if ((event.key !== " " && event.key !== "Enter") || event.repeat || !enabledKeys.has(key.keyName)) {
+  function handleKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    key: PianoKeyboardKey
+  ): void {
+    if (
+      (event.key !== " " && event.key !== "Enter") ||
+      event.repeat ||
+      !enabledKeys.has(key.keyName)
+    ) {
       return;
     }
     event.preventDefault();
@@ -398,7 +432,8 @@ export function PianoKeyboard({
             };
             const enabled = enabledKeys.has(definition.keyName);
             const pressed = activeInputKeys.has(definition.id) || pressedKeys?.has(definition.id);
-            const feedbackType = feedback?.keyName === definition.keyName ? feedback.type : undefined;
+            const feedbackType =
+              feedback?.keyName === definition.keyName ? feedback.type : undefined;
             const keyStyle = {
               left: `calc(var(--piano-white-key-width) * ${definition.left})`,
             };
@@ -427,7 +462,11 @@ export function PianoKeyboard({
                 onTransitionEnd={
                   feedbackType && onFeedbackTransitionEnd
                     ? (event: ReactTransitionEvent<HTMLButtonElement>) =>
-                        onFeedbackTransitionEnd(definition.keyName, feedbackType, event.propertyName)
+                        onFeedbackTransitionEnd(
+                          definition.keyName,
+                          feedbackType,
+                          event.propertyName
+                        )
                     : undefined
                 }
                 style={keyStyle}

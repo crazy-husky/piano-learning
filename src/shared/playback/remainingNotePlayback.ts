@@ -3,7 +3,7 @@ export type RemainingPlaybackToggleAction = "complete" | "pause" | "resume" | "s
 
 export function getRemainingPlaybackToggleAction(
   state: RemainingPlaybackState,
-  hasNextNote: boolean,
+  hasNextNote: boolean
 ): RemainingPlaybackToggleAction {
   if (state === "idle") {
     return "start";

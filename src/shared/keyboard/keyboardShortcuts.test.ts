@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  shouldHandleGlobalEnter,
-  type GlobalEnterKeyboardEvent,
-} from "./keyboardShortcuts";
+import { shouldHandleGlobalEnter, type GlobalEnterKeyboardEvent } from "./keyboardShortcuts";
 
 const ENTER_EVENT: GlobalEnterKeyboardEvent = {
   altKey: false,

@@ -61,13 +61,18 @@ export class AppDatabase extends Dexie {
 
 export const db = new AppDatabase();
 
-export function resolveQueueStrategy(settings: { queueStrategy?: PracticeQueueStrategy; focusedTraining?: boolean }): PracticeQueueStrategy {
+export function resolveQueueStrategy(settings: {
+  queueStrategy?: PracticeQueueStrategy;
+  focusedTraining?: boolean;
+}): PracticeQueueStrategy {
   const stored = settings.queueStrategy ?? (settings.focusedTraining ? "focused" : "adaptive");
   return stored === "focused" ? "adaptive" : stored;
 }
 
 export function resolveDrillNoteNames(settings: { drillNoteNames?: NoteName[] }): NoteName[] {
-  return settings.drillNoteNames && settings.drillNoteNames.length > 0 ? settings.drillNoteNames : ["C"];
+  return settings.drillNoteNames && settings.drillNoteNames.length > 0
+    ? settings.drillNoteNames
+    : ["C"];
 }
 
 export function makeDefaultSettings(): AppSettings {
@@ -120,7 +125,7 @@ export function normalizeAppSettings(existing: StoredAppSettings): AppSettings {
         ? normalizeCurrentPracticeGroupIds(existing.enabledGroupIds)
         : normalizePracticeGroupIds(existing.enabledGroupIds),
     staffNotationMode: normalizeStoredStaffNotationMode(
-      "staffNotationMode" in stored ? stored.staffNotationMode : undefined,
+      "staffNotationMode" in stored ? stored.staffNotationMode : undefined
     ),
     defaultMode: existing.defaultMode ?? defaults.defaultMode,
     promptDisplayMode: existing.promptDisplayMode ?? "staff-page",
@@ -132,14 +137,15 @@ export function normalizeAppSettings(existing: StoredAppSettings): AppSettings {
     answerPitchMode: normalizeAnswerPitchMode(existing.answerPitchMode),
     includeInterStaffLedgerSpellings:
       existing.schemaVersion === 2
-        ? existing.includeInterStaffLedgerSpellings ?? defaults.includeInterStaffLedgerSpellings
-        : existing.includeLedgerVariants ?? true,
+        ? (existing.includeInterStaffLedgerSpellings ?? defaults.includeInterStaffLedgerSpellings)
+        : (existing.includeLedgerVariants ?? true),
     answerKeyboardScale: normalizeAnswerKeyboardScale(existing.answerKeyboardScale),
     pianoVolume: normalizePianoVolume(existing.pianoVolume),
     queueStrategy,
     drillNoteNames: resolveDrillNoteNames(existing),
     focusedTraining: false,
-    inactivityThresholdSeconds: existing.inactivityThresholdSeconds ?? defaults.inactivityThresholdSeconds,
+    inactivityThresholdSeconds:
+      existing.inactivityThresholdSeconds ?? defaults.inactivityThresholdSeconds,
     correctDelayMs: existing.correctDelayMs ?? defaults.correctDelayMs,
   };
 }
@@ -166,7 +172,9 @@ export async function ensureSettings(): Promise<AppSettings> {
   return settings;
 }
 
-export async function restoreDefaultConfiguration(currentSettings: AppSettings): Promise<AppSettings> {
+export async function restoreDefaultConfiguration(
+  currentSettings: AppSettings
+): Promise<AppSettings> {
   const defaults = makeDefaultSettings();
   const settings: AppSettings = {
     ...defaults,
@@ -210,7 +218,7 @@ export async function saveStaffRecallRun(run: StaffRecallRunRecord): Promise<voi
 
 export async function deletePracticeSessionWithReviews(
   sessionId: PracticeSessionRecord["id"],
-  reviews: ReviewRecord[],
+  reviews: ReviewRecord[]
 ): Promise<void> {
   const reviewIds = reviews.filter((review) => !review.ignored).map((review) => review.id);
   await db.transaction("rw", db.settings, db.practiceSessions, db.reviews, async () => {
@@ -223,7 +231,9 @@ export async function deletePracticeSessionWithReviews(
     if (!settings) {
       return;
     }
-    const [firstRemainingReview] = await db.reviews.filter((review) => !review.ignored).sortBy("startedAt");
+    const [firstRemainingReview] = await db.reviews
+      .filter((review) => !review.ignored)
+      .sortBy("startedAt");
     const nextFirstReviewAt = firstRemainingReview?.startedAt;
     if (settings.firstReviewAt === nextFirstReviewAt) {
       return;
@@ -244,22 +254,30 @@ export async function replaceAllData(
   sessions: PracticeSessionRecord[],
   reviews: ReviewRecord[],
   staffRecallRuns: StaffRecallRunRecord[] = [],
-  vocalAudioMaterials?: VocalAudioMaterial[],
+  vocalAudioMaterials?: VocalAudioMaterial[]
 ): Promise<void> {
-  await db.transaction("rw", db.settings, db.practiceSessions, db.reviews, db.staffRecallRuns, db.vocalAudioMaterials, async () => {
-    await db.settings.clear();
-    await db.practiceSessions.clear();
-    await db.reviews.clear();
-    await db.staffRecallRuns.clear();
-    await db.settings.put(settings);
-    await db.practiceSessions.bulkPut(sessions);
-    await db.reviews.bulkPut(reviews);
-    await db.staffRecallRuns.bulkPut(staffRecallRuns);
-    if (vocalAudioMaterials) {
-      await db.vocalAudioMaterials.clear();
-      await db.vocalAudioMaterials.bulkPut(vocalAudioMaterials);
+  await db.transaction(
+    "rw",
+    db.settings,
+    db.practiceSessions,
+    db.reviews,
+    db.staffRecallRuns,
+    db.vocalAudioMaterials,
+    async () => {
+      await db.settings.clear();
+      await db.practiceSessions.clear();
+      await db.reviews.clear();
+      await db.staffRecallRuns.clear();
+      await db.settings.put(settings);
+      await db.practiceSessions.bulkPut(sessions);
+      await db.reviews.bulkPut(reviews);
+      await db.staffRecallRuns.bulkPut(staffRecallRuns);
+      if (vocalAudioMaterials) {
+        await db.vocalAudioMaterials.clear();
+        await db.vocalAudioMaterials.bulkPut(vocalAudioMaterials);
+      }
     }
-  });
+  );
 }
 
 export async function applyBackupDataChanges(
@@ -268,17 +286,24 @@ export async function applyBackupDataChanges(
     sessions: { deletes: string[]; puts: PracticeSessionRecord[] };
     reviews: { deletes: string[]; puts: ReviewRecord[] };
     staffRecallRuns: { deletes: string[]; puts: StaffRecallRunRecord[] };
-  },
+  }
 ): Promise<void> {
-  await db.transaction("rw", db.settings, db.practiceSessions, db.reviews, db.staffRecallRuns, async () => {
-    await db.settings.put(settings);
-    await db.practiceSessions.bulkDelete(changes.sessions.deletes);
-    await db.reviews.bulkDelete(changes.reviews.deletes);
-    await db.staffRecallRuns.bulkDelete(changes.staffRecallRuns.deletes);
-    await db.practiceSessions.bulkPut(changes.sessions.puts);
-    await db.reviews.bulkPut(changes.reviews.puts);
-    await db.staffRecallRuns.bulkPut(changes.staffRecallRuns.puts);
-  });
+  await db.transaction(
+    "rw",
+    db.settings,
+    db.practiceSessions,
+    db.reviews,
+    db.staffRecallRuns,
+    async () => {
+      await db.settings.put(settings);
+      await db.practiceSessions.bulkDelete(changes.sessions.deletes);
+      await db.reviews.bulkDelete(changes.reviews.deletes);
+      await db.staffRecallRuns.bulkDelete(changes.staffRecallRuns.deletes);
+      await db.practiceSessions.bulkPut(changes.sessions.puts);
+      await db.reviews.bulkPut(changes.reviews.puts);
+      await db.staffRecallRuns.bulkPut(changes.staffRecallRuns.puts);
+    }
+  );
 }
 
 export async function loadAllData(): Promise<{
@@ -322,7 +347,7 @@ export async function recoverAbandonedSessions(): Promise<void> {
       ...session,
       endedAt,
       endReason: "abandoned" as const,
-    })),
+    }))
   );
 }
 

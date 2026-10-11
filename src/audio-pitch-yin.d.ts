@@ -8,6 +8,6 @@ declare module "@audio/pitch-yin" {
 
   export default function yin(
     data: Float32Array | Float64Array,
-    options?: YinOptions,
+    options?: YinOptions
   ): { clarity: number; freq: number } | null;
 }

@@ -16,7 +16,11 @@ const baseInput: BackupDataStatusInput = {
 describe("deriveBackupDataStatus", () => {
   it.each([
     ["waiting for directory", { hasDirectoryHandle: false }, "needs-directory"],
-    ["empty browser and empty selected directory", { hasBrowserData: false, hasBackupManifest: false }, "ready"],
+    [
+      "empty browser and empty selected directory",
+      { hasBrowserData: false, hasBackupManifest: false },
+      "ready",
+    ],
     ["browser data with empty selected directory", { hasBackupManifest: false }, "browser-only"],
     ["empty browser with backup data", { hasBrowserData: false }, "backup-only"],
     ["consistent browser and backup data", {}, "ready"],

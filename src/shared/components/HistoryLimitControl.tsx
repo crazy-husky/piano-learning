@@ -16,7 +16,11 @@ export function normalizeHistoryLimit(value: string): number {
   return Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : DEFAULT_HISTORY_LIMIT;
 }
 
-export function resolveHistoryLimit(historyLimit: number, allHistory: boolean, availableCount: number): number {
+export function resolveHistoryLimit(
+  historyLimit: number,
+  allHistory: boolean,
+  availableCount: number
+): number {
   return allHistory ? availableCount : historyLimit;
 }
 

@@ -1,5 +1,8 @@
 import type { SessionProgressMode } from "../../domain/sessionProgress";
-import { DEFAULT_SESSION_PROGRESS_HISTORY_LIMIT, normalizeSessionProgressHistoryLimit } from "../components/SessionProgressChart";
+import {
+  DEFAULT_SESSION_PROGRESS_HISTORY_LIMIT,
+  normalizeSessionProgressHistoryLimit,
+} from "../components/SessionProgressChart";
 
 const SESSION_PROGRESS_MODES: readonly SessionProgressMode[] = ["actual-order", "duration-cumsum"];
 
@@ -27,7 +30,7 @@ export function isSessionProgressMode(value: unknown): value is SessionProgressM
 
 export function parseSessionProgressUiPreferences(
   value: unknown,
-  fallback: SessionProgressUiPreferences,
+  fallback: SessionProgressUiPreferences
 ): SessionProgressUiPreferences {
   if (!isRecord(value)) {
     return fallback;

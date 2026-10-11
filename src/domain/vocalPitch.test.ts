@@ -44,7 +44,7 @@ describe("vocal pitch helpers", () => {
         maxFrequencyHz: 10,
         voicingThreshold: 2,
         smoothing: -1,
-      }),
+      })
     ).toEqual({
       referencePitchHz: 460,
       minFrequencyHz: VOCAL_PITCH_MIN_FREQUENCY_HZ,
@@ -62,7 +62,9 @@ describe("vocal pitch helpers", () => {
     });
     expect(detectorConfigChanged(config, { ...config, referencePitchHz: 442 })).toBe(false);
     expect(detectorConfigChanged(config, { ...config, smoothing: 0.6 })).toBe(false);
-    expect(detectorConfigChanged(config, { ...config, minFrequencyHz: 30, maxFrequencyHz: 4000 })).toBe(false);
+    expect(
+      detectorConfigChanged(config, { ...config, minFrequencyHz: 30, maxFrequencyHz: 4000 })
+    ).toBe(false);
     expect(detectorConfigChanged(config, { ...config, voicingThreshold: 0.9 })).toBe(true);
     expect(DEFAULT_VOCAL_PITCH_CONFIG.maxFrequencyHz).toBe(VOCAL_PITCH_MAX_FREQUENCY_HZ);
     expect(formatDuration(65.9)).toBe("1:05");

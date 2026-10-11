@@ -7,7 +7,10 @@ import {
   type PianoKeyId,
   type PianoKeyInputId,
 } from "./PianoKeyboard";
-import { getPlayablePreviewOctave, getPlayablePreviewShortcutKey } from "./playableKeyboardPreviewKeys";
+import {
+  getPlayablePreviewOctave,
+  getPlayablePreviewShortcutKey,
+} from "./playableKeyboardPreviewKeys";
 
 interface HeldPreviewNote {
   cancelled: boolean;
@@ -20,8 +23,10 @@ interface PlayableKeyboardPreviewProps {
 }
 
 function isFormControl(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement &&
-    (target.matches("input, select, textarea, button") || target.isContentEditable);
+  return (
+    target instanceof HTMLElement &&
+    (target.matches("input, select, textarea, button") || target.isContentEditable)
+  );
 }
 
 export function PlayableKeyboardPreview({ scale }: PlayableKeyboardPreviewProps): JSX.Element {
@@ -29,7 +34,9 @@ export function PlayableKeyboardPreview({ scale }: PlayableKeyboardPreviewProps)
   const heldPreviewNotesRef = useRef(new Map<PianoKeyInputId, HeldPreviewNote>());
 
   const syncHeldPreviewKeys = useCallback((): void => {
-    setHeldPreviewKeys(new Set(Array.from(heldPreviewNotesRef.current.values(), (note) => note.key.id)));
+    setHeldPreviewKeys(
+      new Set(Array.from(heldPreviewNotesRef.current.values(), (note) => note.key.id))
+    );
   }, []);
 
   const startPreviewNote = useCallback(
@@ -50,7 +57,7 @@ export function PlayableKeyboardPreview({ scale }: PlayableKeyboardPreviewProps)
         })
         .catch(() => undefined);
     },
-    [syncHeldPreviewKeys],
+    [syncHeldPreviewKeys]
   );
 
   const releasePreviewNote = useCallback(
@@ -64,7 +71,7 @@ export function PlayableKeyboardPreview({ scale }: PlayableKeyboardPreviewProps)
       heldPreviewNotesRef.current.delete(inputId);
       syncHeldPreviewKeys();
     },
-    [syncHeldPreviewKeys],
+    [syncHeldPreviewKeys]
   );
 
   const releaseAllPreviewNotes = useCallback((): void => {

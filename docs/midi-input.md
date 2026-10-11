@@ -35,11 +35,11 @@ Staff-page answer feedback recolors the affected rendered VexFlow note in place.
 
 The following field samples came from one Android tablet, browser, and MIDI-keyboard setup with a 300 ms correct-answer delay. Values are median / maximum in milliseconds, and each row excludes one additional warm-up sample. They are regression references for this implementation rather than hardware-independent acceptance thresholds.
 
-| Snapshot | Condition | Measured samples | Native MIDI event → approximate paint | Staff-note coloring | Audio call |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Before the staff-feedback optimization | Staff page, sound off, wrong | 15 | 213.2 / 237.6 | — | — |
-| After the staff-feedback optimization | Staff page, sound off, wrong | 22 | 40.5 / 89.8 | 0.4 / 1.0 | — |
-| After the staff-feedback optimization | Staff page, sound on, correct | 27 | 50.0 / 62.8 | 0.4 / 0.8 | 14.4 / 26.9 |
+| Snapshot                               | Condition                     | Measured samples | Native MIDI event → approximate paint | Staff-note coloring |  Audio call |
+| -------------------------------------- | ----------------------------- | ---------------: | ------------------------------------: | ------------------: | ----------: |
+| Before the staff-feedback optimization | Staff page, sound off, wrong  |               15 |                         213.2 / 237.6 |                   — |           — |
+| After the staff-feedback optimization  | Staff page, sound off, wrong  |               22 |                           40.5 / 89.8 |           0.4 / 1.0 |           — |
+| After the staff-feedback optimization  | Staff page, sound on, correct |               27 |                           50.0 / 62.8 |           0.4 / 0.8 | 14.4 / 26.9 |
 
 ## History
 

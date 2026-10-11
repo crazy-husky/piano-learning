@@ -12,7 +12,10 @@ export function shouldIgnoreReviewForSession(session: PracticeSessionScope): boo
   return isSingleNoteNameDrill(session);
 }
 
-export function shouldKeepPracticeSession(session: PracticeSessionScope, reviews: ReviewRecord[]): boolean {
+export function shouldKeepPracticeSession(
+  session: PracticeSessionScope,
+  reviews: ReviewRecord[]
+): boolean {
   if (isSingleNoteNameDrill(session)) {
     return reviews.some(isCompletedReview);
   }

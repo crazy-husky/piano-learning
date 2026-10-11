@@ -22,10 +22,7 @@ export type PracticeMicrophoneCaptureStopReason =
   | "component-unmounted";
 
 export type PracticeMicrophoneCaptureLifecycleEventType =
-  | "track-muted"
-  | "track-unmuted"
-  | "track-ended"
-  | "audio-context-state";
+  "track-muted" | "track-unmuted" | "track-ended" | "audio-context-state";
 
 export interface PracticeMicrophoneConstraintValues {
   autoGainControl: MediaTrackConstraints["autoGainControl"] | null;
@@ -126,7 +123,7 @@ export interface PracticeMicrophoneSignalSummary {
 
 export function summarizePracticeMicrophoneSamples(
   samples: Float32Array,
-  knownRms?: number,
+  knownRms?: number
 ): PracticeMicrophoneSignalSummary {
   if (samples.length === 0) {
     return { clippedSampleRatio: 0, peak: 0, rms: 0, zeroSampleRatio: 0 };
@@ -154,7 +151,7 @@ export function summarizePracticeMicrophoneSamples(
 
 export function applyPracticeMicrophoneAnalysisGain(
   samples: Float32Array,
-  gain: PracticeMicrophoneAnalysisGain,
+  gain: PracticeMicrophoneAnalysisGain
 ): Float32Array {
   if (gain === 1) return samples;
   const amplified = new Float32Array(samples.length);
@@ -177,7 +174,7 @@ function encodeBase64(bytes: Uint8Array): string {
 export function createPracticeMicrophoneCaptureBlob(
   metadata: PracticeMicrophoneCaptureMetadata,
   frames: PracticeMicrophoneCaptureFrame[],
-  analysis?: unknown,
+  analysis?: unknown
 ): Blob {
   const sampleCount = frames.reduce((total, frame) => total + frame.samples.length, 0);
   const pcmBytes = new Uint8Array(sampleCount * Float32Array.BYTES_PER_ELEMENT);
@@ -204,7 +201,9 @@ export function createPracticeMicrophoneCaptureBlob(
 
   for (const frame of frames) {
     frameManifest.push({
-      ...(frame.analysisClippedSampleRatio === undefined ? {} : { analysisClippedSampleRatio: frame.analysisClippedSampleRatio }),
+      ...(frame.analysisClippedSampleRatio === undefined
+        ? {}
+        : { analysisClippedSampleRatio: frame.analysisClippedSampleRatio }),
       ...(frame.analysisPeak === undefined ? {} : { analysisPeak: frame.analysisPeak }),
       ...(frame.analysisRms === undefined ? {} : { analysisRms: frame.analysisRms }),
       ...(frame.ambiguous === undefined ? {} : { ambiguous: frame.ambiguous }),
@@ -227,15 +226,20 @@ export function createPracticeMicrophoneCaptureBlob(
     }
   }
 
-  return new Blob([JSON.stringify({
-    format: "piano-learning-practice-microphone-capture",
-    version: 4,
-    exportedAt: new Date().toISOString(),
-    metadata,
-    ...(analysis === undefined ? {} : { analysis }),
-    pcmSemantics: "concatenated-time-domain-analysis-windows; windows may overlap",
-    frames: frameManifest,
-    pcmEncoding: "float32-le-base64",
-    pcmWindowsBase64: encodeBase64(pcmBytes),
-  })], { type: "application/json" });
+  return new Blob(
+    [
+      JSON.stringify({
+        format: "piano-learning-practice-microphone-capture",
+        version: 4,
+        exportedAt: new Date().toISOString(),
+        metadata,
+        ...(analysis === undefined ? {} : { analysis }),
+        pcmSemantics: "concatenated-time-domain-analysis-windows; windows may overlap",
+        frames: frameManifest,
+        pcmEncoding: "float32-le-base64",
+        pcmWindowsBase64: encodeBase64(pcmBytes),
+      }),
+    ],
+    { type: "application/json" }
+  );
 }

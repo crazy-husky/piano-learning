@@ -29,15 +29,14 @@ export function buildMobileStaffPageView<T>({
   pageNoteCount?: number;
 }): MobileStaffPageView<T> {
   const resolvedPageNoteCount = Math.max(1, Math.floor(pageNoteCount));
-  const pageStartIndex = Math.floor(Math.max(0, currentIndex) / resolvedPageNoteCount) * resolvedPageNoteCount;
-  const currentPage = Math.floor((firstNoteOffset + Math.max(0, currentIndex)) / resolvedPageNoteCount) + 1;
+  const pageStartIndex =
+    Math.floor(Math.max(0, currentIndex) / resolvedPageNoteCount) * resolvedPageNoteCount;
+  const currentPage =
+    Math.floor((firstNoteOffset + Math.max(0, currentIndex)) / resolvedPageNoteCount) + 1;
   const noteCount = fixedSessionCount ?? firstNoteOffset + notes.length;
 
   return {
-    completedCount: Math.max(
-      0,
-      Math.min(resolvedPageNoteCount, completedCount - pageStartIndex),
-    ),
+    completedCount: Math.max(0, Math.min(resolvedPageNoteCount, completedCount - pageStartIndex)),
     currentPage,
     noteIndexInPage: Math.max(0, currentIndex - pageStartIndex),
     notes: notes.slice(pageStartIndex, pageStartIndex + resolvedPageNoteCount),
@@ -57,7 +56,10 @@ export function getStaffPageRefillCount({
   plannedNoteCount: number;
 }): number {
   const remainingVisibleCount = plannedNoteCount - nextIndex;
-  if (plannedNoteCount !== STAFF_PAGE_SIZE || remainingVisibleCount !== STAFF_PAGE_SCROLL_TRIGGER_REMAINING) {
+  if (
+    plannedNoteCount !== STAFF_PAGE_SIZE ||
+    remainingVisibleCount !== STAFF_PAGE_SCROLL_TRIGGER_REMAINING
+  ) {
     return 0;
   }
   const availableFutureCount =

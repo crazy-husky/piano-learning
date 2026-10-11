@@ -29,19 +29,22 @@ const GLOBAL_ERROR_DEDUPE_WINDOW_MS = 30_000;
 const MAX_GLOBAL_ERROR_DETAILS_LENGTH = 12_000;
 const GLOBAL_ERROR_NOTICE_DURATION_SECONDS = 10;
 const MODULE_LOAD_RETRY_SESSION_KEY = `app-module-load-retry:${__APP_BUILD_ID__}`;
-const MODULE_LOAD_FAILURE_PATTERN = /importing a module script failed|failed to fetch dynamically imported module|unable to preload (?:css|module)|loading chunk .* failed/i;
+const MODULE_LOAD_FAILURE_PATTERN =
+  /importing a module script failed|failed to fetch dynamically imported module|unable to preload (?:css|module)|loading chunk .* failed/i;
 
 function describeError(error: unknown): string {
   if (typeof error === "string") return `Message: ${error}`;
   if (error && typeof error === "object") {
     const value = error as { name?: unknown; message?: unknown; stack?: unknown; cause?: unknown };
     const name = typeof value.name === "string" ? value.name : "Error";
-    const message = typeof value.message === "string" && value.message.length > 0
-      ? value.message
-      : "(message unavailable)";
-    const stack = typeof value.stack === "string" && value.stack.length > 0
-      ? value.stack
-      : "(stack unavailable)";
+    const message =
+      typeof value.message === "string" && value.message.length > 0
+        ? value.message
+        : "(message unavailable)";
+    const stack =
+      typeof value.stack === "string" && value.stack.length > 0
+        ? value.stack
+        : "(stack unavailable)";
     const details = [`Name: ${name}`, `Message: ${message}`, `Stack:\n${stack}`];
     if (value.cause && value.cause !== error) details.push(`Cause:\n${describeError(value.cause)}`);
     return details.join("\n");
@@ -79,7 +82,10 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     this.clearGlobalErrorNoticeInterval();
   }
 
-  componentDidUpdate(_previousProps: AppErrorBoundaryProps, previousState: AppErrorBoundaryState): void {
+  componentDidUpdate(
+    _previousProps: AppErrorBoundaryProps,
+    previousState: AppErrorBoundaryState
+  ): void {
     if (!previousState.fatalErrorDetails && this.state.fatalErrorDetails) {
       this.clearGlobalErrorNoticeInterval();
       if (this.state.globalErrorNoticeVisible) {
@@ -104,30 +110,37 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   private captureGlobalError = (source: GlobalErrorSource, details: string): void => {
     const now = Date.now();
     const timestamp = new Date(now).toISOString();
-    const boundedDetails = details.length > MAX_GLOBAL_ERROR_DETAILS_LENGTH
-      ? `${details.slice(0, MAX_GLOBAL_ERROR_DETAILS_LENGTH)}\n… (error details truncated)`
-      : details;
+    const boundedDetails =
+      details.length > MAX_GLOBAL_ERROR_DETAILS_LENGTH
+        ? `${details.slice(0, MAX_GLOBAL_ERROR_DETAILS_LENGTH)}\n… (error details truncated)`
+        : details;
 
     this.setState((current) => {
-      const duplicateIndex = current.globalErrors.findIndex((record) => (
-        record.source === source
-        && record.details === boundedDetails
-        && now - Date.parse(record.lastSeenAt) <= GLOBAL_ERROR_DEDUPE_WINDOW_MS
-      ));
+      const duplicateIndex = current.globalErrors.findIndex(
+        (record) =>
+          record.source === source &&
+          record.details === boundedDetails &&
+          now - Date.parse(record.lastSeenAt) <= GLOBAL_ERROR_DEDUPE_WINDOW_MS
+      );
 
       let globalErrors: GlobalErrorRecord[];
       if (duplicateIndex >= 0) {
-        globalErrors = current.globalErrors.map((record, index) => index === duplicateIndex
-          ? { ...record, lastSeenAt: timestamp, count: record.count + 1 }
-          : record);
+        globalErrors = current.globalErrors.map((record, index) =>
+          index === duplicateIndex
+            ? { ...record, lastSeenAt: timestamp, count: record.count + 1 }
+            : record
+        );
       } else {
-        globalErrors = [...current.globalErrors, {
-          source,
-          details: boundedDetails,
-          firstSeenAt: timestamp,
-          lastSeenAt: timestamp,
-          count: 1,
-        }].slice(-MAX_GLOBAL_ERROR_RECORDS);
+        globalErrors = [
+          ...current.globalErrors,
+          {
+            source,
+            details: boundedDetails,
+            firstSeenAt: timestamp,
+            lastSeenAt: timestamp,
+            count: 1,
+          },
+        ].slice(-MAX_GLOBAL_ERROR_RECORDS);
       }
 
       return { globalErrors };
@@ -204,11 +217,14 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     const location = event.filename
       ? `Location: ${event.filename}:${event.lineno}:${event.colno}`
       : "Location: (unavailable)";
-    this.captureGlobalError("window.error", [
-      `Browser message: ${event.message || "(message unavailable)"}`,
-      location,
-      event.error ? describeError(event.error) : "Error object: (unavailable)",
-    ].join("\n"));
+    this.captureGlobalError(
+      "window.error",
+      [
+        `Browser message: ${event.message || "(message unavailable)"}`,
+        location,
+        event.error ? describeError(event.error) : "Error object: (unavailable)",
+      ].join("\n")
+    );
   };
 
   private handleUnhandledRejection = (event: PromiseRejectionEvent): void => {
@@ -216,35 +232,41 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   };
 
   private handleVitePreloadError = (event: VitePreloadErrorEvent): void => {
-    this.captureGlobalError("resource-load-error", `Vite module preload error:\n${describeError(event.payload)}`);
+    this.captureGlobalError(
+      "resource-load-error",
+      `Vite module preload error:\n${describeError(event.payload)}`
+    );
     this.retryModuleLoadOnce();
   };
 
-  private buildDebugInfo = (): string => [
-    `Browser: ${navigator.userAgent}`,
-    `Page: ${window.location.pathname}${window.location.hash}`,
-    `Viewport: ${window.innerWidth} × ${window.innerHeight}`,
-    `Online: ${navigator.onLine ? "yes" : "no"}`,
-    `Version: ${__APP_VERSION__}`,
-    `Build ID: ${__APP_BUILD_ID__}`,
-    `Build time: ${formatDateTime(__APP_BUILD_TIME__)}`,
-    `Report time: ${formatDateTime(Date.now())}`,
-    "",
-    this.state.fatalErrorDetails
-      ? `Fatal React render error:\n${this.state.fatalErrorDetails}`
-      : "Fatal React render error: none",
-    "",
-    `Recent unhandled errors (${this.state.globalErrors.length} grouped; limit ${MAX_GLOBAL_ERROR_RECORDS}):`,
-    ...(this.state.globalErrors.length > 0
-      ? this.state.globalErrors.map((record) => [
-        `Source: ${record.source}`,
-        `First seen: ${formatDateTime(record.firstSeenAt)}`,
-        `Last seen: ${formatDateTime(record.lastSeenAt)}`,
-        `Occurrences: ${record.count}`,
-        record.details,
-      ].join("\n"))
-      : ["(none)"]),
-  ].join("\n");
+  private buildDebugInfo = (): string =>
+    [
+      `Browser: ${navigator.userAgent}`,
+      `Page: ${window.location.pathname}${window.location.hash}`,
+      `Viewport: ${window.innerWidth} × ${window.innerHeight}`,
+      `Online: ${navigator.onLine ? "yes" : "no"}`,
+      `Version: ${__APP_VERSION__}`,
+      `Build ID: ${__APP_BUILD_ID__}`,
+      `Build time: ${formatDateTime(__APP_BUILD_TIME__)}`,
+      `Report time: ${formatDateTime(Date.now())}`,
+      "",
+      this.state.fatalErrorDetails
+        ? `Fatal React render error:\n${this.state.fatalErrorDetails}`
+        : "Fatal React render error: none",
+      "",
+      `Recent unhandled errors (${this.state.globalErrors.length} grouped; limit ${MAX_GLOBAL_ERROR_RECORDS}):`,
+      ...(this.state.globalErrors.length > 0
+        ? this.state.globalErrors.map((record) =>
+            [
+              `Source: ${record.source}`,
+              `First seen: ${formatDateTime(record.firstSeenAt)}`,
+              `Last seen: ${formatDateTime(record.lastSeenAt)}`,
+              `Occurrences: ${record.count}`,
+              record.details,
+            ].join("\n")
+          )
+        : ["(none)"]),
+    ].join("\n");
 
   private copyWithTextarea = (text: string): boolean => {
     const textarea = document.createElement("textarea");
@@ -306,7 +328,10 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   private renderGlobalErrorNotice(): ReactNode {
     if (this.state.globalErrors.length === 0 || this.state.fatalErrorDetails) return null;
 
-    const occurrenceCount = this.state.globalErrors.reduce((total, record) => total + record.count, 0);
+    const occurrenceCount = this.state.globalErrors.reduce(
+      (total, record) => total + record.count,
+      0
+    );
     const copyFailed = this.state.copyStatus.startsWith("自动复制失败");
 
     return (
@@ -319,7 +344,9 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
               onClick={() => this.setState({ errorDetailsOpen: true })}
               type="button"
             >
-              <span aria-hidden="true" className="app-global-error-badge-icon">!</span>
+              <span aria-hidden="true" className="app-global-error-badge-icon">
+                !
+              </span>
               <span className="app-global-error-badge-countdown">
                 {this.state.globalErrorNoticeSecondsRemaining}秒
               </span>
@@ -349,7 +376,10 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
               <header className="app-global-error-dialog-header">
                 <div>
                   <h2 id="app-global-error-dialog-title">页面运行错误</h2>
-                  <p>已记录 {occurrenceCount} 次、{this.state.globalErrors.length} 类。页面仍可继续使用。</p>
+                  <p>
+                    已记录 {occurrenceCount} 次、{this.state.globalErrors.length}{" "}
+                    类。页面仍可继续使用。
+                  </p>
                 </div>
                 <button
                   aria-label="关闭错误详情"
@@ -364,8 +394,12 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
                 版本 {__APP_VERSION__} · 构建时间 {formatDateTime(__APP_BUILD_TIME__)}
               </p>
               <div className="app-global-error-dialog-actions">
-                <button onClick={() => void this.copyDebugInfo()} type="button">复制诊断信息</button>
-                <button onClick={() => void this.refreshPage()} type="button">刷新页面</button>
+                <button onClick={() => void this.copyDebugInfo()} type="button">
+                  复制诊断信息
+                </button>
+                <button onClick={() => void this.refreshPage()} type="button">
+                  刷新页面
+                </button>
               </div>
               <p aria-live="polite" className="app-global-error-dialog-copy-status">
                 {this.state.copyStatus || "诊断记录会保留到本次页面刷新。"}
@@ -396,10 +430,16 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
               </div>
               <div className="app-error-debug-copy-control">
                 <div className="app-error-debug-actions">
-                  <button onClick={() => void this.copyDebugInfo()} type="button">复制调试信息</button>
-                  <button onClick={() => void this.refreshPage()} type="button">刷新页面</button>
+                  <button onClick={() => void this.copyDebugInfo()} type="button">
+                    复制调试信息
+                  </button>
+                  <button onClick={() => void this.refreshPage()} type="button">
+                    刷新页面
+                  </button>
                 </div>
-                <p aria-live="polite" className="app-error-debug-copy-status">{this.state.copyStatus}</p>
+                <p aria-live="polite" className="app-error-debug-copy-status">
+                  {this.state.copyStatus}
+                </p>
               </div>
             </div>
             <pre>{this.buildDebugInfo()}</pre>

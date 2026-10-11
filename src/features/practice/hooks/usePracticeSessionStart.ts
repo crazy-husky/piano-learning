@@ -8,7 +8,11 @@ import {
   buildPracticeSessionRecordV5,
   buildPracticeSessionStartSnapshot,
 } from "../../../domain/practiceSessionStartSnapshot";
-import { createAdaptiveNoteScheduler, selectNextNote, type AdaptiveNoteScheduler } from "../../../domain/scheduler";
+import {
+  createAdaptiveNoteScheduler,
+  selectNextNote,
+  type AdaptiveNoteScheduler,
+} from "../../../domain/scheduler";
 import { filterLongTermReviews } from "../../../domain/stats";
 import type {
   AppSettings,
@@ -68,9 +72,15 @@ interface PracticeSessionStartServices {
     reviews?: ReviewRecord[];
     settings?: AppSettings;
   }>;
-  onSettingsSaved: (settings: AppSettings, options?: { feedback?: boolean }) => void | Promise<void>;
+  onSettingsSaved: (
+    settings: AppSettings,
+    options?: { feedback?: boolean }
+  ) => void | Promise<void>;
   persistConfig: () => Promise<AppSettings>;
-  practiceMicrophone: Pick<ReturnType<typeof usePracticeMicrophoneInput>, "start" | "stop" | "resetCapture">;
+  practiceMicrophone: Pick<
+    ReturnType<typeof usePracticeMicrophoneInput>,
+    "start" | "stop" | "resetCapture"
+  >;
   runSessionStart: (action: () => Promise<void>) => Promise<void>;
 }
 
@@ -101,7 +111,12 @@ function newSessionId(): string {
   return createUuid();
 }
 
-export function usePracticeSessionStart({ runtime, services, ui, values }: UsePracticeSessionStartOptions) {
+export function usePracticeSessionStart({
+  runtime,
+  services,
+  ui,
+  values,
+}: UsePracticeSessionStartOptions) {
   const {
     answerPitchMode,
     midi,
@@ -167,17 +182,19 @@ export function usePracticeSessionStart({ runtime, services, ui, values }: UsePr
           applySettingsSnapshot(preflightResult.settings);
         }
         const loadedPreflightSettings = preflightResult.settings ?? (await persistConfig());
-        const preflightSettings = answerPitchMode === "microphone" &&
-            loadedPreflightSettings.answerPitchMode !== "microphone"
-          ? { ...loadedPreflightSettings, answerPitchMode: "microphone" as const }
-          : loadedPreflightSettings;
+        const preflightSettings =
+          answerPitchMode === "microphone" &&
+          loadedPreflightSettings.answerPitchMode !== "microphone"
+            ? { ...loadedPreflightSettings, answerPitchMode: "microphone" as const }
+            : loadedPreflightSettings;
         const availablePreflightAnswerPitchMode = resolveAvailableAnswerPitchMode(
           preflightSettings.answerPitchMode,
-          midi.isConnected,
+          midi.isConnected
         );
-        const nextSettings = preflightSettings.answerPitchMode === availablePreflightAnswerPitchMode
-          ? preflightSettings
-          : { ...preflightSettings, answerPitchMode: availablePreflightAnswerPitchMode };
+        const nextSettings =
+          preflightSettings.answerPitchMode === availablePreflightAnswerPitchMode
+            ? preflightSettings
+            : { ...preflightSettings, answerPitchMode: availablePreflightAnswerPitchMode };
         if (nextSettings !== preflightSettings) {
           await onSettingsSaved(nextSettings, { feedback: false });
         }
@@ -186,12 +203,15 @@ export function usePracticeSessionStart({ runtime, services, ui, values }: UsePr
         const nextSchedulerReviews = preflightResult.reviews
           ? filterLongTermReviews(preflightResult.reviews)
           : schedulerReviews;
-        const microphoneSettings = availablePreflightAnswerPitchMode === "microphone"
-          ? { ...nextSettings, playAnswerNote: false }
-          : nextSettings;
+        const microphoneSettings =
+          availablePreflightAnswerPitchMode === "microphone"
+            ? { ...nextSettings, playAnswerNote: false }
+            : nextSettings;
         const builtStartSnapshot = buildPracticeSessionStartSnapshot({
           autoPlayTarget:
-            availablePreflightAnswerPitchMode === "microphone" ? false : nextSettings.autoPlayTarget,
+            availablePreflightAnswerPitchMode === "microphone"
+              ? false
+              : nextSettings.autoPlayTarget,
           mode: nextMode,
           prefersReducedMotion,
           settings: { ...microphoneSettings, queueStrategy: nextQueueStrategy },
@@ -205,7 +225,8 @@ export function usePracticeSessionStart({ runtime, services, ui, values }: UsePr
         const { practiceConfig, presentationConfig } = startSnapshot;
         const nextEnabledNotes = builtStartSnapshot.notes;
         const shouldStartPaused =
-          presentationConfig.promptDisplayMode === "staff-page" && presentationConfig.startPausedReading;
+          presentationConfig.promptDisplayMode === "staff-page" &&
+          presentationConfig.startPausedReading;
         if (availablePreflightAnswerPitchMode === "microphone") {
           if (shouldStartPaused) {
             practiceMicrophone.stop();
@@ -235,16 +256,17 @@ export function usePracticeSessionStart({ runtime, services, ui, values }: UsePr
         lastTargetNoteIdRef.current = undefined;
         melodyQueueRef.current = [];
         melodyGenerationStateRef.current = createMelodyGenerationState();
-        adaptiveSchedulerRef.current = practiceConfig.queueStrategy === "melody"
-          ? null
-          : createAdaptiveNoteScheduler({
-              notes: nextEnabledNotes,
-              reviews: nextSchedulerReviews,
-              sessions,
-              currentSessionId: nextSession.id,
-              queueStrategy: practiceConfig.queueStrategy,
-              drillNoteNames: practiceConfig.drillNoteNames,
-            });
+        adaptiveSchedulerRef.current =
+          practiceConfig.queueStrategy === "melody"
+            ? null
+            : createAdaptiveNoteScheduler({
+                notes: nextEnabledNotes,
+                reviews: nextSchedulerReviews,
+                sessions,
+                currentSessionId: nextSession.id,
+                queueStrategy: practiceConfig.queueStrategy,
+                drillNoteNames: practiceConfig.drillNoteNames,
+              });
         syncStaffPage(null);
         setIsStaffPageScrolling(false);
         endingRef.current = false;
@@ -268,15 +290,15 @@ export function usePracticeSessionStart({ runtime, services, ui, values }: UsePr
           const firstNote =
             practiceConfig.queueStrategy === "melody"
               ? drawMelodyNote(nextEnabledNotes, practiceConfig.fixedCount)
-              : adaptiveSchedulerRef.current?.select() ??
+              : (adaptiveSchedulerRef.current?.select() ??
                 selectNextNote({
-                    notes: nextEnabledNotes,
-                    reviews: nextSchedulerReviews,
-                    sessions,
-                    currentSessionId: nextSession.id,
-                    queueStrategy: practiceConfig.queueStrategy,
-                    drillNoteNames: practiceConfig.drillNoteNames,
-                  });
+                  notes: nextEnabledNotes,
+                  reviews: nextSchedulerReviews,
+                  sessions,
+                  currentSessionId: nextSession.id,
+                  queueStrategy: practiceConfig.queueStrategy,
+                  drillNoteNames: practiceConfig.drillNoteNames,
+                }));
           startPrompt(firstNote);
         }
       });

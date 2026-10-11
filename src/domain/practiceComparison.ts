@@ -36,14 +36,18 @@ export interface PracticeComparisonInput {
   staffNotationMode: StaffNotationMode;
 }
 
-export function getEffectiveQueueAlgorithm(strategy: PracticeQueueStrategy): EffectiveQueueAlgorithm {
+export function getEffectiveQueueAlgorithm(
+  strategy: PracticeQueueStrategy
+): EffectiveQueueAlgorithm {
   if (strategy === "melody") {
     return "melody-v2";
   }
   return "adaptive-v2";
 }
 
-export function getQueueComparisonFamily(algorithm: EffectiveQueueAlgorithm): QueueComparisonFamily {
+export function getQueueComparisonFamily(
+  algorithm: EffectiveQueueAlgorithm
+): QueueComparisonFamily {
   if (algorithm === "melody-v1" || algorithm === "melody-v2") {
     return algorithm;
   }
@@ -53,7 +57,7 @@ export function getQueueComparisonFamily(algorithm: EffectiveQueueAlgorithm): Qu
 export function applyQueueCandidateFilter(
   notes: readonly TargetNote[],
   strategy: PracticeQueueStrategy,
-  drillNoteNames: readonly NoteName[],
+  drillNoteNames: readonly NoteName[]
 ): TargetNote[] {
   if (strategy !== "note-drill") {
     return [...notes];
@@ -78,7 +82,7 @@ export function getEffectivePracticeNotes({
   return applyQueueCandidateFilter(
     getNotesForGroups(enabledGroupIds, includeInterStaffLedgerSpellings, staffNotationMode),
     queueStrategy,
-    drillNoteNames,
+    drillNoteNames
   );
 }
 

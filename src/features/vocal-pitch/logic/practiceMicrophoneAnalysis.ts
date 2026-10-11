@@ -116,12 +116,17 @@ interface MutableCandidateSegment {
 
 function alignEvents(
   expected: readonly number[],
-  detected: readonly number[],
+  detected: readonly number[]
 ): {
-  events: Array<{ classification: "correct" | "wrong" | "extra"; expectedMidiNoteNumber: number | null }>;
+  events: Array<{
+    classification: "correct" | "wrong" | "extra";
+    expectedMidiNoteNumber: number | null;
+  }>;
   missedNotes: Array<{ midiNoteNumber: number; sequenceIndex: number }>;
 } {
-  const costs = Array.from({ length: expected.length + 1 }, () => new Array<number>(detected.length + 1).fill(0));
+  const costs = Array.from({ length: expected.length + 1 }, () =>
+    new Array<number>(detected.length + 1).fill(0)
+  );
   for (let expectedIndex = 0; expectedIndex <= expected.length; expectedIndex += 1) {
     costs[expectedIndex][0] = expectedIndex;
   }
@@ -135,37 +140,43 @@ function alignEvents(
       costs[expectedIndex][detectedIndex] = Math.min(
         costs[expectedIndex - 1][detectedIndex] + 1,
         costs[expectedIndex][detectedIndex - 1] + 1,
-        costs[expectedIndex - 1][detectedIndex - 1] + substitutionCost,
+        costs[expectedIndex - 1][detectedIndex - 1] + substitutionCost
       );
     }
   }
 
-  const aligned: Array<{ classification: "correct" | "wrong" | "extra"; expectedMidiNoteNumber: number | null }> = [];
+  const aligned: Array<{
+    classification: "correct" | "wrong" | "extra";
+    expectedMidiNoteNumber: number | null;
+  }> = [];
   const missedNotes: Array<{ midiNoteNumber: number; sequenceIndex: number }> = [];
   let expectedIndex = expected.length;
   let detectedIndex = detected.length;
   while (expectedIndex > 0 || detectedIndex > 0) {
     const expectedMidi = expected[expectedIndex - 1];
     const detectedMidi = detected[detectedIndex - 1];
-    const exactMatch = expectedIndex > 0 && detectedIndex > 0 && expectedMidi === detectedMidi &&
+    const exactMatch =
+      expectedIndex > 0 &&
+      detectedIndex > 0 &&
+      expectedMidi === detectedMidi &&
       costs[expectedIndex][detectedIndex] === costs[expectedIndex - 1][detectedIndex - 1];
-    const equallyGoodInsertion = detectedIndex > 0 &&
+    const equallyGoodInsertion =
+      detectedIndex > 0 &&
       costs[expectedIndex][detectedIndex] === costs[expectedIndex][detectedIndex - 1] + 1;
     if (exactMatch && equallyGoodInsertion) {
       aligned.push({ classification: "extra", expectedMidiNoteNumber: null });
       detectedIndex -= 1;
       continue;
     }
-    if (
-      exactMatch
-    ) {
+    if (exactMatch) {
       aligned.push({ classification: "correct", expectedMidiNoteNumber: expectedMidi });
       expectedIndex -= 1;
       detectedIndex -= 1;
       continue;
     }
     if (
-      expectedIndex > 0 && detectedIndex > 0 &&
+      expectedIndex > 0 &&
+      detectedIndex > 0 &&
       costs[expectedIndex][detectedIndex] === costs[expectedIndex - 1][detectedIndex - 1] + 1
     ) {
       aligned.push({ classification: "wrong", expectedMidiNoteNumber: expectedMidi });
@@ -190,15 +201,16 @@ function alignEvents(
 function findCandidateSegments(
   frames: readonly PracticeMicrophoneCaptureFrame[],
   metadata: PracticeMicrophoneCaptureMetadata,
-  events: readonly PracticeMicrophoneAnalysisEvent[],
+  events: readonly PracticeMicrophoneAnalysisEvent[]
 ): PracticeMicrophoneCandidateSegment[] {
   const segments: MutableCandidateSegment[] = [];
   const maximumGapMs = Math.max(80, metadata.frameCaptureIntervalMs * 1.75);
 
   for (const frame of frames) {
-    const candidate = frame.frequencyHz === null || frame.frequencyHz === undefined
-      ? null
-      : frequencyToNaturalPracticeNote(frame.frequencyHz);
+    const candidate =
+      frame.frequencyHz === null || frame.frequencyHz === undefined
+        ? null
+        : frequencyToNaturalPracticeNote(frame.frequencyHz);
     if (!candidate) {
       const current = segments.at(-1);
       if (current) current.gapFrameCount += 1;
@@ -207,8 +219,10 @@ function findCandidateSegments(
     const offsetMs = Math.round(frame.offsetMs);
     const previous = segments.at(-1);
     if (
-      previous && previous.midiNoteNumber === candidate.midiNoteNumber &&
-      previous.gapFrameCount < 2 && offsetMs - previous.endOffsetMs <= maximumGapMs
+      previous &&
+      previous.midiNoteNumber === candidate.midiNoteNumber &&
+      previous.gapFrameCount < 2 &&
+      offsetMs - previous.endOffsetMs <= maximumGapMs
     ) {
       previous.endOffsetMs = offsetMs;
       previous.frames.push(frame);
@@ -237,8 +251,11 @@ function findCandidateSegments(
         ambiguous,
         clippedSampleRatio: frame.clippedSampleRatio,
         confidence,
-        eligible: confidence !== null && confidence >= metadata.confidenceThreshold &&
-          analysisRms >= metadata.inputRmsThreshold && !ambiguous,
+        eligible:
+          confidence !== null &&
+          confidence >= metadata.confidenceThreshold &&
+          analysisRms >= metadata.inputRmsThreshold &&
+          !ambiguous,
         frequencyHz: frame.frequencyHz ?? null,
         offsetMs: Math.round(frame.offsetMs),
         outcome: frame.outcome ?? null,
@@ -254,8 +271,12 @@ function findCandidateSegments(
     let longestEligibleDurationMs = 0;
     const maximumConsecutiveGapMs = Math.max(40, metadata.frameCaptureIntervalMs * 1.75);
     for (const frame of frames) {
-      const gapMs = previousEligibleOffsetMs === null ? 0 : frame.offsetMs - previousEligibleOffsetMs;
-      if (!frame.eligible || (previousEligibleOffsetMs !== null && gapMs > maximumConsecutiveGapMs)) {
+      const gapMs =
+        previousEligibleOffsetMs === null ? 0 : frame.offsetMs - previousEligibleOffsetMs;
+      if (
+        !frame.eligible ||
+        (previousEligibleOffsetMs !== null && gapMs > maximumConsecutiveGapMs)
+      ) {
         currentEligibleFrameCount = 0;
         previousEligibleOffsetMs = null;
         if (!frame.eligible) continue;
@@ -265,23 +286,26 @@ function findCandidateSegments(
       previousEligibleOffsetMs = frame.offsetMs;
       maxConsecutiveEligibleFrameCount = Math.max(
         maxConsecutiveEligibleFrameCount,
-        currentEligibleFrameCount,
+        currentEligibleFrameCount
       );
       longestEligibleDurationMs = Math.max(
         longestEligibleDurationMs,
-        frame.offsetMs - currentEligibleStartOffsetMs,
+        frame.offsetMs - currentEligibleStartOffsetMs
       );
     }
-    const stableEventCount = events.filter((event) =>
-      Math.abs(event.midiNoteNumber - segment.midiNoteNumber) <= 12 &&
-      ((event.midiNoteNumber - segment.midiNoteNumber) % 12 + 12) % 12 === 0 &&
-      event.offsetMs >= segment.startOffsetMs - eventSegmentMarginMs &&
-      event.offsetMs <= segment.endOffsetMs + eventSegmentMarginMs
+    const stableEventCount = events.filter(
+      (event) =>
+        Math.abs(event.midiNoteNumber - segment.midiNoteNumber) <= 12 &&
+        (((event.midiNoteNumber - segment.midiNoteNumber) % 12) + 12) % 12 === 0 &&
+        event.offsetMs >= segment.startOffsetMs - eventSegmentMarginMs &&
+        event.offsetMs <= segment.endOffsetMs + eventSegmentMarginMs
     ).length;
     const stableThresholdMet =
       maxConsecutiveEligibleFrameCount >= metadata.requiredStableFrames &&
       longestEligibleDurationMs >= metadata.requiredStableMs;
-    const confidenceValues = frames.flatMap((frame) => frame.confidence === null ? [] : [frame.confidence]);
+    const confidenceValues = frames.flatMap((frame) =>
+      frame.confidence === null ? [] : [frame.confidence]
+    );
     const average = (values: readonly number[]): number =>
       values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
     return {
@@ -294,10 +318,11 @@ function findCandidateSegments(
       frameCount: segment.frames.length,
       inputRmsAverage: average(frames.map((frame) => frame.rms)),
       inputRmsMaximum: Math.max(...frames.map((frame) => frame.rms)),
-      lowConfidenceFrameCount: frames.filter((frame) =>
-        frame.confidence === null || frame.confidence < metadata.confidenceThreshold
+      lowConfidenceFrameCount: frames.filter(
+        (frame) => frame.confidence === null || frame.confidence < metadata.confidenceThreshold
       ).length,
-      lowRmsFrameCount: frames.filter((frame) => frame.analysisRms < metadata.inputRmsThreshold).length,
+      lowRmsFrameCount: frames.filter((frame) => frame.analysisRms < metadata.inputRmsThreshold)
+        .length,
       longestEligibleDurationMs,
       maxConsecutiveEligibleFrameCount,
       midiNoteNumber: segment.midiNoteNumber,
@@ -311,7 +336,10 @@ function findCandidateSegments(
 }
 
 export function parseExpectedPracticeNoteSequence(value: string): number[] | null {
-  const tokens = value.trim().split(/[\s,，、]+/).filter(Boolean);
+  const tokens = value
+    .trim()
+    .split(/[\s,，、]+/)
+    .filter(Boolean);
   if (tokens.length === 0 || tokens.length > 64) return null;
   const semitones: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   const sequence: number[] = [];
@@ -328,20 +356,23 @@ export function parseExpectedPracticeNoteSequence(value: string): number[] | nul
 export function analyzePracticeMicrophoneCapture(
   metadata: PracticeMicrophoneCaptureMetadata,
   frames: readonly PracticeMicrophoneCaptureFrame[],
-  expectedSequence: readonly number[] | null,
+  expectedSequence: readonly number[] | null
 ): PracticeMicrophoneAnalysis {
-  const continuityConfidence = metadata.algorithm === "mpm-c"
-    ? PRACTICE_NOTE_CONTINUITY_CONFIDENCE
-    : metadata.confidenceThreshold;
+  const continuityConfidence =
+    metadata.algorithm === "mpm-c"
+      ? PRACTICE_NOTE_CONTINUITY_CONFIDENCE
+      : metadata.confidenceThreshold;
   const recognizer = createPracticeNoteRecognizer(metadata.confidenceThreshold, {
     continuityConfidence,
     requiredFrames: metadata.requiredStableFrames,
     requiredMs: metadata.requiredStableMs,
   });
-  const detectedEvents: Array<Omit<
-    PracticeMicrophoneAnalysisEvent,
-    "classification" | "expectedMidiNoteNumber" | "intervalFromPreviousMs"
-  >> = [];
+  const detectedEvents: Array<
+    Omit<
+      PracticeMicrophoneAnalysisEvent,
+      "classification" | "expectedMidiNoteNumber" | "intervalFromPreviousMs"
+    >
+  > = [];
 
   for (const frame of frames) {
     const frequencyHz = frame.frequencyHz ?? null;
@@ -350,9 +381,11 @@ export function analyzePracticeMicrophoneCapture(
       frequencyHz !== null &&
       analysisRms >= metadata.inputRmsThreshold &&
       (frame.confidence ?? 0) >= metadata.confidenceThreshold;
-    const canUsePitchContinuity = metadata.algorithm === "mpm-c" &&
+    const canUsePitchContinuity =
+      metadata.algorithm === "mpm-c" &&
       (frame.confidence ?? 0) >= PRACTICE_NOTE_CONTINUITY_CONFIDENCE;
-    const recognizerHasUsableFrequency = frequencyHz !== null &&
+    const recognizerHasUsableFrequency =
+      frequencyHz !== null &&
       analysisRms >= metadata.inputRmsThreshold &&
       (eligible || canUsePitchContinuity);
     const recognized = recognizer.process({
@@ -380,28 +413,37 @@ export function analyzePracticeMicrophoneCapture(
   }
 
   const alignment = expectedSequence
-    ? alignEvents(expectedSequence, detectedEvents.map((event) => event.midiNoteNumber))
+    ? alignEvents(
+        expectedSequence,
+        detectedEvents.map((event) => event.midiNoteNumber)
+      )
     : {
-        events: detectedEvents.map(() => ({ classification: "uncompared" as const, expectedMidiNoteNumber: null })),
+        events: detectedEvents.map(() => ({
+          classification: "uncompared" as const,
+          expectedMidiNoteNumber: null,
+        })),
         missedNotes: [],
       };
   const aligned = alignment.events;
   const events = detectedEvents.map((event, index) => ({
     ...event,
     ...aligned[index],
-    intervalFromPreviousMs: index === 0 ? null : event.offsetMs - detectedEvents[index - 1].offsetMs,
+    intervalFromPreviousMs:
+      index === 0 ? null : event.offsetMs - detectedEvents[index - 1].offsetMs,
   }));
   const candidateSegments = findCandidateSegments(frames, metadata, events);
-  const frameIntervals = frames.slice(1)
+  const frameIntervals = frames
+    .slice(1)
     .map((frame, index) => frame.offsetMs - frames[index].offsetMs)
     .filter((interval) => interval > 0);
   const sortedFrameIntervals = frameIntervals.slice().sort((left, right) => left - right);
   const middle = Math.floor(sortedFrameIntervals.length / 2);
-  const medianFrameIntervalMs = sortedFrameIntervals.length === 0
-    ? null
-    : sortedFrameIntervals.length % 2 === 0
-      ? (sortedFrameIntervals[middle - 1] + sortedFrameIntervals[middle]) / 2
-      : sortedFrameIntervals[middle];
+  const medianFrameIntervalMs =
+    sortedFrameIntervals.length === 0
+      ? null
+      : sortedFrameIntervals.length % 2 === 0
+        ? (sortedFrameIntervals[middle - 1] + sortedFrameIntervals[middle]) / 2
+        : sortedFrameIntervals[middle];
   const countClassification = (classification: PracticeMicrophoneEventClassification): number =>
     events.filter((event) => event.classification === classification).length;
 
@@ -437,8 +479,8 @@ export function analyzePracticeMicrophoneCapture(
       yinThreshold: metadata.yinThreshold,
     },
     expectedSequence: expectedSequence ? [...expectedSequence] : null,
-    unansweredCandidateSegmentCount: candidateSegments.filter((segment) =>
-      segment.stableEventCount === 0
+    unansweredCandidateSegmentCount: candidateSegments.filter(
+      (segment) => segment.stableEventCount === 0
     ).length,
   };
 }

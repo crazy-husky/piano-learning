@@ -50,16 +50,19 @@ export function PauseOverlay({
             </button>
             <label>
               BPM
-              <PausedPlaybackBpmInput onChange={(value) => onBpmChange?.(value)} value={bpm ?? 100} />
+              <PausedPlaybackBpmInput
+                onChange={(value) => onBpmChange?.(value)}
+                value={bpm ?? 100}
+              />
             </label>
           </div>
         ) : null}
         <small>
-          {resumeBlockedMessage ?? resumeMessage ?? (
-            showKeyboardShortcuts
+          {resumeBlockedMessage ??
+            resumeMessage ??
+            (showKeyboardShortcuts
               ? "按空格或点击空白处继续练习 · 按 Esc 退出练习"
-              : "点击空白处继续练习"
-          )}
+              : "点击空白处继续练习")}
         </small>
       </div>
     </div>

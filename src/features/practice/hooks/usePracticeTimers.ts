@@ -19,7 +19,7 @@ export interface PracticeTimers {
 }
 
 export function usePracticeTimers<TPrompt extends PracticePromptTimerState>(
-  promptRef: MutableRefObject<TPrompt | null>,
+  promptRef: MutableRefObject<TPrompt | null>
 ): PracticeTimers {
   const sessionActiveBaseMsRef = useRef(0);
   const sessionActiveStartedAtRef = useRef<number | null>(null);
@@ -27,7 +27,8 @@ export function usePracticeTimers<TPrompt extends PracticePromptTimerState>(
   const getPromptActiveMs = useCallback((): number => {
     const prompt = promptRef.current;
     if (!prompt) return 0;
-    const running = prompt.activeStartedAt === null ? 0 : performance.now() - prompt.activeStartedAt;
+    const running =
+      prompt.activeStartedAt === null ? 0 : performance.now() - prompt.activeStartedAt;
     return Math.round(prompt.activeBaseMs + running);
   }, [promptRef]);
 
@@ -37,9 +38,10 @@ export function usePracticeTimers<TPrompt extends PracticePromptTimerState>(
   }, [promptRef]);
 
   const getSessionActiveMs = useCallback((): number => {
-    const running = sessionActiveStartedAtRef.current === null
-      ? 0
-      : performance.now() - sessionActiveStartedAtRef.current;
+    const running =
+      sessionActiveStartedAtRef.current === null
+        ? 0
+        : performance.now() - sessionActiveStartedAtRef.current;
     return Math.round(sessionActiveBaseMsRef.current + running);
   }, []);
 

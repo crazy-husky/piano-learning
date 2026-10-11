@@ -33,12 +33,18 @@ export interface StaffPageVisibleYBounds {
   topY: number;
 }
 
-function getNoteYRange(notes: readonly { y: number }[]): { bottomY: number; topY: number; ys: number[] } {
+function getNoteYRange(notes: readonly { y: number }[]): {
+  bottomY: number;
+  topY: number;
+  ys: number[];
+} {
   const ys = notes.map((note) => note.y);
   return { bottomY: Math.max(...ys), topY: Math.min(...ys), ys };
 }
 
-export function getVexNoteDuration(noteDuration: PromptNoteDuration): PromptNoteDurationConfig["vexDuration"] {
+export function getVexNoteDuration(
+  noteDuration: PromptNoteDuration
+): PromptNoteDurationConfig["vexDuration"] {
   return PROMPT_NOTE_DURATION_CONFIG[noteDuration].vexDuration;
 }
 
@@ -56,7 +62,7 @@ export function getBarlineGapCenter(previousRight: number, nextLeft: number): nu
 
 export function getStaffPageBeamRuns(
   notes: readonly (Pick<TargetNote, "staff"> | undefined)[],
-  noteDuration: PromptNoteDuration,
+  noteDuration: PromptNoteDuration
 ): StaffPageBeamRun[] {
   const config = PROMPT_NOTE_DURATION_CONFIG[noteDuration];
   const groupSize = config.beamGroupSize;
@@ -83,7 +89,7 @@ export function getStaffPageBeamRuns(
 }
 
 export function getCrossStaffOuterStemDirection(
-  notes: readonly { y: number }[],
+  notes: readonly { y: number }[]
 ): StaffPageStemDirection {
   const { bottomY, topY, ys } = getNoteYRange(notes);
   const upwardStemCost = ys.reduce((sum, y) => sum + y - topY, 0);
@@ -94,7 +100,7 @@ export function getCrossStaffOuterStemDirection(
 export function getVisibleBeamStemDirection(
   notes: readonly { y: number }[],
   visibleBounds: StaffPageVisibleYBounds,
-  minimumClearance: number,
+  minimumClearance: number
 ): StaffPageStemDirection | undefined {
   const { bottomY, topY } = getNoteYRange(notes);
   const upwardSpace = topY - visibleBounds.topY;

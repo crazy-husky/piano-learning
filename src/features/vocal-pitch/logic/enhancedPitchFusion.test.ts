@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_VOCAL_PITCH_CONFIG, midiToFrequency, type VocalPitchAnalysis } from "../../../domain/vocalPitch";
+import {
+  DEFAULT_VOCAL_PITCH_CONFIG,
+  midiToFrequency,
+  type VocalPitchAnalysis,
+} from "../../../domain/vocalPitch";
 import {
   fillReliableFcpeGaps,
   fuseEnhancedPitchTracks,
@@ -8,8 +12,10 @@ import {
 
 function track(midi: readonly (number | null)[]): NeuralPitchTrack {
   return {
-    confidence: Float32Array.from(midi, (value) => value === null ? 0 : 1),
-    frequenciesHz: Float32Array.from(midi, (value) => value === null ? Number.NaN : midiToFrequency(value)),
+    confidence: Float32Array.from(midi, (value) => (value === null ? 0 : 1)),
+    frequenciesHz: Float32Array.from(midi, (value) =>
+      value === null ? Number.NaN : midiToFrequency(value)
+    ),
     timesSeconds: Float32Array.from(midi, (_, index) => index / 100),
   };
 }
@@ -31,9 +37,19 @@ function mpm(midi: readonly (number | null)[]): VocalPitchAnalysis {
   };
 }
 
-function outputMidi(production: readonly (number | null)[], swift: readonly (number | null)[], fcpe: readonly (number | null)[]) {
-  return fuseEnhancedPitchTracks(mpm(production), track(swift), track(fcpe), production.length / 100)
-    .map((frame) => frame.frequencyHz === null ? null : 69 + 12 * Math.log2(frame.frequencyHz / 440));
+function outputMidi(
+  production: readonly (number | null)[],
+  swift: readonly (number | null)[],
+  fcpe: readonly (number | null)[]
+) {
+  return fuseEnhancedPitchTracks(
+    mpm(production),
+    track(swift),
+    track(fcpe),
+    production.length / 100
+  ).map((frame) =>
+    frame.frequencyHz === null ? null : 69 + 12 * Math.log2(frame.frequencyHz / 440)
+  );
 }
 
 describe("enhanced pitch fusion", () => {
@@ -65,7 +81,9 @@ describe("enhanced pitch fusion", () => {
       timeSeconds: index / 100,
     }));
     const rawFcpe = [60, 61, 62, 63, 64, 65, 66].map((value) => midiToFrequency(value));
-    expect(fillReliableFcpeGaps(frames, rawFcpe).every((frame) => frame.frequencyHz !== null)).toBe(true);
+    expect(fillReliableFcpeGaps(frames, rawFcpe).every((frame) => frame.frequencyHz !== null)).toBe(
+      true
+    );
 
     const tooLong = [60, null, null, null, null, null, null, 67].map((value, index) => ({
       confidence: value === null ? 0 : 1,
@@ -73,8 +91,10 @@ describe("enhanced pitch fusion", () => {
       timeSeconds: index / 100,
     }));
     expect(
-      fillReliableFcpeGaps(tooLong, [60, 61, 62, 63, 64, 65, 66, 67].map((value) => midiToFrequency(value)))[1]
-        .frequencyHz,
+      fillReliableFcpeGaps(
+        tooLong,
+        [60, 61, 62, 63, 64, 65, 66, 67].map((value) => midiToFrequency(value))
+      )[1].frequencyHz
     ).toBeNull();
 
     const offTrend = [...rawFcpe];

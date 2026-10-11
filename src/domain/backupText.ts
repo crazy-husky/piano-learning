@@ -89,7 +89,7 @@ function formatBackupDataSummary(
   firstDataAt?: string,
   lastDataAt?: string,
   recordCount?: number,
-  vocalAudioCounts: VocalAudioCounts = { materialCount: 0, recordingCount: 0, uploadCount: 0 },
+  vocalAudioCounts: VocalAudioCounts = { materialCount: 0, recordingCount: 0, uploadCount: 0 }
 ): BackupConflictDataSummary {
   return {
     firstDataAt: formatBackupTime(firstDataAt),
@@ -100,25 +100,23 @@ function formatBackupDataSummary(
 }
 
 export function getBackupConflictDataSummaries(
-  backupState: BackupConflictSummarySource,
+  backupState: BackupConflictSummarySource
 ): BackupConflictDataSummaries {
   const backup = formatBackupDataSummary(
     backupState.conflictBackupFirstDataAt ?? backupState.conflictBackupFirstReviewAt,
     backupState.conflictBackupLastDataAt ?? backupState.conflictBackupLastReviewAt,
     backupState.conflictBackupRecordCount ?? backupState.conflictBackupReviewCount,
-    backupState.conflictBackupVocalAudioCounts,
+    backupState.conflictBackupVocalAudioCounts
   );
   const browser = formatBackupDataSummary(
     backupState.conflictBrowserFirstDataAt ?? backupState.conflictBrowserFirstReviewAt,
     backupState.conflictBrowserLastDataAt ?? backupState.conflictBrowserLastReviewAt,
     backupState.conflictBrowserRecordCount ?? backupState.conflictBrowserReviewCount,
-    backupState.conflictBrowserVocalAudioCounts,
+    backupState.conflictBrowserVocalAudioCounts
   );
   return { backup, browser };
 }
 
-export function formatBackupConflictDetail(
-  _backupState: BackupState,
-): string {
+export function formatBackupConflictDetail(_backupState: BackupState): string {
   return backupText.messages.dataConflictBeforeBackup;
 }

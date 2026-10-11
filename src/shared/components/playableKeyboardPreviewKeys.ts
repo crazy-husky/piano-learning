@@ -4,12 +4,18 @@ import { getPianoKeyDefinitions, type PianoKeyboardKey } from "./PianoKeyboard";
 const PLAYABLE_PREVIEW_SHORTCUT_KEYS = new Map(
   getPianoKeyDefinitions(true).flatMap((definition) =>
     definition.label
-      ? [[
-          definition.label,
-          { id: definition.id, keyName: definition.keyName, octaveOffset: definition.octaveOffset },
-        ] as const]
-      : [],
-  ),
+      ? [
+          [
+            definition.label,
+            {
+              id: definition.id,
+              keyName: definition.keyName,
+              octaveOffset: definition.octaveOffset,
+            },
+          ] as const,
+        ]
+      : []
+  )
 );
 
 export function getPlayablePreviewShortcutKey(key: string): PianoKeyboardKey | undefined {

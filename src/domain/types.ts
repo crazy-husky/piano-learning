@@ -14,9 +14,11 @@ export type StoredAnswerPitchMode = AnswerPitchMode | "absolute-pitch";
 export type PracticeQueueStrategy = "adaptive" | "focused" | "melody" | "note-drill";
 export type PromptDisplayMode = "single-note" | "staff-page";
 export type PromptNoteDuration = "whole" | "quarter" | "eighth" | "sixteenth";
-export type EffectiveQueueAlgorithm = "adaptive-v1" | "adaptive-v2" | "focused-v1" | "melody-v1" | "melody-v2";
+export type EffectiveQueueAlgorithm =
+  "adaptive-v1" | "adaptive-v2" | "focused-v1" | "melody-v1" | "melody-v2";
 export type QueueComparisonFamily = "adaptive" | "melody-v1" | "melody-v2";
-export type SessionEndReason = "manual-stop" | "completed-count" | "completed-duration" | "abandoned";
+export type SessionEndReason =
+  "manual-stop" | "completed-count" | "completed-duration" | "abandoned";
 export type InterruptReason =
   | "focus-lost"
   | "inactive-timeout"

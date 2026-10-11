@@ -39,17 +39,15 @@ describe("practice comparison snapshot", () => {
   });
 
   it("keeps old regular and focused algorithms in the adaptive comparison family", () => {
-    expect((["adaptive-v1", "focused-v1", "adaptive-v2"] as const).map(getQueueComparisonFamily)).toEqual([
-      "adaptive",
-      "adaptive",
-      "adaptive",
-    ]);
+    expect(
+      (["adaptive-v1", "focused-v1", "adaptive-v2"] as const).map(getQueueComparisonFamily)
+    ).toEqual(["adaptive", "adaptive", "adaptive"]);
     expect(snapshot()?.effectiveQueueAlgorithm).toBe("adaptive-v2");
   });
 
   it("keeps prompt note duration in the direct comparison snapshot", () => {
     expect(snapshot({ promptNoteDuration: "quarter" })).not.toEqual(
-      snapshot({ promptNoteDuration: "sixteenth" }),
+      snapshot({ promptNoteDuration: "sixteenth" })
     );
   });
 });

@@ -271,16 +271,25 @@
   color: var(--text);
 }
 
-.practice-microphone-analysis-table.practice-microphone-candidate-table tbody tr.is-missed-note > * {
+.practice-microphone-analysis-table.practice-microphone-candidate-table
+  tbody
+  tr.is-missed-note
+  > * {
   border-bottom: 1px solid var(--danger);
   border-top: 2px solid var(--danger);
 }
 
-.practice-microphone-analysis-table.practice-microphone-candidate-table tbody tr.is-missed-note > :first-child {
+.practice-microphone-analysis-table.practice-microphone-candidate-table
+  tbody
+  tr.is-missed-note
+  > :first-child {
   border-left: 1px solid var(--danger);
 }
 
-.practice-microphone-analysis-table.practice-microphone-candidate-table tbody tr.is-missed-note > :last-child {
+.practice-microphone-analysis-table.practice-microphone-candidate-table
+  tbody
+  tr.is-missed-note
+  > :last-child {
   border-right: 1px solid var(--danger);
 }
 
@@ -735,8 +744,12 @@
 }
 
 @keyframes ui-confirm-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .settings-reset-panel {
@@ -1022,7 +1035,10 @@
   pointer-events: none;
   position: absolute;
   transform: translate(-50%, 3px);
-  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease,
+    visibility 0.14s ease;
   visibility: hidden;
   white-space: nowrap;
   z-index: 5;

@@ -7,7 +7,9 @@ import packageJson from "./package.json";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 const pagesRepoName = process.env.GITHUB_REPOSITORY?.split("/")[1];
-const tailscaleAllowedHosts = process.env.TAILSCALE_HOSTNAME ? [process.env.TAILSCALE_HOSTNAME] : [];
+const tailscaleAllowedHosts = process.env.TAILSCALE_HOSTNAME
+  ? [process.env.TAILSCALE_HOSTNAME]
+  : [];
 const buildTime = new Date().toISOString();
 const buildId = `${process.env.GITHUB_SHA || "local"}-${buildTime}`;
 const buildVersion = packageJson.version;
@@ -27,7 +29,10 @@ const appBuildVersionPlugin: Plugin = {
   },
   writeBundle(options) {
     const outputDirectory = resolve(options.dir || resolve(projectRoot, "dist"));
-    const serviceWorkerTemplate = readFileSync(resolve(projectRoot, "public/service-worker.js"), "utf8");
+    const serviceWorkerTemplate = readFileSync(
+      resolve(projectRoot, "public/service-worker.js"),
+      "utf8"
+    );
     const serviceWorker = serviceWorkerTemplate
       .replace(/__APP_BUILD_ID__/g, JSON.stringify(buildId))
       .replace("__APP_ASSET_FILES__", JSON.stringify(appCodeAssetFiles));

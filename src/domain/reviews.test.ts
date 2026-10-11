@@ -11,8 +11,8 @@ describe("review predicates", () => {
           targetNoteId: "C4",
           interrupted: true,
           interruptReason: "manual-pause",
-        }),
-      ),
+        })
+      )
     ).toBe(false);
     expect(
       isCompletedReview(
@@ -20,8 +20,8 @@ describe("review predicates", () => {
           targetNoteId: "C4",
           interrupted: true,
           interruptReason: "focus-lost",
-        }),
-      ),
+        })
+      )
     ).toBe(false);
     expect(
       isCompletedReview(
@@ -31,8 +31,8 @@ describe("review predicates", () => {
           answeredCorrectly: false,
           interrupted: true,
           interruptReason: "manual-stop",
-        }),
-      ),
+        })
+      )
     ).toBe(false);
   });
 

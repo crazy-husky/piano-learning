@@ -1,5 +1,13 @@
-import type { VocalPitchAnalysis, VocalPitchAnalysisConfig, VocalPitchFrame } from "../../../domain/vocalPitch";
-import type { PitchAnalysisMode, PitchWorkerAnalyzeRequest, PitchWorkerResponse } from "./pitchWorkerProtocol";
+import type {
+  VocalPitchAnalysis,
+  VocalPitchAnalysisConfig,
+  VocalPitchFrame,
+} from "../../../domain/vocalPitch";
+import type {
+  PitchAnalysisMode,
+  PitchWorkerAnalyzeRequest,
+  PitchWorkerResponse,
+} from "./pitchWorkerProtocol";
 
 export type { PitchAnalysisMode } from "./pitchWorkerProtocol";
 
@@ -12,7 +20,10 @@ export interface DecodedAudio {
 
 export async function prepareEnhancedPitchAudio(decoded: DecodedAudio): Promise<DecodedAudio> {
   if (decoded.sampleRate === 16_000 || typeof OfflineAudioContext === "undefined") return decoded;
-  const outputLength = Math.max(1, Math.round(decoded.samples.length * 16_000 / decoded.sampleRate));
+  const outputLength = Math.max(
+    1,
+    Math.round((decoded.samples.length * 16_000) / decoded.sampleRate)
+  );
   const context = new OfflineAudioContext(1, outputLength, 16_000);
   const buffer = context.createBuffer(1, decoded.samples.length, decoded.sampleRate);
   buffer.getChannelData(0).set(decoded.samples);
@@ -54,7 +65,7 @@ export function startPitchAnalysis(
   config: VocalPitchAnalysisConfig,
   onProgress: (progress: number) => void,
   mode: PitchAnalysisMode = "mpm-c",
-  modelSamples?: Float32Array,
+  modelSamples?: Float32Array
 ): PitchAnalysisTask {
   const worker = new Worker(new URL("./pitch.worker.ts", import.meta.url), { type: "module" });
   const id = nextAnalysisId;
@@ -85,9 +96,12 @@ export function startPitchAnalysis(
       worker.terminate();
       reject(new Error(event.message || "分析线程发生错误"));
     };
-    const sampleBuffer = samples.buffer instanceof ArrayBuffer ? samples.buffer : samples.slice().buffer;
+    const sampleBuffer =
+      samples.buffer instanceof ArrayBuffer ? samples.buffer : samples.slice().buffer;
     const modelSampleBuffer = modelSamples
-      ? modelSamples.buffer instanceof ArrayBuffer ? modelSamples.buffer : modelSamples.slice().buffer
+      ? modelSamples.buffer instanceof ArrayBuffer
+        ? modelSamples.buffer
+        : modelSamples.slice().buffer
       : undefined;
     const request: PitchWorkerAnalyzeRequest = {
       type: "analyze",
@@ -98,7 +112,10 @@ export function startPitchAnalysis(
       mode,
       modelSamples: modelSampleBuffer,
     };
-    worker.postMessage(request, modelSampleBuffer ? [sampleBuffer, modelSampleBuffer] : [sampleBuffer]);
+    worker.postMessage(
+      request,
+      modelSampleBuffer ? [sampleBuffer, modelSampleBuffer] : [sampleBuffer]
+    );
   });
 
   return {
@@ -116,7 +133,7 @@ export function startPitchAnalysis(
 
 export function mergeLivePitchFrame(
   frames: readonly VocalPitchFrame[],
-  frame: VocalPitchFrame,
+  frame: VocalPitchFrame
 ): VocalPitchFrame[] {
   const previous = frames.at(-1);
   if (previous && frame.timeSeconds <= previous.timeSeconds) {

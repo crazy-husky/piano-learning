@@ -34,10 +34,12 @@ export interface SelectNextNoteOptions {
 
 export interface AdaptiveNoteScheduler {
   appendReview(review: ReviewRecord): void;
-  select(options?: Pick<SelectNextNoteOptions, "lastTargetNoteId" | "plannedTargetNoteIds" | "rng">): TargetNote;
+  select(
+    options?: Pick<SelectNextNoteOptions, "lastTargetNoteId" | "plannedTargetNoteIds" | "rng">
+  ): TargetNote;
   selectPage(
     count: number,
-    options?: Pick<SelectNextNoteOptions, "lastTargetNoteId" | "plannedTargetNoteIds" | "rng">,
+    options?: Pick<SelectNextNoteOptions, "lastTargetNoteId" | "plannedTargetNoteIds" | "rng">
   ): TargetNote[];
 }
 
@@ -63,16 +65,18 @@ function reviewCompletedAt(review: ReviewRecord): number {
 }
 
 function orderedStatisticalReviews(reviews: ReviewRecord[]): ReviewRecord[] {
-  return reviews.filter(isStatisticalReview).sort(
-    (left, right) =>
-      reviewCompletedAt(left) - reviewCompletedAt(right) ||
-      new Date(left.startedAt).getTime() - new Date(right.startedAt).getTime(),
-  );
+  return reviews
+    .filter(isStatisticalReview)
+    .sort(
+      (left, right) =>
+        reviewCompletedAt(left) - reviewCompletedAt(right) ||
+        new Date(left.startedAt).getTime() - new Date(right.startedAt).getTime()
+    );
 }
 
 function buildQualifiedReviewsByNote(
   notes: readonly TargetNote[],
-  orderedReviews: readonly ReviewRecord[],
+  orderedReviews: readonly ReviewRecord[]
 ): Map<TargetNoteId, ReviewRecord[]> {
   const byNote = new Map(notes.map((note) => [note.id, [] as ReviewRecord[]]));
   for (const review of orderedReviews) {
@@ -88,7 +92,7 @@ function plannedCount(noteId: TargetNoteId, plannedTargetNoteIds: readonly Targe
 function getAdaptiveNotePerformanceFromHistory(
   notes: readonly TargetNote[],
   qualifiedReviewsByNote: ReadonlyMap<TargetNoteId, readonly ReviewRecord[]>,
-  plannedTargetNoteIds: readonly TargetNoteId[] = [],
+  plannedTargetNoteIds: readonly TargetNoteId[] = []
 ): Map<TargetNoteId, AdaptiveNotePerformance> {
   const raw = notes.map((note) => {
     const qualified = qualifiedReviewsByNote.get(note.id) ?? [];
@@ -103,45 +107,54 @@ function getAdaptiveNotePerformanceFromHistory(
     };
   });
   const matureMedians = raw
-    .filter((entry) => entry.selectionCount >= COLD_START_REVIEW_COUNT && entry.recentMedianMs !== undefined)
+    .filter(
+      (entry) =>
+        entry.selectionCount >= COLD_START_REVIEW_COUNT && entry.recentMedianMs !== undefined
+    )
     .map((entry) => entry.recentMedianMs!);
   const priorMedianMs = median(matureMedians);
 
-  return new Map(raw.map((entry) => {
-    const evidenceCount = Math.min(entry.selectionCount, PERFORMANCE_REVIEW_LIMIT);
-    const alpha = Math.min(
-      1,
-      Math.max(
-        0,
-        (evidenceCount - COLD_START_REVIEW_COUNT) / (PERFORMANCE_REVIEW_LIMIT - COLD_START_REVIEW_COUNT),
-      ),
-    );
-    const adjustedMedianMs =
-      entry.selectionCount >= COLD_START_REVIEW_COUNT &&
-      entry.recentMedianMs !== undefined &&
-      priorMedianMs !== undefined
-        ? (1 - alpha) * priorMedianMs + alpha * entry.recentMedianMs
-        : undefined;
-    return [entry.noteId, {
-      adjustedMedianMs,
-      eligibleReviewCount: entry.eligibleReviewCount,
-      plannedPageCount: entry.plannedPageCount,
-      recentMedianMs: entry.recentMedianMs,
-      selectionCount: entry.selectionCount,
-    }];
-  }));
+  return new Map(
+    raw.map((entry) => {
+      const evidenceCount = Math.min(entry.selectionCount, PERFORMANCE_REVIEW_LIMIT);
+      const alpha = Math.min(
+        1,
+        Math.max(
+          0,
+          (evidenceCount - COLD_START_REVIEW_COUNT) /
+            (PERFORMANCE_REVIEW_LIMIT - COLD_START_REVIEW_COUNT)
+        )
+      );
+      const adjustedMedianMs =
+        entry.selectionCount >= COLD_START_REVIEW_COUNT &&
+        entry.recentMedianMs !== undefined &&
+        priorMedianMs !== undefined
+          ? (1 - alpha) * priorMedianMs + alpha * entry.recentMedianMs
+          : undefined;
+      return [
+        entry.noteId,
+        {
+          adjustedMedianMs,
+          eligibleReviewCount: entry.eligibleReviewCount,
+          plannedPageCount: entry.plannedPageCount,
+          recentMedianMs: entry.recentMedianMs,
+          selectionCount: entry.selectionCount,
+        },
+      ];
+    })
+  );
 }
 
 export function getAdaptiveNotePerformance(
   notes: readonly TargetNote[],
   reviews: ReviewRecord[],
-  plannedTargetNoteIds: readonly TargetNoteId[] = [],
+  plannedTargetNoteIds: readonly TargetNoteId[] = []
 ): Map<TargetNoteId, AdaptiveNotePerformance> {
   const orderedReviews = orderedStatisticalReviews(reviews);
   return getAdaptiveNotePerformanceFromHistory(
     notes,
     buildQualifiedReviewsByNote(notes, orderedReviews),
-    plannedTargetNoteIds,
+    plannedTargetNoteIds
   );
 }
 
@@ -154,7 +167,7 @@ function tierSlotWeights(noteCount: number): number[] {
 
 export function getAdaptiveTierWeights(
   notes: readonly TargetNote[],
-  performance: ReadonlyMap<TargetNoteId, AdaptiveNotePerformance>,
+  performance: ReadonlyMap<TargetNoteId, AdaptiveNotePerformance>
 ): Map<TargetNoteId, number> {
   const ordered = notes
     .filter((note) => performance.get(note.id)?.adjustedMedianMs !== undefined)
@@ -170,10 +183,14 @@ export function getAdaptiveTierWeights(
   for (let start = 0; start < ordered.length;) {
     const score = performance.get(ordered[start].id)!.adjustedMedianMs;
     let end = start + 1;
-    while (end < ordered.length && sameScore(performance.get(ordered[end].id)!.adjustedMedianMs, score)) {
+    while (
+      end < ordered.length &&
+      sameScore(performance.get(ordered[end].id)!.adjustedMedianMs, score)
+    ) {
       end += 1;
     }
-    const averageWeight = slotWeights.slice(start, end).reduce((sum, weight) => sum + weight, 0) / (end - start);
+    const averageWeight =
+      slotWeights.slice(start, end).reduce((sum, weight) => sum + weight, 0) / (end - start);
     for (let index = start; index < end; index += 1) {
       weights.set(ordered[index].id, averageWeight);
     }
@@ -182,7 +199,10 @@ export function getAdaptiveTierWeights(
   return weights;
 }
 
-function withoutImmediateRepeat(notes: TargetNote[], lastTargetNoteId?: TargetNoteId): TargetNote[] {
+function withoutImmediateRepeat(
+  notes: TargetNote[],
+  lastTargetNoteId?: TargetNoteId
+): TargetNote[] {
   if (notes.length <= 1 || lastTargetNoteId === undefined) {
     return notes;
   }
@@ -197,7 +217,7 @@ function randomChoice<T>(items: readonly T[], rng: () => number): T {
 function weightedChoice(
   notes: readonly TargetNote[],
   weights: ReadonlyMap<TargetNoteId, number>,
-  rng: () => number,
+  rng: () => number
 ): TargetNote {
   const total = notes.reduce((sum, note) => sum + (weights.get(note.id) ?? 0), 0);
   if (total <= 0) {
@@ -237,13 +257,14 @@ function buildBaseQuestionGaps({
   const gaps = new Map(notes.map((note) => [note.id, 0]));
   const relevantIds = new Set(gaps.keys());
   const sessionTargetSets = new Map(
-    sessions.map((session) => [session.id, targetSetForSession(session)]),
+    sessions.map((session) => [session.id, targetSetForSession(session)])
   );
   const currentTargetSet = new Set(relevantIds);
   for (const review of orderedReviews) {
-    const targetSet = review.sessionId === currentSessionId
-      ? currentTargetSet
-      : sessionTargetSets.get(review.sessionId);
+    const targetSet =
+      review.sessionId === currentSessionId
+        ? currentTargetSet
+        : sessionTargetSets.get(review.sessionId);
     if (!targetSet) {
       continue;
     }
@@ -258,7 +279,7 @@ function buildBaseQuestionGaps({
 
 function applyPlannedQuestionGaps(
   baseGaps: ReadonlyMap<TargetNoteId, number>,
-  plannedTargetNoteIds: readonly TargetNoteId[],
+  plannedTargetNoteIds: readonly TargetNoteId[]
 ): Map<TargetNoteId, number> {
   const gaps = new Map(baseGaps);
   for (const selectedId of plannedTargetNoteIds) {
@@ -300,7 +321,7 @@ export function createAdaptiveNoteScheduler(options: SelectNextNoteOptions): Ada
   const currentSessionId = options.currentSessionId;
   const currentTargetSet = new Set(notes.map((note) => note.id));
   const sessionTargetSets = new Map(
-    sessions.map((session) => [session.id, targetSetForSession(session)]),
+    sessions.map((session) => [session.id, targetSetForSession(session)])
   );
   const history = prepareAdaptiveHistory({
     currentSessionId,
@@ -313,16 +334,19 @@ export function createAdaptiveNoteScheduler(options: SelectNextNoteOptions): Ada
     appendReview(review): void {
       if (!isStatisticalReview(review)) return;
       history.qualifiedReviewsByNote.get(review.targetNoteId)?.push(review);
-      const targetSet = review.sessionId === currentSessionId
-        ? currentTargetSet
-        : sessionTargetSets.get(review.sessionId);
+      const targetSet =
+        review.sessionId === currentSessionId
+          ? currentTargetSet
+          : sessionTargetSets.get(review.sessionId);
       if (!targetSet) return;
       for (const noteId of currentTargetSet) {
         history.baseQuestionGaps.set(
           noteId,
           targetSet.has(noteId)
-            ? noteId === review.targetNoteId ? 0 : (history.baseQuestionGaps.get(noteId) ?? 0) + 1
-            : history.baseQuestionGaps.get(noteId) ?? 0,
+            ? noteId === review.targetNoteId
+              ? 0
+              : (history.baseQuestionGaps.get(noteId) ?? 0) + 1
+            : (history.baseQuestionGaps.get(noteId) ?? 0)
         );
       }
     },
@@ -331,7 +355,8 @@ export function createAdaptiveNoteScheduler(options: SelectNextNoteOptions): Ada
         history,
         lastTargetNoteId: dynamicOptions.lastTargetNoteId ?? options.lastTargetNoteId,
         notes,
-        plannedTargetNoteIds: dynamicOptions.plannedTargetNoteIds ?? options.plannedTargetNoteIds ?? [],
+        plannedTargetNoteIds:
+          dynamicOptions.plannedTargetNoteIds ?? options.plannedTargetNoteIds ?? [],
         rng: dynamicOptions.rng ?? options.rng ?? Math.random,
       });
     },
@@ -370,7 +395,7 @@ export function getDrillNotes(notes: TargetNote[], drillNoteNames: NoteName[] = 
 function resolveStrategyNotes(
   notes: TargetNote[],
   strategy: PracticeQueueStrategy,
-  drillNoteNames: NoteName[] | undefined,
+  drillNoteNames: NoteName[] | undefined
 ): TargetNote[] {
   const strategyNotes = strategy === "note-drill" ? getDrillNotes(notes, drillNoteNames) : notes;
   if (strategyNotes.length === 0) {
@@ -399,32 +424,43 @@ function selectAdaptiveNote({
   const performance = getAdaptiveNotePerformanceFromHistory(
     notes,
     history.qualifiedReviewsByNote,
-    plannedTargetNoteIds,
+    plannedTargetNoteIds
   );
-  const mature = eligible.filter((note) => performance.get(note.id)!.selectionCount >= COLD_START_REVIEW_COUNT);
-  const newcomers = eligible.filter((note) => performance.get(note.id)!.selectionCount < COLD_START_REVIEW_COUNT);
+  const mature = eligible.filter(
+    (note) => performance.get(note.id)!.selectionCount >= COLD_START_REVIEW_COUNT
+  );
+  const newcomers = eligible.filter(
+    (note) => performance.get(note.id)!.selectionCount < COLD_START_REVIEW_COUNT
+  );
   const gaps = applyPlannedQuestionGaps(history.baseQuestionGaps, plannedTargetNoteIds);
   const overdue = mature.filter((note) => (gaps.get(note.id) ?? 0) >= MAINTENANCE_GAP);
   if (overdue.length > 0) {
     const oldestGap = Math.max(...overdue.map((note) => gaps.get(note.id) ?? 0));
-    return randomChoice(overdue.filter((note) => gaps.get(note.id) === oldestGap), rng);
+    return randomChoice(
+      overdue.filter((note) => gaps.get(note.id) === oldestGap),
+      rng
+    );
   }
 
-  const allBroadlyNew = newcomers.length > 0 && notes.every(
-    (note) => performance.get(note.id)!.selectionCount <= COLD_START_REVIEW_COUNT,
-  );
+  const allBroadlyNew =
+    newcomers.length > 0 &&
+    notes.every((note) => performance.get(note.id)!.selectionCount <= COLD_START_REVIEW_COUNT);
   if (allBroadlyNew || mature.length === 0) {
-    const minimumCount = Math.min(...newcomers.map((note) => performance.get(note.id)!.selectionCount));
+    const minimumCount = Math.min(
+      ...newcomers.map((note) => performance.get(note.id)!.selectionCount)
+    );
     return randomChoice(
       newcomers.filter((note) => performance.get(note.id)!.selectionCount === minimumCount),
-      rng,
+      rng
     );
   }
   if (newcomers.length > 0 && rng() < NEWCOMER_RATE) {
-    const minimumCount = Math.min(...newcomers.map((note) => performance.get(note.id)!.selectionCount));
+    const minimumCount = Math.min(
+      ...newcomers.map((note) => performance.get(note.id)!.selectionCount)
+    );
     return randomChoice(
       newcomers.filter((note) => performance.get(note.id)!.selectionCount === minimumCount),
-      rng,
+      rng
     );
   }
   return weightedChoice(mature, getAdaptiveTierWeights(notes, performance), rng);

@@ -38,7 +38,7 @@ export function classifyPitchFrame(
     maxFrequencyHz: VOCAL_PITCH_MAX_FREQUENCY_HZ,
     minFrequencyHz: VOCAL_PITCH_MIN_FREQUENCY_HZ,
   },
-  minRms = MIN_VOICED_RMS,
+  minRms = MIN_VOICED_RMS
 ): ClassifiedPitchFrame {
   const { fallback, primary } = detector.detect(samples, sampleRate);
   const candidate = fallback;

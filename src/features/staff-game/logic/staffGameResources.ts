@@ -60,9 +60,21 @@ export const STAFF_GAME_ART = {
 } as const;
 
 const STAFF_GAME_IMAGE_ASSETS = [
-  { id: "image:background-desktop", label: "桌面场景背景", source: STAFF_GAME_ART.gameBackgroundDesktop },
-  { id: "image:background-mobile", label: "手机场景背景", source: STAFF_GAME_ART.gameBackgroundMobile },
-  { id: "image:mascot-celebration", label: "吉祥物庆祝动画", source: STAFF_GAME_ART.mascotCelebrationFrames },
+  {
+    id: "image:background-desktop",
+    label: "桌面场景背景",
+    source: STAFF_GAME_ART.gameBackgroundDesktop,
+  },
+  {
+    id: "image:background-mobile",
+    label: "手机场景背景",
+    source: STAFF_GAME_ART.gameBackgroundMobile,
+  },
+  {
+    id: "image:mascot-celebration",
+    label: "吉祥物庆祝动画",
+    source: STAFF_GAME_ART.mascotCelebrationFrames,
+  },
   { id: "image:mascot-cheer", label: "吉祥物欢呼动画", source: STAFF_GAME_ART.mascotCheerFrames },
   { id: "image:mascot-pause", label: "吉祥物暂停动画", source: STAFF_GAME_ART.mascotPauseFrames },
   { id: "image:mascot-sad", label: "吉祥物失败动画", source: STAFF_GAME_ART.mascotSadFrames },
@@ -72,7 +84,11 @@ const STAFF_GAME_IMAGE_ASSETS = [
   { id: "image:cloud-three", label: "云朵装饰 3", source: STAFF_GAME_ART.cloudDecorationThree },
   { id: "image:notation-preview", label: "五线谱预览图", source: STAFF_GAME_ART.notationC4Preview },
   { id: "image:button-primary", label: "主要按钮素材", source: STAFF_GAME_ART.buttonPrimaryArt },
-  { id: "image:button-secondary", label: "次要按钮素材", source: STAFF_GAME_ART.buttonSecondaryArt },
+  {
+    id: "image:button-secondary",
+    label: "次要按钮素材",
+    source: STAFF_GAME_ART.buttonSecondaryArt,
+  },
   { id: "image:action-help", label: "提示按钮素材", source: STAFF_GAME_ART.actionHelpArt },
   { id: "image:action-pause", label: "暂停按钮素材", source: STAFF_GAME_ART.actionPauseArt },
   { id: "image:action-resume", label: "继续按钮素材", source: STAFF_GAME_ART.actionResumeArt },
@@ -84,8 +100,16 @@ const STAFF_GAME_IMAGE_ASSETS = [
   { id: "image:star-particle", label: "星星粒子素材", source: STAFF_GAME_ART.starParticleArt },
   { id: "image:settings-paw", label: "设置爪印素材", source: STAFF_GAME_ART.settingsPawArt },
   { id: "image:level-jump", label: "关卡跳转装饰", source: STAFF_GAME_ART.levelJumpDecorationArt },
-  { id: "image:summary-level-banner", label: "关卡结算横幅", source: STAFF_GAME_ART.summaryLevelBannerArt },
-  { id: "image:summary-fireworks", label: "结算烟花素材", source: STAFF_GAME_ART.summaryFireworksArt },
+  {
+    id: "image:summary-level-banner",
+    label: "关卡结算横幅",
+    source: STAFF_GAME_ART.summaryLevelBannerArt,
+  },
+  {
+    id: "image:summary-fireworks",
+    label: "结算烟花素材",
+    source: STAFF_GAME_ART.summaryFireworksArt,
+  },
 ];
 
 type StaffGameResourceStatus = "loading" | "loaded" | "failed";
@@ -106,16 +130,39 @@ export interface StaffGameResourceUpdate {
 }
 
 const STAFF_GAME_RESOURCE_MANIFEST = [
-  ...STAFF_GAME_IMAGE_ASSETS.map(({ id, label, source }) => ({ id, category: "图片", label, source })),
-  ...STAFF_GAME_SOUND_RESOURCES.map(({ id, label, source }) => ({ id, category: "音效", label, source })),
-  { id: "audio:background-music", category: "音频", label: "游戏背景音乐", source: STAFF_GAME_ART.gameBackgroundMusic },
-  { id: "audio:piano-samples", category: "钢琴音色", label: "钢琴采样组", source: `${import.meta.env.BASE_URL}audio/salamander/*.mp3` },
+  ...STAFF_GAME_IMAGE_ASSETS.map(({ id, label, source }) => ({
+    id,
+    category: "图片",
+    label,
+    source,
+  })),
+  ...STAFF_GAME_SOUND_RESOURCES.map(({ id, label, source }) => ({
+    id,
+    category: "音效",
+    label,
+    source,
+  })),
+  {
+    id: "audio:background-music",
+    category: "音频",
+    label: "游戏背景音乐",
+    source: STAFF_GAME_ART.gameBackgroundMusic,
+  },
+  {
+    id: "audio:piano-samples",
+    category: "钢琴音色",
+    label: "钢琴采样组",
+    source: `${import.meta.env.BASE_URL}audio/salamander/*.mp3`,
+  },
   { id: "font:score", category: "字体", label: "闯关计分字体", source: scoreFont },
   { id: "font:digits", category: "字体", label: "数字字体", source: scoreFont },
 ] satisfies Array<Omit<StaffGameResourceProgress, "status" | "error">>;
 
 export function createStaffGameResourceProgress(): StaffGameResourceProgress[] {
-  return STAFF_GAME_RESOURCE_MANIFEST.map((resource) => ({ ...resource, status: "loading" as const }));
+  return STAFF_GAME_RESOURCE_MANIFEST.map((resource) => ({
+    ...resource,
+    status: "loading" as const,
+  }));
 }
 export const STAFF_GAME_RESOURCE_MAX_RETRIES = 3;
 export const STAFF_GAME_RESOURCE_RETRY_DELAY_MS = 500;
@@ -158,7 +205,7 @@ function loadGameImage(source: string): Promise<void> {
       }
       void image.decode().then(
         () => settle(),
-        () => settle(image.naturalWidth > 0 ? undefined : new Error(`Failed to decode ${source}`)),
+        () => settle(image.naturalWidth > 0 ? undefined : new Error(`Failed to decode ${source}`))
       );
     };
 
@@ -177,7 +224,7 @@ function loadGameImage(source: string): Promise<void> {
   pendingStaffGameImageLoads.set(source, loadPromise);
   void loadPromise.then(
     () => pendingStaffGameImageLoads.delete(source),
-    () => pendingStaffGameImageLoads.delete(source),
+    () => pendingStaffGameImageLoads.delete(source)
   );
   return loadPromise;
 }
@@ -189,7 +236,7 @@ function getErrorMessage(error: unknown): string {
 async function trackStaffGameResource(
   id: string,
   load: () => Promise<unknown>,
-  onProgress?: (update: StaffGameResourceUpdate) => void,
+  onProgress?: (update: StaffGameResourceUpdate) => void
 ): Promise<number> {
   onProgress?.({ id, status: "loading" });
   try {
@@ -202,7 +249,11 @@ async function trackStaffGameResource(
   }
 }
 
-function preloadGameBackgroundMusic(audio: HTMLAudioElement, signal: AbortSignal, retry: boolean): Promise<void> {
+function preloadGameBackgroundMusic(
+  audio: HTMLAudioElement,
+  signal: AbortSignal,
+  retry: boolean
+): Promise<void> {
   if (signal.aborted) return Promise.resolve();
   if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return Promise.resolve();
   if (retry && audio.error) {
@@ -231,7 +282,7 @@ function preloadGameBackgroundMusic(audio: HTMLAudioElement, signal: AbortSignal
     const handleAbort = (): void => settle();
     const timeout = window.setTimeout(
       () => settle(new Error("Timed out while loading game background music")),
-      STAFF_GAME_BACKGROUND_AUDIO_TIMEOUT_MS,
+      STAFF_GAME_BACKGROUND_AUDIO_TIMEOUT_MS
     );
 
     audio.addEventListener("canplay", handleCanPlay, { once: true });
@@ -249,33 +300,50 @@ export async function preloadStaffGameResources(
   backgroundMusic: HTMLAudioElement,
   signal: AbortSignal,
   retry: boolean,
-  onProgress?: (update: StaffGameResourceUpdate) => void,
+  onProgress?: (update: StaffGameResourceUpdate) => void
 ): Promise<number> {
   const soundFailures = preloadStaffGameSounds((update) => {
     onProgress?.({ id: `sound:${update.sound}`, status: update.status, error: update.error });
   });
   const failures = await Promise.all([
-    ...STAFF_GAME_IMAGE_ASSETS.map(({ id, source }) => trackStaffGameResource(id, () => loadGameImage(source), onProgress)),
+    ...STAFF_GAME_IMAGE_ASSETS.map(({ id, source }) =>
+      trackStaffGameResource(id, () => loadGameImage(source), onProgress)
+    ),
     soundFailures,
     trackStaffGameResource(
       "audio:background-music",
       () => preloadGameBackgroundMusic(backgroundMusic, signal, retry),
-      onProgress,
+      onProgress
     ),
-    trackStaffGameResource("audio:piano-samples", async () => {
-      const loaded = await preloadPianoSamples();
-      if (!loaded) throw new Error(getPianoSampleLoadError()?.message ?? "One or more piano samples failed to load");
-    }, onProgress),
-    trackStaffGameResource("font:score", async () => {
-      if (typeof document !== "undefined" && document.fonts) {
-        await document.fonts.load('700 48px "Fredoka Rush Score"', "0123456789+");
-      }
-    }, onProgress),
-    trackStaffGameResource("font:digits", async () => {
-      if (typeof document !== "undefined" && document.fonts) {
-        await document.fonts.load("700 16px FredokaSystemDigits", "0123456789");
-      }
-    }, onProgress),
+    trackStaffGameResource(
+      "audio:piano-samples",
+      async () => {
+        const loaded = await preloadPianoSamples();
+        if (!loaded)
+          throw new Error(
+            getPianoSampleLoadError()?.message ?? "One or more piano samples failed to load"
+          );
+      },
+      onProgress
+    ),
+    trackStaffGameResource(
+      "font:score",
+      async () => {
+        if (typeof document !== "undefined" && document.fonts) {
+          await document.fonts.load('700 48px "Fredoka Rush Score"', "0123456789+");
+        }
+      },
+      onProgress
+    ),
+    trackStaffGameResource(
+      "font:digits",
+      async () => {
+        if (typeof document !== "undefined" && document.fonts) {
+          await document.fonts.load("700 16px FredokaSystemDigits", "0123456789");
+        }
+      },
+      onProgress
+    ),
   ]);
   return failures.reduce((total, failureCount) => total + failureCount, 0);
 }

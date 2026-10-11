@@ -6,14 +6,19 @@ import {
   getSessionProgressComparisonDimension,
   resolveSessionProgressSelection,
 } from "./sessionProgressSelection";
-import type { AnswerPitchMode, PracticeSessionRecordV1, PromptDisplayMode, QueueComparisonFamily } from "./types";
+import type {
+  AnswerPitchMode,
+  PracticeSessionRecordV1,
+  PromptDisplayMode,
+  QueueComparisonFamily,
+} from "./types";
 
 function group(
   id: string,
   promptDisplayMode: PromptDisplayMode,
   queueComparisonFamily: QueueComparisonFamily,
   startedAt: string,
-  answerPitchMode: AnswerPitchMode = "note-name",
+  answerPitchMode: AnswerPitchMode = "note-name"
 ): SessionProgressGroup {
   const latestSession: PracticeSessionRecordV1 = {
     completedCount: 5,
@@ -33,7 +38,13 @@ function group(
   };
   return {
     key,
-    keyString: [key.targetNoteSetKey, key.answerPitchMode, promptDisplayMode, queueComparisonFamily, key.promptNoteDuration].join("\u001f"),
+    keyString: [
+      key.targetNoteSetKey,
+      key.answerPitchMode,
+      promptDisplayMode,
+      queueComparisonFamily,
+      key.promptNoteDuration,
+    ].join("\u001f"),
     latestSession,
     sessionCount: 1,
     sessionIds: [latestSession.id],
@@ -48,7 +59,7 @@ describe("session progress selection", () => {
       "staff-page",
       "adaptive",
       "2026-07-02T10:00:00.000Z",
-      "exact-pitch",
+      "exact-pitch"
     );
     const result = resolveSessionProgressSelection({
       current: createSessionProgressSelection(noteName),
@@ -60,7 +71,9 @@ describe("session progress selection", () => {
 
     expect(result.rejected).toBe(false);
     expect(getSessionProgressComparisonDimension(result.selection)).toBe("answerPitchMode");
-    expect(getSelectedSessionProgressGroups([noteName, exactPitch], result.selection)).toHaveLength(2);
+    expect(getSelectedSessionProgressGroups([noteName, exactPitch], result.selection)).toHaveLength(
+      2
+    );
   });
 
   it("reconciles other dimensions to the nearest valid single group", () => {
@@ -114,9 +127,24 @@ describe("session progress selection", () => {
   });
 
   it("moves the comparison axis and collapses the old axis to the benchmark value", () => {
-    const singleAdaptive = group("single-adaptive", "single-note", "adaptive", "2026-07-03T10:00:00.000Z");
-    const staffAdaptive = group("staff-adaptive", "staff-page", "adaptive", "2026-07-02T10:00:00.000Z");
-    const singleMelody = group("single-melody", "single-note", "melody-v2", "2026-07-01T10:00:00.000Z");
+    const singleAdaptive = group(
+      "single-adaptive",
+      "single-note",
+      "adaptive",
+      "2026-07-03T10:00:00.000Z"
+    );
+    const staffAdaptive = group(
+      "staff-adaptive",
+      "staff-page",
+      "adaptive",
+      "2026-07-02T10:00:00.000Z"
+    );
+    const singleMelody = group(
+      "single-melody",
+      "single-note",
+      "melody-v2",
+      "2026-07-01T10:00:00.000Z"
+    );
     const displaySlice = resolveSessionProgressSelection({
       current: createSessionProgressSelection(singleAdaptive),
       dimension: "promptDisplayMode",

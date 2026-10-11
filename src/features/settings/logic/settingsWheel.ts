@@ -11,7 +11,10 @@ export function getWheelStepDirection(deltaY: number): WheelStepDirection | unde
   return undefined;
 }
 
-export function handleWheelStep(event: WheelStepEvent, onStep: (direction: WheelStepDirection) => void): void {
+export function handleWheelStep(
+  event: WheelStepEvent,
+  onStep: (direction: WheelStepDirection) => void
+): void {
   const direction = getWheelStepDirection(event.deltaY);
   if (direction === undefined) {
     return;

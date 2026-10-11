@@ -50,7 +50,6 @@ describe("practice session start snapshot", () => {
       pianoVolume: 0.6,
     });
     expect(built?.snapshot.environment).toEqual({ prefersReducedMotion: true });
-
   });
 
   it.each([
@@ -70,62 +69,65 @@ describe("practice session start snapshot", () => {
       mode: "fixed-duration" as const,
       queueStrategy: "focused" as const,
     },
-  ])("projects every V4 compatibility field for $mode", ({
-    effectiveQueueAlgorithm,
-    fixedCount,
-    fixedDurationSeconds,
-    focusedTraining,
-    mode,
-    queueStrategy,
-  }) => {
-    const settings = {
-      ...makeDefaultSettings(),
-      drillNoteNames: ["C", "E"] as const,
-      fixedCount: 17,
-      fixedDurationSeconds: 42,
-      includeInterStaffLedgerSpellings: true,
-      promptDisplayMode: "staff-page" as const,
-      promptNoteDuration: "sixteenth" as const,
-      queueStrategy,
-      staffNotationMode: "grand" as const,
-    };
-    const built = buildPracticeSessionStartSnapshot({
-      autoPlayTarget: true,
-      mode,
-      prefersReducedMotion: true,
-      settings: { ...settings, drillNoteNames: [...settings.drillNoteNames] },
-      smoothStaffPageScroll: true,
-      startPausedReading: true,
-    })!;
-    const session = buildPracticeSessionRecordV4({
-      id: `session-${mode}`,
-      snapshot: built.snapshot,
-      startedAt: "2026-07-12T10:00:00.000Z",
-    });
-
-    expect(session).toEqual({
-      answerPitchMode: "note-name",
-      completedCount: 0,
-      drillNoteNames: ["C", "E"],
+  ])(
+    "projects every V4 compatibility field for $mode",
+    ({
       effectiveQueueAlgorithm,
-      enabledGroupIds: settings.enabledGroupIds,
       fixedCount,
       fixedDurationSeconds,
       focusedTraining,
-      id: `session-${mode}`,
-      includeInterStaffLedgerSpellings: true,
-      interruptedCount: 0,
       mode,
-      promptDisplayMode: "staff-page",
-      promptNoteDuration: "sixteenth",
       queueStrategy,
-      schemaVersion: 4,
-      staffNotationMode: "grand",
-      startSnapshot: built.snapshot,
-      startedAt: "2026-07-12T10:00:00.000Z",
-      targetNoteSetKey: built.snapshot.practiceConfig.targetNoteSetKey,
-    });
-  });
+    }) => {
+      const settings = {
+        ...makeDefaultSettings(),
+        drillNoteNames: ["C", "E"] as const,
+        fixedCount: 17,
+        fixedDurationSeconds: 42,
+        includeInterStaffLedgerSpellings: true,
+        promptDisplayMode: "staff-page" as const,
+        promptNoteDuration: "sixteenth" as const,
+        queueStrategy,
+        staffNotationMode: "grand" as const,
+      };
+      const built = buildPracticeSessionStartSnapshot({
+        autoPlayTarget: true,
+        mode,
+        prefersReducedMotion: true,
+        settings: { ...settings, drillNoteNames: [...settings.drillNoteNames] },
+        smoothStaffPageScroll: true,
+        startPausedReading: true,
+      })!;
+      const session = buildPracticeSessionRecordV4({
+        id: `session-${mode}`,
+        snapshot: built.snapshot,
+        startedAt: "2026-07-12T10:00:00.000Z",
+      });
+
+      expect(session).toEqual({
+        answerPitchMode: "note-name",
+        completedCount: 0,
+        drillNoteNames: ["C", "E"],
+        effectiveQueueAlgorithm,
+        enabledGroupIds: settings.enabledGroupIds,
+        fixedCount,
+        fixedDurationSeconds,
+        focusedTraining,
+        id: `session-${mode}`,
+        includeInterStaffLedgerSpellings: true,
+        interruptedCount: 0,
+        mode,
+        promptDisplayMode: "staff-page",
+        promptNoteDuration: "sixteenth",
+        queueStrategy,
+        schemaVersion: 4,
+        staffNotationMode: "grand",
+        startSnapshot: built.snapshot,
+        startedAt: "2026-07-12T10:00:00.000Z",
+        targetNoteSetKey: built.snapshot.practiceConfig.targetNoteSetKey,
+      });
+    }
+  );
 
   it("stores microphone answers in a distinct V5 session", () => {
     const settings = {

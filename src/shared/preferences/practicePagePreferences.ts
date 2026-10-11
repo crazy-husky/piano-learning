@@ -9,7 +9,7 @@ export const DEFAULT_PRACTICE_PAGE_PREFERENCES: PracticePagePreferences = {
 
 export function parsePracticePagePreferences(
   value: unknown,
-  fallback: PracticePagePreferences = DEFAULT_PRACTICE_PAGE_PREFERENCES,
+  fallback: PracticePagePreferences = DEFAULT_PRACTICE_PAGE_PREFERENCES
 ): PracticePagePreferences {
   if (typeof value !== "object" || value === null) {
     return fallback;
@@ -17,8 +17,9 @@ export function parsePracticePagePreferences(
 
   const seconds = (value as Partial<PracticePagePreferences>).focusLossPauseSeconds;
   return {
-    focusLossPauseSeconds: seconds === 0 || seconds === 10 || seconds === 20 || seconds === 30
-      ? seconds
-      : fallback.focusLossPauseSeconds,
+    focusLossPauseSeconds:
+      seconds === 0 || seconds === 10 || seconds === 20 || seconds === 30
+        ? seconds
+        : fallback.focusLossPauseSeconds,
   };
 }

@@ -43,8 +43,12 @@ function SessionProgressConditionSelector({
     .map((option) => option.label)
     .join("、");
   const isMultiple = selectedValues.length > 1;
-  const selectableValues = options.filter((option) => !option.disabled).map((option) => option.value);
-  const allSelected = selectableValues.length > 0 && selectableValues.every((value) => selectedValues.includes(value));
+  const selectableValues = options
+    .filter((option) => !option.disabled)
+    .map((option) => option.value);
+  const allSelected =
+    selectableValues.length > 0 &&
+    selectableValues.every((value) => selectedValues.includes(value));
   return (
     <div className="session-progress-condition-selector">
       <button
@@ -71,7 +75,9 @@ function SessionProgressConditionSelector({
           </button>
           {options.map((option) => (
             <div className="session-progress-condition-option" key={option.value}>
-              <label aria-label={`${selectedValues.includes(option.value) ? "移除" : "加入"}${option.label}对比`}>
+              <label
+                aria-label={`${selectedValues.includes(option.value) ? "移除" : "加入"}${option.label}对比`}
+              >
                 <input
                   checked={selectedValues.includes(option.value)}
                   disabled={option.disabled}
@@ -123,7 +129,10 @@ export function SessionProgressCard({
       return undefined;
     }
     const closeOnOutsidePointer = (event: PointerEvent): void => {
-      if (!(event.target instanceof Element) || !event.target.closest(".session-progress-condition-selector")) {
+      if (
+        !(event.target instanceof Element) ||
+        !event.target.closest(".session-progress-condition-selector")
+      ) {
         setOpenSelector(null);
       }
     };
@@ -146,7 +155,8 @@ export function SessionProgressCard({
     }
   }, [model.selection]);
 
-  const hasSeries = model.chartGroups.length > 0 && model.chartGroups.some((group) => group.series.length > 0);
+  const hasSeries =
+    model.chartGroups.length > 0 && model.chartGroups.some((group) => group.series.length > 0);
   return (
     <div className="panel chart-panel stats-carousel-card">
       <div className="panel-heading session-progress-card-heading">
@@ -192,7 +202,9 @@ export function SessionProgressCard({
               {model.transientNotice}
             </span>
           ) : null}
-          <span className="sr-only" aria-live="polite">{model.selectionAnnouncement}</span>
+          <span className="sr-only" aria-live="polite">
+            {model.selectionAnnouncement}
+          </span>
         </div>
       ) : null}
       <div className="chart-box">

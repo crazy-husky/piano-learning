@@ -6,7 +6,7 @@ import { normalizeAnswerPitchMode } from "./answerInput";
 import type { PracticeSessionRecord, PracticeSessionRecordV1 } from "./types";
 
 function deriveV1PracticeComparisonSnapshot(
-  session: PracticeSessionRecordV1,
+  session: PracticeSessionRecordV1
 ): PracticeComparisonSnapshot | undefined {
   if (
     session.promptDisplayMode === undefined ||
@@ -28,11 +28,13 @@ function deriveV1PracticeComparisonSnapshot(
 }
 
 export function getPracticeSessionComparisonSnapshot(
-  session: PracticeSessionRecord,
+  session: PracticeSessionRecord
 ): PracticeComparisonSnapshot | undefined {
   if (session.schemaVersion === 3 || session.schemaVersion === 4 || session.schemaVersion === 5) {
     return {
-      answerPitchMode: normalizeAnswerPitchMode(session.startSnapshot.practiceConfig.answerPitchMode),
+      answerPitchMode: normalizeAnswerPitchMode(
+        session.startSnapshot.practiceConfig.answerPitchMode
+      ),
       effectiveQueueAlgorithm: session.startSnapshot.practiceConfig.effectiveQueueAlgorithm,
       promptDisplayMode: session.startSnapshot.presentationConfig.promptDisplayMode,
       promptNoteDuration: session.startSnapshot.presentationConfig.promptNoteDuration,

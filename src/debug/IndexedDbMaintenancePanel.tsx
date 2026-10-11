@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { deleteEmptySessions, listEmptySessions, type EmptySessionReport } from "./indexedDbMaintenance";
+import {
+  deleteEmptySessions,
+  listEmptySessions,
+  type EmptySessionReport,
+} from "./indexedDbMaintenance";
 
 type DebugStatus = "idle" | "busy" | "ready" | "deleted" | "error";
 
@@ -35,7 +39,7 @@ export function IndexedDbMaintenancePanel(): JSX.Element {
       setReport(remainingReport);
       setOutput(JSON.stringify({ result, remainingReport }, null, 2));
       setMessage(
-        `已删除 ${result.deletedSessionCount} 个 session、${result.deletedReviewCount} 个 review；剩余候选 ${remainingReport.candidateCount} 个。`,
+        `已删除 ${result.deletedSessionCount} 个 session、${result.deletedReviewCount} 个 review；剩余候选 ${remainingReport.candidateCount} 个。`
       );
       setStatus("deleted");
     } catch (error) {

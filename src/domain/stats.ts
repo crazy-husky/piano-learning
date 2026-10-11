@@ -1,7 +1,13 @@
 import { ALL_NOTES, NOTE_NAMES } from "./notes";
 import { isStatisticalReview } from "./reviews";
 import adaptiveV2Spec from "./adaptiveV2Spec.json";
-import type { NoteName, PracticeGroupId, PracticeSessionRecord, ReviewRecord, TargetNoteId } from "./types";
+import type {
+  NoteName,
+  PracticeGroupId,
+  PracticeSessionRecord,
+  ReviewRecord,
+  TargetNoteId,
+} from "./types";
 
 export interface DailyStat {
   date: string;
@@ -63,9 +69,7 @@ export type PositiveHeatLevel = 1 | 2 | 3;
 export type HeatLevel = 0 | PositiveHeatLevel;
 
 export type LongTermStatsIneligibilityReason =
-  | "not-enough-statistical-reviews"
-  | "too-many-error-reviews"
-  | "too-many-heavy-error-reviews";
+  "not-enough-statistical-reviews" | "too-many-error-reviews" | "too-many-heavy-error-reviews";
 
 export interface LongTermStatsEligibility {
   eligible: boolean;
@@ -106,13 +110,14 @@ export function getLongTermStatsEligibility(reviews: ReviewRecord[]): LongTermSt
     }
   }
 
-  const reason = statisticalReviewCount < MIN_SESSION_STAT_REVIEWS
-    ? "not-enough-statistical-reviews"
-    : heavyErrorReviewCount * 2 > statisticalReviewCount
-      ? "too-many-heavy-error-reviews"
-      : errorReviewCount * 3 > statisticalReviewCount * 2
-        ? "too-many-error-reviews"
-        : undefined;
+  const reason =
+    statisticalReviewCount < MIN_SESSION_STAT_REVIEWS
+      ? "not-enough-statistical-reviews"
+      : heavyErrorReviewCount * 2 > statisticalReviewCount
+        ? "too-many-heavy-error-reviews"
+        : errorReviewCount * 3 > statisticalReviewCount * 2
+          ? "too-many-error-reviews"
+          : undefined;
   return {
     eligible: reason === undefined,
     errorReviewCount,
@@ -131,7 +136,7 @@ export function filterLongTermReviews(reviews: ReviewRecord[]): ReviewRecord[] {
   const eligibleSessionIds = new Set(
     [...reviewsBySession.entries()]
       .filter(([, sessionReviews]) => isLongTermStatsEligible(sessionReviews))
-      .map(([sessionId]) => sessionId),
+      .map(([sessionId]) => sessionId)
   );
   return reviews.filter((review) => eligibleSessionIds.has(review.sessionId));
 }
@@ -162,7 +167,9 @@ export interface PositiveTertileThresholds {
   low: number;
 }
 
-export function positiveTertileThresholds(positiveValues: number[]): PositiveTertileThresholds | undefined {
+export function positiveTertileThresholds(
+  positiveValues: number[]
+): PositiveTertileThresholds | undefined {
   const low = percentile(positiveValues, 1 / 3);
   const high = percentile(positiveValues, 2 / 3);
   return low === undefined || high === undefined ? undefined : { low, high };
@@ -198,7 +205,8 @@ function commonConfusions(reviews: ReviewRecord[]): NoteConfusionStat[] {
     .map(([noteName, count]) => ({ noteName, count }))
     .sort(
       (left, right) =>
-        right.count - left.count || NOTE_NAMES.indexOf(left.noteName) - NOTE_NAMES.indexOf(right.noteName),
+        right.count - left.count ||
+        NOTE_NAMES.indexOf(left.noteName) - NOTE_NAMES.indexOf(right.noteName)
     )
     .slice(0, 3);
 }
@@ -219,9 +227,11 @@ export function buildDailyStats(reviews: ReviewRecord[]): DailyStat[] {
     [...byDate.entries()].map(([date, dayReviews]) => [
       date,
       dayReviews.reduce((total, review) => total + review.activeMs, 0),
-    ]),
+    ])
   );
-  const positiveActiveMsTotals = [...totalActiveMsByDate.values()].filter((totalActiveMs) => totalActiveMs > 0);
+  const positiveActiveMsTotals = [...totalActiveMsByDate.values()].filter(
+    (totalActiveMs) => totalActiveMs > 0
+  );
 
   return [...byDate.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
@@ -236,34 +246,42 @@ export function buildDailyStats(reviews: ReviewRecord[]): DailyStat[] {
         p10Ms: percentile(times, 0.1),
         medianMs: percentile(times, 0.5),
         p90Ms: percentile(times, 0.9),
-        heatLevel: totalActiveMs === 0 ? 0 : positiveTertileLevel(totalActiveMs, positiveActiveMsTotals),
+        heatLevel:
+          totalActiveMs === 0 ? 0 : positiveTertileLevel(totalActiveMs, positiveActiveMsTotals),
       };
     });
 }
 
 function earliestReviewStartedAt(reviews: ReviewRecord[]): string {
   return reviews.reduce(
-    (earliest, review) => (new Date(review.startedAt).getTime() < new Date(earliest).getTime() ? review.startedAt : earliest),
-    reviews[0].startedAt,
+    (earliest, review) =>
+      new Date(review.startedAt).getTime() < new Date(earliest).getTime()
+        ? review.startedAt
+        : earliest,
+    reviews[0].startedAt
   );
 }
 
 function latestReviewEndedAt(reviews: ReviewRecord[]): string {
   return reviews.reduce(
-    (latest, review) => (new Date(review.endedAt).getTime() > new Date(latest).getTime() ? review.endedAt : latest),
-    reviews[0].endedAt,
+    (latest, review) =>
+      new Date(review.endedAt).getTime() > new Date(latest).getTime() ? review.endedAt : latest,
+    reviews[0].endedAt
   );
 }
 
 export function buildPracticeSessionStats(
   reviews: ReviewRecord[],
-  sessions: PracticeSessionRecord[] = [],
+  sessions: PracticeSessionRecord[] = []
 ): PracticeSessionStat[] {
   const sessionsById = new Map(sessions.map((session) => [session.id, session]));
   const reviewsBySession = new Map<string, ReviewRecord[]>();
 
   for (const review of reviews.filter(isStatisticalReview)) {
-    reviewsBySession.set(review.sessionId, [...(reviewsBySession.get(review.sessionId) ?? []), review]);
+    reviewsBySession.set(review.sessionId, [
+      ...(reviewsBySession.get(review.sessionId) ?? []),
+      review,
+    ]);
   }
 
   return [...reviewsBySession.entries()]
@@ -280,11 +298,17 @@ export function buildPracticeSessionStats(
         p90Ms: percentile(times, 0.9),
       };
     })
-    .sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime() || a.sessionId.localeCompare(b.sessionId));
+    .sort(
+      (a, b) =>
+        new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime() ||
+        a.sessionId.localeCompare(b.sessionId)
+    );
 }
 
 function average(values: number[]): number | undefined {
-  return values.length === 0 ? undefined : values.reduce((sum, value) => sum + value, 0) / values.length;
+  return values.length === 0
+    ? undefined
+    : values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function reviewCompletedAt(review: ReviewRecord): number {
@@ -319,7 +343,11 @@ function addRecognitionReview(window: RecognitionNoteWindow, review: ReviewRecor
   };
   window.totalCount += 1;
   window.recent.push(recentReview);
-  window.sortedActiveMs.splice(sortedInsertionIndex(window.sortedActiveMs, recentReview.activeMs), 0, recentReview.activeMs);
+  window.sortedActiveMs.splice(
+    sortedInsertionIndex(window.sortedActiveMs, recentReview.activeMs),
+    0,
+    recentReview.activeMs
+  );
   if (recentReview.hasError) {
     window.recentErrorCount += 1;
   }
@@ -339,7 +367,7 @@ export function buildRecognitionTrend(
   reviews: ReviewRecord[],
   sessions: PracticeSessionRecord[],
   targetNoteIds: readonly TargetNoteId[],
-  grouping: RecognitionTrendGrouping,
+  grouping: RecognitionTrendGrouping
 ): RecognitionTrendPoint[] {
   const targetIds = [...new Set(targetNoteIds)].sort();
   const targetIdSet = new Set(targetIds);
@@ -351,8 +379,7 @@ export function buildRecognitionTrend(
       startedAt: new Date(review.startedAt).getTime(),
     }))
     .sort(
-      (left, right) =>
-        left.completedAt - right.completedAt || left.startedAt - right.startedAt,
+      (left, right) => left.completedAt - right.completedAt || left.startedAt - right.startedAt
     );
   const sessionsById = new Map(sessions.map((session) => [session.id, session]));
   const statisticalReviewsBySession = new Map<string, ReviewRecord[]>();
@@ -366,7 +393,8 @@ export function buildRecognitionTrend(
   }
   const sessionBoundaries = [...statisticalReviewsBySession.entries()]
     .map(([sessionId, sessionReviews]) => {
-      const boundaryAt = sessionsById.get(sessionId)?.endedAt ?? latestReviewEndedAt(sessionReviews);
+      const boundaryAt =
+        sessionsById.get(sessionId)?.endedAt ?? latestReviewEndedAt(sessionReviews);
       return {
         boundaryAt,
         boundaryTime: new Date(boundaryAt).getTime(),
@@ -374,15 +402,19 @@ export function buildRecognitionTrend(
       };
     })
     .sort(
-      (left, right) =>
-        left.boundaryTime - right.boundaryTime || left.key.localeCompare(right.key),
+      (left, right) => left.boundaryTime - right.boundaryTime || left.key.localeCompare(right.key)
     );
-  const byNote = new Map<TargetNoteId, RecognitionNoteWindow>(targetIds.map((noteId) => [noteId, {
-    recent: [],
-    recentErrorCount: 0,
-    sortedActiveMs: [],
-    totalCount: 0,
-  }]));
+  const byNote = new Map<TargetNoteId, RecognitionNoteWindow>(
+    targetIds.map((noteId) => [
+      noteId,
+      {
+        recent: [],
+        recentErrorCount: 0,
+        sortedActiveMs: [],
+        totalCount: 0,
+      },
+    ])
+  );
   let reviewIndex = 0;
   const sessionTrend = sessionBoundaries.map((boundary) => {
     while (
@@ -422,7 +454,9 @@ export function buildRecognitionTrend(
   return grouping === "day" ? groupRecognitionTrendByDay(sessionTrend) : sessionTrend;
 }
 
-export function groupRecognitionTrendByDay(sessionTrend: RecognitionTrendPoint[]): RecognitionTrendPoint[] {
+export function groupRecognitionTrendByDay(
+  sessionTrend: RecognitionTrendPoint[]
+): RecognitionTrendPoint[] {
   const latestByDate = new Map<string, RecognitionTrendPoint>();
   for (const point of sessionTrend) {
     const date = localDateKey(point.boundaryAt);
@@ -433,34 +467,43 @@ export function groupRecognitionTrendByDay(sessionTrend: RecognitionTrendPoint[]
 
 export function buildNoteStats(
   reviews: ReviewRecord[],
-  groupFilter?: PracticeGroupId[],
+  groupFilter?: PracticeGroupId[]
 ): NoteStat[] {
   const allowedGroups = groupFilter && groupFilter.length > 0 ? new Set(groupFilter) : undefined;
-  return ALL_NOTES.filter((note) => !allowedGroups || allowedGroups.has(note.groupId)).map((note) => {
-    const noteReviews = reviews.filter((review) => review.targetNoteId === note.id && isStatisticalReview(review));
-    const times = noteReviews.map((review) => review.activeMs);
-    const reviewsWithErrors = noteReviews.filter((review) => review.wrongAnswers.length > 0).length;
-    const errorCount = noteReviews.reduce((count, review) => count + review.wrongAnswers.length, 0);
-    const p10Ms = percentile(times, 0.1);
-    const medianMs = percentile(times, 0.5);
-    const p90Ms = percentile(times, 0.9);
-    const errorRate = noteReviews.length === 0 ? 0 : reviewsWithErrors / noteReviews.length;
-    const speedScore = medianMs === undefined ? 2 : medianMs / 1000;
-    const confusionStats = commonConfusions(noteReviews);
-    return {
-      targetNoteId: note.id,
-      groupId: note.groupId,
-      reviewCount: noteReviews.length,
-      errorCount,
-      p10Ms,
-      medianMs,
-      p90Ms,
-      errorRate,
-      commonConfusion: confusionStats[0]?.noteName,
-      commonConfusions: confusionStats,
-      weaknessScore: speedScore + errorRate * 3 + (noteReviews.length === 0 ? 2 : 0),
-    };
-  });
+  return ALL_NOTES.filter((note) => !allowedGroups || allowedGroups.has(note.groupId)).map(
+    (note) => {
+      const noteReviews = reviews.filter(
+        (review) => review.targetNoteId === note.id && isStatisticalReview(review)
+      );
+      const times = noteReviews.map((review) => review.activeMs);
+      const reviewsWithErrors = noteReviews.filter(
+        (review) => review.wrongAnswers.length > 0
+      ).length;
+      const errorCount = noteReviews.reduce(
+        (count, review) => count + review.wrongAnswers.length,
+        0
+      );
+      const p10Ms = percentile(times, 0.1);
+      const medianMs = percentile(times, 0.5);
+      const p90Ms = percentile(times, 0.9);
+      const errorRate = noteReviews.length === 0 ? 0 : reviewsWithErrors / noteReviews.length;
+      const speedScore = medianMs === undefined ? 2 : medianMs / 1000;
+      const confusionStats = commonConfusions(noteReviews);
+      return {
+        targetNoteId: note.id,
+        groupId: note.groupId,
+        reviewCount: noteReviews.length,
+        errorCount,
+        p10Ms,
+        medianMs,
+        p90Ms,
+        errorRate,
+        commonConfusion: confusionStats[0]?.noteName,
+        commonConfusions: confusionStats,
+        weaknessScore: speedScore + errorRate * 3 + (noteReviews.length === 0 ? 2 : 0),
+      };
+    }
+  );
 }
 
 export function formatMs(ms?: number): string {

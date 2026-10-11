@@ -71,12 +71,15 @@ interface PracticeAnswerFlowRuntime {
 type CompleteSession = (
   endReason: PracticeSessionRecord["endReason"],
   unfinishedReason?: InterruptReason,
-  options?: CompletePracticeSessionOptions,
+  options?: CompletePracticeSessionOptions
 ) => Promise<void>;
 
 interface PracticeAnswerFlowServices {
   completeSession: CompleteSession;
-  finishCurrentReview: (answeredCorrectly: boolean, interruptReason?: InterruptReason) => Promise<ReviewRecord | null>;
+  finishCurrentReview: (
+    answeredCorrectly: boolean,
+    interruptReason?: InterruptReason
+  ) => Promise<ReviewRecord | null>;
   getPromptActiveMs: PracticeTimers["getPromptActiveMs"];
   markCurrentStaffPageNoteComplete: () => void;
   markPromptInput: () => void;
@@ -101,7 +104,12 @@ interface UsePracticeAnswerFlowOptions {
   values: PracticeAnswerFlowValues;
 }
 
-export function usePracticeAnswerFlow({ runtime, services, ui, values }: UsePracticeAnswerFlowOptions) {
+export function usePracticeAnswerFlow({
+  runtime,
+  services,
+  ui,
+  values,
+}: UsePracticeAnswerFlowOptions) {
   const {
     answerPitchMode,
     completedCount,
@@ -151,7 +159,9 @@ export function usePracticeAnswerFlow({ runtime, services, ui, values }: UsePrac
         return;
       }
       const diagnosticSampleId = answer.diagnosticSampleId;
-      const correctDelayMs = sessionStartSnapshotRef.current?.interactionConfig.correctDelayMs ?? settings.correctDelayMs;
+      const correctDelayMs =
+        sessionStartSnapshotRef.current?.interactionConfig.correctDelayMs ??
+        settings.correctDelayMs;
       markMidiLatencyStage(diagnosticSampleId, "submitStarted");
       if (MIDI_LATENCY_DIAGNOSTICS_ENABLED) {
         setMidiLatencyCondition(diagnosticSampleId, {
@@ -165,11 +175,12 @@ export function usePracticeAnswerFlow({ runtime, services, ui, values }: UsePrac
       if (playAnswerNote) {
         const answerOctave = answer.octave;
         if (answerOctave === undefined || (answerOctave >= 1 && answerOctave <= 6)) {
-          const playbackOctave = answerOctave === undefined ? prompt.note.octave : answerOctave as Octave;
+          const playbackOctave =
+            answerOctave === undefined ? prompt.note.octave : (answerOctave as Octave);
           markMidiLatencyStage(diagnosticSampleId, "audioRequested");
           void playPianoNote(answer.noteName, playbackOctave).then(
             () => markMidiLatencyStage(diagnosticSampleId, "audioReady"),
-            () => markMidiLatencyStage(diagnosticSampleId, "audioReady"),
+            () => markMidiLatencyStage(diagnosticSampleId, "audioReady")
           );
         }
       }
@@ -185,7 +196,10 @@ export function usePracticeAnswerFlow({ runtime, services, ui, values }: UsePrac
         setWrongAnswerCount((count) => count + 1);
         markMidiLatencyStage(diagnosticSampleId, "feedbackRequested");
         setFeedback({ diagnosticSampleId, type: "wrong", noteName: answer.noteName });
-        window.setTimeout(() => setFeedback((current) => (current?.type === "wrong" ? null : current)), 450);
+        window.setTimeout(
+          () => setFeedback((current) => (current?.type === "wrong" ? null : current)),
+          450
+        );
         return;
       }
 
@@ -269,7 +283,7 @@ export function usePracticeAnswerFlow({ runtime, services, ui, values }: UsePrac
       startStaffPage,
       startStaffPageScroll,
       startStaffPageIndex,
-    ],
+    ]
   );
 
   return { submitAnswer };

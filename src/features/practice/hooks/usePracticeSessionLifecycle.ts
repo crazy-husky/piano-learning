@@ -2,7 +2,10 @@ import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction 
 import { db, deletePracticeSessionWithReviews, saveReview } from "../../../data/db";
 import { writeBackupNow } from "../../../data/backup";
 import { createUuid } from "../../../domain/id";
-import { shouldIgnoreReviewForSession, shouldKeepPracticeSession } from "../../../domain/practiceSession";
+import {
+  shouldIgnoreReviewForSession,
+  shouldKeepPracticeSession,
+} from "../../../domain/practiceSession";
 import { isCompletedReview } from "../../../domain/reviews";
 import type { AdaptiveNoteScheduler } from "../../../domain/scheduler";
 import type {
@@ -75,9 +78,17 @@ interface UsePracticeSessionLifecycleOptions {
   ui: PracticeSessionLifecycleUi;
 }
 
-export function usePracticeSessionLifecycle({ runtime, timers, services, ui }: UsePracticeSessionLifecycleOptions) {
+export function usePracticeSessionLifecycle({
+  runtime,
+  timers,
+  services,
+  ui,
+}: UsePracticeSessionLifecycleOptions) {
   const finishCurrentReview = useCallback(
-    async (answeredCorrectly: boolean, interruptReason?: InterruptReason): Promise<ReviewRecord | null> => {
+    async (
+      answeredCorrectly: boolean,
+      interruptReason?: InterruptReason
+    ): Promise<ReviewRecord | null> => {
       const prompt = runtime.promptRef.current;
       const activeMs = timers.getPromptActiveMs();
       const session = runtime.sessionRef.current;
@@ -120,14 +131,14 @@ export function usePracticeSessionLifecycle({ runtime, timers, services, ui }: U
       runtime.sessionReviewsRef.current = [...runtime.sessionReviewsRef.current, review];
       return review;
     },
-    [runtime, timers],
+    [runtime, timers]
   );
 
   const completeSession = useCallback(
     async (
       endReason: PracticeSessionRecord["endReason"],
       unfinishedReason?: InterruptReason,
-      options: CompletePracticeSessionOptions = {},
+      options: CompletePracticeSessionOptions = {}
     ): Promise<void> => {
       if (runtime.endingRef.current || !runtime.sessionRef.current) {
         return;
@@ -138,7 +149,9 @@ export function usePracticeSessionLifecycle({ runtime, timers, services, ui }: U
       services.stopMicrophone();
       services.cancelRemainingPlayback();
       services.clearStaffPageScrollSchedule();
-      const unfinishedReview = runtime.promptRef.current ? await finishCurrentReview(false, unfinishedReason) : null;
+      const unfinishedReview = runtime.promptRef.current
+        ? await finishCurrentReview(false, unfinishedReason)
+        : null;
       timers.pauseActiveTimers();
       const endedAt = new Date().toISOString();
       const finalReviews = unfinishedReview
@@ -187,7 +200,7 @@ export function usePracticeSessionLifecycle({ runtime, timers, services, ui }: U
       }
       runtime.endingRef.current = false;
     },
-    [finishCurrentReview, runtime, services, timers, ui],
+    [finishCurrentReview, runtime, services, timers, ui]
   );
 
   return { completeSession, finishCurrentReview };

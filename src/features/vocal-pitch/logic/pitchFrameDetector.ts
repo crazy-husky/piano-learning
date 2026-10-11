@@ -33,12 +33,15 @@ function nextPowerOfTwo(value: number): number {
 export function getPitchFrameSize(
   sampleRate: number,
   minFrequencyHz = VOCAL_PITCH_MIN_FREQUENCY_HZ,
-  periods = 3,
+  periods = 3
 ): number {
   return Math.min(16384, Math.max(2048, nextPowerOfTwo((sampleRate / minFrequencyHz) * periods)));
 }
 
-export function createPitchFrameDetector(frameSize: number, options: PitchFrameDetectorOptions = {}): PitchFrameDetector {
+export function createPitchFrameDetector(
+  frameSize: number,
+  options: PitchFrameDetectorOptions = {}
+): PitchFrameDetector {
   const primaryDetector = PitchDetector.forFloat32Array(frameSize);
   const fallbackDetector = PitchDetector.forFloat32Array(frameSize);
   primaryDetector.clarityThreshold = options.primaryPeakThreshold ?? PRIMARY_PEAK_THRESHOLD;
@@ -46,7 +49,10 @@ export function createPitchFrameDetector(frameSize: number, options: PitchFrameD
   return {
     detect: (samples, sampleRate) => {
       const [frequencyHz, clarity] = primaryDetector.findPitch(samples, sampleRate);
-      const [fallbackFrequencyHz, fallbackClarity] = fallbackDetector.findPitch(samples, sampleRate);
+      const [fallbackFrequencyHz, fallbackClarity] = fallbackDetector.findPitch(
+        samples,
+        sampleRate
+      );
       return {
         primary: { clarity, frequencyHz },
         fallback: { clarity: fallbackClarity, frequencyHz: fallbackFrequencyHz },

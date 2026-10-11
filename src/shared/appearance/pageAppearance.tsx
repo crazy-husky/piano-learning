@@ -19,7 +19,7 @@ const PageAppearanceContext = createContext(false);
 
 export function parsePageAppearancePreferences(
   value: unknown,
-  fallback: PageAppearancePreferences,
+  fallback: PageAppearancePreferences
 ): PageAppearancePreferences {
   if (typeof value !== "object" || value === null) {
     return fallback;
@@ -28,7 +28,10 @@ export function parsePageAppearancePreferences(
   const stored = value as Partial<PageAppearancePreferences>;
   return {
     endHour: isHour(stored.endHour) ? stored.endHour : fallback.endHour,
-    mode: stored.mode === "off" || stored.mode === "on" || stored.mode === "auto" ? stored.mode : fallback.mode,
+    mode:
+      stored.mode === "off" || stored.mode === "on" || stored.mode === "auto"
+        ? stored.mode
+        : fallback.mode,
     startHour: isHour(stored.startHour) ? stored.startHour : fallback.startHour,
   };
 }
@@ -49,10 +52,7 @@ export function isNightHour(hour: number, startHour: number, endHour: number): b
     : hour >= startHour || hour < endHour;
 }
 
-export function resolveNightMode(
-  preferences: PageAppearancePreferences,
-  now: Date,
-): boolean {
+export function resolveNightMode(preferences: PageAppearancePreferences, now: Date): boolean {
   if (preferences.mode === "on") {
     return true;
   }
@@ -69,7 +69,9 @@ export function PageAppearanceProvider({
   children: ReactNode;
   isNightMode: boolean;
 }): JSX.Element {
-  return <PageAppearanceContext.Provider value={isNightMode}>{children}</PageAppearanceContext.Provider>;
+  return (
+    <PageAppearanceContext.Provider value={isNightMode}>{children}</PageAppearanceContext.Provider>
+  );
 }
 
 export function useNightMode(): boolean {

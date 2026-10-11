@@ -29,7 +29,10 @@ export function StudyDisplayControls({
   showLabels,
 }: StudyDisplayControlsProps): JSX.Element {
   return (
-    <div className={disabled ? "study-controls staff-recall-readonly-controls" : "study-controls"} aria-label={label}>
+    <div
+      className={disabled ? "study-controls staff-recall-readonly-controls" : "study-controls"}
+      aria-label={label}
+    >
       <div className="study-control-block">
         <span className="control-label">顺序</span>
         <div className="segmented study-order-options">

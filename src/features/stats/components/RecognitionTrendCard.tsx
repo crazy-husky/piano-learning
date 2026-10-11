@@ -18,20 +18,54 @@ import { loadECharts } from "../../../shared/charts/loadECharts";
 import { ChartLoadingSkeleton } from "../../../shared/components/LoadingSkeletons";
 
 const RECOGNITION_CHART_COLORS = {
-  get errorRate() { return getPageThemeColor("--recognition-error-rate", STATS_COLORS.recognitionChart.errorRate); },
-  get grid() { return getPageThemeColor("--chart-grid", STATS_COLORS.recognitionChart.grid); },
-  get median() { return getPageThemeColor("--recognition-median", STATS_COLORS.recognitionChart.median); },
-  get muted() { return getPageThemeColor("--chart-muted", STATS_COLORS.recognitionChart.muted); },
-  get p10() { return getPageThemeColor("--recognition-p10", STATS_COLORS.recognitionChart.p10); },
-  get p90() { return getPageThemeColor("--recognition-p90", STATS_COLORS.recognitionChart.p90); },
-  get panel() { return getPageThemeColor("--chart-surface", STATS_COLORS.recognitionChart.panel); },
-  get rangeFill() { return getPageThemeColor("--recognition-range-fill", STATS_COLORS.recognitionChart.rangeFill); },
-  get rangeMoveHandle() { return getPageThemeColor("--recognition-range-handle", STATS_COLORS.recognitionChart.rangeMoveHandle); },
-  get rangePreview() { return getPageThemeColor("--heatmap-zero", STATS_COLORS.recognitionChart.rangePreview); },
-  get rangePreviewLine() { return getPageThemeColor("--border-strong", STATS_COLORS.recognitionChart.rangePreviewLine); },
-  get selectedRangePreview() { return getPageThemeColor("--recognition-selected-range", STATS_COLORS.recognitionChart.selectedRangePreview); },
-  get sliderBackground() { return getPageThemeColor("--surface", STATS_COLORS.recognitionChart.sliderBackground); },
-  get sliderBorder() { return getPageThemeColor("--border", STATS_COLORS.recognitionChart.sliderBorder); },
+  get errorRate() {
+    return getPageThemeColor("--recognition-error-rate", STATS_COLORS.recognitionChart.errorRate);
+  },
+  get grid() {
+    return getPageThemeColor("--chart-grid", STATS_COLORS.recognitionChart.grid);
+  },
+  get median() {
+    return getPageThemeColor("--recognition-median", STATS_COLORS.recognitionChart.median);
+  },
+  get muted() {
+    return getPageThemeColor("--chart-muted", STATS_COLORS.recognitionChart.muted);
+  },
+  get p10() {
+    return getPageThemeColor("--recognition-p10", STATS_COLORS.recognitionChart.p10);
+  },
+  get p90() {
+    return getPageThemeColor("--recognition-p90", STATS_COLORS.recognitionChart.p90);
+  },
+  get panel() {
+    return getPageThemeColor("--chart-surface", STATS_COLORS.recognitionChart.panel);
+  },
+  get rangeFill() {
+    return getPageThemeColor("--recognition-range-fill", STATS_COLORS.recognitionChart.rangeFill);
+  },
+  get rangeMoveHandle() {
+    return getPageThemeColor(
+      "--recognition-range-handle",
+      STATS_COLORS.recognitionChart.rangeMoveHandle
+    );
+  },
+  get rangePreview() {
+    return getPageThemeColor("--heatmap-zero", STATS_COLORS.recognitionChart.rangePreview);
+  },
+  get rangePreviewLine() {
+    return getPageThemeColor("--border-strong", STATS_COLORS.recognitionChart.rangePreviewLine);
+  },
+  get selectedRangePreview() {
+    return getPageThemeColor(
+      "--recognition-selected-range",
+      STATS_COLORS.recognitionChart.selectedRangePreview
+    );
+  },
+  get sliderBackground() {
+    return getPageThemeColor("--surface", STATS_COLORS.recognitionChart.sliderBackground);
+  },
+  get sliderBorder() {
+    return getPageThemeColor("--border", STATS_COLORS.recognitionChart.sliderBorder);
+  },
 };
 const RECOGNITION_ERROR_RATE_OPACITY = 0.5;
 const RECOGNITION_TRANSITION_OPACITY = 0.45;
@@ -44,16 +78,16 @@ function getRecognitionSeriesOptions(): Array<{
   yAxisIndex?: number;
 }> {
   return [
-  { color: RECOGNITION_CHART_COLORS.p10, key: "p10", label: "P10" },
-  { color: RECOGNITION_CHART_COLORS.median, key: "median", label: "中位", width: 2.5 },
-  { color: RECOGNITION_CHART_COLORS.p90, key: "p90", label: "P90" },
-  {
-    color: RECOGNITION_CHART_COLORS.errorRate,
-    key: "errorRate",
-    label: "错音率",
-    opacity: RECOGNITION_ERROR_RATE_OPACITY,
-    yAxisIndex: 1,
-  },
+    { color: RECOGNITION_CHART_COLORS.p10, key: "p10", label: "P10" },
+    { color: RECOGNITION_CHART_COLORS.median, key: "median", label: "中位", width: 2.5 },
+    { color: RECOGNITION_CHART_COLORS.p90, key: "p90", label: "P90" },
+    {
+      color: RECOGNITION_CHART_COLORS.errorRate,
+      key: "errorRate",
+      label: "错音率",
+      opacity: RECOGNITION_ERROR_RATE_OPACITY,
+      yAxisIndex: 1,
+    },
   ];
 }
 const DEFAULT_RECOGNITION_VISIBLE_SERIES = RECOGNITION_SERIES_KEYS;
@@ -87,10 +121,12 @@ function makeRecognitionLineSeries({
   width?: number;
   yAxisIndex?: number;
 }): LineSeriesOption[] {
-  const segments: Array<{ data: Array<number | null>; transition: boolean }> = [{
-    data: Array(data.length).fill(null),
-    transition: data[0]?.transition ?? false,
-  }];
+  const segments: Array<{ data: Array<number | null>; transition: boolean }> = [
+    {
+      data: Array(data.length).fill(null),
+      transition: data[0]?.transition ?? false,
+    },
+  ];
   for (const [index, stat] of data.entries()) {
     const current = segments[segments.length - 1];
     if (index > 0 && (stat.breakBefore || stat.transition !== current.transition)) {
@@ -119,7 +155,10 @@ function makeRecognitionLineSeries({
     });
 }
 
-function relativeChange(value: number | undefined, baseline: number | undefined): number | undefined {
+function relativeChange(
+  value: number | undefined,
+  baseline: number | undefined
+): number | undefined {
   return value === undefined || baseline === undefined || baseline === 0
     ? undefined
     : ((value - baseline) / baseline) * 100;
@@ -163,7 +202,7 @@ function makeRecognitionSpeedData(data: RecognitionTimeChartStat[]): Recognition
 
 function makeRelativeRecognitionTimeData(
   data: RecognitionTimeChartStat[],
-  relativeBaselineMode: RecognitionRelativeBaselineMode,
+  relativeBaselineMode: RecognitionRelativeBaselineMode
 ): RecognitionTimeChartStat[] {
   let baseline: RecognitionTimeRelativeBaseline = {};
   let currentRangeStart: RecognitionTimeRelativeBaseline = {};
@@ -172,9 +211,10 @@ function makeRelativeRecognitionTimeData(
       if (relativeBaselineMode === "new-range-start") {
         baseline = { median: stat.median, p10: stat.p10, p90: stat.p90 };
       } else {
-        const selectedBaseline = relativeBaselineMode === "previous-range-start"
-          ? currentRangeStart
-          : stat.relativeBaseline;
+        const selectedBaseline =
+          relativeBaselineMode === "previous-range-start"
+            ? currentRangeStart
+            : stat.relativeBaseline;
         baseline = {
           median: selectedBaseline.median ?? baseline.median,
           p10: selectedBaseline.p10 ?? baseline.p10,
@@ -209,58 +249,64 @@ export function makeRecognitionTimeChartOption(
   metric: RecognitionTimeMetric = "duration",
   valueMode: RecognitionTimeValueMode = "absolute",
   visibleSeries: readonly RecognitionSeriesKey[] = DEFAULT_RECOGNITION_VISIBLE_SERIES,
-  relativeBaselineMode: RecognitionRelativeBaselineMode = "previous-range-end",
+  relativeBaselineMode: RecognitionRelativeBaselineMode = "previous-range-end"
 ): EChartsOption {
   const metricData = metric === "speed" ? makeRecognitionSpeedData(data) : data;
-  const displayedData = valueMode === "relative"
-    ? makeRelativeRecognitionTimeData(metricData, relativeBaselineMode)
-    : metricData;
+  const displayedData =
+    valueMode === "relative"
+      ? makeRelativeRecognitionTimeData(metricData, relativeBaselineMode)
+      : metricData;
   const visibleSeriesSet = new Set(visibleSeries);
   const seriesOptions = getRecognitionSeriesOptions();
   const dataZoomPreviewOption = seriesOptions.find((option) => visibleSeriesSet.has(option.key));
   const dataZoomPreviewSeries: LineSeriesOption[] = dataZoomPreviewOption
-    ? [{
-        data: displayedData.map((stat) => stat[dataZoomPreviewOption.key] ?? null),
-        id: "recognition-data-zoom-preview",
-        itemStyle: { opacity: 0 },
-        lineStyle: { opacity: 0 },
-        showSymbol: false,
-        silent: true,
-        tooltip: { show: false },
-        type: "line",
-        yAxisIndex: dataZoomPreviewOption.yAxisIndex ?? 0,
-      }]
+    ? [
+        {
+          data: displayedData.map((stat) => stat[dataZoomPreviewOption.key] ?? null),
+          id: "recognition-data-zoom-preview",
+          itemStyle: { opacity: 0 },
+          lineStyle: { opacity: 0 },
+          showSymbol: false,
+          silent: true,
+          tooltip: { show: false },
+          type: "line",
+          yAxisIndex: dataZoomPreviewOption.yAxisIndex ?? 0,
+        },
+      ]
     : [];
-  const markLineSeriesKey = (["median", "p10", "p90", "errorRate"] as const)
-    .find((seriesKey) => visibleSeriesSet.has(seriesKey));
+  const markLineSeriesKey = (["median", "p10", "p90", "errorRate"] as const).find((seriesKey) =>
+    visibleSeriesSet.has(seriesKey)
+  );
   const boundaryMarkers = data.flatMap((stat, dataIndex) =>
-    stat.boundaryLabel ? [{ dataIndex, label: stat.boundaryLabel }] : []);
-  const boundaryMarkLine: LineSeriesOption["markLine"] = boundaryMarkers.length > 0
-    ? {
-        data: boundaryMarkers.map((marker) => ({
-          label: { formatter: marker.label },
-          xAxis: marker.dataIndex,
-        })),
-        label: {
-          align: "center",
-          backgroundColor: RECOGNITION_CHART_COLORS.panel,
-          borderRadius: 4,
-          color: RECOGNITION_CHART_COLORS.muted,
-          distance: 6,
-          fontSize: 12,
-          padding: [2, 4],
-          position: "end",
-        },
-        lineStyle: {
-          color: RECOGNITION_CHART_COLORS.muted,
-          opacity: 0.7,
-          type: "dashed",
-          width: 1,
-        },
-        silent: true,
-        symbol: "none",
-      }
-    : undefined;
+    stat.boundaryLabel ? [{ dataIndex, label: stat.boundaryLabel }] : []
+  );
+  const boundaryMarkLine: LineSeriesOption["markLine"] =
+    boundaryMarkers.length > 0
+      ? {
+          data: boundaryMarkers.map((marker) => ({
+            label: { formatter: marker.label },
+            xAxis: marker.dataIndex,
+          })),
+          label: {
+            align: "center",
+            backgroundColor: RECOGNITION_CHART_COLORS.panel,
+            borderRadius: 4,
+            color: RECOGNITION_CHART_COLORS.muted,
+            distance: 6,
+            fontSize: 12,
+            padding: [2, 4],
+            position: "end",
+          },
+          lineStyle: {
+            color: RECOGNITION_CHART_COLORS.muted,
+            opacity: 0.7,
+            type: "dashed",
+            width: 1,
+          },
+          silent: true,
+          symbol: "none",
+        }
+      : undefined;
   const dataZoomSliderStyle = {
     backgroundColor: RECOGNITION_CHART_COLORS.sliderBackground,
     borderColor: RECOGNITION_CHART_COLORS.sliderBorder,
@@ -332,18 +378,20 @@ export function makeRecognitionTimeChartOption(
     legend: { show: false },
     series: [
       ...dataZoomPreviewSeries,
-      ...seriesOptions.flatMap((option) => visibleSeriesSet.has(option.key)
-        ? makeRecognitionLineSeries({
-            color: option.color,
-            data: displayedData,
-            markLine: markLineSeriesKey === option.key ? boundaryMarkLine : undefined,
-            metric: option.key,
-            name: option.label,
-            opacity: option.opacity,
-            width: option.width,
-            yAxisIndex: option.yAxisIndex,
-          })
-        : []),
+      ...seriesOptions.flatMap((option) =>
+        visibleSeriesSet.has(option.key)
+          ? makeRecognitionLineSeries({
+              color: option.color,
+              data: displayedData,
+              markLine: markLineSeriesKey === option.key ? boundaryMarkLine : undefined,
+              metric: option.key,
+              name: option.label,
+              opacity: option.opacity,
+              width: option.width,
+              yAxisIndex: option.yAxisIndex,
+            })
+          : []
+      ),
     ],
     tooltip: {
       axisPointer: { animation: false, type: "line" },
@@ -363,13 +411,19 @@ export function makeRecognitionTimeChartOption(
           ? `<div style="color:${RECOGNITION_CHART_COLORS.muted}">${stat.boundaryLabel}</div>`
           : "";
         const transition = stat?.transition
-          ? `<div style="color:${RECOGNITION_CHART_COLORS.muted}">${stat.transitionKind === "cold-start"
-              ? "初始范围积累中，曲线暂按已达到门槛的音计算"
-              : "新范围积累中，曲线沿用扩展前已成熟音"}</div>`
+          ? `<div style="color:${RECOGNITION_CHART_COLORS.muted}">${
+              stat.transitionKind === "cold-start"
+                ? "初始范围积累中，曲线暂按已达到门槛的音计算"
+                : "新范围积累中，曲线沿用扩展前已成熟音"
+            }</div>`
           : "";
         const rows = items
           .map((item) => {
-            const point = item as { marker?: string; seriesName?: string; value?: number | string | null };
+            const point = item as {
+              marker?: string;
+              seriesName?: string;
+              value?: number | string | null;
+            };
             if (point.value === null || point.value === undefined || point.value === "") {
               return "";
             }
@@ -380,26 +434,31 @@ export function makeRecognitionTimeChartOption(
               if (isErrorRate) {
                 formattedValue = `${value.toFixed(1)}%`;
               } else {
-                const metricValue = point.seriesName === "P10"
-                  ? metricStat?.p10
-                  : point.seriesName === "中位"
-                    ? metricStat?.median
-                    : metricStat?.p90;
-                const absoluteValue = metricValue === undefined
-                  ? ""
-                  : metric === "speed"
-                    ? `${metricValue.toFixed(2)} 音/秒`
-                    : `${metricValue.toFixed(2)}s`;
-                formattedValue = valueMode === "relative"
-                  ? `${value > 0 ? "+" : ""}${value.toFixed(1)}%${absoluteValue ? ` (${absoluteValue})` : ""}`
-                  : absoluteValue;
+                const metricValue =
+                  point.seriesName === "P10"
+                    ? metricStat?.p10
+                    : point.seriesName === "中位"
+                      ? metricStat?.median
+                      : metricStat?.p90;
+                const absoluteValue =
+                  metricValue === undefined
+                    ? ""
+                    : metric === "speed"
+                      ? `${metricValue.toFixed(2)} 音/秒`
+                      : `${metricValue.toFixed(2)}s`;
+                formattedValue =
+                  valueMode === "relative"
+                    ? `${value > 0 ? "+" : ""}${value.toFixed(1)}%${absoluteValue ? ` (${absoluteValue})` : ""}`
+                    : absoluteValue;
               }
             }
             return `<div>${point.marker ?? ""}${point.seriesName ?? ""}: ${formattedValue}</div>`;
           })
           .filter(Boolean)
           .join("");
-        return title ? `<div><strong>${title}</strong>${coverage}${boundary}${transition}${rows}</div>` : "";
+        return title
+          ? `<div><strong>${title}</strong>${coverage}${boundary}${transition}${rows}</div>`
+          : "";
       },
       transitionDuration: 0,
       trigger: "axis",
@@ -412,7 +471,10 @@ export function makeRecognitionTimeChartOption(
       },
       boundaryGap: false,
       data: data.map((stat) => stat.label),
-      splitLine: { lineStyle: { color: RECOGNITION_CHART_COLORS.grid, type: "dashed" }, show: true },
+      splitLine: {
+        lineStyle: { color: RECOGNITION_CHART_COLORS.grid, type: "dashed" },
+        show: true,
+      },
       type: "category",
     },
     yAxis: [
@@ -420,7 +482,8 @@ export function makeRecognitionTimeChartOption(
         axisLabel: {
           color: RECOGNITION_CHART_COLORS.muted,
           fontSize: 11,
-          formatter: valueMode === "relative" ? "{value}%" : metric === "speed" ? "{value}" : "{value}s",
+          formatter:
+            valueMode === "relative" ? "{value}%" : metric === "speed" ? "{value}" : "{value}s",
         },
         name: valueMode === "absolute" && metric === "speed" ? "音/秒" : undefined,
         nameTextStyle: { color: RECOGNITION_CHART_COLORS.muted, fontSize: 11 },
@@ -470,8 +533,9 @@ function RecognitionTrendChart({
   const isNightMode = useNightMode();
   const seriesOptions = useMemo(() => getRecognitionSeriesOptions(), [isNightMode]);
   const chartOption = useMemo(
-    () => makeRecognitionTimeChartOption(data, metric, valueMode, visibleSeries, relativeBaselineMode),
-    [data, isNightMode, metric, relativeBaselineMode, valueMode, visibleSeries],
+    () =>
+      makeRecognitionTimeChartOption(data, metric, valueMode, visibleSeries, relativeBaselineMode),
+    [data, isNightMode, metric, relativeBaselineMode, valueMode, visibleSeries]
   );
 
   useEffect(() => {
@@ -490,22 +554,24 @@ function RecognitionTrendChart({
       resizeFrame = window.requestAnimationFrame(() => chart?.resize());
     };
 
-    void loadECharts().then((echartsModule) => {
-      if (cancelled) return;
+    void loadECharts()
+      .then((echartsModule) => {
+        if (cancelled) return;
 
-      chart = echartsModule.init(element, null, { renderer: "canvas" });
-      chartRef.current = chart;
-      resizeObserver = new ResizeObserver(scheduleResize);
-      const resizeTarget = element.parentElement ?? element;
-      resizeObserver.observe(resizeTarget);
-      if (resizeTarget !== element) resizeObserver.observe(element);
-      scheduleResize();
-      setChartLoadState("ready");
-    }).catch(() => {
-      chart?.dispose();
-      chartRef.current = null;
-      if (!cancelled) setChartLoadState("error");
-    });
+        chart = echartsModule.init(element, null, { renderer: "canvas" });
+        chartRef.current = chart;
+        resizeObserver = new ResizeObserver(scheduleResize);
+        const resizeTarget = element.parentElement ?? element;
+        resizeObserver.observe(resizeTarget);
+        if (resizeTarget !== element) resizeObserver.observe(element);
+        scheduleResize();
+        setChartLoadState("ready");
+      })
+      .catch(() => {
+        chart?.dispose();
+        chartRef.current = null;
+        if (!cancelled) setChartLoadState("error");
+      });
 
     return () => {
       cancelled = true;
@@ -561,8 +627,17 @@ function RecognitionTrendChart({
       </div>
       <div className="recognition-time-chart-frame">
         {chartLoadState === "loading" ? <ChartLoadingSkeleton /> : null}
-        {chartLoadState === "error" ? <div className="echarts-loading-error" role="status">图表暂时无法加载</div> : null}
-        <div aria-label="识别趋势折线图" className="recognition-time-chart" ref={chartElementRef} role="img" />
+        {chartLoadState === "error" ? (
+          <div className="echarts-loading-error" role="status">
+            图表暂时无法加载
+          </div>
+        ) : null}
+        <div
+          aria-label="识别趋势折线图"
+          className="recognition-time-chart"
+          ref={chartElementRef}
+          role="img"
+        />
       </div>
     </div>
   );
@@ -607,23 +682,38 @@ export function RecognitionTrendCard({
         <h2>识别趋势</h2>
         <div className="chart-panel-actions recognition-trend-actions">
           <div className="segmented" aria-label="识别趋势指标">
-            <button className={metric === "speed" ? "active" : ""} onClick={() => onMetricChange("speed")}>
+            <button
+              className={metric === "speed" ? "active" : ""}
+              onClick={() => onMetricChange("speed")}
+            >
               速度
             </button>
-            <button className={metric === "duration" ? "active" : ""} onClick={() => onMetricChange("duration")}>
+            <button
+              className={metric === "duration" ? "active" : ""}
+              onClick={() => onMetricChange("duration")}
+            >
               耗时
             </button>
           </div>
           <div className="segmented" aria-label="识别趋势数值模式">
-            <button className={valueMode === "absolute" ? "active" : ""} onClick={() => onValueModeChange("absolute")}>
+            <button
+              className={valueMode === "absolute" ? "active" : ""}
+              onClick={() => onValueModeChange("absolute")}
+            >
               绝对
             </button>
-            <button className={valueMode === "relative" ? "active" : ""} onClick={() => onValueModeChange("relative")}>
+            <button
+              className={valueMode === "relative" ? "active" : ""}
+              onClick={() => onValueModeChange("relative")}
+            >
               相对
             </button>
           </div>
           <div className="segmented" aria-label="识别趋势分组">
-            <button className={grouping === "day" ? "active" : ""} onClick={() => onGroupingChange("day")}>
+            <button
+              className={grouping === "day" ? "active" : ""}
+              onClick={() => onGroupingChange("day")}
+            >
               按天
             </button>
             <button
@@ -638,7 +728,8 @@ export function RecognitionTrendCard({
       <div className="chart-box">
         {coverage.coveredNoteCount === 0 ? (
           <div className="empty-state">
-            数据正在积累：0/{coverage.totalNoteCount} 个音已完成至少 20 次有效练习。再练习几次，回来看看整体进步吧。
+            数据正在积累：0/{coverage.totalNoteCount} 个音已完成至少 20
+            次有效练习。再练习几次，回来看看整体进步吧。
           </div>
         ) : data.length === 0 ? (
           <div className="empty-state">所选时间范围内暂无趋势点</div>
@@ -658,7 +749,11 @@ export function RecognitionTrendCard({
               {valueMode === "relative" ? (
                 <>
                   {hasVisibleExpansionBaseline ? (
-                    <span aria-label="新段零点参照" className="recognition-relative-baseline-control" role="group">
+                    <span
+                      aria-label="新段零点参照"
+                      className="recognition-relative-baseline-control"
+                      role="group"
+                    >
                       新段 0% 参照
                       <span className="recognition-relative-baseline-options">
                         {RECOGNITION_RELATIVE_BASELINE_OPTIONS.map((option) => (

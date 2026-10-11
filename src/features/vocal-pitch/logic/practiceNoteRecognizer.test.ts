@@ -11,7 +11,7 @@ function observation(
   timeMs: number,
   midiNoteNumber = 69,
   rms = 0.006,
-  options: { ambiguous?: boolean; confidence?: number; frequencyHz?: number | null } = {},
+  options: { ambiguous?: boolean; confidence?: number; frequencyHz?: number | null } = {}
 ) {
   return {
     ambiguous: options.ambiguous,
@@ -70,12 +70,17 @@ describe("practice single-note recognition", () => {
     const sensitiveRecognizer = createPracticeNoteRecognizer(0.6);
     const strictRecognizer = createPracticeNoteRecognizer(0.9);
     [0, 30, 60].forEach((timeMs) => {
-      expect(sensitiveRecognizer.process(observation(timeMs, 69, 0.006, { confidence: 0.75 }))).toBeNull();
+      expect(
+        sensitiveRecognizer.process(observation(timeMs, 69, 0.006, { confidence: 0.75 }))
+      ).toBeNull();
     });
-    expect(sensitiveRecognizer.process(observation(90, 69, 0.006, { confidence: 0.75 })))
-      .toMatchObject({ midiNoteNumber: 69 });
+    expect(
+      sensitiveRecognizer.process(observation(90, 69, 0.006, { confidence: 0.75 }))
+    ).toMatchObject({ midiNoteNumber: 69 });
     [0, 30, 60, 90].forEach((timeMs) => {
-      expect(strictRecognizer.process(observation(timeMs, 69, 0.006, { confidence: 0.75 }))).toBeNull();
+      expect(
+        strictRecognizer.process(observation(timeMs, 69, 0.006, { confidence: 0.75 }))
+      ).toBeNull();
     });
   });
 
@@ -84,7 +89,7 @@ describe("practice single-note recognition", () => {
     const firstStrikeTimes = [0, 30, 60, 90];
     const firstStrikeLevels = [0.003, 0.006, 0.008, 0.007];
     const firstStrikeResults = firstStrikeTimes.map((timeMs, index) =>
-      recognizer.process(observation(timeMs, 69, firstStrikeLevels[index])),
+      recognizer.process(observation(timeMs, 69, firstStrikeLevels[index]))
     );
     expect(firstStrikeResults.slice(0, 3)).toEqual([null, null, null]);
     expect(firstStrikeResults[3]).toMatchObject({ midiNoteNumber: 69 });

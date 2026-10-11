@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist.backup-*/
+coverage/
+server_monitor/
+pnpm-lock.yaml
+*.tsbuildinfo

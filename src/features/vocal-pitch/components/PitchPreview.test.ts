@@ -31,7 +31,10 @@ describe("pitch preview note playback", () => {
   });
 
   it("keeps a shared pitch highlighted while another pointer still holds it", () => {
-    let pointers: ReadonlyMap<number, number> = new Map([[1, 60], [2, 60]]);
+    let pointers: ReadonlyMap<number, number> = new Map([
+      [1, 60],
+      [2, 60],
+    ]);
     pointers = updateAuditionedPointers(pointers, 1, null);
     expect(getPitchRowHighlight(60, 64, pointers)).toBe("auditioned");
     pointers = updateAuditionedPointers(pointers, 2, null);

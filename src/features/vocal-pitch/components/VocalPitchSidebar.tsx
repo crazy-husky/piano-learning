@@ -1,4 +1,12 @@
-import { ChevronDown, ChevronRight, Download, Mic, PanelRightClose, RotateCcw, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Mic,
+  PanelRightClose,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   formatDuration,
@@ -65,9 +73,19 @@ export function VocalPitchSidebar({
   renameRequest,
   selectedMicrophoneId,
 }: VocalPitchSidebarProps): JSX.Element {
-  const [parametersOpen, setParametersOpen] = useLocalStorageState("anki-note.vocalPitch.parametersOpen", true);
-  const [materialsOpen, setMaterialsOpen] = useLocalStorageState("anki-note.vocalPitch.materialsOpen", true);
-  const [contextMenu, setContextMenu] = useState<{ material: VocalAudioMaterial; x: number; y: number } | null>(null);
+  const [parametersOpen, setParametersOpen] = useLocalStorageState(
+    "anki-note.vocalPitch.parametersOpen",
+    true
+  );
+  const [materialsOpen, setMaterialsOpen] = useLocalStorageState(
+    "anki-note.vocalPitch.materialsOpen",
+    true
+  );
+  const [contextMenu, setContextMenu] = useState<{
+    material: VocalAudioMaterial;
+    x: number;
+    y: number;
+  } | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [referencePitchDraft, setReferencePitchDraft] = useState(String(config.referencePitchHz));
@@ -124,7 +142,9 @@ export function VocalPitchSidebar({
       <header className="vocal-sidebar-header">
         <div>
           <strong>清唱设置</strong>
-          <span className={`vocal-backup-state ${backupStatus}`}>{BACKUP_LABELS[backupStatus]}</span>
+          <span className={`vocal-backup-state ${backupStatus}`}>
+            {BACKUP_LABELS[backupStatus]}
+          </span>
         </div>
         <button className="icon-button" title="收起边栏" onClick={onCollapse}>
           <PanelRightClose size={18} />
@@ -132,7 +152,10 @@ export function VocalPitchSidebar({
       </header>
       <div className="vocal-sidebar-content">
         <section className="vocal-sidebar-section">
-          <button className="vocal-sidebar-section-toggle" onClick={() => setParametersOpen((open) => !open)}>
+          <button
+            className="vocal-sidebar-section-toggle"
+            onClick={() => setParametersOpen((open) => !open)}
+          >
             {parametersOpen ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
             参数
           </button>
@@ -153,14 +176,24 @@ export function VocalPitchSidebar({
                       </option>
                     ))}
                   </select>
-                  <button className="icon-button" disabled={disabled} title="刷新麦克风列表" onClick={onRefreshMicrophones}>
+                  <button
+                    className="icon-button"
+                    disabled={disabled}
+                    title="刷新麦克风列表"
+                    onClick={onRefreshMicrophones}
+                  >
                     <RotateCcw size={16} />
                   </button>
                 </span>
               </label>
               <div className="vocal-input-meter-row">
-                <span><Mic size={15} /> 输入电平</span>
-                <div className="vocal-input-meter" aria-label={`输入电平 ${Math.round(inputLevel * 100)}%`}>
+                <span>
+                  <Mic size={15} /> 输入电平
+                </span>
+                <div
+                  className="vocal-input-meter"
+                  aria-label={`输入电平 ${Math.round(inputLevel * 100)}%`}
+                >
                   <i style={{ width: `${inputLevel * 100}%` }} />
                 </div>
               </div>
@@ -180,7 +213,9 @@ export function VocalPitchSidebar({
                 <span>切换标签页或最小化时继续录音</span>
               </label>
               <label>
-                <span>回放音量 <small>{Math.round(playbackVolume * 100)}%</small></span>
+                <span>
+                  回放音量 <small>{Math.round(playbackVolume * 100)}%</small>
+                </span>
                 <input
                   disabled={disabled}
                   max={1}
@@ -216,7 +251,9 @@ export function VocalPitchSidebar({
                 </span>
               </label>
               <label>
-                <span>有声判断 <small>{Math.round(config.voicingThreshold * 100)}%</small></span>
+                <span>
+                  有声判断 <small>{Math.round(config.voicingThreshold * 100)}%</small>
+                </span>
                 <input
                   disabled={disabled}
                   max={0.98}
@@ -224,7 +261,9 @@ export function VocalPitchSidebar({
                   step={0.01}
                   type="range"
                   value={config.voicingThreshold}
-                  onChange={(event) => onConfigChange({ ...config, voicingThreshold: Number(event.target.value) })}
+                  onChange={(event) =>
+                    onConfigChange({ ...config, voicingThreshold: Number(event.target.value) })
+                  }
                 />
               </label>
             </div>
@@ -232,7 +271,10 @@ export function VocalPitchSidebar({
         </section>
 
         <section className="vocal-sidebar-section vocal-material-section">
-          <button className="vocal-sidebar-section-toggle" onClick={() => setMaterialsOpen((open) => !open)}>
+          <button
+            className="vocal-sidebar-section-toggle"
+            onClick={() => setMaterialsOpen((open) => !open)}
+          >
             {materialsOpen ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
             已保存素材 <small>{materials.length}</small>
           </button>
@@ -242,7 +284,11 @@ export function VocalPitchSidebar({
               {materials.map((material) => (
                 <div
                   key={material.id}
-                  className={material.id === currentMaterialId ? "vocal-material-row current" : "vocal-material-row"}
+                  className={
+                    material.id === currentMaterialId
+                      ? "vocal-material-row current"
+                      : "vocal-material-row"
+                  }
                   title={`${new Date(material.createdAt).toLocaleString()} · ${material.source === "recording" ? "录音" : "上传"} · ${material.mimeType || "未知格式"} · ${(material.size / 1024 / 1024).toFixed(2)} MB · ${material.analysis ? `${material.analysis.detectorId} v${material.analysis.detectorVersion}` : "未分析"}`}
                   onContextMenu={(event) => {
                     event.preventDefault();
@@ -282,11 +328,26 @@ export function VocalPitchSidebar({
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(event) => event.stopPropagation()}
         >
-          <button role="menuitem" onClick={() => beginRename(contextMenu.material)}>重命名</button>
-          <button role="menuitem" onClick={() => { onDownload(contextMenu.material); setContextMenu(null); }}>
+          <button role="menuitem" onClick={() => beginRename(contextMenu.material)}>
+            重命名
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              onDownload(contextMenu.material);
+              setContextMenu(null);
+            }}
+          >
             <Download size={15} /> 下载
           </button>
-          <button className="danger" role="menuitem" onClick={() => { onDelete(contextMenu.material); setContextMenu(null); }}>
+          <button
+            className="danger"
+            role="menuitem"
+            onClick={() => {
+              onDelete(contextMenu.material);
+              setContextMenu(null);
+            }}
+          >
             <Trash2 size={15} /> 删除
           </button>
         </div>

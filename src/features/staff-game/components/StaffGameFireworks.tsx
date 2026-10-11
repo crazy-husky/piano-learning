@@ -28,7 +28,8 @@ export function StaffGameFireworks({ image }: { image: string }): JSX.Element {
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
-    if (!canvas || !context || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
+    if (!canvas || !context || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+      return undefined;
 
     let width = 0;
     let height = 0;
@@ -75,7 +76,10 @@ export function StaffGameFireworks({ image }: { image: string }): JSX.Element {
           age: 0,
           lifetime: 430 + Math.random() * 390,
           radius: 0.8 + Math.random() * 1.35,
-          color: Math.random() < 0.72 ? rocket.color : FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)],
+          color:
+            Math.random() < 0.72
+              ? rocket.color
+              : FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)],
         });
       }
     };

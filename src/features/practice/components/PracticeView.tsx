@@ -1,4 +1,13 @@
-import { ArrowLeft, BarChart3, Download, Pause, Play, SlidersHorizontal, Square, Volume2 } from "lucide-react";
+import {
+  ArrowLeft,
+  BarChart3,
+  Download,
+  Pause,
+  Play,
+  SlidersHorizontal,
+  Square,
+  Volume2,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -24,13 +33,13 @@ import {
   type PracticeAnswerInput,
 } from "../../../domain/answerInput";
 import { createMelodyGenerationState } from "../../../domain/melody";
-import {
-  ANSWER_BUTTONS,
-  getNotesForGroups,
-  PRACTICE_GROUPS,
-} from "../../../domain/notes";
+import { ANSWER_BUTTONS, getNotesForGroups, PRACTICE_GROUPS } from "../../../domain/notes";
 import { getEffectivePracticeNotes } from "../../../domain/practiceComparison";
-import { selectNextNote, selectNotePage, type AdaptiveNoteScheduler } from "../../../domain/scheduler";
+import {
+  selectNextNote,
+  selectNotePage,
+  type AdaptiveNoteScheduler,
+} from "../../../domain/scheduler";
 import type { SessionProgressMode } from "../../../domain/sessionProgress";
 import { filterLongTermReviews } from "../../../domain/stats";
 import type {
@@ -51,7 +60,10 @@ import type {
 } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { resolveHistoryLimit } from "../../../shared/components/HistoryLimitControl";
-import { isInteractiveShortcutTarget, shouldHandleGlobalEnter } from "../../../shared/keyboard/keyboardShortcuts";
+import {
+  isInteractiveShortcutTarget,
+  shouldHandleGlobalEnter,
+} from "../../../shared/keyboard/keyboardShortcuts";
 import {
   DEFAULT_SESSION_PROGRESS_UI_PREFERENCES,
   parseSessionProgressUiPreferences,
@@ -59,16 +71,15 @@ import {
 } from "../../../shared/preferences/sessionProgressPreferences";
 import { PauseOverlay } from "../../../shared/components/PauseOverlay";
 import type { PracticePagePreferences } from "../../../shared/preferences/practicePagePreferences";
-import { isNaturalPianoKey, NATURAL_PIANO_KEYS, PianoKeyboard } from "../../../shared/components/PianoKeyboard";
+import {
+  isNaturalPianoKey,
+  NATURAL_PIANO_KEYS,
+  PianoKeyboard,
+} from "../../../shared/components/PianoKeyboard";
 import { StaffPagePrompt } from "./StaffPagePrompt";
 import { StaffPrompt } from "./StaffPrompt";
-import {
-  MOBILE_PRACTICE_PAGE_STAFF_LAYOUT,
-} from "../../../shared/staff/staffLayoutProfiles";
-import {
-  buildMobileStaffPageView,
-  MOBILE_STAFF_PAGE_NOTE_COUNT,
-} from "../logic/staffPageFlow";
+import { MOBILE_PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
+import { buildMobileStaffPageView, MOBILE_STAFF_PAGE_NOTE_COUNT } from "../logic/staffPageFlow";
 import { PROMPT_NOTE_DURATIONS } from "../logic/staffPageNotation";
 import {
   DEFAULT_STAFF_PAGE_UI_PREFERENCES,
@@ -117,7 +128,10 @@ import {
   isSwiftF0PracticeRuntimeReady,
   releaseSwiftF0PracticeRuntime,
 } from "../../vocal-pitch/logic/swiftF0PracticeClient";
-import { ensurePracticeMicrophoneForResume, releasePracticeMicrophoneOnPause } from "../logic/practiceInputLifecycle";
+import {
+  ensurePracticeMicrophoneForResume,
+  releasePracticeMicrophoneOnPause,
+} from "../logic/practiceInputLifecycle";
 
 interface PracticeViewProps {
   midi: MidiInputController;
@@ -130,7 +144,10 @@ interface PracticeViewProps {
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   onNavigationExit?: (targetView: PracticeNavigationExitTarget) => void;
   onRequestNavigationExit: (targetView: PracticeNavigationExitTarget) => void;
-  onSettingsSaved: (settings: AppSettings, options?: { feedback?: boolean }) => void | Promise<void>;
+  onSettingsSaved: (
+    settings: AppSettings,
+    options?: { feedback?: boolean }
+  ) => void | Promise<void>;
   onDataChanged: () => Promise<void>;
   onOpenStats: () => void;
   onOpenSettings: () => void;
@@ -139,7 +156,8 @@ interface PracticeViewProps {
   onRunningChange: (running: boolean) => void;
 }
 
-export type PracticeNavigationExitTarget = "home" | "practice" | "stats" | "settings" | "study" | "vocal";
+export type PracticeNavigationExitTarget =
+  "home" | "practice" | "stats" | "settings" | "study" | "vocal";
 
 export interface PracticeStartPreflightResult {
   proceed: boolean;
@@ -166,7 +184,12 @@ const PRACTICE_SETUP_UI_PREFERENCES_KEY = "anki-note.practiceSetupUiPreferences"
 const PRACTICE_MODES: readonly PracticeMode[] = ["open-ended", "fixed-count", "fixed-duration"];
 const PROMPT_DISPLAY_MODES: readonly PromptDisplayMode[] = ["single-note", "staff-page"];
 
-const PRACTICE_QUEUE_STRATEGIES: readonly PracticeQueueStrategy[] = ["adaptive", "focused", "melody", "note-drill"];
+const PRACTICE_QUEUE_STRATEGIES: readonly PracticeQueueStrategy[] = [
+  "adaptive",
+  "focused",
+  "melody",
+  "note-drill",
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -185,7 +208,9 @@ function isPromptNoteDuration(value: unknown): value is PromptNoteDuration {
 }
 
 function isPracticeQueueStrategy(value: unknown): value is PracticeQueueStrategy {
-  return typeof value === "string" && PRACTICE_QUEUE_STRATEGIES.includes(value as PracticeQueueStrategy);
+  return (
+    typeof value === "string" && PRACTICE_QUEUE_STRATEGIES.includes(value as PracticeQueueStrategy)
+  );
 }
 
 function normalizeFixedCount(value: unknown, fallback: number): number {
@@ -202,8 +227,12 @@ function normalizeDrillNoteNames(value: unknown, fallback: NoteName[]): NoteName
   if (!Array.isArray(value)) {
     return fallback;
   }
-  const selected = new Set(value.filter((noteName): noteName is string => typeof noteName === "string"));
-  return ANSWER_BUTTONS.map((button) => button.noteName).filter((noteName) => selected.has(noteName));
+  const selected = new Set(
+    value.filter((noteName): noteName is string => typeof noteName === "string")
+  );
+  return ANSWER_BUTTONS.map((button) => button.noteName).filter((noteName) =>
+    selected.has(noteName)
+  );
 }
 
 function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeSetupUiPreferences {
@@ -223,7 +252,7 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
 
 function parsePracticeSetupUiPreferences(
   value: unknown,
-  fallback: PracticeSetupUiPreferences,
+  fallback: PracticeSetupUiPreferences
 ): PracticeSetupUiPreferences {
   if (!isRecord(value)) {
     return fallback;
@@ -231,16 +260,27 @@ function parsePracticeSetupUiPreferences(
 
   return {
     answerPitchMode: normalizeAnswerPitchMode(value.answerPitchMode, fallback.answerPitchMode),
-    autoPlayTarget: typeof value.autoPlayTarget === "boolean" ? value.autoPlayTarget : fallback.autoPlayTarget,
-    playAnswerNote: typeof value.playAnswerNote === "boolean" ? value.playAnswerNote : fallback.playAnswerNote,
+    autoPlayTarget:
+      typeof value.autoPlayTarget === "boolean" ? value.autoPlayTarget : fallback.autoPlayTarget,
+    playAnswerNote:
+      typeof value.playAnswerNote === "boolean" ? value.playAnswerNote : fallback.playAnswerNote,
     drillNoteNames: normalizeDrillNoteNames(value.drillNoteNames, fallback.drillNoteNames),
     fixedCount: normalizeFixedCount(value.fixedCount, fallback.fixedCount),
-    fixedDurationSeconds: normalizeFixedDurationSeconds(value.fixedDurationSeconds, fallback.fixedDurationSeconds),
+    fixedDurationSeconds: normalizeFixedDurationSeconds(
+      value.fixedDurationSeconds,
+      fallback.fixedDurationSeconds
+    ),
     mode: isPracticeMode(value.mode) ? value.mode : fallback.mode,
-    promptDisplayMode: isPromptDisplayMode(value.promptDisplayMode) ? value.promptDisplayMode : fallback.promptDisplayMode,
-    promptNoteDuration: isPromptNoteDuration(value.promptNoteDuration) ? value.promptNoteDuration : fallback.promptNoteDuration,
+    promptDisplayMode: isPromptDisplayMode(value.promptDisplayMode)
+      ? value.promptDisplayMode
+      : fallback.promptDisplayMode,
+    promptNoteDuration: isPromptNoteDuration(value.promptNoteDuration)
+      ? value.promptNoteDuration
+      : fallback.promptNoteDuration,
     queueStrategy: isPracticeQueueStrategy(value.queueStrategy)
-      ? value.queueStrategy === "focused" ? "adaptive" : value.queueStrategy
+      ? value.queueStrategy === "focused"
+        ? "adaptive"
+        : value.queueStrategy
       : fallback.queueStrategy,
   };
 }
@@ -266,22 +306,22 @@ export function PracticeView({
 }: PracticeViewProps): JSX.Element {
   const defaultPracticeSetupUiPreferences = useMemo(
     () => makeDefaultPracticeSetupUiPreferences(settings),
-    [settings],
+    [settings]
   );
   const [practiceSetupPreferences, setPracticeSetupPreferences] = useLocalStorageState(
     PRACTICE_SETUP_UI_PREFERENCES_KEY,
     defaultPracticeSetupUiPreferences,
-    { parse: parsePracticeSetupUiPreferences },
+    { parse: parsePracticeSetupUiPreferences }
   );
   const [sessionProgressPreferences, setSessionProgressPreferences] = useLocalStorageState(
     SESSION_PROGRESS_UI_PREFERENCES_KEY,
     DEFAULT_SESSION_PROGRESS_UI_PREFERENCES,
-    { parse: parseSessionProgressUiPreferences },
+    { parse: parseSessionProgressUiPreferences }
   );
   const [staffPageUiPreferences, setStaffPageUiPreferences] = useLocalStorageState(
     STAFF_PAGE_UI_PREFERENCES_KEY,
     DEFAULT_STAFF_PAGE_UI_PREFERENCES,
-    { parse: parseStaffPageUiPreferences },
+    { parse: parseStaffPageUiPreferences }
   );
   const {
     beginSessionState,
@@ -297,9 +337,12 @@ export function PracticeView({
     summary,
     setWrongAnswerCount,
   } = usePracticeSessionState();
-  const [microphoneCaptureAnalysis, setMicrophoneCaptureAnalysis] = useState<PracticeMicrophoneAnalysis | null>(null);
+  const [microphoneCaptureAnalysis, setMicrophoneCaptureAnalysis] =
+    useState<PracticeMicrophoneAnalysis | null>(null);
   const [microphoneCaptureNotice, setMicrophoneCaptureNotice] = useState<string | null>(null);
-  const [expandedCandidateSegmentKey, setExpandedCandidateSegmentKey] = useState<string | null>(null);
+  const [expandedCandidateSegmentKey, setExpandedCandidateSegmentKey] = useState<string | null>(
+    null
+  );
   const [isMicrophoneAnalysisDialogOpen, setIsMicrophoneAnalysisDialogOpen] = useState(false);
   const [isMicrophoneDebugDialogOpen, setIsMicrophoneDebugDialogOpen] = useState(false);
   const [isLoadingMicrophoneAlgorithm, setIsLoadingMicrophoneAlgorithm] = useState(false);
@@ -316,62 +359,99 @@ export function PracticeView({
   const [staffPageFirstNoteOffset, setStaffPageFirstNoteOffset] = useState(0);
   const [isStaffPageScrolling, setIsStaffPageScrolling] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [isMobileViewport, setIsMobileViewport] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches,
+  const [isMobileViewport, setIsMobileViewport] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches
   );
   const { isBusyVisible: showStartingSessionStatus, run: runSessionStart } = useDelayedBusy();
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false,
+    typeof window !== "undefined"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      : false
   );
-  const runningStartSnapshot = phase === "running" &&
-      (session?.schemaVersion === 3 || session?.schemaVersion === 4 || session?.schemaVersion === 5)
-    ? session.startSnapshot
-    : undefined;
+  const runningStartSnapshot =
+    phase === "running" &&
+    (session?.schemaVersion === 3 || session?.schemaVersion === 4 || session?.schemaVersion === 5)
+      ? session.startSnapshot
+      : undefined;
   const answerPitchMode = runningStartSnapshot
     ? normalizeAnswerPitchMode(runningStartSnapshot.practiceConfig.answerPitchMode)
     : resolveAvailableAnswerPitchMode(practiceSetupPreferences.answerPitchMode, midi.isConnected);
   const mode = runningStartSnapshot?.practiceConfig.mode ?? practiceSetupPreferences.mode;
-  const promptDisplayMode = runningStartSnapshot?.presentationConfig.promptDisplayMode ?? practiceSetupPreferences.promptDisplayMode;
-  const promptNoteDuration = runningStartSnapshot?.presentationConfig.promptNoteDuration ?? practiceSetupPreferences.promptNoteDuration;
-  const fixedCount = runningStartSnapshot?.practiceConfig.fixedCount ?? practiceSetupPreferences.fixedCount;
+  const promptDisplayMode =
+    runningStartSnapshot?.presentationConfig.promptDisplayMode ??
+    practiceSetupPreferences.promptDisplayMode;
+  const promptNoteDuration =
+    runningStartSnapshot?.presentationConfig.promptNoteDuration ??
+    practiceSetupPreferences.promptNoteDuration;
+  const fixedCount =
+    runningStartSnapshot?.practiceConfig.fixedCount ?? practiceSetupPreferences.fixedCount;
   const fixedDurationSeconds =
-    runningStartSnapshot?.practiceConfig.fixedDurationSeconds ?? practiceSetupPreferences.fixedDurationSeconds;
-  const autoPlayTarget = runningStartSnapshot?.presentationConfig.autoPlayTarget ?? practiceSetupPreferences.autoPlayTarget;
-  const playAnswerNote = runningStartSnapshot?.presentationConfig.playAnswerNote ?? practiceSetupPreferences.playAnswerNote;
-  const queueStrategy = runningStartSnapshot?.practiceConfig.queueStrategy ?? practiceSetupPreferences.queueStrategy;
-  const drillNoteNames = runningStartSnapshot?.practiceConfig.drillNoteNames ?? practiceSetupPreferences.drillNoteNames;
+    runningStartSnapshot?.practiceConfig.fixedDurationSeconds ??
+    practiceSetupPreferences.fixedDurationSeconds;
+  const autoPlayTarget =
+    runningStartSnapshot?.presentationConfig.autoPlayTarget ??
+    practiceSetupPreferences.autoPlayTarget;
+  const playAnswerNote =
+    runningStartSnapshot?.presentationConfig.playAnswerNote ??
+    practiceSetupPreferences.playAnswerNote;
+  const queueStrategy =
+    runningStartSnapshot?.practiceConfig.queueStrategy ?? practiceSetupPreferences.queueStrategy;
+  const drillNoteNames =
+    runningStartSnapshot?.practiceConfig.drillNoteNames ?? practiceSetupPreferences.drillNoteNames;
   const pausedPlaybackBpm = staffPageUiPreferences.pausedPlaybackBpm;
   const startPausedReading = staffPageUiPreferences.startPausedReading;
-  const effectivePromptNoteDuration = runningStartSnapshot?.presentationConfig.promptNoteDuration ?? promptNoteDuration;
-  const effectiveAnswerKeyboardScale = runningStartSnapshot?.interactionConfig.answerKeyboardScale ?? settings.answerKeyboardScale;
+  const effectivePromptNoteDuration =
+    runningStartSnapshot?.presentationConfig.promptNoteDuration ?? promptNoteDuration;
+  const effectiveAnswerKeyboardScale =
+    runningStartSnapshot?.interactionConfig.answerKeyboardScale ?? settings.answerKeyboardScale;
   const staffPageScrollDurationMs =
-    (runningStartSnapshot?.presentationConfig.smoothStaffPageScroll ?? staffPageUiPreferences.smoothStaffPageScroll) &&
+    (runningStartSnapshot?.presentationConfig.smoothStaffPageScroll ??
+      staffPageUiPreferences.smoothStaffPageScroll) &&
     !(runningStartSnapshot?.environment.prefersReducedMotion ?? prefersReducedMotion)
       ? STAFF_PAGE_SCROLL_DURATION_MS
       : 0;
   const summaryProgressMode = sessionProgressPreferences.mode;
   const summaryAllHistory = sessionProgressPreferences.allHistory;
   const summaryHistoryLimit = sessionProgressPreferences.historyLimit;
-  const summaryEffectiveHistoryLimit = resolveHistoryLimit(summaryHistoryLimit, summaryAllHistory, sessions.length);
+  const summaryEffectiveHistoryLimit = resolveHistoryLimit(
+    summaryHistoryLimit,
+    summaryAllHistory,
+    sessions.length
+  );
   const setMode = (nextMode: PracticeMode): void => {
     setPracticeSetupPreferences((current) => ({ ...current, mode: nextMode }));
   };
   const setAnswerPitchMode = (nextAnswerPitchMode: AnswerPitchMode): void => {
-    setPracticeSetupPreferences((current) => ({ ...current, answerPitchMode: nextAnswerPitchMode }));
+    setPracticeSetupPreferences((current) => ({
+      ...current,
+      answerPitchMode: nextAnswerPitchMode,
+    }));
   };
   const setPromptDisplayMode = (nextPromptDisplayMode: PromptDisplayMode): void => {
-    setPracticeSetupPreferences((current) => ({ ...current, promptDisplayMode: nextPromptDisplayMode }));
+    setPracticeSetupPreferences((current) => ({
+      ...current,
+      promptDisplayMode: nextPromptDisplayMode,
+    }));
   };
   const setPromptNoteDuration = (nextPromptNoteDuration: PromptNoteDuration): void => {
-    setPracticeSetupPreferences((current) => ({ ...current, promptNoteDuration: nextPromptNoteDuration }));
+    setPracticeSetupPreferences((current) => ({
+      ...current,
+      promptNoteDuration: nextPromptNoteDuration,
+    }));
   };
   const setFixedCount = (nextFixedCount: number): void => {
-    setPracticeSetupPreferences((current) => ({ ...current, fixedCount: normalizeFixedCount(nextFixedCount, current.fixedCount) }));
+    setPracticeSetupPreferences((current) => ({
+      ...current,
+      fixedCount: normalizeFixedCount(nextFixedCount, current.fixedCount),
+    }));
   };
   const setFixedDurationSeconds = (nextFixedDurationSeconds: number): void => {
     setPracticeSetupPreferences((current) => ({
       ...current,
-      fixedDurationSeconds: normalizeFixedDurationSeconds(nextFixedDurationSeconds, current.fixedDurationSeconds),
+      fixedDurationSeconds: normalizeFixedDurationSeconds(
+        nextFixedDurationSeconds,
+        current.fixedDurationSeconds
+      ),
     }));
   };
   const setAutoPlayTarget = (nextAutoPlayTarget: boolean): void => {
@@ -429,36 +509,60 @@ export function PracticeView({
   const submitAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => undefined);
   const practiceMicrophone = usePracticeMicrophoneInput(
     (answer) => submitAnswerRef.current(answer),
-    practiceMicrophonePreferences,
+    practiceMicrophonePreferences
   );
   const microphoneConfiguration = useMemo(
     () => resolvePracticeMicrophoneConfiguration(practiceMicrophonePreferences),
-    [practiceMicrophonePreferences],
+    [practiceMicrophonePreferences]
   );
-  const microphoneAnalysisIntervalMs = resolvePracticeMicrophoneFrameIntervalMs(microphoneConfiguration);
+  const microphoneAnalysisIntervalMs =
+    resolvePracticeMicrophoneFrameIntervalMs(microphoneConfiguration);
   const expectedMicrophoneSequence = useMemo(
     () => parseExpectedPracticeNoteSequence("C4 D4 E4 F4 G4 A4 B4"),
-    [],
+    []
   );
 
-  function updateMicrophoneDebugParameters(patch: Partial<PracticeMicrophoneDebugParameters>): void {
-    if (Object.entries(patch).every(([key, value]) =>
-      practiceMicrophonePreferences.debugParameters[key as keyof PracticeMicrophoneDebugParameters] === value)) {
+  function updateMicrophoneDebugParameters(
+    patch: Partial<PracticeMicrophoneDebugParameters>
+  ): void {
+    if (
+      Object.entries(patch).every(
+        ([key, value]) =>
+          practiceMicrophonePreferences.debugParameters[
+            key as keyof PracticeMicrophoneDebugParameters
+          ] === value
+      )
+    ) {
       return;
     }
     onPracticeMicrophonePreferencesChange((current) => ({
       ...current,
-      debugParameters: normalizePracticeMicrophoneDebugParameters({ ...current.debugParameters, ...patch }),
+      debugParameters: normalizePracticeMicrophoneDebugParameters({
+        ...current.debugParameters,
+        ...patch,
+      }),
     }));
-    toast.success("设置已保存并生效", { duration: 1_800, id: "practice-microphone-settings-saved" });
+    toast.success("设置已保存并生效", {
+      duration: 1_800,
+      id: "practice-microphone-settings-saved",
+    });
   }
 
   function restoreMicrophoneDebugDefaults(): void {
-    if (practiceMicrophone.status === "listening" || practiceMicrophone.status === "requesting") return;
+    if (practiceMicrophone.status === "listening" || practiceMicrophone.status === "requesting")
+      return;
     const defaultPreferences = DEFAULT_PRACTICE_MICROPHONE_PREFERENCES;
-    const hasParameterChanges = Object.entries(defaultPreferences.debugParameters).some(([key, value]) =>
-      practiceMicrophonePreferences.debugParameters[key as keyof PracticeMicrophoneDebugParameters] !== value);
-    if (practiceMicrophonePreferences.algorithm === defaultPreferences.algorithm && !hasParameterChanges) return;
+    const hasParameterChanges = Object.entries(defaultPreferences.debugParameters).some(
+      ([key, value]) =>
+        practiceMicrophonePreferences.debugParameters[
+          key as keyof PracticeMicrophoneDebugParameters
+        ] !== value
+    );
+    if (
+      practiceMicrophonePreferences.algorithm === defaultPreferences.algorithm &&
+      !hasParameterChanges
+    )
+      return;
     if (practiceMicrophonePreferences.algorithm === "swiftf0") {
       releaseSwiftF0PracticeRuntime();
     }
@@ -467,11 +571,15 @@ export function PracticeView({
       algorithm: defaultPreferences.algorithm,
       debugParameters: { ...defaultPreferences.debugParameters },
     }));
-    toast.success("设置已保存并生效", { duration: 1_800, id: "practice-microphone-settings-saved" });
+    toast.success("设置已保存并生效", {
+      duration: 1_800,
+      id: "practice-microphone-settings-saved",
+    });
   }
 
   async function selectMicrophoneAlgorithm(algorithm: PracticeMicrophoneAlgorithm): Promise<void> {
-    if (algorithm === practiceMicrophonePreferences.algorithm || isLoadingMicrophoneAlgorithm) return;
+    if (algorithm === practiceMicrophonePreferences.algorithm || isLoadingMicrophoneAlgorithm)
+      return;
     if (practiceMicrophone.status === "listening" || practiceMicrophone.status === "requesting") {
       setMicrophoneAlgorithmError("请先暂停练习并释放麦克风，再切换识别算法。");
       return;
@@ -483,7 +591,7 @@ export function PracticeView({
         await ensureSwiftF0PracticeRuntimeReady();
       } catch (error) {
         setMicrophoneAlgorithmError(
-          `算法资源加载失败：${error instanceof Error ? error.message : String(error)}`,
+          `算法资源加载失败：${error instanceof Error ? error.message : String(error)}`
         );
         return;
       } finally {
@@ -492,8 +600,13 @@ export function PracticeView({
     } else if (algorithm !== "swiftf0") {
       releaseSwiftF0PracticeRuntime();
     }
-    onPracticeMicrophonePreferencesChange((current) => withPracticeMicrophoneAlgorithm(current, algorithm));
-    toast.success("设置已保存并生效", { duration: 1_800, id: "practice-microphone-settings-saved" });
+    onPracticeMicrophonePreferencesChange((current) =>
+      withPracticeMicrophoneAlgorithm(current, algorithm)
+    );
+    toast.success("设置已保存并生效", {
+      duration: 1_800,
+      id: "practice-microphone-settings-saved",
+    });
   }
 
   useLayoutEffect(() => {
@@ -539,26 +652,39 @@ export function PracticeView({
     return () => onRunningChange(false);
   }, [onRunningChange, phase]);
 
-  const applySettingsSnapshot = useCallback((nextSettings: AppSettings): void => {
-    setPracticeSetupPreferences(makeDefaultPracticeSetupUiPreferences(nextSettings));
-  }, [setPracticeSetupPreferences]);
+  const applySettingsSnapshot = useCallback(
+    (nextSettings: AppSettings): void => {
+      setPracticeSetupPreferences(makeDefaultPracticeSetupUiPreferences(nextSettings));
+    },
+    [setPracticeSetupPreferences]
+  );
 
-  const staffNotationMode = runningStartSnapshot?.practiceConfig.staffNotationMode ?? settings.staffNotationMode;
-  const effectiveEnabledGroupIds = runningStartSnapshot?.practiceConfig.enabledGroupIds ?? settings.enabledGroupIds;
+  const staffNotationMode =
+    runningStartSnapshot?.practiceConfig.staffNotationMode ?? settings.staffNotationMode;
+  const effectiveEnabledGroupIds =
+    runningStartSnapshot?.practiceConfig.enabledGroupIds ?? settings.enabledGroupIds;
   const effectiveInterStaffLedgerSpellings =
-    runningStartSnapshot?.practiceConfig.includeInterStaffLedgerSpellings ?? settings.includeInterStaffLedgerSpellings;
+    runningStartSnapshot?.practiceConfig.includeInterStaffLedgerSpellings ??
+    settings.includeInterStaffLedgerSpellings;
   const enabledNotes = useMemo(
-    () => getNotesForGroups(effectiveEnabledGroupIds, effectiveInterStaffLedgerSpellings, staffNotationMode),
-    [effectiveEnabledGroupIds, effectiveInterStaffLedgerSpellings, staffNotationMode],
+    () =>
+      getNotesForGroups(
+        effectiveEnabledGroupIds,
+        effectiveInterStaffLedgerSpellings,
+        staffNotationMode
+      ),
+    [effectiveEnabledGroupIds, effectiveInterStaffLedgerSpellings, staffNotationMode]
   );
   const useLedgerGap = enabledNotes.some((note) => note.isInterStaffLedgerSpelling);
   const fullPracticeCount = useMemo(
-    () => getNotesForGroups(ALL_GROUP_IDS, effectiveInterStaffLedgerSpellings, staffNotationMode).length,
-    [effectiveInterStaffLedgerSpellings, staffNotationMode],
+    () =>
+      getNotesForGroups(ALL_GROUP_IDS, effectiveInterStaffLedgerSpellings, staffNotationMode)
+        .length,
+    [effectiveInterStaffLedgerSpellings, staffNotationMode]
   );
   const fixedCountPresets = useMemo(
     () => Array.from(new Set([10, 20, fullPracticeCount])).filter((count) => count > 0),
-    [fullPracticeCount],
+    [fullPracticeCount]
   );
   const queueNotes = useMemo(
     () =>
@@ -575,11 +701,11 @@ export function PracticeView({
       effectiveEnabledGroupIds,
       effectiveInterStaffLedgerSpellings,
       staffNotationMode,
-    ],
+    ]
   );
   const effectiveTargetNoteIds = useMemo(
     () => new Set(queueNotes.map((note) => note.id)),
-    [queueNotes],
+    [queueNotes]
   );
   const schedulerReviews = useMemo(() => filterLongTermReviews(reviews), [reviews]);
   const setupSettings = useMemo<AppSettings>(
@@ -609,21 +735,26 @@ export function PracticeView({
       promptNoteDuration,
       queueStrategy,
       settings,
-    ],
+    ]
   );
 
-  const toggleDrillNoteName = useCallback((noteName: NoteName, checked: boolean): void => {
-    setPracticeSetupPreferences((current) => {
-      const next = checked
-        ? [...current.drillNoteNames, noteName]
-        : current.drillNoteNames.filter((name) => name !== noteName);
-      const selected = new Set(next);
-      return {
-        ...current,
-        drillNoteNames: ANSWER_BUTTONS.map((button) => button.noteName).filter((name) => selected.has(name)),
-      };
-    });
-  }, [setPracticeSetupPreferences]);
+  const toggleDrillNoteName = useCallback(
+    (noteName: NoteName, checked: boolean): void => {
+      setPracticeSetupPreferences((current) => {
+        const next = checked
+          ? [...current.drillNoteNames, noteName]
+          : current.drillNoteNames.filter((name) => name !== noteName);
+        const selected = new Set(next);
+        return {
+          ...current,
+          drillNoteNames: ANSWER_BUTTONS.map((button) => button.noteName).filter((name) =>
+            selected.has(name)
+          ),
+        };
+      });
+    },
+    [setPracticeSetupPreferences]
+  );
 
   const markInterrupted = useCallback((reason: InterruptReason): void => {
     const prompt = promptRef.current;
@@ -634,23 +765,31 @@ export function PracticeView({
     prompt.interruptReason = reason;
   }, []);
 
-
-  const pausePractice = useCallback((interruptReason?: InterruptReason): void => {
-    if (interruptReason) {
-      markInterrupted(interruptReason);
-    }
-    releasePracticeMicrophoneOnPause(answerPitchMode, () =>
-      practiceMicrophone.stop({
-        captureStopReason: "practice-paused",
-        preserveError: practiceMicrophone.status === "error",
-      }),
-    );
-    pauseActiveTimers();
-    if (!isPausedRef.current) {
-      isPausedRef.current = true;
-      setIsPaused(true);
-    }
-  }, [answerPitchMode, markInterrupted, pauseActiveTimers, practiceMicrophone.status, practiceMicrophone.stop]);
+  const pausePractice = useCallback(
+    (interruptReason?: InterruptReason): void => {
+      if (interruptReason) {
+        markInterrupted(interruptReason);
+      }
+      releasePracticeMicrophoneOnPause(answerPitchMode, () =>
+        practiceMicrophone.stop({
+          captureStopReason: "practice-paused",
+          preserveError: practiceMicrophone.status === "error",
+        })
+      );
+      pauseActiveTimers();
+      if (!isPausedRef.current) {
+        isPausedRef.current = true;
+        setIsPaused(true);
+      }
+    },
+    [
+      answerPitchMode,
+      markInterrupted,
+      pauseActiveTimers,
+      practiceMicrophone.status,
+      practiceMicrophone.stop,
+    ]
+  );
 
   const resumePractice = useCallback(async (): Promise<void> => {
     if (!isPausedRef.current) {
@@ -710,19 +849,22 @@ export function PracticeView({
     pausePractice("manual-pause");
   }, [pausePractice, resumePractice]);
 
-  const pauseForFocusLoss = useCallback((lostFocusAt = new Date().toISOString()): void => {
-    if (isPausedRef.current) {
-      return;
-    }
-    const prompt = promptRef.current;
-    if (prompt) {
-      const lastLoss = prompt.focusLosses[prompt.focusLosses.length - 1];
-      if (!lastLoss || lastLoss.regainedFocusAt) {
-        prompt.focusLosses.push({ lostFocusAt });
+  const pauseForFocusLoss = useCallback(
+    (lostFocusAt = new Date().toISOString()): void => {
+      if (isPausedRef.current) {
+        return;
       }
-    }
-    pausePractice("focus-lost");
-  }, [pausePractice]);
+      const prompt = promptRef.current;
+      if (prompt) {
+        const lastLoss = prompt.focusLosses[prompt.focusLosses.length - 1];
+        if (!lastLoss || lastLoss.regainedFocusAt) {
+          prompt.focusLosses.push({ lostFocusAt });
+        }
+      }
+      pausePractice("focus-lost");
+    },
+    [pausePractice]
+  );
 
   useEffect(() => {
     if (phase === "running" && answerPitchMode === "exact-pitch" && !midi.isConnected) {
@@ -731,7 +873,11 @@ export function PracticeView({
   }, [answerPitchMode, midi.isConnected, pausePractice, phase]);
 
   useEffect(() => {
-    if (phase === "running" && answerPitchMode === "microphone" && practiceMicrophone.status === "error") {
+    if (
+      phase === "running" &&
+      answerPitchMode === "microphone" &&
+      practiceMicrophone.status === "error"
+    ) {
       pausePractice("microphone-disconnected");
     }
   }, [answerPitchMode, pausePractice, phase, practiceMicrophone.status]);
@@ -795,7 +941,7 @@ export function PracticeView({
       lastBackupAtRef.current = now;
       await writeBackupIfSafe();
     },
-    [mode],
+    [mode]
   );
 
   const startPrompt = useCallback(
@@ -816,11 +962,14 @@ export function PracticeView({
       setCurrentNote(note);
       setFeedback(null);
       answerInputLockedRef.current = false;
-      if ((sessionStartSnapshotRef.current?.presentationConfig.autoPlayTarget ?? autoPlayTarget) && !startsPaused) {
+      if (
+        (sessionStartSnapshotRef.current?.presentationConfig.autoPlayTarget ?? autoPlayTarget) &&
+        !startsPaused
+      ) {
         void playTargetNote(note).catch(() => undefined);
       }
     },
-    [autoPlayTarget],
+    [autoPlayTarget]
   );
 
   const {
@@ -863,26 +1012,31 @@ export function PracticeView({
       setStaffPageNotes,
     },
   });
-  const drawMelodyNote = useCallback((sourceNotes: TargetNote[], remainingCount?: number): TargetNote => {
-    if (melodyQueueRef.current.length === 0) {
-      const count =
-        remainingCount === undefined ? MELODY_BUFFER_SIZE : Math.min(MELODY_BUFFER_SIZE, Math.max(1, remainingCount));
-      melodyQueueRef.current = selectNotePage({
-        notes: sourceNotes,
-        reviews: [],
-        queueStrategy: "melody",
-        lastTargetNoteId: lastTargetNoteIdRef.current,
-        melodyState: melodyGenerationStateRef.current,
-        count,
-      });
-    }
-    const [nextNote, ...remainingNotes] = melodyQueueRef.current;
-    if (!nextNote) {
-      throw new Error("Cannot draw a melody note without enabled groups.");
-    }
-    melodyQueueRef.current = remainingNotes;
-    return nextNote;
-  }, []);
+  const drawMelodyNote = useCallback(
+    (sourceNotes: TargetNote[], remainingCount?: number): TargetNote => {
+      if (melodyQueueRef.current.length === 0) {
+        const count =
+          remainingCount === undefined
+            ? MELODY_BUFFER_SIZE
+            : Math.min(MELODY_BUFFER_SIZE, Math.max(1, remainingCount));
+        melodyQueueRef.current = selectNotePage({
+          notes: sourceNotes,
+          reviews: [],
+          queueStrategy: "melody",
+          lastTargetNoteId: lastTargetNoteIdRef.current,
+          melodyState: melodyGenerationStateRef.current,
+          count,
+        });
+      }
+      const [nextNote, ...remainingNotes] = melodyQueueRef.current;
+      if (!nextNote) {
+        throw new Error("Cannot draw a melody note without enabled groups.");
+      }
+      melodyQueueRef.current = remainingNotes;
+      return nextNote;
+    },
+    []
+  );
 
   const selectAndStartNext = useCallback(
     (nextCompletedCount: number): void => {
@@ -890,7 +1044,9 @@ export function PracticeView({
       const note =
         queueStrategy === "melody"
           ? drawMelodyNote(enabledNotes, remainingCount)
-          : adaptiveSchedulerRef.current?.select({ lastTargetNoteId: lastTargetNoteIdRef.current }) ??
+          : (adaptiveSchedulerRef.current?.select({
+              lastTargetNoteId: lastTargetNoteIdRef.current,
+            }) ??
             selectNextNote({
               notes: enabledNotes,
               reviews: [...schedulerReviews, ...sessionReviewsRef.current],
@@ -899,10 +1055,20 @@ export function PracticeView({
               queueStrategy,
               drillNoteNames,
               lastTargetNoteId: lastTargetNoteIdRef.current,
-            });
+            }));
       startPrompt(note);
     },
-    [drillNoteNames, drawMelodyNote, enabledNotes, fixedCount, mode, queueStrategy, schedulerReviews, sessions, startPrompt],
+    [
+      drillNoteNames,
+      drawMelodyNote,
+      enabledNotes,
+      fixedCount,
+      mode,
+      queueStrategy,
+      schedulerReviews,
+      sessions,
+      startPrompt,
+    ]
   );
 
   const sessionLifecycleRuntime = useMemo(
@@ -917,11 +1083,11 @@ export function PracticeView({
       isPausedRef,
       pendingAfterPauseRef,
     }),
-    [],
+    []
   );
   const sessionLifecycleTimers = useMemo(
     () => ({ getPromptActiveMs, getSessionActiveMs, pauseActiveTimers }),
-    [getPromptActiveMs, getSessionActiveMs, pauseActiveTimers],
+    [getPromptActiveMs, getSessionActiveMs, pauseActiveTimers]
   );
   const sessionLifecycleServices = useMemo(
     () => ({
@@ -931,7 +1097,13 @@ export function PracticeView({
       onDataChanged,
       onPracticeFinished,
     }),
-    [cancelRemainingPlayback, clearStaffPageScrollSchedule, onDataChanged, onPracticeFinished, practiceMicrophone.stop],
+    [
+      cancelRemainingPlayback,
+      clearStaffPageScrollSchedule,
+      onDataChanged,
+      onPracticeFinished,
+      practiceMicrophone.stop,
+    ]
   );
   const sessionLifecycleUi = useMemo(
     () => ({
@@ -940,7 +1112,7 @@ export function PracticeView({
       setIsStaffPageScrolling,
       setIsPaused,
     }),
-    [finishSessionState, syncStaffPage],
+    [finishSessionState, syncStaffPage]
   );
   const { completeSession, finishCurrentReview } = usePracticeSessionLifecycle({
     runtime: sessionLifecycleRuntime,
@@ -959,7 +1131,7 @@ export function PracticeView({
     }
     handledNavigationExitRequestIdRef.current = navigationExitRequest.id;
     const backgroundExit = Promise.resolve().then(() =>
-      completeSession("manual-stop", "manual-stop", { showSummary: false, updateUi: false }),
+      completeSession("manual-stop", "manual-stop", { showSummary: false, updateUi: false })
     );
     onNavigationExit?.(navigationExitRequest.targetView);
     void backgroundExit.catch(() => undefined);
@@ -1213,21 +1385,25 @@ export function PracticeView({
     return () => window.removeEventListener("keydown", handleEnter);
   }, [phase, setupDisabled, startSession]);
 
-  const remainingMs = mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
+  const remainingMs =
+    mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
   const mobileStaffPageRowCount = 1;
   const mobileStaffPageNoteCount = MOBILE_STAFF_PAGE_NOTE_COUNT * mobileStaffPageRowCount;
   const staffPageRowCount = 1;
-  const showPracticeKeyboard = answerPitchMode !== "microphone" &&
-    (!isMobileViewport || answerPitchMode === "note-name");
+  const showPracticeKeyboard =
+    answerPitchMode !== "microphone" && (!isMobileViewport || answerPitchMode === "note-name");
   const isMobileStaffPage = isMobileViewport && promptDisplayMode === "staff-page";
   const mobileStaffPageStartIndex =
     Math.floor(Math.max(0, staffPageIndex) / mobileStaffPageNoteCount) * mobileStaffPageNoteCount;
   const mobileStaffPageNotes = useMemo(
     () =>
       isMobileStaffPage
-        ? staffPageNotes.slice(mobileStaffPageStartIndex, mobileStaffPageStartIndex + mobileStaffPageNoteCount)
+        ? staffPageNotes.slice(
+            mobileStaffPageStartIndex,
+            mobileStaffPageStartIndex + mobileStaffPageNoteCount
+          )
         : staffPageNotes,
-    [isMobileStaffPage, mobileStaffPageNoteCount, mobileStaffPageStartIndex, staffPageNotes],
+    [isMobileStaffPage, mobileStaffPageNoteCount, mobileStaffPageStartIndex, staffPageNotes]
   );
   const mobileStaffPageView = useMemo(
     () =>
@@ -1250,7 +1426,7 @@ export function PracticeView({
       staffPageFirstNoteOffset,
       staffPageIndex,
       staffPageNotes,
-    ],
+    ]
   );
   const {
     formatQualifiedTimeMedian,
@@ -1284,7 +1460,8 @@ export function PracticeView({
           onPromptNoteDurationChange: setPromptNoteDuration,
           onQueueStrategyChange: setQueueStrategy,
           onSettingsSaved,
-          onStartPausedReadingChange: (enabled) => setStaffPageUiPreferences((current) => ({ ...current, startPausedReading: enabled })),
+          onStartPausedReadingChange: (enabled) =>
+            setStaffPageUiPreferences((current) => ({ ...current, startPausedReading: enabled })),
           onStartSession: () => void startSession(),
           onToggleDrillNoteName: toggleDrillNoteName,
         }}
@@ -1332,7 +1509,9 @@ export function PracticeView({
         "practice-shell",
         "practice-running-shell",
         isMobileViewport ? "practice-running-mobile" : "",
-        isMobileViewport && answerPitchMode !== "note-name" ? "practice-without-touch-keyboard" : "",
+        isMobileViewport && answerPitchMode !== "note-name"
+          ? "practice-without-touch-keyboard"
+          : "",
         `practice-${promptDisplayMode}`,
         promptDisplayMode === "staff-page"
           ? `practice-staff-page-rows-${isMobileStaffPage ? mobileStaffPageRowCount : staffPageRowCount}`
@@ -1374,13 +1553,20 @@ export function PracticeView({
           ) : null}
           <button
             aria-keyshortcuts="Space"
-            title={answerPitchMode === "microphone"
-              ? isPaused ? "重新连接麦克风并继续 空格" : "暂停 空格"
-              : isPaused ? "继续 空格" : "暂停 空格"}
+            title={
+              answerPitchMode === "microphone"
+                ? isPaused
+                  ? "重新连接麦克风并继续 空格"
+                  : "暂停 空格"
+                : isPaused
+                  ? "继续 空格"
+                  : "暂停 空格"
+            }
             onClick={togglePause}
           >
             {isPaused ? <Play size={18} /> : <Pause size={18} />}
-            {isPaused ? "继续" : "暂停"}<kbd>空格</kbd>
+            {isPaused ? "继续" : "暂停"}
+            <kbd>空格</kbd>
           </button>
           <button
             aria-keyshortcuts="Escape"
@@ -1404,11 +1590,12 @@ export function PracticeView({
               ? `正在监听麦克风 · ${practiceMicrophoneAlgorithmLabel(practiceMicrophonePreferences.algorithm)}`
               : practiceMicrophone.status === "requesting"
                 ? `正在连接麦克风并加载 ${practiceMicrophoneAlgorithmLabel(practiceMicrophonePreferences.algorithm)}`
-                : practiceMicrophone.error ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接")}
+                : (practiceMicrophone.error ??
+                  (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))}
           </span>
-          {practiceMicrophonePreferences.debugMode && practiceMicrophone.detectedNote
-            ? <strong>听到 {practiceMicrophone.detectedNote}</strong>
-            : null}
+          {practiceMicrophonePreferences.debugMode && practiceMicrophone.detectedNote ? (
+            <strong>听到 {practiceMicrophone.detectedNote}</strong>
+          ) : null}
           {practiceMicrophonePreferences.debugMode ? (
             <progress aria-label="麦克风输入电平" max={1} value={practiceMicrophone.inputLevel} />
           ) : null}
@@ -1425,121 +1612,160 @@ export function PracticeView({
             </button>
           ) : null}
           {practiceMicrophonePreferences.debugMode ? (
-          <div className="practice-microphone-capture">
-            <button
-              type="button"
-              disabled={!practiceMicrophone.isListening ||
-                (practiceMicrophone.captureAnalysisPending && !practiceMicrophone.captureRecording)}
-              onClick={() => {
-                if (practiceMicrophone.captureRecording) {
-                  void (async () => {
-                    const stopped = await practiceMicrophone.stopCapture();
-                    if (stopped.frameCount === 0) {
-                      const captureDiagnostics = [
-                        `算法 ${practiceMicrophoneAlgorithmLabel(practiceMicrophonePreferences.algorithm)}`,
-                        `采集循环 ${stopped.audioLoopFrameCount} 帧`,
-                        `输入 RMS ${stopped.inputRms.toFixed(6)}`,
-                        `音频上下文 ${stopped.audioContextState}`,
-                        `麦克风轨道 ${stopped.trackReadyState}${stopped.trackMuted === null
-                          ? ""
-                          : stopped.trackMuted ? "（静音）" : "（未静音）"}`,
-                      ].join("；");
-                      toast.error(stopped.error ? "麦克风采集失败" : "没有采集到音频", {
-                        description: `${stopped.error ?? "采集期间没有写入音频帧。"} ${captureDiagnostics}`,
-                      });
-                      return;
-                    }
-                    const analysis = practiceMicrophone.analyzeCapture(expectedMicrophoneSequence);
-                    if (!analysis) {
-                      toast.error("采样分析失败", {
-                        description: stopped.error ?? stopped.finalFrameIssue ?? "采样暂时无法分析，请重新采集后再试。",
-                      });
-                      return;
-                    }
-                      setMicrophoneCaptureNotice(stopped.error || stopped.finalFrameIssue
-                      ? `采样已保留；${stopped.error ?? stopped.finalFrameIssue}。以下分析基于已采集的数据。`
-                      : null);
-                    setMicrophoneCaptureAnalysis(analysis);
-                    setIsMicrophoneAnalysisDialogOpen(true);
-                  })();
-                } else {
-                  setMicrophoneCaptureAnalysis(null);
-                  setMicrophoneCaptureNotice(null);
-                  setIsMicrophoneAnalysisDialogOpen(false);
-                  practiceMicrophone.startCapture();
-                }
-              }}
-            >
-              {practiceMicrophone.captureRecording ? <Square fill="currentColor" size={13} /> : <Play size={14} />}
-              {practiceMicrophone.captureRecording ? "结束采集" : practiceMicrophone.captureFrameCount > 0 ? "重新采集" : "开始采集"}
-            </button>
-            <button
-              className="primary practice-microphone-analysis-trigger"
-              type="button"
-              disabled={practiceMicrophone.captureFrameCount === 0 || practiceMicrophone.captureRecording ||
-                practiceMicrophone.captureAnalysisPending ||
-                expectedMicrophoneSequence === null}
-              onClick={() => {
-                if (microphoneCaptureAnalysis) {
-                  setIsMicrophoneAnalysisDialogOpen(true);
-                  return;
-                }
-                const analysis = practiceMicrophone.analyzeCapture(expectedMicrophoneSequence);
-                if (analysis) {
-                  setMicrophoneCaptureNotice(null);
-                  setMicrophoneCaptureAnalysis(analysis);
-                  setIsMicrophoneAnalysisDialogOpen(true);
-                }
-              }}
-            >
-              <BarChart3 size={14} />
-              {microphoneCaptureAnalysis ? "查看分析" : "分析采样"}
-            </button>
+            <div className="practice-microphone-capture">
               <button
                 type="button"
-                disabled={practiceMicrophone.captureFrameCount === 0 || practiceMicrophone.captureRecording ||
-                  practiceMicrophone.captureAnalysisPending}
-              onClick={() => void practiceMicrophone.saveRecentCapture(microphoneCaptureAnalysis ?? undefined)}
-            >
-              <Download size={14} />
-              分享采样和分析
-            </button>
-            {practiceMicrophone.captureRecording || practiceMicrophone.captureFrameCount > 0 ? (
-              <span>
+                disabled={
+                  !practiceMicrophone.isListening ||
+                  (practiceMicrophone.captureAnalysisPending &&
+                    !practiceMicrophone.captureRecording)
+                }
+                onClick={() => {
+                  if (practiceMicrophone.captureRecording) {
+                    void (async () => {
+                      const stopped = await practiceMicrophone.stopCapture();
+                      if (stopped.frameCount === 0) {
+                        const captureDiagnostics = [
+                          `算法 ${practiceMicrophoneAlgorithmLabel(practiceMicrophonePreferences.algorithm)}`,
+                          `采集循环 ${stopped.audioLoopFrameCount} 帧`,
+                          `输入 RMS ${stopped.inputRms.toFixed(6)}`,
+                          `音频上下文 ${stopped.audioContextState}`,
+                          `麦克风轨道 ${stopped.trackReadyState}${
+                            stopped.trackMuted === null
+                              ? ""
+                              : stopped.trackMuted
+                                ? "（静音）"
+                                : "（未静音）"
+                          }`,
+                        ].join("；");
+                        toast.error(stopped.error ? "麦克风采集失败" : "没有采集到音频", {
+                          description: `${stopped.error ?? "采集期间没有写入音频帧。"} ${captureDiagnostics}`,
+                        });
+                        return;
+                      }
+                      const analysis = practiceMicrophone.analyzeCapture(
+                        expectedMicrophoneSequence
+                      );
+                      if (!analysis) {
+                        toast.error("采样分析失败", {
+                          description:
+                            stopped.error ??
+                            stopped.finalFrameIssue ??
+                            "采样暂时无法分析，请重新采集后再试。",
+                        });
+                        return;
+                      }
+                      setMicrophoneCaptureNotice(
+                        stopped.error || stopped.finalFrameIssue
+                          ? `采样已保留；${stopped.error ?? stopped.finalFrameIssue}。以下分析基于已采集的数据。`
+                          : null
+                      );
+                      setMicrophoneCaptureAnalysis(analysis);
+                      setIsMicrophoneAnalysisDialogOpen(true);
+                    })();
+                  } else {
+                    setMicrophoneCaptureAnalysis(null);
+                    setMicrophoneCaptureNotice(null);
+                    setIsMicrophoneAnalysisDialogOpen(false);
+                    practiceMicrophone.startCapture();
+                  }
+                }}
+              >
+                {practiceMicrophone.captureRecording ? (
+                  <Square fill="currentColor" size={13} />
+                ) : (
+                  <Play size={14} />
+                )}
                 {practiceMicrophone.captureRecording
-                  ? `正在采集 ${Math.ceil(practiceMicrophone.captureDurationMs / 1000)} 秒 · ${microphoneConfiguration.analysisGain}× · 最长 30 秒`
-                  : `已采集 ${Math.ceil(practiceMicrophone.captureDurationMs / 1000)} 秒 · ${microphoneConfiguration.analysisGain}× · ${practiceMicrophone.captureFrameCount} 帧`}
-              </span>
-            ) : null}
-            <div className="practice-microphone-capture-guidance">
-              <p>
-                <strong>当前详细配置：</strong>
-                {practiceMicrophoneAlgorithmLabel(microphoneConfiguration.algorithm)} · {microphoneConfiguration.debugMode
-                  ? "调试参数"
-                  : practiceMicrophoneSensitivityLevelLabel(microphoneConfiguration.sensitivityLevel)} ·
-                {" "}{microphoneConfiguration.analysisGain}× · {microphoneConfiguration.requiredStableFrames} 帧 /
-                {" "}{microphoneConfiguration.requiredStableMs} ms · 分析间隔 {microphoneAnalysisIntervalMs} ms ·
-                {" "}置信度 {microphoneConfiguration.confidenceThreshold.toFixed(3)} ·
-                {" "}RMS {microphoneConfiguration.inputRmsThreshold.toFixed(5)}
-              </p>
-              <div className="practice-microphone-diagnostic-flow">
-                <strong>诊断流程：</strong>
-                <ol>
-                  <li>点击“开始采集”按钮。</li>
-                  <li>依次从左往右弹奏中央 C 的七个白键（可快可慢，可轻可重）。</li>
-                  <li>点击“分析采样”，查看识别结果是否符合预期。</li>
-                  <li>结果不符合预期时，点击“分享采样和分析”，把数据发给 AI 分析问题。</li>
-                </ol>
+                  ? "结束采集"
+                  : practiceMicrophone.captureFrameCount > 0
+                    ? "重新采集"
+                    : "开始采集"}
+              </button>
+              <button
+                className="primary practice-microphone-analysis-trigger"
+                type="button"
+                disabled={
+                  practiceMicrophone.captureFrameCount === 0 ||
+                  practiceMicrophone.captureRecording ||
+                  practiceMicrophone.captureAnalysisPending ||
+                  expectedMicrophoneSequence === null
+                }
+                onClick={() => {
+                  if (microphoneCaptureAnalysis) {
+                    setIsMicrophoneAnalysisDialogOpen(true);
+                    return;
+                  }
+                  const analysis = practiceMicrophone.analyzeCapture(expectedMicrophoneSequence);
+                  if (analysis) {
+                    setMicrophoneCaptureNotice(null);
+                    setMicrophoneCaptureAnalysis(analysis);
+                    setIsMicrophoneAnalysisDialogOpen(true);
+                  }
+                }}
+              >
+                <BarChart3 size={14} />
+                {microphoneCaptureAnalysis ? "查看分析" : "分析采样"}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  practiceMicrophone.captureFrameCount === 0 ||
+                  practiceMicrophone.captureRecording ||
+                  practiceMicrophone.captureAnalysisPending
+                }
+                onClick={() =>
+                  void practiceMicrophone.saveRecentCapture(microphoneCaptureAnalysis ?? undefined)
+                }
+              >
+                <Download size={14} />
+                分享采样和分析
+              </button>
+              {practiceMicrophone.captureRecording || practiceMicrophone.captureFrameCount > 0 ? (
+                <span>
+                  {practiceMicrophone.captureRecording
+                    ? `正在采集 ${Math.ceil(practiceMicrophone.captureDurationMs / 1000)} 秒 · ${microphoneConfiguration.analysisGain}× · 最长 30 秒`
+                    : `已采集 ${Math.ceil(practiceMicrophone.captureDurationMs / 1000)} 秒 · ${microphoneConfiguration.analysisGain}× · ${practiceMicrophone.captureFrameCount} 帧`}
+                </span>
+              ) : null}
+              <div className="practice-microphone-capture-guidance">
+                <p>
+                  <strong>当前详细配置：</strong>
+                  {practiceMicrophoneAlgorithmLabel(microphoneConfiguration.algorithm)} ·{" "}
+                  {microphoneConfiguration.debugMode
+                    ? "调试参数"
+                    : practiceMicrophoneSensitivityLevelLabel(
+                        microphoneConfiguration.sensitivityLevel
+                      )}{" "}
+                  · {microphoneConfiguration.analysisGain}× ·{" "}
+                  {microphoneConfiguration.requiredStableFrames} 帧 /{" "}
+                  {microphoneConfiguration.requiredStableMs} ms · 分析间隔{" "}
+                  {microphoneAnalysisIntervalMs} ms · 置信度{" "}
+                  {microphoneConfiguration.confidenceThreshold.toFixed(3)} · RMS{" "}
+                  {microphoneConfiguration.inputRmsThreshold.toFixed(5)}
+                </p>
+                <div className="practice-microphone-diagnostic-flow">
+                  <strong>诊断流程：</strong>
+                  <ol>
+                    <li>点击“开始采集”按钮。</li>
+                    <li>依次从左往右弹奏中央 C 的七个白键（可快可慢，可轻可重）。</li>
+                    <li>点击“分析采样”，查看识别结果是否符合预期。</li>
+                    <li>结果不符合预期时，点击“分享采样和分析”，把数据发给 AI 分析问题。</li>
+                  </ol>
+                </div>
               </div>
+              {practiceMicrophone.captureStatus ? (
+                <span role="status">{practiceMicrophone.captureStatus}</span>
+              ) : null}
             </div>
-            {practiceMicrophone.captureStatus ? <span role="status">{practiceMicrophone.captureStatus}</span> : null}
-          </div>
           ) : null}
         </div>
       ) : null}
 
       <div
-        className={promptDisplayMode === "staff-page" ? "prompt-stage staff-page-stage" : "prompt-stage"}
+        className={
+          promptDisplayMode === "staff-page" ? "prompt-stage staff-page-stage" : "prompt-stage"
+        }
       >
         {promptDisplayMode === "staff-page" ? (
           <div className={isMobileStaffPage ? "staff-page-mobile-view" : undefined}>
@@ -1560,7 +1786,7 @@ export function PracticeView({
               visibleRowCount={isMobileStaffPage ? mobileStaffPageRowCount : staffPageRowCount}
               wrongIndex={
                 feedback?.type === "wrong"
-                  ? mobileStaffPageView?.noteIndexInPage ?? staffPageIndex
+                  ? (mobileStaffPageView?.noteIndexInPage ?? staffPageIndex)
                   : undefined
               }
             />
@@ -1586,8 +1812,12 @@ export function PracticeView({
         <PianoKeyboard
           ariaLabel="答案琴键"
           className="practice-piano-keyboard"
-          enabledKeys={answerPitchMode === "note-name" ? NATURAL_PIANO_KEYS : new Set<PianoKeyName>()}
-          feedback={feedback?.noteName ? { keyName: feedback.noteName, type: feedback.type } : undefined}
+          enabledKeys={
+            answerPitchMode === "note-name" ? NATURAL_PIANO_KEYS : new Set<PianoKeyName>()
+          }
+          feedback={
+            feedback?.noteName ? { keyName: feedback.noteName, type: feedback.type } : undefined
+          }
           keyOctave={currentNote?.octave}
           onKeyPress={(key) => {
             if (answerPitchMode === "note-name" && isNaturalPianoKey(key.keyName)) {
@@ -1644,7 +1874,9 @@ export function PracticeView({
           onToggleRemainingPlayback={toggleRemainingPlayback}
           playbackState={remainingPlaybackState}
           showKeyboardShortcuts={!isMobileViewport}
-          showRemainingPlayback={promptDisplayMode === "staff-page" && answerPitchMode !== "microphone"}
+          showRemainingPlayback={
+            promptDisplayMode === "staff-page" && answerPitchMode !== "microphone"
+          }
         />
       ) : null}
       <PracticeMicrophoneDebugDialog
@@ -1671,7 +1903,6 @@ export function PracticeView({
         onClose={() => setIsMicrophoneAnalysisDialogOpen(false)}
         onExpandedCandidateSegmentKeyChange={setExpandedCandidateSegmentKey}
       />
-
     </section>
   );
 }

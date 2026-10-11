@@ -1,13 +1,5 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import type {
-  AppSettings,
-  PracticeSessionRecord,
-  ReviewRecord,
-} from "../../../domain/types";
+import { useEffect, useMemo, useState } from "react";
+import type { AppSettings, PracticeSessionRecord, ReviewRecord } from "../../../domain/types";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
 import { resolveHistoryLimit } from "../../../shared/components/HistoryLimitControl";
 import {
@@ -29,11 +21,7 @@ import {
 import { SessionProgressCard } from "./SessionProgressCard";
 import { StatsRangeStaff } from "./StatsRangeStaff";
 import { STATS_COLORS } from "./statsColors";
-import {
-  parseStatsRangeDays,
-  STATS_RANGE_PRESETS,
-  type StatsRange,
-} from "./statsRange";
+import { parseStatsRangeDays, STATS_RANGE_PRESETS, type StatsRange } from "./statsRange";
 import {
   DEFAULT_STATS_UI_PREFERENCES,
   parseStatsUiPreferences,
@@ -52,7 +40,11 @@ interface StatsViewProps {
 }
 
 const STATS_CAROUSEL_CARD_LABELS = ["识别趋势", "答对进度", "音域分布"] as const;
-const STATS_CAROUSEL_PAIR_LABELS = ["识别趋势和答对进度", "答对进度和音域分布", "音域分布和识别趋势"] as const;
+const STATS_CAROUSEL_PAIR_LABELS = [
+  "识别趋势和答对进度",
+  "答对进度和音域分布",
+  "音域分布和识别趋势",
+] as const;
 const STATS_IDLE_RENDER_TIMEOUT_MS = 600;
 const STATS_IDLE_RENDER_FALLBACK_MS = 120;
 interface StatsIdleWindow {
@@ -79,12 +71,12 @@ export function StatsView({
   const [statsUiPreferences, setStatsUiPreferences] = useLocalStorageState(
     STATS_UI_PREFERENCES_KEY,
     DEFAULT_STATS_UI_PREFERENCES,
-    { parse: parseStatsUiPreferences },
+    { parse: parseStatsUiPreferences }
   );
   const [sessionProgressPreferences, setSessionProgressPreferences] = useLocalStorageState(
     SESSION_PROGRESS_UI_PREFERENCES_KEY,
     DEFAULT_SESSION_PROGRESS_UI_PREFERENCES,
-    { parse: parseSessionProgressUiPreferences },
+    { parse: parseSessionProgressUiPreferences }
   );
   const {
     beginStatsCarouselDrag,
@@ -106,7 +98,9 @@ export function StatsView({
   });
   const [primaryContentReady, setPrimaryContentReady] = useState(false);
   const [idleContentReady, setIdleContentReady] = useState(false);
-  const [customRangeDraft, setCustomRangeDraft] = useState(() => String(statsUiPreferences.customRangeDays));
+  const [customRangeDraft, setCustomRangeDraft] = useState(() =>
+    String(statsUiPreferences.customRangeDays)
+  );
 
   useEffect(() => {
     setCustomRangeDraft(String(statsUiPreferences.customRangeDays));
@@ -131,35 +125,42 @@ export function StatsView({
     }
     const idleWindow = window as unknown as StatsIdleWindow;
     if (idleWindow.requestIdleCallback && idleWindow.cancelIdleCallback) {
-      const idleCallback = idleWindow.requestIdleCallback(
-        () => setIdleContentReady(true),
-        { timeout: STATS_IDLE_RENDER_TIMEOUT_MS },
-      );
+      const idleCallback = idleWindow.requestIdleCallback(() => setIdleContentReady(true), {
+        timeout: STATS_IDLE_RENDER_TIMEOUT_MS,
+      });
       return () => idleWindow.cancelIdleCallback?.(idleCallback);
     }
-    const timeout = window.setTimeout(() => setIdleContentReady(true), STATS_IDLE_RENDER_FALLBACK_MS);
+    const timeout = window.setTimeout(
+      () => setIdleContentReady(true),
+      STATS_IDLE_RENDER_FALLBACK_MS
+    );
     return () => window.clearTimeout(timeout);
   }, [primaryContentReady]);
 
   const preparedStatsCarouselCardIds = idleContentReady
     ? new Set<StatsCarouselCardId>(STATS_CAROUSEL_CARD_IDS)
     : visibleStatsCarouselCardIds;
-  const recognitionStatsReady = primaryContentReady && preparedStatsCarouselCardIds.has("recognition-time");
-  const sessionProgressStatsReady = primaryContentReady && (
-    preparedStatsCarouselCardIds.has("session-progress") || preparedStatsCarouselCardIds.has("note-range")
-  );
+  const recognitionStatsReady =
+    primaryContentReady && preparedStatsCarouselCardIds.has("recognition-time");
+  const sessionProgressStatsReady =
+    primaryContentReady &&
+    (preparedStatsCarouselCardIds.has("session-progress") ||
+      preparedStatsCarouselCardIds.has("note-range"));
   const noteRangeStatsReady = primaryContentReady && preparedStatsCarouselCardIds.has("note-range");
   const range = statsUiPreferences.range;
-  const customRangeSelected = range !== "all" && !STATS_RANGE_PRESETS.some((preset) => preset === range);
+  const customRangeSelected =
+    range !== "all" && !STATS_RANGE_PRESETS.some((preset) => preset === range);
   const recognitionTimeGrouping = statsUiPreferences.recognitionTimeGrouping;
   const recognitionTimeMetric = statsUiPreferences.recognitionTimeMetric;
-  const recognitionTimeRelativeBaselineMode = statsUiPreferences.recognitionTimeRelativeBaselineMode;
+  const recognitionTimeRelativeBaselineMode =
+    statsUiPreferences.recognitionTimeRelativeBaselineMode;
   const recognitionTimeValueMode = statsUiPreferences.recognitionTimeValueMode;
   const recognitionVisibleSeries = useMemo(
-    () => RECOGNITION_SERIES_KEYS.filter(
-      (seriesKey) => !statsUiPreferences.hiddenRecognitionSeries.includes(seriesKey),
-    ),
-    [statsUiPreferences.hiddenRecognitionSeries],
+    () =>
+      RECOGNITION_SERIES_KEYS.filter(
+        (seriesKey) => !statsUiPreferences.hiddenRecognitionSeries.includes(seriesKey)
+      ),
+    [statsUiPreferences.hiddenRecognitionSeries]
   );
 
   const sessionProgressMode = sessionProgressPreferences.mode;
@@ -168,7 +169,7 @@ export function StatsView({
   const sessionProgressEffectiveHistoryLimit = resolveHistoryLimit(
     sessionProgressHistoryLimit,
     sessionProgressAllHistory,
-    sessions.length,
+    sessions.length
   );
   const setRange = (nextRange: StatsRange): void => {
     setStatsUiPreferences((current) => ({ ...current, range: nextRange }));
@@ -199,7 +200,9 @@ export function StatsView({
   const selectOnlyRecognitionSeries = (seriesKey: RecognitionSeriesKey): void => {
     setStatsUiPreferences((current) => ({
       ...current,
-      hiddenRecognitionSeries: RECOGNITION_SERIES_KEYS.filter((candidate) => candidate !== seriesKey),
+      hiddenRecognitionSeries: RECOGNITION_SERIES_KEYS.filter(
+        (candidate) => candidate !== seriesKey
+      ),
     }));
   };
   const toggleRecognitionSeries = (seriesKey: RecognitionSeriesKey): void => {
@@ -207,7 +210,9 @@ export function StatsView({
       if (current.hiddenRecognitionSeries.includes(seriesKey)) {
         return {
           ...current,
-          hiddenRecognitionSeries: current.hiddenRecognitionSeries.filter((candidate) => candidate !== seriesKey),
+          hiddenRecognitionSeries: current.hiddenRecognitionSeries.filter(
+            (candidate) => candidate !== seriesKey
+          ),
         };
       }
       if (current.hiddenRecognitionSeries.length === RECOGNITION_SERIES_KEYS.length - 1) {
@@ -311,7 +316,10 @@ export function StatsView({
                 </span>
                 <span>
                   <LegendSwatch color={STATS_COLORS.range.tone.blue[1]} />
-                  较快{timeTertileThresholds ? ` (≤${formatRangeSeconds(timeTertileThresholds.low)})` : ""}
+                  较快
+                  {timeTertileThresholds
+                    ? ` (≤${formatRangeSeconds(timeTertileThresholds.low)})`
+                    : ""}
                 </span>
                 <span>
                   <LegendSwatch color={STATS_COLORS.range.tone.blue[2]} />
@@ -319,7 +327,10 @@ export function StatsView({
                 </span>
                 <span>
                   <LegendSwatch color={STATS_COLORS.range.tone.blue[3]} />
-                  较慢{timeTertileThresholds ? ` (>${formatRangeSeconds(timeTertileThresholds.high)})` : ""}
+                  较慢
+                  {timeTertileThresholds
+                    ? ` (>${formatRangeSeconds(timeTertileThresholds.high)})`
+                    : ""}
                 </span>
               </div>
             </div>
@@ -335,12 +346,12 @@ export function StatsView({
               <h3>错音次数</h3>
               <div className="range-legend">
                 <span>
-                  <LegendSwatch color={STATS_COLORS.range.neutral} />
-                  0
+                  <LegendSwatch color={STATS_COLORS.range.neutral} />0
                 </span>
                 <span>
                   <LegendSwatch color={STATS_COLORS.range.tone.red[1]} />
-                  较低{errorTertileThresholds ? ` (≤${Math.floor(errorTertileThresholds.low)}次)` : ""}
+                  较低
+                  {errorTertileThresholds ? ` (≤${Math.floor(errorTertileThresholds.low)}次)` : ""}
                 </span>
                 <span>
                   <LegendSwatch color={STATS_COLORS.range.tone.red[2]} />
@@ -348,7 +359,10 @@ export function StatsView({
                 </span>
                 <span>
                   <LegendSwatch color={STATS_COLORS.range.tone.red[3]} />
-                  较高{errorTertileThresholds ? ` (≥${Math.floor(errorTertileThresholds.high) + 1}次)` : ""}
+                  较高
+                  {errorTertileThresholds
+                    ? ` (≥${Math.floor(errorTertileThresholds.high) + 1}次)`
+                    : ""}
                 </span>
               </div>
             </div>
@@ -374,14 +388,20 @@ export function StatsView({
         <div className="toolbar stats-range-filter stats-header-range-filter">
           <div className="segmented" aria-label="统计天数筛选">
             {STATS_RANGE_PRESETS.map((days) => (
-              <button className={range === days ? "active" : ""} key={days} onClick={() => setRange(days)}>
+              <button
+                className={range === days ? "active" : ""}
+                key={days}
+                onClick={() => setRange(days)}
+              >
                 {days} 天
               </button>
             ))}
             <button className={range === "all" ? "active" : ""} onClick={() => setRange("all")}>
               全部
             </button>
-            <div className={customRangeSelected ? "stats-range-custom active" : "stats-range-custom"}>
+            <div
+              className={customRangeSelected ? "stats-range-custom active" : "stats-range-custom"}
+            >
               <input
                 aria-label="自定义统计天数"
                 inputMode="numeric"
@@ -420,7 +440,11 @@ export function StatsView({
 
       {primaryContentReady ? (
         <div
-          className={singleCardCarousel ? "stats-card-carousel stats-card-carousel-single" : "stats-card-carousel"}
+          className={
+            singleCardCarousel
+              ? "stats-card-carousel stats-card-carousel-single"
+              : "stats-card-carousel"
+          }
         >
           <div
             className="stats-card-carousel-viewport"
@@ -450,14 +474,21 @@ export function StatsView({
                     {preparedStatsCarouselCardIds.has(cardId) ? (
                       renderStatsCard(cardId)
                     ) : (
-                      <div className="panel stats-carousel-card stats-card-idle-placeholder" aria-hidden="true" />
+                      <div
+                        className="panel stats-carousel-card stats-card-idle-placeholder"
+                        aria-hidden="true"
+                      />
                     )}
                   </div>
                 );
               })}
             </div>
           </div>
-          <div className="chart-carousel-nav stats-card-carousel-nav" aria-label="统计卡片切换" role="group">
+          <div
+            className="chart-carousel-nav stats-card-carousel-nav"
+            aria-label="统计卡片切换"
+            role="group"
+          >
             <button
               aria-label="查看上一组统计卡片"
               aria-keyshortcuts="ArrowLeft"
@@ -471,7 +502,9 @@ export function StatsView({
               {STATS_CAROUSEL_CARD_IDS.map((cardId, index) => (
                 <button
                   aria-label={`查看${
-                    singleCardCarousel ? STATS_CAROUSEL_CARD_LABELS[index] : STATS_CAROUSEL_PAIR_LABELS[index]
+                    singleCardCarousel
+                      ? STATS_CAROUSEL_CARD_LABELS[index]
+                      : STATS_CAROUSEL_PAIR_LABELS[index]
                   }`}
                   className={statsCarouselIndex === index ? "active" : ""}
                   key={cardId}

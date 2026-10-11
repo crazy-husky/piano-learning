@@ -101,7 +101,12 @@
       .app-startup-skeleton-choice-row i,
       .app-startup-skeleton-panel > i {
         animation: app-startup-shimmer 1.4s ease-in-out infinite;
-        background: linear-gradient(100deg, rgba(36, 120, 110, 0.22) 25%, rgba(36, 120, 110, 0.08) 48%, rgba(36, 120, 110, 0.22) 72%);
+        background: linear-gradient(
+          100deg,
+          rgba(36, 120, 110, 0.22) 25%,
+          rgba(36, 120, 110, 0.08) 48%,
+          rgba(36, 120, 110, 0.22) 72%
+        );
         background-size: 220% 100%;
         border-radius: 8px;
         display: block;
@@ -124,7 +129,12 @@
 
       .app-startup-skeleton-panel::before {
         animation: app-startup-shimmer 1.4s ease-in-out infinite;
-        background: linear-gradient(100deg, rgba(36, 120, 110, 0.24) 25%, rgba(36, 120, 110, 0.09) 48%, rgba(36, 120, 110, 0.24) 72%);
+        background: linear-gradient(
+          100deg,
+          rgba(36, 120, 110, 0.24) 25%,
+          rgba(36, 120, 110, 0.09) 48%,
+          rgba(36, 120, 110, 0.24) 72%
+        );
         background-size: 220% 100%;
         border-radius: 6px;
         content: "";
@@ -151,14 +161,24 @@
       }
 
       @keyframes app-startup-shimmer {
-        from { background-position: 100% 0; }
-        to { background-position: -120% 0; }
+        from {
+          background-position: 100% 0;
+        }
+        to {
+          background-position: -120% 0;
+        }
       }
 
       @keyframes app-startup-progress {
-        0% { transform: scaleX(0.08); }
-        55% { transform: scaleX(0.72); }
-        100% { transform: scaleX(0.08); }
+        0% {
+          transform: scaleX(0.08);
+        }
+        55% {
+          transform: scaleX(0.72);
+        }
+        100% {
+          transform: scaleX(0.08);
+        }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -254,7 +274,13 @@
   </head>
   <body>
     <div id="root">
-      <main aria-busy="true" aria-label="正在加载应用" class="app-startup" data-startup-fallback role="status">
+      <main
+        aria-busy="true"
+        aria-label="正在加载应用"
+        class="app-startup"
+        data-startup-fallback
+        role="status"
+      >
         <div class="app-startup-card">
           <span aria-hidden="true" class="app-startup-note">♫</span>
           <strong>识谱视奏</strong>
@@ -262,7 +288,9 @@
           <div aria-hidden="true" class="app-startup-skeleton">
             <div class="app-startup-skeleton-choice-row"><i></i><i></i><i></i></div>
             <div class="app-startup-skeleton-panel"><i></i><i></i></div>
-            <div class="app-startup-skeleton-panel app-startup-skeleton-panel-short"><i></i><i></i></div>
+            <div class="app-startup-skeleton-panel app-startup-skeleton-panel-short">
+              <i></i><i></i>
+            </div>
           </div>
           <span aria-hidden="true" class="app-startup-progress"><i></i></span>
         </div>
@@ -272,7 +300,12 @@
       (function () {
         function showStartupFailure(event) {
           var root = document.getElementById("root");
-          if (!root || !root.querySelector("[data-startup-fallback]") || root.dataset.startupErrorShown === "true") return;
+          if (
+            !root ||
+            !root.querySelector("[data-startup-fallback]") ||
+            root.dataset.startupErrorShown === "true"
+          )
+            return;
 
           var reloadAttempted = false;
           try {
@@ -290,7 +323,8 @@
           var title = document.createElement("h1");
           title.textContent = "页面启动失败";
           var message = document.createElement("p");
-          message.textContent = "应用暂时无法启动，可能是入口资源加载失败或启动代码出错。请检查网络后重试。";
+          message.textContent =
+            "应用暂时无法启动，可能是入口资源加载失败或启动代码出错。请检查网络后重试。";
           var details = document.createElement("p");
           details.className = "browser-support-requirements";
           if (event instanceof ErrorEvent && event.message) {
@@ -299,7 +333,8 @@
             details.textContent = "可以重新加载页面再次尝试。";
           }
           if (reloadAttempted) {
-            var previousError = event instanceof ErrorEvent && event.message ? `（${event.message}）` : "";
+            var previousError =
+              event instanceof ErrorEvent && event.message ? `（${event.message}）` : "";
             details.textContent = `普通重载后仍未启动${previousError}。可以清理应用离线缓存再试；练习记录和设置会保留。`;
           }
           details.setAttribute("aria-live", "polite");
@@ -357,16 +392,21 @@
                 return;
               }
 
-              cacheStorage.keys()
+              cacheStorage
+                .keys()
                 .then(function (cacheNames) {
                   var appCacheNames = cacheNames.filter(function (cacheName) {
-                    return cacheName.indexOf("anki-note-app-") === 0
-                      || cacheName === "anki-note-v2"
-                      || cacheName === "anki-note-v3";
+                    return (
+                      cacheName.indexOf("anki-note-app-") === 0 ||
+                      cacheName === "anki-note-v2" ||
+                      cacheName === "anki-note-v3"
+                    );
                   });
-                  return Promise.all(appCacheNames.map(function (cacheName) {
-                    return cacheStorage.delete(cacheName);
-                  }));
+                  return Promise.all(
+                    appCacheNames.map(function (cacheName) {
+                      return cacheStorage.delete(cacheName);
+                    })
+                  );
                 })
                 .then(function () {
                   reload.textContent = "正在重新加载…";
@@ -393,11 +433,15 @@
           root.replaceChildren(main);
         }
 
-        window.addEventListener("error", function (event) {
-          if (event instanceof ErrorEvent || event.target instanceof HTMLScriptElement) {
-            showStartupFailure(event);
-          }
-        }, true);
+        window.addEventListener(
+          "error",
+          function (event) {
+            if (event instanceof ErrorEvent || event.target instanceof HTMLScriptElement) {
+              showStartupFailure(event);
+            }
+          },
+          true
+        );
         window.addEventListener("unhandledrejection", showStartupFailure);
       })();
     </script>
@@ -415,7 +459,9 @@
         <section class="browser-support-card">
           <h1>请启用 JavaScript 后再使用</h1>
           <p>识谱视奏需要 JavaScript。请启用 JavaScript，并使用受支持的新版浏览器。</p>
-          <p class="browser-support-requirements">最低支持：Chrome / Edge 108、Firefox 101、Safari / iOS 16.4</p>
+          <p class="browser-support-requirements">
+            最低支持：Chrome / Edge 108、Firefox 101、Safari / iOS 16.4
+          </p>
         </section>
       </main>
     </noscript>

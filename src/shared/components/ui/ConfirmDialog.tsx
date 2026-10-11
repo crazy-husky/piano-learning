@@ -24,16 +24,25 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }): JS
     resolve?.(confirmed);
   }, []);
 
-  const confirm = useCallback<ConfirmDialog>((options) => new Promise((resolve) => {
-    resolverRef.current?.(false);
-    resolverRef.current = resolve;
-    setRequest(options);
-  }), []);
+  const confirm = useCallback<ConfirmDialog>(
+    (options) =>
+      new Promise((resolve) => {
+        resolverRef.current?.(false);
+        resolverRef.current = resolve;
+        setRequest(options);
+      }),
+    []
+  );
 
   return (
     <ConfirmDialogContext.Provider value={confirm}>
       {children}
-      <AlertDialog.Root open={request !== null} onOpenChange={(open) => { if (!open) finish(false); }}>
+      <AlertDialog.Root
+        open={request !== null}
+        onOpenChange={(open) => {
+          if (!open) finish(false);
+        }}
+      >
         {request ? (
           <AlertDialog.Portal>
             <AlertDialog.Overlay className="ui-confirm-overlay" />
@@ -50,7 +59,9 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }): JS
                 </AlertDialog.Cancel>
                 <AlertDialog.Action asChild>
                   <button
-                    className={request.destructive ? "ui-confirm-action is-destructive" : "ui-confirm-action"}
+                    className={
+                      request.destructive ? "ui-confirm-action is-destructive" : "ui-confirm-action"
+                    }
                     onClick={() => finish(true)}
                     type="button"
                   >

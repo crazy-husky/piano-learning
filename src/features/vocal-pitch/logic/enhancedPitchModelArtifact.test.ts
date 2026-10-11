@@ -16,7 +16,7 @@ function sha256(bytes: Uint8Array): string {
 function sine(frequencyHz: number): Float32Array {
   return Float32Array.from(
     { length: 16_000 },
-    (_, index) => 0.2 * Math.sin(2 * Math.PI * frequencyHz * index / 16_000),
+    (_, index) => 0.2 * Math.sin((2 * Math.PI * frequencyHz * index) / 16_000)
   );
 }
 
@@ -53,13 +53,19 @@ describe("enhanced pitch model artifacts", () => {
   it("pins the browser model files that passed the reference comparison", async () => {
     const [fcpe, swiftf0] = await Promise.all([readFile(FCPE_PATH), readFile(SWIFTF0_PATH)]);
     expect(sha256(fcpe)).toBe("d425a36c66d751558574f230dd6caff682d2b1bdccf57315e3c907677e8b1d1c");
-    expect(sha256(swiftf0)).toBe("6385e8c2ebc3872e82c9ff5946228de44cd3be77a750ea53698b7dbfe94b0a22");
+    expect(sha256(swiftf0)).toBe(
+      "6385e8c2ebc3872e82c9ff5946228de44cd3be77a750ea53698b7dbfe94b0a22"
+    );
   });
 
   it("keeps both models near a 220 Hz synthetic reference", async () => {
     const samples = sine(220);
-    const fcpeSession = await ort.InferenceSession.create(await readFile(FCPE_PATH), { executionProviders: ["wasm"] });
-    const swiftSession = await ort.InferenceSession.create(await readFile(SWIFTF0_PATH), { executionProviders: ["wasm"] });
+    const fcpeSession = await ort.InferenceSession.create(await readFile(FCPE_PATH), {
+      executionProviders: ["wasm"],
+    });
+    const swiftSession = await ort.InferenceSession.create(await readFile(SWIFTF0_PATH), {
+      executionProviders: ["wasm"],
+    });
     try {
       const fcpeOutput = await fcpeSession.run({
         [fcpeSession.inputNames[0]]: new ort.Tensor("float32", samples, [1, samples.length, 1]),

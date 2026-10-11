@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import type { AnswerPitchMode, PianoKeyName } from "../../../domain/types";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import { markMidiLatencyStage } from "../../../diagnostics/midiLatencyDiagnostics";
@@ -40,11 +47,21 @@ export function usePracticeInput({
   onSubmitAnswer,
   onTogglePause,
 }: PracticeInputOptions) {
-  const [heldComputerAnswerKeys, setHeldComputerAnswerKeys] = useState<ReadonlySet<PianoKeyName>>(() => new Set());
-  const [heldMidiAnswerKeys, setHeldMidiAnswerKeys] = useState<ReadonlySet<PianoKeyName>>(() => new Set());
+  const [heldComputerAnswerKeys, setHeldComputerAnswerKeys] = useState<ReadonlySet<PianoKeyName>>(
+    () => new Set()
+  );
+  const [heldMidiAnswerKeys, setHeldMidiAnswerKeys] = useState<ReadonlySet<PianoKeyName>>(
+    () => new Set()
+  );
   const heldMidiInputsRef = useRef(new Map<string, PianoKeyName>());
   const pendingMidiPressDiagnosticSampleIdRef = useRef<number | undefined>(undefined);
-  const handlersRef = useRef<PracticeInputHandlers>({ onEscape, onResume, onStartSession, onSubmitAnswer, onTogglePause });
+  const handlersRef = useRef<PracticeInputHandlers>({
+    onEscape,
+    onResume,
+    onStartSession,
+    onSubmitAnswer,
+    onTogglePause,
+  });
   handlersRef.current = { onEscape, onResume, onStartSession, onSubmitAnswer, onTogglePause };
 
   useLayoutEffect(() => {
@@ -169,7 +186,7 @@ export function usePracticeInput({
 
   const pressedAnswerKeys = useMemo(
     () => new Set<PianoKeyName>([...heldComputerAnswerKeys, ...heldMidiAnswerKeys]),
-    [heldComputerAnswerKeys, heldMidiAnswerKeys],
+    [heldComputerAnswerKeys, heldMidiAnswerKeys]
   );
 
   return { heldComputerAnswerKeys, heldMidiAnswerKeys, pressedAnswerKeys };

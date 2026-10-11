@@ -9,9 +9,21 @@ import {
 
 describe("statistics carousel", () => {
   it("keeps one instance of each card in cyclic display order", () => {
-    expect(getStatsCarouselOrder(0)).toEqual(["recognition-time", "session-progress", "note-range"]);
-    expect(getStatsCarouselOrder(1)).toEqual(["session-progress", "note-range", "recognition-time"]);
-    expect(getStatsCarouselOrder(2)).toEqual(["note-range", "recognition-time", "session-progress"]);
+    expect(getStatsCarouselOrder(0)).toEqual([
+      "recognition-time",
+      "session-progress",
+      "note-range",
+    ]);
+    expect(getStatsCarouselOrder(1)).toEqual([
+      "session-progress",
+      "note-range",
+      "recognition-time",
+    ]);
+    expect(getStatsCarouselOrder(2)).toEqual([
+      "note-range",
+      "recognition-time",
+      "session-progress",
+    ]);
     expect(new Set(getStatsCarouselOrder(0))).toHaveLength(3);
   });
 
@@ -25,8 +37,16 @@ describe("statistics carousel", () => {
 
   it("rotates the unique cards without cloning them", () => {
     const order = getStatsCarouselOrder(0);
-    expect(rotateStatsCarouselOrder(order, 1)).toEqual(["session-progress", "note-range", "recognition-time"]);
-    expect(rotateStatsCarouselOrder(order, -1)).toEqual(["note-range", "recognition-time", "session-progress"]);
+    expect(rotateStatsCarouselOrder(order, 1)).toEqual([
+      "session-progress",
+      "note-range",
+      "recognition-time",
+    ]);
+    expect(rotateStatsCarouselOrder(order, -1)).toEqual([
+      "note-range",
+      "recognition-time",
+      "session-progress",
+    ]);
   });
 
   it("normalizes indexes across repeated navigation", () => {

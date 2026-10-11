@@ -79,20 +79,20 @@ function sessionRangeNoteIds(session: PracticeSessionRecord): TargetNoteId[] {
     return getNotesForGroups(
       normalizeCurrentPracticeGroupIds(config.enabledGroupIds),
       config.includeInterStaffLedgerSpellings ?? false,
-      config.staffNotationMode,
+      config.staffNotationMode
     ).map((note) => note.id);
   }
   if (session.schemaVersion === 2) {
     return getNotesForGroups(
       normalizeCurrentPracticeGroupIds(session.enabledGroupIds),
       session.includeInterStaffLedgerSpellings ?? false,
-      session.staffNotationMode,
+      session.staffNotationMode
     ).map((note) => note.id);
   }
   return getNotesForGroups(
     normalizeCurrentPracticeGroupIds(session.enabledGroupIds),
     session.includeLedgerVariants ?? false,
-    "grand",
+    "grand"
   ).map((note) => note.id);
 }
 
@@ -105,7 +105,7 @@ interface RecognitionRangeEpisode {
 
 function buildRecognitionRangeEpisodes(
   sessions: readonly PracticeSessionRecord[],
-  currentNoteIds: ReadonlySet<TargetNoteId>,
+  currentNoteIds: ReadonlySet<TargetNoteId>
 ): RecognitionRangeEpisode[] {
   const ranges = sessions
     .map((session) => {
@@ -116,7 +116,9 @@ function buildRecognitionRangeEpisodes(
         startedAt: session.startedAt,
       };
     })
-    .sort((left, right) => new Date(left.startedAt).getTime() - new Date(right.startedAt).getTime());
+    .sort(
+      (left, right) => new Date(left.startedAt).getTime() - new Date(right.startedAt).getTime()
+    );
   const episodes: RecognitionRangeEpisode[] = [];
   for (const range of ranges) {
     const latest = episodes[episodes.length - 1];
@@ -134,7 +136,7 @@ function buildRecognitionRangeEpisodes(
 export function findRecognitionRangeTransitions(
   sessions: readonly PracticeSessionRecord[],
   activeNotes: readonly TargetNote[],
-  trend: readonly RecognitionTrendPoint[],
+  trend: readonly RecognitionTrendPoint[]
 ): RecognitionRangeTransition[] {
   if (sessions.length === 0 || activeNotes.length === 0 || trend.length === 0) {
     return [];
@@ -150,7 +152,8 @@ export function findRecognitionRangeTransitions(
   for (const [index, episode] of episodes.entries()) {
     const previous = episodes[index - 1];
     const previousSet = new Set(previous?.noteIds ?? []);
-    const isExpansion = previous !== undefined &&
+    const isExpansion =
+      previous !== undefined &&
       previous.noteIds.every((noteId) => episode.noteIds.includes(noteId)) &&
       episode.noteIds.some((noteId) => !previousSet.has(noteId));
     if (isExpansion && !completedRangeKeys.has(episode.key)) {
@@ -221,7 +224,7 @@ function bucketPosition(iso: string, grouping: RecognitionTimeGrouping): number 
 
 function copyRecognitionMetrics(
   point: RecognitionTrendPoint,
-  source: RecognitionTrendPoint | undefined,
+  source: RecognitionTrendPoint | undefined
 ): RecognitionTrendPoint {
   return source
     ? {
@@ -236,7 +239,7 @@ function copyRecognitionMetrics(
 
 function transitionBucket(
   transition: RecognitionRangeTransition,
-  grouping: RecognitionTimeGrouping,
+  grouping: RecognitionTimeGrouping
 ): {
   completedKey?: string;
   completedPosition?: number;
@@ -245,7 +248,9 @@ function transitionBucket(
 } {
   return {
     completedKey: transition.completedAt ? bucketKey(transition.completedAt, grouping) : undefined,
-    completedPosition: transition.completedAt ? bucketPosition(transition.completedAt, grouping) : undefined,
+    completedPosition: transition.completedAt
+      ? bucketPosition(transition.completedAt, grouping)
+      : undefined,
     startKey: bucketKey(transition.startedAt, grouping),
     startPosition: bucketPosition(transition.startedAt, grouping),
   };
@@ -253,7 +258,7 @@ function transitionBucket(
 
 function latestMetricPoint(
   trend: readonly RecognitionTrendPoint[],
-  boundaryAt: string,
+  boundaryAt: string
 ): RecognitionTrendPoint | undefined {
   const boundaryTime = new Date(boundaryAt).getTime();
   for (let index = trend.length - 1; index >= 0; index -= 1) {
@@ -265,12 +270,14 @@ function latestMetricPoint(
 }
 
 function hasRecognitionTimeMetrics(baseline: RecognitionTrendRelativeBaseline): boolean {
-  return baseline.medianMs !== undefined || baseline.p10Ms !== undefined || baseline.p90Ms !== undefined;
+  return (
+    baseline.medianMs !== undefined || baseline.p10Ms !== undefined || baseline.p90Ms !== undefined
+  );
 }
 
 function fillMissingRecognitionTimeMetrics(
   baseline: RecognitionTrendRelativeBaseline,
-  point: RecognitionTrendPoint,
+  point: RecognitionTrendPoint
 ): RecognitionTrendRelativeBaseline {
   return {
     medianMs: baseline.medianMs ?? point.medianMs,
@@ -282,7 +289,7 @@ function fillMissingRecognitionTimeMetrics(
 function latestRecognitionTimeMetricsBefore(
   trend: readonly RecognitionTrendPoint[],
   position: number,
-  grouping: RecognitionTimeGrouping,
+  grouping: RecognitionTimeGrouping
 ): RecognitionTrendRelativeBaseline | undefined {
   let baseline: RecognitionTrendRelativeBaseline = {};
   for (let index = trend.length - 1; index >= 0; index -= 1) {
@@ -291,7 +298,11 @@ function latestRecognitionTimeMetricsBefore(
       continue;
     }
     baseline = fillMissingRecognitionTimeMetrics(baseline, point);
-    if (baseline.medianMs !== undefined && baseline.p10Ms !== undefined && baseline.p90Ms !== undefined) {
+    if (
+      baseline.medianMs !== undefined &&
+      baseline.p10Ms !== undefined &&
+      baseline.p90Ms !== undefined
+    ) {
       break;
     }
   }
@@ -301,14 +312,18 @@ function latestRecognitionTimeMetricsBefore(
 export function applyRecognitionRangeTransitions(
   trend: readonly RecognitionTrendPoint[],
   baselines: readonly RecognitionRangeTransitionBaseline[],
-  grouping: RecognitionTimeGrouping,
+  grouping: RecognitionTimeGrouping
 ): RecognitionTrendPhasePoint[] {
   const phases = baselines.map(({ transition, trend: baselineTrend }) => {
     const bucket = transitionBucket(transition, grouping);
     return {
       ...bucket,
       baselineTrend,
-      preTransitionBaseline: latestRecognitionTimeMetricsBefore(trend, bucket.startPosition, grouping),
+      preTransitionBaseline: latestRecognitionTimeMetricsBefore(
+        trend,
+        bucket.startPosition,
+        grouping
+      ),
       transition,
     };
   });
@@ -318,12 +333,17 @@ export function applyRecognitionRangeTransitions(
     const pointPosition = bucketPosition(point.boundaryAt, grouping);
     const starts = phases.filter((phase) => phase.startKey === pointKey);
     const completions = phases.filter((phase) => phase.completedKey === pointKey);
-    const activePhase = phases.find((phase) =>
-      pointPosition >= phase.startPosition &&
-      (phase.completedPosition === undefined || pointPosition < phase.completedPosition));
+    const activePhase = phases.find(
+      (phase) =>
+        pointPosition >= phase.startPosition &&
+        (phase.completedPosition === undefined || pointPosition < phase.completedPosition)
+    );
     const activeStart = starts.find((phase) => phase.completedKey !== pointKey);
     const metricPoint = activePhase
-      ? copyRecognitionMetrics(point, latestMetricPoint(activePhase.baselineTrend, point.boundaryAt))
+      ? copyRecognitionMetrics(
+          point,
+          latestMetricPoint(activePhase.baselineTrend, point.boundaryAt)
+        )
       : point;
     const completedPhase = completions[completions.length - 1];
     const formalRangeStart = completions.length > 0;
@@ -340,9 +360,10 @@ export function applyRecognitionRangeTransitions(
           : undefined,
       breakBefore: starts.length > 0 || completions.length > 0,
       formalRangeStart,
-      relativeBaseline: completedPhase?.transition.kind === "expansion"
-        ? completedPhase.preTransitionBaseline
-        : undefined,
+      relativeBaseline:
+        completedPhase?.transition.kind === "expansion"
+          ? completedPhase.preTransitionBaseline
+          : undefined,
       transition: activePhase !== undefined,
       transitionKind: activePhase?.transition.kind,
     };

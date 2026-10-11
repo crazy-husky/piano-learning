@@ -55,7 +55,10 @@ function storeInputId(inputId: string): void {
 }
 
 function describeMidiError(error: unknown): { message: string; status: MidiAccessStatus } {
-  if (error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError")) {
+  if (
+    error instanceof DOMException &&
+    (error.name === "NotAllowedError" || error.name === "SecurityError")
+  ) {
     return { message: "MIDI 权限未授予，请在浏览器地址栏中允许后重试。", status: "denied" };
   }
   return {
@@ -78,9 +81,10 @@ function asListenerArray(listeners: Listener | Listener[]): Listener[] {
 
 export function useMidiInput(): MidiInputController {
   const isSecureMidiContext = typeof window === "undefined" || window.isSecureContext;
-  const hasNativeMidiAccess = typeof navigator !== "undefined" && typeof navigator.requestMIDIAccess === "function";
+  const hasNativeMidiAccess =
+    typeof navigator !== "undefined" && typeof navigator.requestMIDIAccess === "function";
   const [status, setStatus] = useState<MidiAccessStatus>(() =>
-    getInitialMidiAccessStatus(isSecureMidiContext, hasNativeMidiAccess),
+    getInitialMidiAccessStatus(isSecureMidiContext, hasNativeMidiAccess)
   );
   const [errorMessage, setErrorMessage] = useState<string>();
   const [inputs, setInputs] = useState<MidiInputDevice[]>([]);
@@ -137,39 +141,46 @@ export function useMidiInput(): MidiInputController {
     };
   }, []);
 
-  const handleNoteOn = useCallback((event: NoteMessageEvent): void => {
-    const handlerAt = MIDI_LATENCY_DIAGNOSTICS_ENABLED ? performance.now() : undefined;
-    const note = makeNote(event);
-    if (!note || !registerMidiPress(pressedNotesRef.current, note.keyId, note)) {
-      return;
-    }
-    const diagnosticSampleId = handlerAt === undefined
-      ? undefined
-      : startMidiLatencySample({
-          handlerAt,
-          midiNoteNumber: note.midiNoteNumber,
-          nativeEventAt: event.timestamp,
-          noteName: note.keyName,
-          octave: note.octave,
-        });
-    const trackedNote = diagnosticSampleId === undefined ? note : { ...note, diagnosticSampleId };
-    pressedNotesRef.current.set(note.keyId, trackedNote);
-    setLastNote(trackedNote);
-    publish({ note: trackedNote, type: "press" });
-  }, [makeNote, publish]);
+  const handleNoteOn = useCallback(
+    (event: NoteMessageEvent): void => {
+      const handlerAt = MIDI_LATENCY_DIAGNOSTICS_ENABLED ? performance.now() : undefined;
+      const note = makeNote(event);
+      if (!note || !registerMidiPress(pressedNotesRef.current, note.keyId, note)) {
+        return;
+      }
+      const diagnosticSampleId =
+        handlerAt === undefined
+          ? undefined
+          : startMidiLatencySample({
+              handlerAt,
+              midiNoteNumber: note.midiNoteNumber,
+              nativeEventAt: event.timestamp,
+              noteName: note.keyName,
+              octave: note.octave,
+            });
+      const trackedNote = diagnosticSampleId === undefined ? note : { ...note, diagnosticSampleId };
+      pressedNotesRef.current.set(note.keyId, trackedNote);
+      setLastNote(trackedNote);
+      publish({ note: trackedNote, type: "press" });
+    },
+    [makeNote, publish]
+  );
 
-  const handleNoteOff = useCallback((event: NoteMessageEvent): void => {
-    const note = makeNote(event);
-    if (!note) {
-      return;
-    }
-    const pressedNote = pressedNotesRef.current.get(note.keyId);
-    if (!pressedNote) {
-      return;
-    }
-    pressedNotesRef.current.delete(note.keyId);
-    publish({ note: pressedNote, type: "release" });
-  }, [makeNote, publish]);
+  const handleNoteOff = useCallback(
+    (event: NoteMessageEvent): void => {
+      const note = makeNote(event);
+      if (!note) {
+        return;
+      }
+      const pressedNote = pressedNotesRef.current.get(note.keyId);
+      if (!pressedNote) {
+        return;
+      }
+      pressedNotesRef.current.delete(note.keyId);
+      publish({ note: pressedNote, type: "release" });
+    },
+    [makeNote, publish]
+  );
 
   const syncSelectedInputListeners = useCallback((): void => {
     detachInputListeners();
@@ -185,26 +196,29 @@ export function useMidiInput(): MidiInputController {
     ];
   }, [detachInputListeners, handleNoteOff, handleNoteOn, resetPressedNotes]);
 
-  const refreshInputs = useCallback((resolveInitialSelection = false): void => {
-    const nextInputs = WebMidi.inputs.map(toDevice);
-    setInputs(nextInputs);
-    if (resolveInitialSelection && !initialSelectionResolvedRef.current) {
-      initialSelectionResolvedRef.current = true;
-      const storedSelection = selectedInputIdRef.current;
-      const nextSelection = nextInputs.some((input) => input.id === storedSelection)
-        ? storedSelection
-        : nextInputs[0]?.id;
-      selectedInputIdRef.current = nextSelection;
-      setSelectedInputId(nextSelection);
-      if (nextSelection) {
-        storeInputId(nextSelection);
+  const refreshInputs = useCallback(
+    (resolveInitialSelection = false): void => {
+      const nextInputs = WebMidi.inputs.map(toDevice);
+      setInputs(nextInputs);
+      if (resolveInitialSelection && !initialSelectionResolvedRef.current) {
+        initialSelectionResolvedRef.current = true;
+        const storedSelection = selectedInputIdRef.current;
+        const nextSelection = nextInputs.some((input) => input.id === storedSelection)
+          ? storedSelection
+          : nextInputs[0]?.id;
+        selectedInputIdRef.current = nextSelection;
+        setSelectedInputId(nextSelection);
+        if (nextSelection) {
+          storeInputId(nextSelection);
+        }
       }
-    }
-    if (!nextInputs.some((input) => input.id === selectedInputIdRef.current)) {
-      setLastNote(undefined);
-    }
-    syncSelectedInputListeners();
-  }, [syncSelectedInputListeners]);
+      if (!nextInputs.some((input) => input.id === selectedInputIdRef.current)) {
+        setLastNote(undefined);
+      }
+      syncSelectedInputListeners();
+    },
+    [syncSelectedInputListeners]
+  );
 
   const attachWebMidiListeners = useCallback((): void => {
     if (webMidiListenersRef.current.length > 0) {
@@ -216,48 +230,54 @@ export function useMidiInput(): MidiInputController {
     ];
   }, [refreshInputs]);
 
-  const enableMidi = useCallback(async (silentFailure: boolean): Promise<void> => {
-    if (!isSecureMidiContext) {
-      if (!silentFailure) {
-        setStatus("insecure-context");
-      }
-      return;
-    }
-    if (!hasNativeMidiAccess) {
-      if (!silentFailure) {
-        setStatus("unsupported");
-      }
-      return;
-    }
-    if (!silentFailure) {
-      setStatus("requesting");
-      setErrorMessage(undefined);
-    }
-    try {
-      await WebMidi.enable({ sysex: false });
-      attachWebMidiListeners();
-      refreshInputs(true);
-      setStatus("ready");
-    } catch (error) {
-      if (silentFailure) {
+  const enableMidi = useCallback(
+    async (silentFailure: boolean): Promise<void> => {
+      if (!isSecureMidiContext) {
+        if (!silentFailure) {
+          setStatus("insecure-context");
+        }
         return;
       }
-      const described = describeMidiError(error);
-      setErrorMessage(described.message);
-      setStatus(described.status);
-    }
-  }, [attachWebMidiListeners, hasNativeMidiAccess, isSecureMidiContext, refreshInputs]);
+      if (!hasNativeMidiAccess) {
+        if (!silentFailure) {
+          setStatus("unsupported");
+        }
+        return;
+      }
+      if (!silentFailure) {
+        setStatus("requesting");
+        setErrorMessage(undefined);
+      }
+      try {
+        await WebMidi.enable({ sysex: false });
+        attachWebMidiListeners();
+        refreshInputs(true);
+        setStatus("ready");
+      } catch (error) {
+        if (silentFailure) {
+          return;
+        }
+        const described = describeMidiError(error);
+        setErrorMessage(described.message);
+        setStatus(described.status);
+      }
+    },
+    [attachWebMidiListeners, hasNativeMidiAccess, isSecureMidiContext, refreshInputs]
+  );
 
   const connect = useCallback((): Promise<void> => enableMidi(false), [enableMidi]);
 
-  const selectInput = useCallback((inputId: string): void => {
-    setLastNote(undefined);
-    selectedInputIdRef.current = inputId;
-    setSelectedInputId(inputId);
-    storeInputId(inputId);
-    announceLocalStoragePreferenceChange(MIDI_INPUT_ID_STORAGE_KEY);
-    syncSelectedInputListeners();
-  }, [syncSelectedInputListeners]);
+  const selectInput = useCallback(
+    (inputId: string): void => {
+      setLastNote(undefined);
+      selectedInputIdRef.current = inputId;
+      setSelectedInputId(inputId);
+      storeInputId(inputId);
+      announceLocalStoragePreferenceChange(MIDI_INPUT_ID_STORAGE_KEY);
+      syncSelectedInputListeners();
+    },
+    [syncSelectedInputListeners]
+  );
 
   const subscribe = useCallback((listener: (event: MidiNoteInputEvent) => void): (() => void) => {
     subscribersRef.current.add(listener);
@@ -278,37 +298,53 @@ export function useMidiInput(): MidiInputController {
       return;
     }
     let cancelled = false;
-    void isMidiPermissionGranted(typeof navigator === "undefined" ? undefined : navigator.permissions).then(
-      (granted) => {
-        if (!cancelled && granted && statusRef.current === "idle") {
-          void enableMidi(true);
-        }
-      },
-    );
+    void isMidiPermissionGranted(
+      typeof navigator === "undefined" ? undefined : navigator.permissions
+    ).then((granted) => {
+      if (!cancelled && granted && statusRef.current === "idle") {
+        void enableMidi(true);
+      }
+    });
     return () => {
       cancelled = true;
     };
   }, [enableMidi, status]);
 
-  useEffect(() => () => {
-    detachInputListeners();
-    for (const listener of webMidiListenersRef.current) {
-      listener.remove();
-    }
-    webMidiListenersRef.current = [];
-  }, [detachInputListeners]);
+  useEffect(
+    () => () => {
+      detachInputListeners();
+      for (const listener of webMidiListenersRef.current) {
+        listener.remove();
+      }
+      webMidiListenersRef.current = [];
+    },
+    [detachInputListeners]
+  );
 
   const selectedInput = inputs.find((input) => input.id === selectedInputId);
-  return useMemo(() => ({
-    connect,
-    errorMessage,
-    inputs,
-    isConnected: status === "ready" && selectedInput !== undefined,
-    lastNote,
-    selectInput,
-    selectedInput,
-    selectedInputId,
-    status,
-    subscribe,
-  }), [connect, errorMessage, inputs, lastNote, selectInput, selectedInput, selectedInputId, status, subscribe]);
+  return useMemo(
+    () => ({
+      connect,
+      errorMessage,
+      inputs,
+      isConnected: status === "ready" && selectedInput !== undefined,
+      lastNote,
+      selectInput,
+      selectedInput,
+      selectedInputId,
+      status,
+      subscribe,
+    }),
+    [
+      connect,
+      errorMessage,
+      inputs,
+      lastNote,
+      selectInput,
+      selectedInput,
+      selectedInputId,
+      status,
+      subscribe,
+    ]
+  );
 }

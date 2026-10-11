@@ -15,8 +15,9 @@ describe("pitch frame classification ranges", () => {
     };
     const samples = new Float32Array(2048).fill(0.01);
 
-    expect(classifyPitchFrame(detector, samples, 44_100, DEFAULT_VOCAL_PITCH_CONFIG, 0).frame.frequencyHz)
-      .toBeNull();
+    expect(
+      classifyPitchFrame(detector, samples, 44_100, DEFAULT_VOCAL_PITCH_CONFIG, 0).frame.frequencyHz
+    ).toBeNull();
     expect(
       classifyPitchFrame(
         detector,
@@ -24,8 +25,8 @@ describe("pitch frame classification ranges", () => {
         44_100,
         DEFAULT_VOCAL_PITCH_CONFIG,
         0,
-        PRACTICE_NOTE_FREQUENCY_RANGE,
-      ).frame.frequencyHz,
+        PRACTICE_NOTE_FREQUENCY_RANGE
+      ).frame.frequencyHz
     ).toBe(f1FrequencyHz);
   });
 
@@ -40,22 +41,20 @@ describe("pitch frame classification ranges", () => {
     const samples = new Float32Array(2048).fill(0.001);
     const config = { ...DEFAULT_VOCAL_PITCH_CONFIG, voicingThreshold: 0.75 };
 
-    expect(classifyPitchFrame(
-      detector,
-      samples,
-      44_100,
-      config,
-      0,
-      PRACTICE_NOTE_FREQUENCY_RANGE,
-    ).frame.frequencyHz).toBeNull();
-    expect(classifyPitchFrame(
-      detector,
-      samples,
-      44_100,
-      config,
-      0,
-      PRACTICE_NOTE_FREQUENCY_RANGE,
-      0.0009,
-    ).frame.frequencyHz).toBe(frequencyHz);
+    expect(
+      classifyPitchFrame(detector, samples, 44_100, config, 0, PRACTICE_NOTE_FREQUENCY_RANGE).frame
+        .frequencyHz
+    ).toBeNull();
+    expect(
+      classifyPitchFrame(
+        detector,
+        samples,
+        44_100,
+        config,
+        0,
+        PRACTICE_NOTE_FREQUENCY_RANGE,
+        0.0009
+      ).frame.frequencyHz
+    ).toBe(frequencyHz);
   });
 });

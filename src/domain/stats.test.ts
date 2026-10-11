@@ -23,7 +23,7 @@ const HEAVY_WRONG_ANSWERS = [
 const ONE_WRONG_ANSWER = HEAVY_WRONG_ANSWERS.slice(0, 1);
 
 function makeSession(
-  overrides: Partial<PracticeSessionRecordV1> & { id: string; startedAt: string },
+  overrides: Partial<PracticeSessionRecordV1> & { id: string; startedAt: string }
 ): PracticeSessionRecordV1 {
   return {
     id: overrides.id,
@@ -61,7 +61,12 @@ describe("stats", () => {
   it("excludes interrupted reviews by default", () => {
     const reviews = [
       makeReview({ targetNoteId: "C4", activeMs: 1000 }),
-      makeReview({ targetNoteId: "C4", activeMs: 5000, interrupted: true, interruptReason: "focus-lost" }),
+      makeReview({
+        targetNoteId: "C4",
+        activeMs: 5000,
+        interrupted: true,
+        interruptReason: "focus-lost",
+      }),
     ];
 
     expect(buildDailyStats(reviews)[0].medianMs).toBe(1000);
@@ -80,10 +85,10 @@ describe("stats", () => {
 
   it("filters sessions with fewer than five qualified reviews from long-term stats", () => {
     const shortSession = Array.from({ length: 4 }, (_, index) =>
-      makeReview({ id: `short-${index}`, targetNoteId: "C4", sessionId: "short-session" }),
+      makeReview({ id: `short-${index}`, targetNoteId: "C4", sessionId: "short-session" })
     );
     const longSession = Array.from({ length: 5 }, (_, index) =>
-      makeReview({ id: `long-${index}`, targetNoteId: "D4", sessionId: "long-session" }),
+      makeReview({ id: `long-${index}`, targetNoteId: "D4", sessionId: "long-session" })
     );
 
     const filtered = filterLongTermReviews([...shortSession, ...longSession]);
@@ -100,7 +105,7 @@ describe("stats", () => {
         targetNoteId: "C4",
         sessionId: "invalid-session",
         wrongAnswers: index < 3 ? HEAVY_WRONG_ANSWERS : [],
-      }),
+      })
     );
     const exactHalfSession = Array.from({ length: 6 }, (_, index) =>
       makeReview({
@@ -108,7 +113,7 @@ describe("stats", () => {
         targetNoteId: "D4",
         sessionId: "exact-half-session",
         wrongAnswers: index < 3 ? HEAVY_WRONG_ANSWERS : [],
-      }),
+      })
     );
 
     expect(getLongTermStatsEligibility(invalidSession)).toEqual({
@@ -119,8 +124,13 @@ describe("stats", () => {
       statisticalReviewCount: 5,
     });
     expect(isLongTermStatsEligible(exactHalfSession)).toBe(true);
-    expect(new Set(filterLongTermReviews([...invalidSession, ...exactHalfSession]).map((review) => review.sessionId)))
-      .toEqual(new Set(["exact-half-session"]));
+    expect(
+      new Set(
+        filterLongTermReviews([...invalidSession, ...exactHalfSession]).map(
+          (review) => review.sessionId
+        )
+      )
+    ).toEqual(new Set(["exact-half-session"]));
     expect(invalidSession.every((review) => review.ignored === undefined)).toBe(true);
   });
 
@@ -131,7 +141,7 @@ describe("stats", () => {
         targetNoteId: "C4",
         sessionId: "broad-errors-session",
         wrongAnswers: index < 5 ? ONE_WRONG_ANSWER : [],
-      }),
+      })
     );
     const exactTwoThirdsSession = Array.from({ length: 6 }, (_, index) =>
       makeReview({
@@ -139,7 +149,7 @@ describe("stats", () => {
         targetNoteId: "D4",
         sessionId: "exact-two-thirds-session",
         wrongAnswers: index < 4 ? ONE_WRONG_ANSWER : [],
-      }),
+      })
     );
 
     expect(getLongTermStatsEligibility(invalidSession)).toEqual({
@@ -159,7 +169,7 @@ describe("stats", () => {
         targetNoteId: "C4",
         sessionId: "mixed-heavy-session",
         wrongAnswers: index < 2 ? HEAVY_WRONG_ANSWERS : [],
-      }),
+      })
     );
     const excludedReviews = [
       makeReview({
@@ -204,7 +214,7 @@ describe("stats", () => {
           targetNoteId: "C4",
           answeredAt: "2026-07-02T12:00:00.000+08:00",
           endedAt: "2026-07-02T12:00:00.000+08:00",
-        }),
+        })
       ),
       ...Array.from({ length: 3 }, (_, index) =>
         makeReview({
@@ -213,12 +223,17 @@ describe("stats", () => {
           targetNoteId: "C4",
           answeredAt: "2026-07-03T12:00:00.000+08:00",
           endedAt: "2026-07-03T12:00:00.000+08:00",
-        }),
+        })
       ),
     ];
 
     expect(
-      buildDailyStats(reviews).map((stat) => [stat.date, stat.completedReviews, stat.totalActiveMs, stat.heatLevel]),
+      buildDailyStats(reviews).map((stat) => [
+        stat.date,
+        stat.completedReviews,
+        stat.totalActiveMs,
+        stat.heatLevel,
+      ])
     ).toEqual([
       ["2026-07-01", 1, 9000, 3],
       ["2026-07-02", 2, 2000, 1],
@@ -229,7 +244,7 @@ describe("stats", () => {
   it("does not let interrupted reviews qualify a session for long-term stats", () => {
     const reviews = [
       ...Array.from({ length: 4 }, (_, index) =>
-        makeReview({ id: `completed-${index}`, targetNoteId: "C4", sessionId: "mixed-session" }),
+        makeReview({ id: `completed-${index}`, targetNoteId: "C4", sessionId: "mixed-session" })
       ),
       makeReview({
         id: "interrupted",
@@ -270,25 +285,31 @@ describe("stats", () => {
   });
 
   it("builds recognition trend snapshots by averaging each established note equally", () => {
-    const sessions = [makeSession({
-      endedAt: "2026-07-04T13:00:00.000+08:00",
-      id: "trend-session",
-      startedAt: "2026-07-04T10:00:00.000+08:00",
-    })];
+    const sessions = [
+      makeSession({
+        endedAt: "2026-07-04T13:00:00.000+08:00",
+        id: "trend-session",
+        startedAt: "2026-07-04T10:00:00.000+08:00",
+      }),
+    ];
     const reviews = [
-      ...Array.from({ length: 20 }, (_, index) => makeReview({
-        activeMs: 1000,
-        id: `c-${index}`,
-        sessionId: "trend-session",
-        targetNoteId: "C4",
-      })),
-      ...Array.from({ length: 80 }, (_, index) => makeReview({
-        activeMs: 3000,
-        id: `d-${index}`,
-        sessionId: "trend-session",
-        targetNoteId: "D4",
-        wrongAnswers: [{ atActiveMs: 500, noteName: "C" }],
-      })),
+      ...Array.from({ length: 20 }, (_, index) =>
+        makeReview({
+          activeMs: 1000,
+          id: `c-${index}`,
+          sessionId: "trend-session",
+          targetNoteId: "C4",
+        })
+      ),
+      ...Array.from({ length: 80 }, (_, index) =>
+        makeReview({
+          activeMs: 3000,
+          id: `d-${index}`,
+          sessionId: "trend-session",
+          targetNoteId: "D4",
+          wrongAnswers: [{ atActiveMs: 500, noteName: "C" }],
+        })
+      ),
     ];
 
     const [point] = buildRecognitionTrend(reviews, sessions, ["C4", "D4"], "practice-session");
@@ -312,20 +333,24 @@ describe("stats", () => {
       }),
     ];
     const reviews = [
-      ...Array.from({ length: 20 }, (_, index) => makeReview({
-        answeredAt: "2026-07-04T10:20:00.000+08:00",
-        endedAt: "2026-07-04T10:20:00.000+08:00",
-        id: `first-${index}`,
-        sessionId: "first",
-        targetNoteId: "C4",
-      })),
-      ...Array.from({ length: 20 }, (_, index) => makeReview({
-        answeredAt: "2026-07-04T11:20:00.000+08:00",
-        endedAt: "2026-07-04T11:20:00.000+08:00",
-        id: `second-${index}`,
-        sessionId: "second",
-        targetNoteId: "D4",
-      })),
+      ...Array.from({ length: 20 }, (_, index) =>
+        makeReview({
+          answeredAt: "2026-07-04T10:20:00.000+08:00",
+          endedAt: "2026-07-04T10:20:00.000+08:00",
+          id: `first-${index}`,
+          sessionId: "first",
+          targetNoteId: "C4",
+        })
+      ),
+      ...Array.from({ length: 20 }, (_, index) =>
+        makeReview({
+          answeredAt: "2026-07-04T11:20:00.000+08:00",
+          endedAt: "2026-07-04T11:20:00.000+08:00",
+          id: `second-${index}`,
+          sessionId: "second",
+          targetNoteId: "D4",
+        })
+      ),
     ];
 
     const bySession = buildRecognitionTrend(reviews, sessions, ["C4", "D4"], "practice-session");
@@ -338,18 +363,22 @@ describe("stats", () => {
   });
 
   it("limits each recognition metric to that note's latest 100 reviews", () => {
-    const sessions = [makeSession({
-      endedAt: "2026-07-04T13:00:00.000+08:00",
-      id: "latest-window",
-      startedAt: "2026-07-04T10:00:00.000+08:00",
-    })];
-    const reviews = Array.from({ length: 120 }, (_, index) => makeReview({
-      activeMs: index < 20 ? 5000 : 1000,
-      id: `window-${index}`,
-      sessionId: "latest-window",
-      targetNoteId: "C4",
-      wrongAnswers: index < 20 ? [{ atActiveMs: 500, noteName: "D" }] : [],
-    }));
+    const sessions = [
+      makeSession({
+        endedAt: "2026-07-04T13:00:00.000+08:00",
+        id: "latest-window",
+        startedAt: "2026-07-04T10:00:00.000+08:00",
+      }),
+    ];
+    const reviews = Array.from({ length: 120 }, (_, index) =>
+      makeReview({
+        activeMs: index < 20 ? 5000 : 1000,
+        id: `window-${index}`,
+        sessionId: "latest-window",
+        targetNoteId: "C4",
+        wrongAnswers: index < 20 ? [{ atActiveMs: 500, noteName: "D" }] : [],
+      })
+    );
 
     const [point] = buildRecognitionTrend(reviews, sessions, ["C4"], "practice-session");
 
@@ -372,16 +401,18 @@ describe("stats", () => {
         startedAt: atSecond(100),
       }),
     ];
-    const reviews = Array.from({ length: 120 }, (_, index) => makeReview({
-      activeMs: 1000 + index,
-      answeredAt: atSecond(index),
-      endedAt: atSecond(index),
-      id: `rolling-${index}`,
-      sessionId: index < 100 ? "first-window" : "second-window",
-      startedAt: atSecond(index),
-      targetNoteId: "C4",
-      wrongAnswers: index < 10 || index >= 115 ? ONE_WRONG_ANSWER : [],
-    }));
+    const reviews = Array.from({ length: 120 }, (_, index) =>
+      makeReview({
+        activeMs: 1000 + index,
+        answeredAt: atSecond(index),
+        endedAt: atSecond(index),
+        id: `rolling-${index}`,
+        sessionId: index < 100 ? "first-window" : "second-window",
+        startedAt: atSecond(index),
+        targetNoteId: "C4",
+        wrongAnswers: index < 10 || index >= 115 ? ONE_WRONG_ANSWER : [],
+      })
+    );
 
     const [first, second] = buildRecognitionTrend(reviews, sessions, ["C4"], "practice-session");
 
@@ -411,7 +442,10 @@ describe("stats", () => {
       }),
     ];
 
-    expect(buildPracticeSessionStats(reviews).map((stat) => stat.sessionId)).toEqual(["earlier", "later"]);
+    expect(buildPracticeSessionStats(reviews).map((stat) => stat.sessionId)).toEqual([
+      "earlier",
+      "later",
+    ]);
   });
 
   it("builds per-note error and confusion stats", () => {
@@ -466,7 +500,9 @@ describe("stats", () => {
     const reviews = [makeReview({ targetNoteId: "C4", groupId: "G5-G6" })];
 
     const c4 = buildNoteStats(reviews, ["G3-F4"]).find((stat) => stat.targetNoteId === "C4")!;
-    const outOfRange = buildNoteStats(reviews, ["G5-G6"]).find((stat) => stat.targetNoteId === "C4");
+    const outOfRange = buildNoteStats(reviews, ["G5-G6"]).find(
+      (stat) => stat.targetNoteId === "C4"
+    );
 
     expect(c4.reviewCount).toBe(1);
     expect(outOfRange).toBeUndefined();

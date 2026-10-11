@@ -18,11 +18,11 @@ describe("staff-page UI preferences", () => {
     expect(
       parseStaffPageUiPreferences(
         { pausedPlaybackBpm: 140, smoothStaffPageScroll: false, startPausedReading: true },
-        DEFAULT_STAFF_PAGE_UI_PREFERENCES,
-      ),
+        DEFAULT_STAFF_PAGE_UI_PREFERENCES
+      )
     ).toEqual({ pausedPlaybackBpm: 140, smoothStaffPageScroll: false, startPausedReading: true });
     expect(parseStaffPageUiPreferences({}, DEFAULT_STAFF_PAGE_UI_PREFERENCES)).toEqual(
-      DEFAULT_STAFF_PAGE_UI_PREFERENCES,
+      DEFAULT_STAFF_PAGE_UI_PREFERENCES
     );
   });
 

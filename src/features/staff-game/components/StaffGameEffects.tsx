@@ -1,12 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { STAFF_GAME_ART } from "../logic/staffGameResources";
 
-const {
-  mascotCelebrationFrames,
-  mascotCheerFrames,
-  mascotPauseFrames,
-  mascotSadFrames,
-} = STAFF_GAME_ART;
+const { mascotCelebrationFrames, mascotCheerFrames, mascotPauseFrames, mascotSadFrames } =
+  STAFF_GAME_ART;
 
 interface FireflyParticle {
   id: number;
@@ -23,7 +19,8 @@ interface FireflyParticle {
   moving: boolean;
 }
 
-export type StaffGameMascotAction = "idle" | "cheer" | "sad" | "summarySad" | "pause" | "celebration";
+export type StaffGameMascotAction =
+  "idle" | "cheer" | "sad" | "summarySad" | "pause" | "celebration";
 
 interface MascotAnimationLayer {
   id: number;
@@ -40,19 +37,27 @@ const MASCOT_FRAME_SHEETS: Record<StaffGameMascotAction, string> = {
   celebration: mascotCelebrationFrames,
 };
 
-const MASCOT_ANIMATIONS: Record<StaffGameMascotAction, {
-  frames: number[];
-  frameDurationMs: number;
-  loop?: boolean;
-  holdFrame?: number;
-  holdMs?: number;
-}> = {
+const MASCOT_ANIMATIONS: Record<
+  StaffGameMascotAction,
+  {
+    frames: number[];
+    frameDurationMs: number;
+    loop?: boolean;
+    holdFrame?: number;
+    holdMs?: number;
+  }
+> = {
   // The idle pose is the same neutral end frame used by the sad recovery animation.
   idle: { frames: [6], frameDurationMs: 100, loop: true },
   // Keep the brief takeoff anticipation, then move through the peak and descent without a repeated midair frame.
   cheer: { frames: [0, 0, 1, 2, 3, 4, 5, 6, 7, 8], frameDurationMs: 80, holdFrame: 8, holdMs: 140 },
   // Finish on the shared neutral frame so the face recovers during the animation, not after a pause.
-  sad: { frames: [6, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6], frameDurationMs: 95, holdFrame: 6, holdMs: 250 },
+  sad: {
+    frames: [6, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6],
+    frameDurationMs: 95,
+    holdFrame: 6,
+    holdMs: 250,
+  },
   // Settlement starts from the shared neutral frame and ends on the sad pose without the smile frame.
   summarySad: { frames: [6, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5], frameDurationMs: 95, holdFrame: 5 },
   pause: { frames: [0, 1, 2, 3, 4, 5], frameDurationMs: 100, holdFrame: 5 },
@@ -98,7 +103,14 @@ interface MascotAnimationLayerProps {
   onComplete?: (token: number) => void;
 }
 
-function MascotAnimationLayer({ action, token, active, animate, holdFrameOverride, onComplete }: MascotAnimationLayerProps): JSX.Element {
+function MascotAnimationLayer({
+  action,
+  token,
+  active,
+  animate,
+  holdFrameOverride,
+  onComplete,
+}: MascotAnimationLayerProps): JSX.Element {
   const [frame, setFrame] = useState(MASCOT_ANIMATIONS[action].frames[0]);
   const prefersReducedMotion = usePrefersReducedMotion();
   const shouldAnimate = animate && !prefersReducedMotion;
@@ -114,7 +126,8 @@ function MascotAnimationLayer({ action, token, active, animate, holdFrameOverrid
     setFrame(frames[0]);
     if (!shouldAnimate) {
       if (animation.loop || !onComplete) return undefined;
-      const staticPoseDurationMs = animation.frames.length * animation.frameDurationMs + (animation.holdMs ?? 0);
+      const staticPoseDurationMs =
+        animation.frames.length * animation.frameDurationMs + (animation.holdMs ?? 0);
       completionTimeout = window.setTimeout(() => {
         if (activeRef.current) onComplete(token);
       }, staticPoseDurationMs);
@@ -157,9 +170,8 @@ function MascotAnimationLayer({ action, token, active, animate, holdFrameOverrid
   // stale animation frame while the interval cleanup runs.
   const animationFrames = MASCOT_ANIMATIONS[action].frames;
   const currentFrame = shouldAnimate ? frame : MASCOT_STATIC_FRAMES[action];
-  const displayedFrame = shouldAnimate && !animationFrames.includes(currentFrame)
-    ? animationFrames[0]
-    : currentFrame;
+  const displayedFrame =
+    shouldAnimate && !animationFrames.includes(currentFrame) ? animationFrames[0] : currentFrame;
   const visualAction = action === "summarySad" ? "sad" : action;
   const column = displayedFrame % 3;
   const row = Math.floor(displayedFrame / 3);
@@ -190,13 +202,21 @@ interface StaffGameMascotProps {
   onComplete?: (token: number) => void;
 }
 
-export function StaffGameMascot({ action, token, animate, holdFrame, className = "", onComplete }: StaffGameMascotProps): JSX.Element {
+export function StaffGameMascot({
+  action,
+  token,
+  animate,
+  holdFrame,
+  className = "",
+  onComplete,
+}: StaffGameMascotProps): JSX.Element {
   const nextLayerIdRef = useRef(0);
   const currentIdentityRef = useRef({ action, token });
   const [layers, setLayers] = useState<MascotAnimationLayer[]>(() => [{ id: 0, action, token }]);
 
   useLayoutEffect(() => {
-    if (currentIdentityRef.current.action === action && currentIdentityRef.current.token === token) return undefined;
+    if (currentIdentityRef.current.action === action && currentIdentityRef.current.token === token)
+      return undefined;
     const previousAction = currentIdentityRef.current.action;
     currentIdentityRef.current = { action, token };
 
@@ -207,7 +227,10 @@ export function StaffGameMascot({ action, token, animate, holdFrame, className =
     }
 
     // Idle and sad share one atlas; reuse the layer in either direction to avoid a translucent crossfade dip.
-    if ((previousAction === "sad" && action === "idle") || (previousAction === "idle" && action === "sad")) {
+    if (
+      (previousAction === "sad" && action === "idle") ||
+      (previousAction === "idle" && action === "sad")
+    ) {
       setLayers((currentLayers) => {
         const activeLayer = currentLayers.at(-1);
         return activeLayer ? [{ ...activeLayer, action, token }] : [nextLayer];
@@ -223,7 +246,10 @@ export function StaffGameMascot({ action, token, animate, holdFrame, className =
   }, [action, animate, token]);
 
   return (
-    <div aria-hidden="true" className={`staff-game-mascot${animate ? "" : " effects-disabled"}${className ? ` ${className}` : ""}`}>
+    <div
+      aria-hidden="true"
+      className={`staff-game-mascot${animate ? "" : " effects-disabled"}${className ? ` ${className}` : ""}`}
+    >
       {layers.map((layer, index) => (
         <MascotAnimationLayer
           action={layer.action}
@@ -250,14 +276,19 @@ export function StaffGameParticles(): JSX.Element {
     const pickCluster = (): (typeof clusters)[number] => {
       return clusters[Math.floor(Math.random() * clusters.length)];
     };
-    const spreadAround = (center: number, radius: number): number => center + ((Math.random() + Math.random() + Math.random()) / 3 - 0.5) * radius * 2;
+    const spreadAround = (center: number, radius: number): number =>
+      center + ((Math.random() + Math.random() + Math.random()) / 3 - 0.5) * radius * 2;
     const clampPercent = (value: number): number => Math.max(1, Math.min(99, value));
 
     return Array.from({ length: 112 }, (_, id) => {
       const clustered = Math.random() < 0.68;
       const cluster = clustered ? pickCluster() : null;
-      const left = cluster ? clampPercent(spreadAround(cluster.x, cluster.radiusX)) : 2 + Math.random() * 96;
-      const top = cluster ? clampPercent(spreadAround(cluster.y, cluster.radiusY)) : 2 + Math.random() * 96;
+      const left = cluster
+        ? clampPercent(spreadAround(cluster.x, cluster.radiusX))
+        : 2 + Math.random() * 96;
+      const top = cluster
+        ? clampPercent(spreadAround(cluster.y, cluster.radiusY))
+        : 2 + Math.random() * 96;
       const driftX = (Math.random() - 0.5) * 54;
       const driftY = (Math.random() - 0.5) * 42;
       return {
@@ -283,20 +314,22 @@ export function StaffGameParticles(): JSX.Element {
         <i
           className={`staff-game-firefly${particle.moving ? " is-moving" : ""}`}
           key={particle.id}
-          style={{
-            left: particle.left,
-            top: particle.top,
-            width: particle.size,
-            height: particle.size,
-            opacity: particle.moving ? undefined : particle.opacity,
-            "--firefly-opacity": particle.opacity,
-            "--firefly-duration": particle.duration,
-            "--firefly-delay": particle.delay,
-            "--firefly-drift-x": particle.driftX,
-            "--firefly-drift-y": particle.driftY,
-            "--firefly-mid-x": particle.midX,
-            "--firefly-mid-y": particle.midY,
-          } as CSSProperties}
+          style={
+            {
+              left: particle.left,
+              top: particle.top,
+              width: particle.size,
+              height: particle.size,
+              opacity: particle.moving ? undefined : particle.opacity,
+              "--firefly-opacity": particle.opacity,
+              "--firefly-duration": particle.duration,
+              "--firefly-delay": particle.delay,
+              "--firefly-drift-x": particle.driftX,
+              "--firefly-drift-y": particle.driftY,
+              "--firefly-mid-x": particle.midX,
+              "--firefly-mid-y": particle.midY,
+            } as CSSProperties
+          }
         />
       ))}
     </div>
@@ -319,20 +352,22 @@ interface StaffGameRushSpeedLinesProps {
 }
 
 export function StaffGameRushSpeedLines({ bubbleLane }: StaffGameRushSpeedLinesProps): JSX.Element {
-  const [lines] = useState<RushSpeedLine[]>(() => Array.from({ length: 16 }, (_, id) => {
-    const durationSeconds = 0.2 + Math.random() * 0.4;
-    const centerPercent = Math.random() * 100;
-    return {
-      id,
-      left: `${centerPercent}%`,
-      centerPercent,
-      width: `${2.5 + Math.random()}px`,
-      height: `${30 + Math.random() * 150}px`,
-      opacity: `${0.2 + Math.random() * 0.6}`,
-      duration: `${durationSeconds}s`,
-      delay: `${-Math.random() * durationSeconds}s`,
-    };
-  }));
+  const [lines] = useState<RushSpeedLine[]>(() =>
+    Array.from({ length: 16 }, (_, id) => {
+      const durationSeconds = 0.2 + Math.random() * 0.4;
+      const centerPercent = Math.random() * 100;
+      return {
+        id,
+        left: `${centerPercent}%`,
+        centerPercent,
+        width: `${2.5 + Math.random()}px`,
+        height: `${30 + Math.random() * 150}px`,
+        opacity: `${0.2 + Math.random() * 0.6}`,
+        duration: `${durationSeconds}s`,
+        delay: `${-Math.random() * durationSeconds}s`,
+      };
+    })
+  );
 
   return (
     <div aria-hidden="true" className="staff-game-speed-lines">
@@ -340,16 +375,21 @@ export function StaffGameRushSpeedLines({ bubbleLane }: StaffGameRushSpeedLinesP
         <div
           className="staff-game-speed-line"
           key={line.id}
-          style={{
-            left: line.left,
-            "--staff-game-speed-line-width": line.width,
-            height: line.height,
-            opacity: bubbleLane && Math.abs(line.centerPercent - bubbleLane.centerPercent) <= bubbleLane.halfWidthPercent
-              ? 0
-              : line.opacity,
-            animationDuration: line.duration,
-            animationDelay: line.delay,
-          } as CSSProperties}
+          style={
+            {
+              left: line.left,
+              "--staff-game-speed-line-width": line.width,
+              height: line.height,
+              opacity:
+                bubbleLane &&
+                Math.abs(line.centerPercent - bubbleLane.centerPercent) <=
+                  bubbleLane.halfWidthPercent
+                  ? 0
+                  : line.opacity,
+              animationDuration: line.duration,
+              animationDelay: line.delay,
+            } as CSSProperties
+          }
         />
       ))}
     </div>
@@ -375,38 +415,41 @@ export function StaffGameShootingStar(): JSX.Element {
     if (meteor) return;
 
     const firstLaunch = nextIdRef.current === 0;
-    const timeoutId = window.setTimeout(() => {
-      const viewportWidth = Math.max(window.innerWidth, 1);
-      const viewportHeight = Math.max(window.innerHeight, 1);
-      const width = 130 + Math.random() * 110;
-      const headX = viewportWidth * (0.2 + Math.random() * 0.6);
-      const headY = viewportHeight * (0.05 + Math.random() * 0.3);
-      const directionX = Math.random() < 0.5 ? -1 : 1;
-      const directionY = Math.random() < 0.5 ? -1 : 1;
-      const baseTravelX = viewportWidth * (0.22 + Math.random() * 0.3);
-      const baseTravelY = viewportHeight * (0.04 + Math.random() * 0.08);
-      const distanceToHorizontalEdge = directionX > 0 ? viewportWidth - headX : headX;
-      const distanceToVerticalEdge = directionY > 0 ? viewportHeight - headY : headY;
-      const edgeScale = Math.min(
-        1,
-        distanceToHorizontalEdge / baseTravelX,
-        distanceToVerticalEdge / baseTravelY,
-      );
-      const travelX = directionX * baseTravelX * edgeScale;
-      const travelY = directionY * baseTravelY * edgeScale;
-      const durationMs = 3000 + Math.random() * 3000;
-      const angle = Math.atan2(travelY, travelX) * (180 / Math.PI);
-      setMeteor({
-        id: nextIdRef.current++,
-        left: `${headX - width}px`,
-        top: `${headY}px`,
-        width: `${width}px`,
-        angle: `${angle}deg`,
-        travelX: `${travelX}px`,
-        travelY: `${travelY}px`,
-        duration: `${durationMs * edgeScale}ms`,
-      });
-    }, firstLaunch ? 4_000 : 300 + Math.random() * 900);
+    const timeoutId = window.setTimeout(
+      () => {
+        const viewportWidth = Math.max(window.innerWidth, 1);
+        const viewportHeight = Math.max(window.innerHeight, 1);
+        const width = 130 + Math.random() * 110;
+        const headX = viewportWidth * (0.2 + Math.random() * 0.6);
+        const headY = viewportHeight * (0.05 + Math.random() * 0.3);
+        const directionX = Math.random() < 0.5 ? -1 : 1;
+        const directionY = Math.random() < 0.5 ? -1 : 1;
+        const baseTravelX = viewportWidth * (0.22 + Math.random() * 0.3);
+        const baseTravelY = viewportHeight * (0.04 + Math.random() * 0.08);
+        const distanceToHorizontalEdge = directionX > 0 ? viewportWidth - headX : headX;
+        const distanceToVerticalEdge = directionY > 0 ? viewportHeight - headY : headY;
+        const edgeScale = Math.min(
+          1,
+          distanceToHorizontalEdge / baseTravelX,
+          distanceToVerticalEdge / baseTravelY
+        );
+        const travelX = directionX * baseTravelX * edgeScale;
+        const travelY = directionY * baseTravelY * edgeScale;
+        const durationMs = 3000 + Math.random() * 3000;
+        const angle = Math.atan2(travelY, travelX) * (180 / Math.PI);
+        setMeteor({
+          id: nextIdRef.current++,
+          left: `${headX - width}px`,
+          top: `${headY}px`,
+          width: `${width}px`,
+          angle: `${angle}deg`,
+          travelX: `${travelX}px`,
+          travelY: `${travelY}px`,
+          duration: `${durationMs * edgeScale}ms`,
+        });
+      },
+      firstLaunch ? 4_000 : 300 + Math.random() * 900
+    );
 
     return () => window.clearTimeout(timeoutId);
   }, [meteor]);
@@ -418,18 +461,24 @@ export function StaffGameShootingStar(): JSX.Element {
           className="staff-game-shooting-star"
           key={meteor.id}
           onAnimationEnd={(event) => {
-            if (event.target !== event.currentTarget || event.animationName !== "staff-game-shooting-star-traverse") return;
-            setMeteor((current) => current?.id === meteor.id ? null : current);
+            if (
+              event.target !== event.currentTarget ||
+              event.animationName !== "staff-game-shooting-star-traverse"
+            )
+              return;
+            setMeteor((current) => (current?.id === meteor.id ? null : current));
           }}
-          style={{
-            left: meteor.left,
-            top: meteor.top,
-            width: meteor.width,
-            "--meteor-duration": meteor.duration,
-            "--meteor-angle": meteor.angle,
-            "--meteor-travel-x": meteor.travelX,
-            "--meteor-travel-y": meteor.travelY,
-          } as CSSProperties}
+          style={
+            {
+              left: meteor.left,
+              top: meteor.top,
+              width: meteor.width,
+              "--meteor-duration": meteor.duration,
+              "--meteor-angle": meteor.angle,
+              "--meteor-travel-x": meteor.travelX,
+              "--meteor-travel-y": meteor.travelY,
+            } as CSSProperties
+          }
         >
           <span aria-hidden="true" className="staff-game-shooting-star-streak" />
           <span aria-hidden="true" className="staff-game-shooting-star-head" />

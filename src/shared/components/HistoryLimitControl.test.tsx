@@ -13,7 +13,7 @@ describe("history limit control", () => {
         historyLimit={12}
         onAllHistoryChange={() => undefined}
         onHistoryLimitChange={() => undefined}
-      />,
+      />
     );
 
     expect(markup).toContain('type="number"');
@@ -32,7 +32,7 @@ describe("history limit control", () => {
         historyLimit={12}
         onAllHistoryChange={() => undefined}
         onHistoryLimitChange={() => undefined}
-      />,
+      />
     );
 
     expect(markup).toContain('value="12"');

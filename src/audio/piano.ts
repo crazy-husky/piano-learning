@@ -116,7 +116,7 @@ function getSampler({ retryFailed = false }: GetSamplerOptions = {}): Tone.Sampl
       if (typeof window !== "undefined") {
         timeout = window.setTimeout(
           () => markFailed(new Error("Timed out while loading piano samples")),
-          PIANO_SAMPLE_LOAD_TIMEOUT_MS,
+          PIANO_SAMPLE_LOAD_TIMEOUT_MS
         );
       }
       sampler = new Tone.Sampler({
@@ -205,7 +205,10 @@ export async function startPianoMidi(midi: number): Promise<SustainedPianoNote> 
   return startToneNote(Tone.Frequency(midi, "midi").toNote());
 }
 
-export async function startPianoNote(noteName: PianoKeyName, octave: Octave): Promise<SustainedPianoNote> {
+export async function startPianoNote(
+  noteName: PianoKeyName,
+  octave: Octave
+): Promise<SustainedPianoNote> {
   return startToneNote(noteToToneName(noteName, octave));
 }
 

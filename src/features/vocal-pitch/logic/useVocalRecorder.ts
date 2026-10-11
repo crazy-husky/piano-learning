@@ -33,10 +33,17 @@ function preferredRecordingMimeType(): string | undefined {
   if (typeof MediaRecorder === "undefined") {
     return undefined;
   }
-  return ["audio/webm;codecs=opus", "audio/webm"].find((mimeType) => MediaRecorder.isTypeSupported(mimeType));
+  return ["audio/webm;codecs=opus", "audio/webm"].find((mimeType) =>
+    MediaRecorder.isTypeSupported(mimeType)
+  );
 }
 
-export function useVocalRecorder({ allowBackgroundRecording, config, onEnded, onPitchFrame }: UseVocalRecorderOptions) {
+export function useVocalRecorder({
+  allowBackgroundRecording,
+  config,
+  onEnded,
+  onPitchFrame,
+}: UseVocalRecorderOptions) {
   const [status, setStatus] = useState<VocalRecorderStatus>("idle");
   const [activeSeconds, setActiveSeconds] = useState(0);
   const [inputLevel, setInputLevel] = useState(0);
@@ -130,31 +137,34 @@ export function useVocalRecorder({ allowBackgroundRecording, config, onEnded, on
     callbacksRef.current.onEnded(result, reason);
   }, [releaseDevices, updateStatus]);
 
-  const finish = useCallback((reason: VocalRecordingEndReason = "manual"): Promise<VocalRecordingResult> => {
-    if (finishPromiseRef.current) {
-      return finishPromiseRef.current;
-    }
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || statusRef.current !== "recording") {
-      return Promise.reject(new Error("当前没有录音"));
-    }
-    finalDurationSecondsRef.current = currentActiveSeconds();
-    recordingStartedAtRef.current = null;
-    setActiveSeconds(finalDurationSecondsRef.current);
-    setInputLevel(0);
-    endReasonRef.current = reason;
-    updateStatus("stopping");
-    const promise = new Promise<VocalRecordingResult>((resolve) => {
-      finishResolveRef.current = resolve;
-    });
-    finishPromiseRef.current = promise;
-    if (recorder.state === "inactive") {
-      finalizeFromRecorder();
-    } else {
-      recorder.stop();
-    }
-    return promise;
-  }, [currentActiveSeconds, finalizeFromRecorder, updateStatus]);
+  const finish = useCallback(
+    (reason: VocalRecordingEndReason = "manual"): Promise<VocalRecordingResult> => {
+      if (finishPromiseRef.current) {
+        return finishPromiseRef.current;
+      }
+      const recorder = mediaRecorderRef.current;
+      if (!recorder || statusRef.current !== "recording") {
+        return Promise.reject(new Error("当前没有录音"));
+      }
+      finalDurationSecondsRef.current = currentActiveSeconds();
+      recordingStartedAtRef.current = null;
+      setActiveSeconds(finalDurationSecondsRef.current);
+      setInputLevel(0);
+      endReasonRef.current = reason;
+      updateStatus("stopping");
+      const promise = new Promise<VocalRecordingResult>((resolve) => {
+        finishResolveRef.current = resolve;
+      });
+      finishPromiseRef.current = promise;
+      if (recorder.state === "inactive") {
+        finalizeFromRecorder();
+      } else {
+        recorder.stop();
+      }
+      return promise;
+    },
+    [currentActiveSeconds, finalizeFromRecorder, updateStatus]
+  );
 
   const runLiveAnalysis = useCallback(() => {
     const analyser = analyserRef.current;
@@ -164,7 +174,13 @@ export function useVocalRecorder({ allowBackgroundRecording, config, onEnded, on
       analyser.getFloatTimeDomainData(samples);
       const currentConfig = callbacksRef.current.config;
       const elapsed = currentActiveSeconds();
-      const detection = classifyPitchFrame(detector, samples, analyser.context.sampleRate, currentConfig, elapsed);
+      const detection = classifyPitchFrame(
+        detector,
+        samples,
+        analyser.context.sampleRate,
+        currentConfig,
+        elapsed
+      );
       setInputLevel(Math.min(1, detection.rms * 8));
       callbacksRef.current.onPitchFrame(detection.frame);
       setActiveSeconds(elapsed);
@@ -177,117 +193,135 @@ export function useVocalRecorder({ allowBackgroundRecording, config, onEnded, on
     }
   }, [currentActiveSeconds, finish]);
 
-  const start = useCallback(async (deviceId?: string): Promise<void> => {
-    if (statusRef.current !== "idle" || startInFlightRef.current) {
-      return;
-    }
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      throw new Error("当前浏览器不支持录音");
-    }
-    const generation = ++startGenerationRef.current;
-    startInFlightRef.current = true;
-    let stream: MediaStream | null = null;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-          autoGainControl: false,
-          echoCancellation: false,
-          noiseSuppression: false,
-          channelCount: 1,
-        },
-      });
-      if (!mountedRef.current || generation !== startGenerationRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
+  const start = useCallback(
+    async (deviceId?: string): Promise<void> => {
+      if (statusRef.current !== "idle" || startInFlightRef.current) {
         return;
       }
-      streamRef.current = stream;
-
-      const settings = stream.getAudioTracks()[0]?.getSettings();
-      const enabledProcessing = [
-        settings?.echoCancellation ? "回声消除" : null,
-        settings?.autoGainControl ? "自动增益" : null,
-        settings?.noiseSuppression ? "降噪" : null,
-      ].filter(Boolean);
-      setCaptureNotice(enabledProcessing.length > 0 ? `浏览器仍启用了${enabledProcessing.join("、")}` : null);
-
-      const context = new AudioContext();
-      audioContextRef.current = context;
-      await context.resume();
-      if (!mountedRef.current || generation !== startGenerationRef.current) {
-        releaseDevices();
-        return;
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+        throw new Error("当前浏览器不支持录音");
       }
-
-      const source = context.createMediaStreamSource(stream);
-      const analyser = context.createAnalyser();
-      const frameSize = getPitchFrameSize(context.sampleRate);
-      analyser.fftSize = frameSize;
-      analyser.smoothingTimeConstant = 0;
-      source.connect(analyser);
-      liveBufferRef.current = new Float32Array(frameSize);
-      pitchDetectorRef.current = createPitchFrameDetector(frameSize);
-
-      const mimeType = preferredRecordingMimeType();
-      const recorder = new MediaRecorder(stream, {
-        ...(mimeType ? { mimeType } : {}),
-        audioBitsPerSecond: 96_000,
-      });
-      chunksRef.current = [];
-      finalDurationSecondsRef.current = 0;
-      recordingStartedAtRef.current = performance.now();
-      endReasonRef.current = null;
-      setActiveSeconds(0);
-      analyserRef.current = analyser;
-      mediaRecorderRef.current = recorder;
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-        if (statusRef.current === "recording" && currentActiveSeconds() >= MAX_RECORDING_SECONDS) {
-          void finish("limit");
-        }
-      };
-      recorder.onstop = finalizeFromRecorder;
-      recorder.onerror = () => {
-        if (statusRef.current === "recording") {
-          void finish("unexpected");
-        }
-      };
-      for (const track of stream.getAudioTracks()) {
-        const finishForInterruption = (): void => {
-          if (statusRef.current === "recording") void finish("input-interrupted");
-        };
-        track.addEventListener("mute", finishForInterruption);
-        track.addEventListener("ended", finishForInterruption);
-        trackListenerCleanupRef.current.push(() => {
-          track.removeEventListener("mute", finishForInterruption);
-          track.removeEventListener("ended", finishForInterruption);
+      const generation = ++startGenerationRef.current;
+      startInFlightRef.current = true;
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+            autoGainControl: false,
+            echoCancellation: false,
+            noiseSuppression: false,
+            channelCount: 1,
+          },
         });
-      }
+        if (!mountedRef.current || generation !== startGenerationRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        streamRef.current = stream;
 
-      recorder.start(1000);
-      updateStatus("recording");
-      limitTimeoutRef.current = window.setTimeout(() => {
-        if (statusRef.current === "recording") void finish("limit");
-      }, MAX_RECORDING_SECONDS * 1000);
-      animationRef.current = requestAnimationFrame(runLiveAnalysis);
-    } catch (error) {
-      recordingStartedAtRef.current = null;
-      if (generation === startGenerationRef.current) releaseDevices();
-      if (mountedRef.current && generation === startGenerationRef.current) updateStatus("idle");
-      throw error;
-    } finally {
-      startInFlightRef.current = false;
-    }
-  }, [currentActiveSeconds, finalizeFromRecorder, finish, releaseDevices, runLiveAnalysis, updateStatus]);
+        const settings = stream.getAudioTracks()[0]?.getSettings();
+        const enabledProcessing = [
+          settings?.echoCancellation ? "回声消除" : null,
+          settings?.autoGainControl ? "自动增益" : null,
+          settings?.noiseSuppression ? "降噪" : null,
+        ].filter(Boolean);
+        setCaptureNotice(
+          enabledProcessing.length > 0 ? `浏览器仍启用了${enabledProcessing.join("、")}` : null
+        );
+
+        const context = new AudioContext();
+        audioContextRef.current = context;
+        await context.resume();
+        if (!mountedRef.current || generation !== startGenerationRef.current) {
+          releaseDevices();
+          return;
+        }
+
+        const source = context.createMediaStreamSource(stream);
+        const analyser = context.createAnalyser();
+        const frameSize = getPitchFrameSize(context.sampleRate);
+        analyser.fftSize = frameSize;
+        analyser.smoothingTimeConstant = 0;
+        source.connect(analyser);
+        liveBufferRef.current = new Float32Array(frameSize);
+        pitchDetectorRef.current = createPitchFrameDetector(frameSize);
+
+        const mimeType = preferredRecordingMimeType();
+        const recorder = new MediaRecorder(stream, {
+          ...(mimeType ? { mimeType } : {}),
+          audioBitsPerSecond: 96_000,
+        });
+        chunksRef.current = [];
+        finalDurationSecondsRef.current = 0;
+        recordingStartedAtRef.current = performance.now();
+        endReasonRef.current = null;
+        setActiveSeconds(0);
+        analyserRef.current = analyser;
+        mediaRecorderRef.current = recorder;
+
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            chunksRef.current.push(event.data);
+          }
+          if (
+            statusRef.current === "recording" &&
+            currentActiveSeconds() >= MAX_RECORDING_SECONDS
+          ) {
+            void finish("limit");
+          }
+        };
+        recorder.onstop = finalizeFromRecorder;
+        recorder.onerror = () => {
+          if (statusRef.current === "recording") {
+            void finish("unexpected");
+          }
+        };
+        for (const track of stream.getAudioTracks()) {
+          const finishForInterruption = (): void => {
+            if (statusRef.current === "recording") void finish("input-interrupted");
+          };
+          track.addEventListener("mute", finishForInterruption);
+          track.addEventListener("ended", finishForInterruption);
+          trackListenerCleanupRef.current.push(() => {
+            track.removeEventListener("mute", finishForInterruption);
+            track.removeEventListener("ended", finishForInterruption);
+          });
+        }
+
+        recorder.start(1000);
+        updateStatus("recording");
+        limitTimeoutRef.current = window.setTimeout(() => {
+          if (statusRef.current === "recording") void finish("limit");
+        }, MAX_RECORDING_SECONDS * 1000);
+        animationRef.current = requestAnimationFrame(runLiveAnalysis);
+      } catch (error) {
+        recordingStartedAtRef.current = null;
+        if (generation === startGenerationRef.current) releaseDevices();
+        if (mountedRef.current && generation === startGenerationRef.current) updateStatus("idle");
+        throw error;
+      } finally {
+        startInFlightRef.current = false;
+      }
+    },
+    [
+      currentActiveSeconds,
+      finalizeFromRecorder,
+      finish,
+      releaseDevices,
+      runLiveAnalysis,
+      updateStatus,
+    ]
+  );
 
   useEffect(() => {
     const finishForVisibility = () => {
       if (
         document.hidden &&
-        shouldFinishVocalRecordingWhenHidden(statusRef.current, callbacksRef.current.allowBackgroundRecording)
+        shouldFinishVocalRecordingWhenHidden(
+          statusRef.current,
+          callbacksRef.current.allowBackgroundRecording
+        )
       ) {
         void finish("background");
       }

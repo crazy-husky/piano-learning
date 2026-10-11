@@ -73,7 +73,10 @@ function formatElapsedMs(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-function formatBenchmarkValue(benchmark: SessionProgressBenchmark, value: number | undefined): string {
+function formatBenchmarkValue(
+  benchmark: SessionProgressBenchmark,
+  value: number | undefined
+): string {
   if (value === undefined) {
     return "-";
   }
@@ -98,7 +101,8 @@ export function SessionProgressControls({
       {benchmark ? (
         <div className="session-progress-benchmark">
           <span>
-            {currentLabel} <strong>{formatBenchmarkValue(benchmark, benchmark.currentValue)}</strong>
+            {currentLabel}{" "}
+            <strong>{formatBenchmarkValue(benchmark, benchmark.currentValue)}</strong>
           </span>
           <span>
             最佳{" "}
@@ -110,10 +114,16 @@ export function SessionProgressControls({
         </div>
       ) : null}
       <div className="segmented" aria-label="答对进度口径">
-        <button className={mode === "actual-order" ? "active" : ""} onClick={() => onModeChange("actual-order")}>
+        <button
+          className={mode === "actual-order" ? "active" : ""}
+          onClick={() => onModeChange("actual-order")}
+        >
           真实顺序
         </button>
-        <button className={mode === "duration-cumsum" ? "active" : ""} onClick={() => onModeChange("duration-cumsum")}>
+        <button
+          className={mode === "duration-cumsum" ? "active" : ""}
+          onClick={() => onModeChange("duration-cumsum")}
+        >
           排序累加
         </button>
       </div>
@@ -142,15 +152,18 @@ export function SessionProgressChart({
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
   const [chartLoadState, setChartLoadState] = useState<"loading" | "ready" | "error">("loading");
   const isNightMode = useNightMode();
-  const chartColors = useMemo(() => ({
-    accent: isNightMode ? "#72b8a6" : "#256f67",
-    axis: isNightMode ? "#728078" : "#bcae9a",
-    grid: isNightMode ? "#3b4840" : "#e5dccf",
-    muted: isNightMode ? "#b1bcb3" : "#766b5f",
-  }), [isNightMode]);
+  const chartColors = useMemo(
+    () => ({
+      accent: isNightMode ? "#72b8a6" : "#256f67",
+      axis: isNightMode ? "#728078" : "#bcae9a",
+      grid: isNightMode ? "#3b4840" : "#e5dccf",
+      muted: isNightMode ? "#b1bcb3" : "#766b5f",
+    }),
+    [isNightMode]
+  );
   const chartGroups = useMemo<SessionProgressChartGroup[]>(
     () => groups ?? [{ color: chartColors.accent, id: "single", label: "答对进度", series }],
-    [chartColors.accent, groups, series],
+    [chartColors.accent, groups, series]
   );
   const allSeries = chartGroups.flatMap((group) => group.series);
   const allPoints = allSeries.flatMap((line) => line.points);
@@ -184,14 +197,18 @@ export function SessionProgressChart({
           silent: false,
           type: "line",
           z: line.isCurrent ? 3 : line.isBest ? 2 : 1,
-        })),
+        }))
       ),
       tooltip: {
         trigger: "item",
-        valueFormatter: (value) => (typeof value === "number" ? String(value) : String(value ?? "")),
+        valueFormatter: (value) =>
+          typeof value === "number" ? String(value) : String(value ?? ""),
       },
       xAxis: {
-        axisLabel: { color: chartColors.muted, formatter: (value: number) => formatElapsedMs(value) },
+        axisLabel: {
+          color: chartColors.muted,
+          formatter: (value: number) => formatElapsedMs(value),
+        },
         axisLine: { lineStyle: { color: chartColors.axis } },
         max: xMax,
         min: 0,
@@ -213,7 +230,7 @@ export function SessionProgressChart({
         type: "value",
       },
     }),
-    [chartColors, chartGroups, prefersReducedMotion, xMax],
+    [chartColors, chartGroups, prefersReducedMotion, xMax]
   );
   useEffect(() => {
     const element = chartElementRef.current;
@@ -224,19 +241,21 @@ export function SessionProgressChart({
     let cancelled = false;
     let chart: echarts.ECharts | null = null;
     let resizeObserver: ResizeObserver | null = null;
-    void loadECharts().then((echartsModule) => {
-      if (cancelled) return;
+    void loadECharts()
+      .then((echartsModule) => {
+        if (cancelled) return;
 
-      chart = echartsModule.init(element, undefined, { renderer: "canvas" });
-      chartInstanceRef.current = chart;
-      resizeObserver = new ResizeObserver(() => chart?.resize());
-      resizeObserver.observe(element);
-      setChartLoadState("ready");
-    }).catch(() => {
-      chart?.dispose();
-      chartInstanceRef.current = null;
-      if (!cancelled) setChartLoadState("error");
-    });
+        chart = echartsModule.init(element, undefined, { renderer: "canvas" });
+        chartInstanceRef.current = chart;
+        resizeObserver = new ResizeObserver(() => chart?.resize());
+        resizeObserver.observe(element);
+        setChartLoadState("ready");
+      })
+      .catch(() => {
+        chart?.dispose();
+        chartInstanceRef.current = null;
+        if (!cancelled) setChartLoadState("error");
+      });
 
     return () => {
       cancelled = true;
@@ -254,8 +273,18 @@ export function SessionProgressChart({
     <div className="session-progress-chart-wrap">
       {overlay ? <div className="session-progress-chart-overlay">{overlay}</div> : null}
       {chartLoadState === "loading" ? <ChartLoadingSkeleton /> : null}
-      {chartLoadState === "error" ? <div className="echarts-loading-error" role="status">图表暂时无法加载</div> : null}
-      <div aria-label="答对进度图" className="session-progress-chart" ref={chartElementRef} role="img" style={{ height }} />
+      {chartLoadState === "error" ? (
+        <div className="echarts-loading-error" role="status">
+          图表暂时无法加载
+        </div>
+      ) : null}
+      <div
+        aria-label="答对进度图"
+        className="session-progress-chart"
+        ref={chartElementRef}
+        role="img"
+        style={{ height }}
+      />
     </div>
   );
 }
@@ -284,7 +313,9 @@ export function SessionProgressGroupLegend({
           <span className="session-progress-group-name">{group.label}</span>
           <em
             aria-hidden={group.isChartBenchmark ? undefined : true}
-            className={group.isChartBenchmark ? undefined : "session-progress-group-benchmark-placeholder"}
+            className={
+              group.isChartBenchmark ? undefined : "session-progress-group-benchmark-placeholder"
+            }
           >
             时长基准
           </em>

@@ -21,13 +21,12 @@ type PracticeGroupDefinition = {
   pitches: PracticePitch[];
 };
 
-export const ANSWER_BUTTONS: Array<{ key: string; label: string; noteName: NoteName }> = NOTE_NAMES.map(
-  (noteName, index) => ({
+export const ANSWER_BUTTONS: Array<{ key: string; label: string; noteName: NoteName }> =
+  NOTE_NAMES.map((noteName, index) => ({
     key: String(index + 1),
     label: String(index + 1),
     noteName,
-  }),
-);
+  }));
 
 const PRACTICE_GROUP_DEFINITIONS: PracticeGroupDefinition[] = [
   {
@@ -126,14 +125,24 @@ export function makePitchId(noteName: NoteName, octave: Octave): PitchId {
   return `${noteName}${octave}` as PitchId;
 }
 
-export function makeNoteId(noteName: NoteName, octave: Octave, staff = getDefaultStaff(octave)): TargetNoteId {
+export function makeNoteId(
+  noteName: NoteName,
+  octave: Octave,
+  staff = getDefaultStaff(octave)
+): TargetNoteId {
   const pitchId = makePitchId(noteName, octave);
   return staff === getDefaultStaff(octave) ? pitchId : `${pitchId}-${staff}`;
 }
 
-function makeTargetNote(noteName: NoteName, octave: Octave, groupId: PracticeGroupId, staff = getDefaultStaff(octave)): TargetNote {
+function makeTargetNote(
+  noteName: NoteName,
+  octave: Octave,
+  groupId: PracticeGroupId,
+  staff = getDefaultStaff(octave)
+): TargetNote {
   const pitchId = makePitchId(noteName, octave);
-  const isInterStaffLedgerSpelling = isLedgerOverlap(noteName, octave) && staff !== getDefaultStaff(octave);
+  const isInterStaffLedgerSpelling =
+    isLedgerOverlap(noteName, octave) && staff !== getDefaultStaff(octave);
   return {
     id: makeNoteId(noteName, octave, staff),
     pitchId,
@@ -145,7 +154,11 @@ function makeTargetNote(noteName: NoteName, octave: Octave, groupId: PracticeGro
   };
 }
 
-function makeTargetNotes(noteName: NoteName, octave: Octave, groupId: PracticeGroupId): TargetNote[] {
+function makeTargetNotes(
+  noteName: NoteName,
+  octave: Octave,
+  groupId: PracticeGroupId
+): TargetNote[] {
   const defaultStaff = getDefaultStaff(octave);
   return [
     makeTargetNote(noteName, octave, groupId, defaultStaff),
@@ -171,11 +184,16 @@ function isCurrentPracticeGroupId(groupId: string): groupId is PracticeGroupId {
   return CURRENT_GROUP_ID_SET.has(groupId);
 }
 
-function currentGroupIdForLegacyPosition(legacyIndex: number, legacyCount: number): PracticeGroupId {
+function currentGroupIdForLegacyPosition(
+  legacyIndex: number,
+  legacyCount: number
+): PracticeGroupId {
   if (legacyCount <= 1 || CURRENT_GROUP_IDS.length <= 1) {
     return CURRENT_GROUP_IDS[0];
   }
-  const currentIndex = Math.round((legacyIndex / (legacyCount - 1)) * (CURRENT_GROUP_IDS.length - 1));
+  const currentIndex = Math.round(
+    (legacyIndex / (legacyCount - 1)) * (CURRENT_GROUP_IDS.length - 1)
+  );
   return CURRENT_GROUP_IDS[Math.max(0, Math.min(CURRENT_GROUP_IDS.length - 1, currentIndex))];
 }
 
@@ -194,7 +212,7 @@ export function getNoteById(id: TargetNoteId): TargetNote {
 export function getNotesForGroups(
   groupIds: PracticeGroupId[],
   includeInterStaffLedgerSpellings = true,
-  staffNotationMode: StaffNotationMode = "grand",
+  staffNotationMode: StaffNotationMode = "grand"
 ): TargetNote[] {
   const enabled = new Set(groupIds);
   if (staffNotationMode !== "grand") {
@@ -205,24 +223,32 @@ export function getNotesForGroups(
     (note) =>
       enabled.has(note.groupId) &&
       (note.staff === getDefaultStaff(note.octave) ||
-        (includeInterStaffLedgerSpellings && note.isInterStaffLedgerSpelling)),
+        (includeInterStaffLedgerSpellings && note.isInterStaffLedgerSpelling))
   );
 }
 
 export function getCurrentTargetNoteIdsForGroups(
   groupIds: PracticeGroupId[],
   includeInterStaffLedgerSpellings = true,
-  staffNotationMode: StaffNotationMode = "grand",
+  staffNotationMode: StaffNotationMode = "grand"
 ): Set<TargetNoteId> {
-  return new Set(getNotesForGroups(groupIds, includeInterStaffLedgerSpellings, staffNotationMode).map((note) => note.id));
+  return new Set(
+    getNotesForGroups(groupIds, includeInterStaffLedgerSpellings, staffNotationMode).map(
+      (note) => note.id
+    )
+  );
 }
 
-export function normalizePracticeGroupIds(groupIds: readonly string[] | undefined): PracticeGroupId[] {
+export function normalizePracticeGroupIds(
+  groupIds: readonly string[] | undefined
+): PracticeGroupId[] {
   const normalized = normalizeCurrentPracticeGroupIds(groupIds);
   return normalized.length > 0 ? normalized : DEFAULT_ENABLED_GROUPS;
 }
 
-export function normalizeCurrentPracticeGroupIds(groupIds: readonly string[] | undefined): PracticeGroupId[] {
+export function normalizeCurrentPracticeGroupIds(
+  groupIds: readonly string[] | undefined
+): PracticeGroupId[] {
   const selected = new Set<PracticeGroupId>();
 
   for (const groupId of groupIds ?? []) {
@@ -249,7 +275,7 @@ export function formatStaffLabel(staff: Staff): string {
 
 export function formatTargetNoteLabel(
   note: TargetNote,
-  effectiveTargetNoteIds?: ReadonlySet<TargetNoteId>,
+  effectiveTargetNoteIds?: ReadonlySet<TargetNoteId>
 ): string {
   if (effectiveTargetNoteIds) {
     const samePitchCount = [...effectiveTargetNoteIds]

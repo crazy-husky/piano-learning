@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { getCenteredPianoPanX, getPianoKeyDefinitions, UPPER_C_PIANO_KEY_ID } from "./PianoKeyboard";
-import { getPlayablePreviewOctave, getPlayablePreviewShortcutKey } from "./playableKeyboardPreviewKeys";
+import {
+  getCenteredPianoPanX,
+  getPianoKeyDefinitions,
+  UPPER_C_PIANO_KEY_ID,
+} from "./PianoKeyboard";
+import {
+  getPlayablePreviewOctave,
+  getPlayablePreviewShortcutKey,
+} from "./playableKeyboardPreviewKeys";
 
 describe("piano keyboard layout", () => {
   it("keeps the default answer keyboard at seven white keys", () => {
@@ -40,7 +47,9 @@ describe("piano keyboard layout", () => {
 
 describe("playable keyboard preview shortcuts", () => {
   it("maps 1 through 8 onto C4 through C5", () => {
-    const keys = Array.from({ length: 8 }, (_, index) => getPlayablePreviewShortcutKey(String(index + 1)));
+    const keys = Array.from({ length: 8 }, (_, index) =>
+      getPlayablePreviewShortcutKey(String(index + 1))
+    );
 
     expect(keys.map((key) => key && `${key.keyName}${getPlayablePreviewOctave(key)}`)).toEqual([
       "C4",
@@ -58,6 +67,8 @@ describe("playable keyboard preview shortcuts", () => {
 
   it("plays only the upper C in octave 5", () => {
     expect(getPlayablePreviewOctave({ id: "C", keyName: "C", octaveOffset: 0 })).toBe(4);
-    expect(getPlayablePreviewOctave({ id: UPPER_C_PIANO_KEY_ID, keyName: "C", octaveOffset: 1 })).toBe(5);
+    expect(
+      getPlayablePreviewOctave({ id: UPPER_C_PIANO_KEY_ID, keyName: "C", octaveOffset: 1 })
+    ).toBe(5);
   });
 });

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  type Dispatch,
+  type MutableRefObject,
+  type RefObject,
+  type SetStateAction,
+} from "react";
 import type { PianoKeyName } from "../../../domain/types";
 import { STAFF_GAME_SONGS } from "../data/staffGameSongs";
 import {
@@ -92,13 +99,14 @@ export function useStaffGameRoundClock({
 }: StaffGameRoundClockOptions) {
   const spawnTarget = useCallback((atGameMs: number): void => {
     if (phaseRef.current !== "running") return;
-    const drawnNote = gameModeRef.current === "songs"
-      ? (() => {
-        const song = STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current);
-        const midi = song?.noteMidis[songTargetIndexRef.current];
-        return midi === undefined ? null : gameNoteFromMidi(midi);
-      })()
-      : drawNextNote(levelRef.current, noteBagRef.current, recentNoteMidisRef.current);
+    const drawnNote =
+      gameModeRef.current === "songs"
+        ? (() => {
+            const song = STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current);
+            const midi = song?.noteMidis[songTargetIndexRef.current];
+            return midi === undefined ? null : gameNoteFromMidi(midi);
+          })()
+        : drawNextNote(levelRef.current, noteBagRef.current, recentNoteMidisRef.current);
     if (!drawnNote) return;
     targetTokenRef.current += 1;
     const next = {
@@ -125,14 +133,20 @@ export function useStaffGameRoundClock({
       const gameTime = elapsedBeforeRunRef.current + now - runSegmentStartedAtRef.current;
       if (now - lastUiUpdateAt >= 100) {
         lastUiUpdateAt = now;
-        setElapsedMs(gameModeRef.current === "songs" ? gameTime : Math.min(gameDurationMs, gameTime));
+        setElapsedMs(
+          gameModeRef.current === "songs" ? gameTime : Math.min(gameDurationMs, gameTime)
+        );
       }
       if (gameModeRef.current === "levels" && gameTime >= gameDurationMs) {
         setElapsedMs(gameDurationMs);
         finishRound();
         return;
       }
-      if (targetRef.current && !targetPoppedRef.current && gameTime - targetSpawnGameMsRef.current >= activeBubbleDurationMs) {
+      if (
+        targetRef.current &&
+        !targetPoppedRef.current &&
+        gameTime - targetSpawnGameMsRef.current >= activeBubbleDurationMs
+      ) {
         const missedTarget = targetRef.current;
         targetRef.current = null;
         setTarget(null);
@@ -140,7 +154,9 @@ export function useStaffGameRoundClock({
         playGameSound(inputMode === "physical" ? "noteMissedUnpitched" : "noteMissed");
         resetComboDisplay();
         const isSongMode = gameModeRef.current === "songs";
-        const activeSong = isSongMode ? STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current) : undefined;
+        const activeSong = isSongMode
+          ? STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current)
+          : undefined;
         if (isSongMode && activeSong && missedTarget) {
           songTargetIndexRef.current += 1;
           setSongNotesCompleted(songTargetIndexRef.current);
@@ -149,18 +165,24 @@ export function useStaffGameRoundClock({
         } else {
           setFeedback("气泡飘走了，连击中断");
         }
-        if (nextTargetTimeoutRef.current !== null) window.clearTimeout(nextTargetTimeoutRef.current);
+        if (nextTargetTimeoutRef.current !== null)
+          window.clearTimeout(nextTargetTimeoutRef.current);
         nextTargetTimeoutRef.current = window.setTimeout(() => {
           nextTargetTimeoutRef.current = null;
           if (phaseRef.current !== "running") {
             waitingForNextTargetRef.current = true;
             return;
           }
-          if (isSongMode && activeSong && songTargetIndexRef.current >= activeSong.noteMidis.length) {
+          if (
+            isSongMode &&
+            activeSong &&
+            songTargetIndexRef.current >= activeSong.noteMidis.length
+          ) {
             finishRound();
             return;
           }
-          const nextGameTime = elapsedBeforeRunRef.current + (performance.now() - runSegmentStartedAtRef.current);
+          const nextGameTime =
+            elapsedBeforeRunRef.current + (performance.now() - runSegmentStartedAtRef.current);
           spawnTarget(nextGameTime);
         }, 180);
       }
@@ -168,7 +190,17 @@ export function useStaffGameRoundClock({
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [activeBubbleDurationMs, finishRound, gameDurationMs, inputMode, phase, playGameSound, resetComboDisplay, spawnTarget, triggerMascotReaction]);
+  }, [
+    activeBubbleDurationMs,
+    finishRound,
+    gameDurationMs,
+    inputMode,
+    phase,
+    playGameSound,
+    resetComboDisplay,
+    spawnTarget,
+    triggerMascotReaction,
+  ]);
 
   const startRunSegment = useCallback((): void => {
     runSegmentStartedAtRef.current = performance.now();
@@ -177,7 +209,8 @@ export function useStaffGameRoundClock({
   const pauseRunSegment = useCallback((): number => {
     const pausedAt = performance.now();
     const elapsedAtPause = elapsedBeforeRunRef.current + pausedAt - runSegmentStartedAtRef.current;
-    elapsedBeforeRunRef.current = gameModeRef.current === "songs" ? elapsedAtPause : Math.min(gameDurationMs, elapsedAtPause);
+    elapsedBeforeRunRef.current =
+      gameModeRef.current === "songs" ? elapsedAtPause : Math.min(gameDurationMs, elapsedAtPause);
     return elapsedBeforeRunRef.current;
   }, [gameDurationMs]);
 

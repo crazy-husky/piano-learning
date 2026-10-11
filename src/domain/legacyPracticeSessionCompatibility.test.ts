@@ -101,7 +101,9 @@ describe("legacy practice session compatibility", () => {
 
   it("reads the V5 microphone comparison group without changing V4 history", () => {
     expect(getPracticeSessionComparisonSnapshot(v4Session)?.answerPitchMode).toBe("exact-pitch");
-    expect(getPracticeSessionComparisonSnapshot(v5MicrophoneSession)?.answerPitchMode).toBe("microphone");
+    expect(getPracticeSessionComparisonSnapshot(v5MicrophoneSession)?.answerPitchMode).toBe(
+      "microphone"
+    );
     expect(isComparablePracticeSession(v4Session, v5MicrophoneSession)).toBe(false);
   });
 });

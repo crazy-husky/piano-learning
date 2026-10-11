@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { toast } from "sonner";
 import {
   type BackupPreflightResult,
@@ -9,13 +16,16 @@ import {
   syncBackupBeforeActivity,
   type BackupConflictResolution,
 } from "../data/backup";
-import {
-  getBackupState,
-  loadAllData,
-} from "../data/db";
+import { getBackupState, loadAllData } from "../data/db";
 import { shouldRunBackupEntryPreflight } from "../domain/backupSync";
 import { backupText, formatBackupConflictDetail } from "../domain/backupText";
-import type { AppSettings, BackupState, PracticeSessionRecord, ReviewRecord, StaffRecallRunRecord } from "../domain/types";
+import type {
+  AppSettings,
+  BackupState,
+  PracticeSessionRecord,
+  ReviewRecord,
+  StaffRecallRunRecord,
+} from "../domain/types";
 
 const BACKUP_REMINDER_SUPPRESSED_DATE_KEY = "anki-note.backupReminderSuppressedDate";
 const BACKUP_REMINDER_SUPPRESSED_WEEK_KEY = "anki-note.backupReminderSuppressedWeek";
@@ -78,8 +88,10 @@ function weekStartKey(): string {
 
 function isBackupReminderSuppressed(): boolean {
   try {
-    const suppressedToday = localStorage.getItem(BACKUP_REMINDER_SUPPRESSED_DATE_KEY) === todayKey();
-    const suppressedThisWeek = localStorage.getItem(BACKUP_REMINDER_SUPPRESSED_WEEK_KEY) === weekStartKey();
+    const suppressedToday =
+      localStorage.getItem(BACKUP_REMINDER_SUPPRESSED_DATE_KEY) === todayKey();
+    const suppressedThisWeek =
+      localStorage.getItem(BACKUP_REMINDER_SUPPRESSED_WEEK_KEY) === weekStartKey();
     return suppressedToday || suppressedThisWeek;
   } catch {
     return false;
@@ -88,7 +100,11 @@ function isBackupReminderSuppressed(): boolean {
 
 function backupSyncRequired(backupState: BackupState): boolean {
   const stored = backupState as StoredBackupState;
-  return Boolean(backupState.dataConflictBeforeBackup ?? backupState.syncRequiredBeforeBackup ?? stored.restoreRequiredBeforeBackup);
+  return Boolean(
+    backupState.dataConflictBeforeBackup ??
+    backupState.syncRequiredBeforeBackup ??
+    stored.restoreRequiredBeforeBackup
+  );
 }
 
 function backupConflictDetailsMissing(backupState: BackupState): boolean {
@@ -121,7 +137,10 @@ export function getBackupReminderState(data: AppData): BackupReminderState {
 }
 
 export async function loadFreshAppData(): Promise<AppData> {
-  const [{ settings, sessions, reviews, staffRecallRuns }, backupState] = await Promise.all([loadAllData(), getBackupState()]);
+  const [{ settings, sessions, reviews, staffRecallRuns }, backupState] = await Promise.all([
+    loadAllData(),
+    getBackupState(),
+  ]);
   return {
     settings,
     sessions,
@@ -264,7 +283,11 @@ export function useBackupReminder({
               practiceHistoryLoaded: true,
               staffRecallHistoryLoaded: true,
             });
-            showMessage(backupText.titles.importSuccess, backupText.messages.backupDirectoryAutoImported, true);
+            showMessage(
+              backupText.titles.importSuccess,
+              backupText.messages.backupDirectoryAutoImported,
+              true
+            );
             return {
               latestData: {
                 ...latestData,
@@ -293,7 +316,7 @@ export function useBackupReminder({
           showMessage(
             error instanceof Error ? error.message : String(error),
             backupText.messages.backupPermissionOrDirectoryHint,
-            false,
+            false
           );
           return { proceed: false, result: "skipped" };
         }
@@ -308,7 +331,7 @@ export function useBackupReminder({
         }
       }
     },
-    [refreshBackupState, setData, showMessage],
+    [refreshBackupState, setData, showMessage]
   );
 
   const preflightBeforePracticeStart = useCallback(async () => {
@@ -328,7 +351,7 @@ export function useBackupReminder({
   const preflightBeforeVocalLibraryChange = useCallback(async () => {
     const checkResult = await runBackupCheck({ requestPermission: true });
     if (!checkResult.proceed) return "blocked" as const;
-    return checkResult.result === "synced-up" ? "backup-updated" as const : "proceed" as const;
+    return checkResult.result === "synced-up" ? ("backup-updated" as const) : ("proceed" as const);
   }, [runBackupCheck]);
 
   useEffect(() => {
@@ -352,65 +375,83 @@ export function useBackupReminder({
     view,
   ]);
 
-  const runReminderAction = useCallback(async (action: BackupReminderAction): Promise<void> => {
-    if (!data || busy) {
-      return;
-    }
+  const runReminderAction = useCallback(
+    async (action: BackupReminderAction): Promise<void> => {
+      if (!data || busy) {
+        return;
+      }
 
-    const reminderState = getBackupReminderState(data);
-    setBusy(true);
-    setMessage(null);
-    try {
-      if (action === "choose-directory") {
-        const result = await chooseBackupDirectory();
-        const latestBackupState = await getBackupState();
-        await refresh();
-        if (result === "diverged") {
-          showMessage(backupText.titles.dataConflict, formatBackupConflictDetail(latestBackupState), false);
+      const reminderState = getBackupReminderState(data);
+      setBusy(true);
+      setMessage(null);
+      try {
+        if (action === "choose-directory") {
+          const result = await chooseBackupDirectory();
+          const latestBackupState = await getBackupState();
+          await refresh();
+          if (result === "diverged") {
+            showMessage(
+              backupText.titles.dataConflict,
+              formatBackupConflictDetail(latestBackupState),
+              false
+            );
+            return;
+          }
+          if (result === "synced-up") {
+            showMessage(
+              backupText.titles.importSuccess,
+              backupText.messages.importSuccessDetail,
+              true
+            );
+          }
           return;
         }
-        if (result === "synced-up") {
-          showMessage(backupText.titles.importSuccess, backupText.messages.importSuccessDetail, true);
+      } catch (error) {
+        if (isUserAbort(error)) {
+          setMessage(null);
+          setVisible(reminderState.showReminder);
+          return;
         }
-        return;
+        showMessage(
+          error instanceof Error ? error.message : String(error),
+          backupText.messages.backupPermissionOrDirectoryHint,
+          false
+        );
+      } finally {
+        setBusy(false);
       }
-    } catch (error) {
-      if (isUserAbort(error)) {
-        setMessage(null);
-        setVisible(reminderState.showReminder);
-        return;
-      }
-      showMessage(
-        error instanceof Error ? error.message : String(error),
-        backupText.messages.backupPermissionOrDirectoryHint,
-        false,
-      );
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, data, refresh, showMessage]);
+    },
+    [busy, data, refresh, showMessage]
+  );
 
-  const resolveReminderConflict = useCallback(async (resolution: BackupConflictResolution): Promise<void> => {
-    if (!data || busy) {
-      return;
-    }
-    setBusy(true);
-    setMessage(null);
-    try {
-      await resolveBackupConflict(resolution);
-      await refresh();
-      showMessage(backupText.titles.conflictResolved, backupText.messages.conflictResolvedDetail, true);
-    } catch (error) {
-      await refresh();
-      showMessage(
-        error instanceof Error ? error.message : String(error),
-        backupText.messages.backupPermissionOrDirectoryHint,
-        false,
-      );
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, data, refresh, showMessage]);
+  const resolveReminderConflict = useCallback(
+    async (resolution: BackupConflictResolution): Promise<void> => {
+      if (!data || busy) {
+        return;
+      }
+      setBusy(true);
+      setMessage(null);
+      try {
+        await resolveBackupConflict(resolution);
+        await refresh();
+        showMessage(
+          backupText.titles.conflictResolved,
+          backupText.messages.conflictResolvedDetail,
+          true
+        );
+      } catch (error) {
+        await refresh();
+        showMessage(
+          error instanceof Error ? error.message : String(error),
+          backupText.messages.backupPermissionOrDirectoryHint,
+          false
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, data, refresh, showMessage]
+  );
 
   return {
     busy,

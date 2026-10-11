@@ -28,11 +28,17 @@ function alignedFrequency(track: NeuralPitchTrack, timeSeconds: number): number 
   }
   const right = low;
   const left = Math.max(0, right - 1);
-  const nearest = Math.abs(track.timesSeconds[left] - timeSeconds) <= Math.abs(track.timesSeconds[right] - timeSeconds)
-    ? left
-    : right;
-  const hopSeconds = track.timesSeconds.length > 1 ? track.timesSeconds[1] - track.timesSeconds[0] : ENHANCED_HOP_SECONDS;
-  if (Math.abs(track.timesSeconds[nearest] - timeSeconds) > Math.max(0.006, hopSeconds * 0.6)) return null;
+  const nearest =
+    Math.abs(track.timesSeconds[left] - timeSeconds) <=
+    Math.abs(track.timesSeconds[right] - timeSeconds)
+      ? left
+      : right;
+  const hopSeconds =
+    track.timesSeconds.length > 1
+      ? track.timesSeconds[1] - track.timesSeconds[0]
+      : ENHANCED_HOP_SECONDS;
+  if (Math.abs(track.timesSeconds[nearest] - timeSeconds) > Math.max(0.006, hopSeconds * 0.6))
+    return null;
   const frequencyHz = track.frequenciesHz[nearest];
   return Number.isFinite(frequencyHz) && frequencyHz > 0 ? frequencyHz : null;
 }
@@ -45,8 +51,12 @@ function analysisTrack(analysis: VocalPitchAnalysis): NeuralPitchTrack {
   };
 }
 
-function consensusMidi(frequenciesHz: readonly (number | null)[]): { midi: number; votes: number } | null {
-  const voiced = frequenciesHz.flatMap((frequencyHz) => frequencyHz === null ? [] : [frequencyToMidi(frequencyHz)]);
+function consensusMidi(
+  frequenciesHz: readonly (number | null)[]
+): { midi: number; votes: number } | null {
+  const voiced = frequenciesHz.flatMap((frequencyHz) =>
+    frequencyHz === null ? [] : [frequencyToMidi(frequencyHz)]
+  );
   if (voiced.length < 2) return null;
   voiced.sort((left, right) => left - right);
   let bestStart = 0;
@@ -63,7 +73,8 @@ function consensusMidi(frequenciesHz: readonly (number | null)[]): { midi: numbe
   if (votes < 2 || votes <= voiced.length / 2) return null;
   const cluster = voiced.slice(bestStart, bestEnd + 1);
   const middle = Math.floor(cluster.length / 2);
-  const midi = cluster.length % 2 === 0 ? (cluster[middle - 1] + cluster[middle]) / 2 : cluster[middle];
+  const midi =
+    cluster.length % 2 === 0 ? (cluster[middle - 1] + cluster[middle]) / 2 : cluster[middle];
   return { midi, votes };
 }
 
@@ -72,14 +83,16 @@ function nearestAnchoredFcpe(fcpeHz: number | null, referenceMidi: number): numb
   const fcpeMidi = frequencyToMidi(fcpeHz);
   const options = [fcpeMidi - 12, fcpeMidi, fcpeMidi + 12];
   const best = options.reduce((current, candidate) =>
-    Math.abs(candidate - referenceMidi) < Math.abs(current - referenceMidi) ? candidate : current,
+    Math.abs(candidate - referenceMidi) < Math.abs(current - referenceMidi) ? candidate : current
   );
-  return Math.abs(best - referenceMidi) <= CONSENSUS_CLUSTER_SEMITONES ? midiToFrequency(best) : null;
+  return Math.abs(best - referenceMidi) <= CONSENSUS_CLUSTER_SEMITONES
+    ? midiToFrequency(best)
+    : null;
 }
 
 export function fillReliableFcpeGaps(
   frames: readonly VocalPitchFrame[],
-  rawFcpeHz: readonly (number | null)[],
+  rawFcpeHz: readonly (number | null)[]
 ): VocalPitchFrame[] {
   const result = frames.map((frame) => ({ ...frame }));
   let index = 0;
@@ -111,7 +124,11 @@ export function fillReliableFcpeGaps(
     }
     if (replacements.length !== end - start) continue;
     for (let gapIndex = start; gapIndex < end; gapIndex += 1) {
-      result[gapIndex] = { ...result[gapIndex], confidence: 1 / 3, frequencyHz: replacements[gapIndex - start] };
+      result[gapIndex] = {
+        ...result[gapIndex],
+        confidence: 1 / 3,
+        frequencyHz: replacements[gapIndex - start],
+      };
     }
   }
   return result;
@@ -121,7 +138,7 @@ export function fuseEnhancedPitchTracks(
   mpmAnalysis: VocalPitchAnalysis,
   swiftf0: NeuralPitchTrack,
   fcpe: NeuralPitchTrack,
-  durationSeconds: number,
+  durationSeconds: number
 ): VocalPitchFrame[] {
   const mpm = analysisTrack(mpmAnalysis);
   const frameCount = Math.max(1, Math.ceil(durationSeconds / ENHANCED_HOP_SECONDS));
@@ -139,7 +156,11 @@ export function fuseEnhancedPitchTracks(
     let confidence = 0;
     if (consensus) {
       frequencyHz = nearestAnchoredFcpe(fcpeHz, consensus.midi);
-      if (frequencyHz === null && swiftHz !== null && Math.abs(frequencyToMidi(swiftHz) - consensus.midi) <= 1) {
+      if (
+        frequencyHz === null &&
+        swiftHz !== null &&
+        Math.abs(frequencyToMidi(swiftHz) - consensus.midi) <= 1
+      ) {
         frequencyHz = swiftHz;
       }
       confidence = frequencyHz === null ? 0 : consensus.votes / 3;
@@ -157,7 +178,7 @@ export function createEnhancedPitchAnalysis(
   swiftf0: NeuralPitchTrack,
   fcpe: NeuralPitchTrack,
   durationSeconds: number,
-  config: VocalPitchAnalysisConfig,
+  config: VocalPitchAnalysisConfig
 ): VocalPitchAnalysis {
   return {
     schemaVersion: 1,

@@ -26,18 +26,24 @@ describe("makeDefaultSettings", () => {
   it("preserves the V2 notation mode while defaulting legacy settings to grand staff", () => {
     const current = makeDefaultSettings();
     expect(
-      normalizeAppSettings({ ...current, enabledGroupIds: [], staffNotationMode: "bass-only" as const }),
+      normalizeAppSettings({
+        ...current,
+        enabledGroupIds: [],
+        staffNotationMode: "bass-only" as const,
+      })
     ).toMatchObject({
       enabledGroupIds: [],
       staffNotationMode: "bass-only",
     });
-    expect(normalizeAppSettings({
-      id: "default",
-      schemaVersion: 1,
-      dataSetId: "legacy",
-      createdAt: "2026-07-01T00:00:00.000+08:00",
-      enabledGroupIds: [],
-    })).toMatchObject({
+    expect(
+      normalizeAppSettings({
+        id: "default",
+        schemaVersion: 1,
+        dataSetId: "legacy",
+        createdAt: "2026-07-01T00:00:00.000+08:00",
+        enabledGroupIds: [],
+      })
+    ).toMatchObject({
       enabledGroupIds: ["G3-F4"],
       staffNotationMode: "grand",
     });
@@ -57,36 +63,50 @@ describe("makeDefaultSettings", () => {
   it("defaults and clamps the answer keyboard scale without a schema migration", () => {
     const current = makeDefaultSettings();
 
-    expect(normalizeAppSettings({ ...current, answerKeyboardScale: 2 }).answerKeyboardScale).toBe(1.5);
-    expect(normalizeAppSettings({ ...current, answerKeyboardScale: 0.1 }).answerKeyboardScale).toBe(0.7);
-    expect(normalizeAppSettings({
-      ...current,
-      answerKeyboardScale: undefined,
-    } as unknown as Parameters<typeof normalizeAppSettings>[0]).answerKeyboardScale).toBe(1);
+    expect(normalizeAppSettings({ ...current, answerKeyboardScale: 2 }).answerKeyboardScale).toBe(
+      1.5
+    );
+    expect(normalizeAppSettings({ ...current, answerKeyboardScale: 0.1 }).answerKeyboardScale).toBe(
+      0.7
+    );
+    expect(
+      normalizeAppSettings({
+        ...current,
+        answerKeyboardScale: undefined,
+      } as unknown as Parameters<typeof normalizeAppSettings>[0]).answerKeyboardScale
+    ).toBe(1);
   });
 
   it("defaults answer-note playback on while preserving an explicit off setting", () => {
     const current = makeDefaultSettings();
 
-    expect(normalizeAppSettings({
-      ...current,
-      playAnswerNote: undefined,
-    } as unknown as Parameters<typeof normalizeAppSettings>[0]).playAnswerNote).toBe(true);
+    expect(
+      normalizeAppSettings({
+        ...current,
+        playAnswerNote: undefined,
+      } as unknown as Parameters<typeof normalizeAppSettings>[0]).playAnswerNote
+    ).toBe(true);
     expect(normalizeAppSettings({ ...current, playAnswerNote: false }).playAnswerNote).toBe(false);
   });
 
   it("defaults legacy answer matching to note names while preserving strict pitch matching", () => {
     const current = makeDefaultSettings();
 
-    expect(normalizeAppSettings({
-      ...current,
-      answerPitchMode: undefined,
-    } as unknown as Parameters<typeof normalizeAppSettings>[0]).answerPitchMode).toBe("note-name");
-    expect(normalizeAppSettings({ ...current, answerPitchMode: "exact-pitch" }).answerPitchMode).toBe("exact-pitch");
-    expect(normalizeAppSettings({
-      ...current,
-      answerPitchMode: "absolute-pitch",
-    } as Parameters<typeof normalizeAppSettings>[0]).answerPitchMode).toBe("exact-pitch");
+    expect(
+      normalizeAppSettings({
+        ...current,
+        answerPitchMode: undefined,
+      } as unknown as Parameters<typeof normalizeAppSettings>[0]).answerPitchMode
+    ).toBe("note-name");
+    expect(
+      normalizeAppSettings({ ...current, answerPitchMode: "exact-pitch" }).answerPitchMode
+    ).toBe("exact-pitch");
+    expect(
+      normalizeAppSettings({
+        ...current,
+        answerPitchMode: "absolute-pitch",
+      } as Parameters<typeof normalizeAppSettings>[0]).answerPitchMode
+    ).toBe("exact-pitch");
   });
 
   it("migrates the retired focused preference to the adaptive queue", () => {

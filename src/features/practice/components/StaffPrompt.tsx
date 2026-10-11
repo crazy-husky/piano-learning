@@ -1,7 +1,12 @@
 import { useEffect, useRef } from "react";
 import { Formatter, StaveNote, Voice } from "vexflow";
 import { formatTargetNoteLabel, noteToVexKey } from "../../../domain/notes";
-import type { PromptNoteDuration, StaffNotationMode, TargetNote, TargetNoteId } from "../../../domain/types";
+import type {
+  PromptNoteDuration,
+  StaffNotationMode,
+  TargetNote,
+  TargetNoteId,
+} from "../../../domain/types";
 import { PRACTICE_SINGLE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
 import { getPageThemeColor, useNightMode } from "../../../shared/appearance/pageAppearance";
 import {
@@ -23,7 +28,11 @@ interface StaffPromptProps {
   wrong?: boolean;
 }
 
-function makePromptNote(note: TargetNote, noteDuration: PromptNoteDuration, color: string): StaveNote {
+function makePromptNote(
+  note: TargetNote,
+  noteDuration: PromptNoteDuration,
+  color: string
+): StaveNote {
   const stemDirection = getLedgerStemDirection(note);
   const staveNote = new StaveNote({
     clef: note.staff,
@@ -64,18 +73,18 @@ export function StaffPrompt({
       const containerWidth = frame.clientWidth || PRACTICE_SINGLE_STAFF_LAYOUT.width.minPx;
       const displayWidth = Math.max(
         PRACTICE_SINGLE_STAFF_LAYOUT.width.minPx,
-        Math.min(PRACTICE_SINGLE_STAFF_LAYOUT.width.maxPx, containerWidth),
+        Math.min(PRACTICE_SINGLE_STAFF_LAYOUT.width.maxPx, containerWidth)
       );
       const surface = createStaffRenderSurface(
         rendererTarget,
         displayWidth,
         PRACTICE_SINGLE_STAFF_LAYOUT.vertical.viewHeightPx,
-        PRACTICE_SINGLE_STAFF_LAYOUT.notationScale,
+        PRACTICE_SINGLE_STAFF_LAYOUT.notationScale
       );
       const { context } = surface;
       const frameMetrics = getFixedStaffFrame(
         surface,
-        PRACTICE_SINGLE_STAFF_LAYOUT.horizontal.staffSidePaddingPx,
+        PRACTICE_SINGLE_STAFF_LAYOUT.horizontal.staffSidePaddingPx
       );
       const system = drawStaffSystem({
         brace: true,
@@ -88,15 +97,23 @@ export function StaffPrompt({
         useLedgerGap,
         vertical: PRACTICE_SINGLE_STAFF_LAYOUT.vertical,
       });
-      const targetStave = system.mode === "grand"
-        ? note.staff === "treble" ? system.treble : system.bass
-        : system.stave;
+      const targetStave =
+        system.mode === "grand"
+          ? note.staff === "treble"
+            ? system.treble
+            : system.bass
+          : system.stave;
       const { noteArea } = system;
       const noteCenter = getEvenlySpacedCenters(1, noteArea.left, noteArea.right);
       const drawNote = (targetNote: TargetNote, color: string): void => {
         const staveNote = makePromptNote(targetNote, noteDuration, color).setStave(targetStave);
-        const voice = new Voice({ numBeats: getQuarterNoteBeats(noteDuration), beatValue: 4 }).addTickables([staveNote]);
-        new Formatter().joinVoices([voice]).format([voice], Math.max(1, noteArea.right - noteArea.left), { context });
+        const voice = new Voice({
+          numBeats: getQuarterNoteBeats(noteDuration),
+          beatValue: 4,
+        }).addTickables([staveNote]);
+        new Formatter()
+          .joinVoices([voice])
+          .format([voice], Math.max(1, noteArea.right - noteArea.left), { context });
         alignStaveNotesToCenters([staveNote], noteCenter);
         voice.draw(context, targetStave);
       };
@@ -104,7 +121,7 @@ export function StaffPrompt({
         note,
         wrong
           ? getPageThemeColor("--notation-error", "#c84c3d")
-          : getPageThemeColor("--notation-ink", "#211c18"),
+          : getPageThemeColor("--notation-ink", "#211c18")
       );
     }
 

@@ -22,7 +22,7 @@ describe("practice microphone lifecycle", () => {
         answerPitchMode: "microphone",
         isListening: false,
         startMicrophone,
-      }),
+      })
     ).resolves.toBe(true);
 
     expect(startMicrophone).toHaveBeenCalledOnce();
@@ -36,7 +36,7 @@ describe("practice microphone lifecycle", () => {
         answerPitchMode: "microphone",
         isListening: false,
         startMicrophone,
-      }),
+      })
     ).resolves.toBe(false);
   });
 
@@ -48,14 +48,14 @@ describe("practice microphone lifecycle", () => {
         answerPitchMode: "note-name",
         isListening: false,
         startMicrophone,
-      }),
+      })
     ).resolves.toBe(true);
     await expect(
       ensurePracticeMicrophoneForResume({
         answerPitchMode: "microphone",
         isListening: true,
         startMicrophone,
-      }),
+      })
     ).resolves.toBe(true);
 
     expect(startMicrophone).not.toHaveBeenCalled();
