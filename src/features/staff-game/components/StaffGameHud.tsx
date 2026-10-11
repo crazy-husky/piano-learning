@@ -115,11 +115,11 @@ export function StaffGameHud({
         <div className="staff-game-hud-card staff-game-score-card">
           <span>{scoreLabel}</span>
           <strong
-            aria-label={`当前得分 ${displayedScore}`}
+            aria-label={`当前得分 ${Math.round(displayedScore)}`}
             className={rushModeActive ? "is-rush-score" : undefined}
             ref={scoreValueRef}
           >
-            {displayedScore}
+            {Math.round(displayedScore)}
           </strong>
           <small>{scoreDetail}</small>
         </div>

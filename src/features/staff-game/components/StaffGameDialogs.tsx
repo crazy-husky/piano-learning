@@ -1,7 +1,8 @@
 import { Keyboard, Mic, Music2, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import type { AnimationEventHandler, CSSProperties } from "react";
+import { useEffect, useRef, type AnimationEventHandler, type CSSProperties } from "react";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import { ToggleSwitch } from "../../../shared/components/ui/ToggleSwitch";
 import { StaffGamePhysicalInputNotice } from "./StaffGamePhysicalInputNotice";
 import {
   StaffGameSettingsControls,
@@ -26,7 +27,9 @@ interface StaffGameDialogsProps {
   gameArtStyle: CSSProperties;
   isStarting: boolean;
   isSettingsDialogShaking: boolean;
+  isWrongNoteNoticeOpen: boolean;
   onSettingsDialogAnimationEnd: AnimationEventHandler<HTMLElement>;
+  onCloseWrongNoteNotice: () => void;
   isSongMode: boolean;
   closeGameDialog: () => void;
   bestStars: number[];
@@ -46,6 +49,7 @@ interface StaffGameDialogsProps {
   onDisplayModeChange: (mode: GameDisplayMode) => void;
   onToggleGameEffects: () => void;
   onDifficultyChange: (difficulty: GameDifficulty) => void;
+  onToggleWrongNoteStatistics: () => void;
   applyGameSettings: () => void;
 }
 
@@ -56,7 +60,9 @@ export function StaffGameDialogs({
   gameArtStyle,
   isStarting,
   isSettingsDialogShaking,
+  isWrongNoteNoticeOpen,
   onSettingsDialogAnimationEnd,
+  onCloseWrongNoteNotice,
   isSongMode,
   closeGameDialog,
   bestStars,
@@ -76,25 +82,97 @@ export function StaffGameDialogs({
   onDisplayModeChange,
   onToggleGameEffects,
   onDifficultyChange,
+  onToggleWrongNoteStatistics,
   applyGameSettings,
 }: StaffGameDialogsProps) {
+  const wrongNoteNoticeButtonRef = useRef<HTMLButtonElement>(null);
+  const wrongNoteNoticeDialogRef = useRef<HTMLElement>(null);
+  const staffGameDialogRef = useRef<HTMLElement>(null);
+  const wrongNoteNoticeWasOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (isWrongNoteNoticeOpen) {
+      wrongNoteNoticeWasOpenRef.current = true;
+      wrongNoteNoticeButtonRef.current?.focus();
+    } else if (wrongNoteNoticeWasOpenRef.current) {
+      wrongNoteNoticeWasOpenRef.current = false;
+      document.getElementById("staff-game-wrong-note-statistics-toggle")?.focus();
+    }
+  }, [isWrongNoteNoticeOpen]);
+
+  useEffect(() => {
+    if (!isWrongNoteNoticeOpen) return undefined;
+    const backgroundDialog = staffGameDialogRef.current;
+    if (!backgroundDialog) return undefined;
+
+    const wasInert = backgroundDialog.inert;
+    backgroundDialog.inert = true;
+    return () => {
+      backgroundDialog.inert = wasInert;
+    };
+  }, [isWrongNoteNoticeOpen]);
+
+  useEffect(() => {
+    if (!isWrongNoteNoticeOpen) return undefined;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onCloseWrongNoteNotice();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const dialog = wrongNoteNoticeDialogRef.current;
+      if (!dialog) return;
+      const focusableElements = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      event.stopPropagation();
+      if (!firstElement || !lastElement) {
+        event.preventDefault();
+        dialog.focus();
+      } else if (!dialog.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? lastElement : firstElement).focus();
+      } else if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isWrongNoteNoticeOpen, onCloseWrongNoteNotice]);
+
   return (
     <>
       {dialog && typeof document !== "undefined"
         ? createPortal(
             <div
               className="staff-game-dialog-backdrop"
+              role="presentation"
               onClick={(event) => {
-                if (!isStarting && event.target === event.currentTarget) closeGameDialog();
+                if (!isStarting && !isWrongNoteNoticeOpen && event.target === event.currentTarget)
+                  closeGameDialog();
               }}
               style={gameArtStyle}
             >
               <section
+                aria-hidden={dialog === "settings" && isWrongNoteNoticeOpen}
                 aria-labelledby="staff-game-dialog-title"
-                aria-modal="true"
+                aria-modal={!(dialog === "settings" && isWrongNoteNoticeOpen)}
                 className={`staff-game-dialog staff-game-${dialog}-dialog${dialog === "settings" && isSettingsDialogShaking ? " is-wobbling" : ""}`}
                 onAnimationEnd={onSettingsDialogAnimationEnd}
-                onClick={(event) => event.stopPropagation()}
+                ref={staffGameDialogRef}
                 role="dialog"
               >
                 {dialog === "help" ? (
@@ -309,36 +387,49 @@ export function StaffGameDialogs({
                         onToggleSoundEffects={onToggleSoundEffects}
                         settingsDraft={settingsDraft}
                       />
-                      <section className="staff-game-settings-section staff-game-difficulty-setting">
-                        <h3>难度</h3>
-                        <div
-                          aria-label="游戏难度"
-                          className="staff-game-difficulty-options"
-                          role="group"
-                        >
-                          {GAME_DIFFICULTIES.map((option) => (
-                            <button
-                              aria-pressed={settingsDraft.difficulty === option.id}
-                              className={`staff-game-difficulty-option${settingsDraft.difficulty === option.id ? " is-selected" : ""}`}
-                              key={option.id}
-                              onClick={() => onDifficultyChange(option.id)}
-                              type="button"
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                        <p className="staff-game-difficulty-summary" aria-live="polite">
-                          <span>
-                            下落 {(draftDifficulty.bubbleDurationMs / 1000).toFixed(1)} 秒 ·
-                            连击等待 {(draftDifficulty.comboWindowMs / 1000).toFixed(1)} 秒
-                          </span>
-                          <span>
-                            答对 {draftDifficulty.correctPoints} 分 · 连击每次 +
-                            {draftDifficulty.comboBonusPoints} 分
-                          </span>
-                        </p>
-                      </section>
+                      <div className="staff-game-difficulty-statistics-row">
+                        <section className="staff-game-settings-section staff-game-difficulty-setting">
+                          <label htmlFor="staff-game-difficulty">难度</label>
+                          <select
+                            aria-describedby="staff-game-difficulty-summary"
+                            className="staff-game-difficulty-select"
+                            id="staff-game-difficulty"
+                            onChange={(event) =>
+                              onDifficultyChange(event.currentTarget.value as GameDifficulty)
+                            }
+                            value={settingsDraft.difficulty}
+                          >
+                            {GAME_DIFFICULTIES.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          <p
+                            className="staff-game-difficulty-summary"
+                            id="staff-game-difficulty-summary"
+                            aria-live="polite"
+                          >
+                            <span>
+                              下落 {(draftDifficulty.bubbleDurationMs / 1000).toFixed(1)} 秒 ·
+                              连击等待 {(draftDifficulty.comboWindowMs / 1000).toFixed(1)} 秒
+                            </span>
+                          </p>
+                        </section>
+                        <section className="staff-game-settings-section staff-game-wrong-note-setting">
+                          <div>
+                            <h3>统计错音</h3>
+                            <p>记录本局错误输入并显示详情</p>
+                          </div>
+                          <ToggleSwitch
+                            aria-label="统计错音"
+                            checked={settingsDraft.wrongNoteStatisticsEnabled}
+                            className="staff-game-settings-toggle"
+                            id="staff-game-wrong-note-statistics-toggle"
+                            onCheckedChange={() => onToggleWrongNoteStatistics()}
+                          />
+                        </section>
+                      </div>
                       {isSongMode && settingsDraft.inputMode === "virtual" ? (
                         <p className="staff-game-song-mode-notice" role="note">
                           歌曲模式默认关闭背景音乐和游戏音效，让你专注聆听与演奏歌曲。
@@ -367,6 +458,31 @@ export function StaffGameDialogs({
                   </>
                 )}
               </section>
+              {dialog === "settings" && isWrongNoteNoticeOpen ? (
+                <div className="staff-game-wrong-note-notice-backdrop">
+                  <section
+                    aria-labelledby="staff-game-wrong-note-notice-title"
+                    aria-modal="true"
+                    className="staff-game-wrong-note-notice"
+                    ref={wrongNoteNoticeDialogRef}
+                    role="alertdialog"
+                    tabIndex={-1}
+                  >
+                    <h2 id="staff-game-wrong-note-notice-title">错音统计说明</h2>
+                    <p>
+                      音符识别会受到识别算法、设备和环境等因素影响，统计数据仅供参考，不代表演奏准确性的绝对判断。
+                    </p>
+                    <button
+                      className="staff-game-primary"
+                      onClick={onCloseWrongNoteNotice}
+                      ref={wrongNoteNoticeButtonRef}
+                      type="button"
+                    >
+                      知道了
+                    </button>
+                  </section>
+                </div>
+              ) : null}
             </div>,
             document.body
           )

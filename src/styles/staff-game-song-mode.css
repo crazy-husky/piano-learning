@@ -800,7 +800,8 @@
 
 @media (min-width: 821px) {
   .staff-game-result-stats > div {
-    grid-template-columns: minmax(120px, 160px) minmax(112px, max-content);
+    grid-template-columns: minmax(0, 1fr) 132px;
+    justify-content: stretch;
   }
 
   .staff-game-result-stats > div strong {

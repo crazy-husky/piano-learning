@@ -27,6 +27,7 @@ import { useStaffGameAudio } from "../hooks/useStaffGameAudio";
 import type {
   StaffGameComboIndicator as ComboIndicator,
   StaffGameRushScoreFlight as RushScoreFlight,
+  StaffGameWrongAnswerRecord,
 } from "../hooks/useStaffGameScoring";
 import type { StaffGameTarget as GameNote } from "../hooks/useStaffGameRoundClock";
 import type { StaffGameDialogKind as GameDialog } from "./StaffGameDialogs";
@@ -60,11 +61,12 @@ import {
   PITCH_NAMES,
   RUSH_FALL_SPEED_MULTIPLIER,
   RUSH_MODE_COMBO_THRESHOLD,
-  STAR_BASE_DURATION_MS,
   STAR_THRESHOLDS,
   gameDurationMsForLevel,
+  gameDifficultyPreset,
   gameNoteFromMidi,
-  starsForStarCredit,
+  starScoreThreshold,
+  starsForScore,
 } from "../logic/staffGameRules";
 import type { GameDifficulty } from "../logic/staffGameRules";
 
@@ -135,6 +137,7 @@ interface StaffGameSettings {
   inputMode: GameInputMode;
   displayMode: GameDisplayMode;
   difficulty: GameDifficulty;
+  wrongNoteStatisticsEnabled: boolean;
   audioByMode: Record<StaffGameMode, StaffGameAudioSettings>;
   gameEffectsEnabled: boolean;
 }
@@ -203,6 +206,7 @@ function defaultGameSettings(): StaffGameSettings {
     inputMode: "physical",
     displayMode: "note",
     difficulty: "normal",
+    wrongNoteStatisticsEnabled: false,
     audioByMode: {
       levels: { soundEffectsEnabled: true, backgroundMusicEnabled: true, pianoSoundEnabled: false },
       songs: { soundEffectsEnabled: false, backgroundMusicEnabled: false, pianoSoundEnabled: true },
@@ -272,6 +276,10 @@ function readGameSettings(virtualAvailable: boolean, midiAvailable: boolean): St
       inputMode,
       displayMode,
       difficulty: validDifficulty ? (parsed!.difficulty as GameDifficulty) : legacyDifficulty,
+      wrongNoteStatisticsEnabled:
+        typeof parsed?.wrongNoteStatisticsEnabled === "boolean"
+          ? parsed.wrongNoteStatisticsEnabled
+          : base.wrongNoteStatisticsEnabled,
       audioByMode: { levels: readModeAudio("levels"), songs: readModeAudio("songs") },
       gameEffectsEnabled:
         typeof parsed?.gameEffectsEnabled === "boolean"
@@ -531,6 +539,7 @@ export function StaffGameView({
   );
   const [settingsDraft, setSettingsDraft] = useState<StaffGameSettings>(settings);
   const [isSettingsDialogShaking, setIsSettingsDialogShaking] = useState(false);
+  const [isWrongNoteNoticeOpen, setIsWrongNoteNoticeOpen] = useState(false);
   const [dialog, setDialog] = useState<GameDialog>(null);
   const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
   const settingsDialogShakeLockRef = useRef(false);
@@ -553,7 +562,6 @@ export function StaffGameView({
   const [rushScoreFlights, setRushScoreFlights] = useState<RushScoreFlight[]>([]);
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
-  const [starCredit, setStarCredit] = useState(0);
   const [errorFlashActive, setErrorFlashActive] = useState(false);
   const [mascotReaction, setMascotReaction] = useState<{
     action: "idle" | "cheer" | "sad";
@@ -564,6 +572,9 @@ export function StaffGameView({
   const [summaryScoreCount, setSummaryScoreCount] = useState(0);
   const [summaryComboCount, setSummaryComboCount] = useState(0);
   const [summaryAccuracy, setSummaryAccuracy] = useState(0);
+  const [summaryWrongAnswerRecords, setSummaryWrongAnswerRecords] = useState<
+    StaffGameWrongAnswerRecord[]
+  >([]);
   const [songNotesCompleted, setSongNotesCompleted] = useState(0);
   const [songFirstTryHits, setSongFirstTryHits] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -594,10 +605,9 @@ export function StaffGameView({
   const scoreAnimationPhaseRef = useRef(0);
   const rushScoreFlightsRef = useRef<RushScoreFlight[]>([]);
   const rushScoreFlightTokenRef = useRef(0);
-  const starCreditRef = useRef(0);
   const maxComboRef = useRef(0);
-  const consecutiveWrongAnswersRef = useRef(0);
   const errorFlashTimeoutRef = useRef<number | null>(null);
+  const wrongAnswerRecordsRef = useRef<StaffGameWrongAnswerRecord[]>([]);
   const roundRecordsAtStartRef = useRef({ score: 0, maxCombo: 0 });
   const gameModeRef = useRef<StaffGameMode>(initialMode);
   const selectedSongIdRef = useRef(selectedSongId);
@@ -796,17 +806,17 @@ export function StaffGameView({
     soundEffectsEnabled: activeAudioSettings.soundEffectsEnabled,
   });
   const draftAudioSettings = settingsDraft.audioByMode[gameMode];
-  const difficulty =
-    GAME_DIFFICULTIES.find((item) => item.id === settings.difficulty) ?? GAME_DIFFICULTIES[1];
+  const difficulty = gameDifficultyPreset(settings.difficulty);
   const bubbleDurationMs = difficulty.bubbleDurationMs;
   const gameDurationMs = gameDurationMsForLevel(level);
-  const draftDifficulty =
-    GAME_DIFFICULTIES.find((item) => item.id === settingsDraft.difficulty) ?? GAME_DIFFICULTIES[1];
-  const currentRoundStars = starsForStarCredit(starCredit, level);
-  const threeStarCredit = Math.ceil(
-    (STAR_THRESHOLDS[STAR_THRESHOLDS.length - 1] * gameDurationMs) / STAR_BASE_DURATION_MS
+  const draftDifficulty = gameDifficultyPreset(settingsDraft.difficulty);
+  const currentRoundStars = starsForScore(score, level, settings.difficulty);
+  const threeStarScore = starScoreThreshold(
+    STAR_THRESHOLDS[STAR_THRESHOLDS.length - 1],
+    level,
+    settings.difficulty
   );
-  const levelProgress = threeStarCredit > 0 ? Math.min(1, starCredit / threeStarCredit) : 0;
+  const levelProgress = threeStarScore > 0 ? Math.min(1, score / threeStarScore) : 0;
   const rushModeActive = combo >= RUSH_MODE_COMBO_THRESHOLD && phase === "running";
   // Keep the rush playfield geometry fixed while paused so a frozen bubble cannot jump.
   const preserveRushBubbleScreenTop =
@@ -945,9 +955,7 @@ export function StaffGameView({
 
   const restartComboTimer = useCallback((): void => {
     clearComboTimer();
-    const comboWindowMs =
-      GAME_DIFFICULTIES.find((item) => item.id === settingsRef.current.difficulty)?.comboWindowMs ??
-      2_200;
+    const comboWindowMs = gameDifficultyPreset(settingsRef.current.difficulty).comboWindowMs;
     comboTimerRemainingRef.current = comboWindowMs;
     if (phaseRef.current !== "running") return;
     comboTimerStartedAtRef.current = performance.now();
@@ -1093,7 +1101,6 @@ export function StaffGameView({
     comboIndicatorFadeTimeoutRef,
     comboIndicatorRef,
     comboRef,
-    consecutiveWrongAnswersRef,
     displayedScoreRef,
     elapsedBeforeRunRef,
     errorFlashTimeoutRef,
@@ -1135,8 +1142,8 @@ export function StaffGameView({
     setScore,
     setSongFirstTryHits,
     setSongNotesCompleted,
-    setStarCredit,
     setSummaryAccuracy,
+    setSummaryWrongAnswerRecords,
     setTarget,
     setTargetPopped,
     setTargetWrong,
@@ -1145,7 +1152,6 @@ export function StaffGameView({
     songTargetIndexRef,
     songWrongTargetTokenRef,
     spawnTargetRef,
-    starCreditRef,
     targetElementRef,
     targetPoppedRef,
     targetRef,
@@ -1153,6 +1159,7 @@ export function StaffGameView({
     triggerMascotReaction,
     waitingForNextTargetRef,
     wrongClearTimeoutRef,
+    wrongAnswerRecordsRef,
     setDisplayedScoreImmediately,
   });
 
@@ -1348,7 +1355,6 @@ export function StaffGameView({
     if (burstTimeoutRef.current !== null) window.clearTimeout(burstTimeoutRef.current);
     burstTimeoutRef.current = null;
     waitingForNextTargetRef.current = false;
-    consecutiveWrongAnswersRef.current = 0;
     if (errorFlashTimeoutRef.current !== null) window.clearTimeout(errorFlashTimeoutRef.current);
     errorFlashTimeoutRef.current = null;
     setErrorFlashActive(false);
@@ -1369,11 +1375,11 @@ export function StaffGameView({
     setScore(0);
     scoreRef.current = 0;
     flushScorePresentation(0);
-    setStarCredit(0);
-    starCreditRef.current = 0;
     setEarnedStars(0);
     setSummaryScoreCount(0);
     setSummaryComboCount(0);
+    setSummaryWrongAnswerRecords([]);
+    wrongAnswerRecordsRef.current = [];
     clearComboDisplay();
     setMaxCombo(0);
     maxComboRef.current = 0;
@@ -1862,6 +1868,7 @@ export function StaffGameView({
   const openGameDialog = useCallback(
     (nextDialog: Exclude<GameDialog, null>): void => {
       if (phaseRef.current === "running") pauseRound();
+      setIsWrongNoteNoticeOpen(false);
       setSettingsDraft(settingsRef.current);
       setDialog(nextDialog);
     },
@@ -1870,8 +1877,12 @@ export function StaffGameView({
 
   const closeGameDialog = useCallback((): void => {
     if (isStartingRef.current) return;
+    if (isWrongNoteNoticeOpen) {
+      setIsWrongNoteNoticeOpen(false);
+      return;
+    }
     setDialog(null);
-  }, []);
+  }, [isWrongNoteNoticeOpen]);
 
   const selectInputMode = useCallback((inputMode: StaffGameSettings["inputMode"]): void => {
     setSettingsDraft((current) => ({ ...current, inputMode }));
@@ -2002,11 +2013,15 @@ export function StaffGameView({
   };
   const isSongMode = gameMode === "songs";
   const shouldCelebrateSummary = score > 0 && (isSongMode || earnedStars > 0);
+  const songProgressPercent =
+    selectedSong.noteMidis.length > 0
+      ? Math.round((songNotesCompleted * 100) / selectedSong.noteMidis.length)
+      : 0;
   const songProgressRatio =
     selectedSong.noteMidis.length > 0 ? songNotesCompleted / selectedSong.noteMidis.length : 0;
   const songAccuracy =
     selectedSong.noteMidis.length > 0
-      ? Math.round((songFirstTryHits * 100) / selectedSong.noteMidis.length)
+      ? (songFirstTryHits * 100) / selectedSong.noteMidis.length
       : 0;
   const activeProgress = isSongMode ? songProgressRatio : levelProgress;
   const midiOptionAvailable = supportsMidi(midi.status);
@@ -2172,26 +2187,31 @@ export function StaffGameView({
         {phase === "ready" && !isSongMode && settings.gameEffectsEnabled ? (
           <div aria-hidden="true" className="staff-game-waiting-cloud-layer">
             <img
+              alt=""
               className="staff-game-waiting-cloud cloud-a"
               draggable="false"
               src={cloudDecorationOne}
             />
             <img
+              alt=""
               className="staff-game-waiting-cloud cloud-b is-reversed"
               draggable="false"
               src={cloudDecorationTwo}
             />
             <img
+              alt=""
               className="staff-game-waiting-cloud cloud-c"
               draggable="false"
               src={cloudDecorationThree}
             />
             <img
+              alt=""
               className="staff-game-waiting-cloud cloud-d is-reversed"
               draggable="false"
               src={cloudDecorationOne}
             />
             <img
+              alt=""
               className="staff-game-waiting-cloud cloud-e"
               draggable="false"
               src={cloudDecorationTwo}
@@ -2241,12 +2261,12 @@ export function StaffGameView({
           }
           onOpenLevels={() => openGameDialog("levels")}
           progressLabel={isSongMode ? "歌曲" : "LEVEL"}
-          progressValue={isSongMode ? `${Math.floor(songProgressRatio * 100)}%` : level}
+          progressValue={isSongMode ? `${songProgressPercent}%` : level}
           rushModeActive={rushModeActive}
           scoreDetail={
             isSongMode
-              ? `最佳 ${selectedSongRecord.bestScore}\u3000·\u3000${songNotesCompleted}/${selectedSong.noteMidis.length} 音\u3000·\u3000${songAccuracy}%`
-              : `最高 ${progress.bestScores[level - 1]}${phase === "ready" ? "" : `\u3000·\u3000${remainingSeconds} 秒`}`
+              ? `最佳 ${Math.round(selectedSongRecord.bestScore)}\u3000·\u3000${songNotesCompleted}/${selectedSong.noteMidis.length} 音\u3000·\u3000${Math.round(songAccuracy)}%`
+              : `最高 ${Math.round(progress.bestScores[level - 1])}${phase === "ready" ? "" : `\u3000·\u3000${remainingSeconds} 秒`}`
           }
           scoreLabel={isSongMode ? "本曲得分" : phase === "summary" ? "本局得分" : "本关得分"}
           scoreValueRef={scoreValueRef}
@@ -2483,6 +2503,8 @@ export function StaffGameView({
               onRetry={retryLevel}
               revealedStars={revealedSummaryStars}
               score={summaryScoreCount}
+              wrongAnswerRecords={summaryWrongAnswerRecords}
+              wrongNoteStatisticsEnabled={settings.wrongNoteStatisticsEnabled}
               songTitle={selectedSong.title}
               starImage={starParticleArt}
               hasNextSong={STAFF_GAME_SONGS[STAFF_GAME_SONGS.length - 1]?.id !== selectedSong.id}
@@ -2492,14 +2514,14 @@ export function StaffGameView({
 
         {showVirtualKeyboard ? (
           <div
-            aria-label="虚拟钢琴键盘 C 到 B，八度不限"
+            aria-label="虚拟键盘按音名判定，可匹配任意八度"
             className={`staff-game-virtual-keyboard${phase === "paused" ? " is-paused" : ""}`}
             role="group"
           >
             <div className="staff-game-keybed">
               {NOTE_NAMES.map((note) => (
                 <button
-                  aria-label={`${note} 音键，不限八度`}
+                  aria-label={`${note} 音键，按音名匹配任意八度`}
                   className="staff-game-virtual-key"
                   disabled={phase === "paused"}
                   key={note}
@@ -2514,7 +2536,7 @@ export function StaffGameView({
               {/* Product choice: black keys have no visible labels; their note names remain available to assistive technology. */}
               {BLACK_KEY_NOTES.map(({ pitch, className }) => (
                 <button
-                  aria-label={`${pitch.replace("#", "♯")} 音键，不限八度`}
+                  aria-label={`${pitch.replace("#", "♯")} 音键，按音名匹配任意八度`}
                   className={`staff-game-virtual-key staff-game-black-key ${className}`}
                   disabled={phase === "paused"}
                   key={pitch}
@@ -2673,6 +2695,7 @@ export function StaffGameView({
           draftDifficulty={draftDifficulty}
           gameArtStyle={gameArtStyle}
           isStarting={isStarting}
+          isWrongNoteNoticeOpen={isWrongNoteNoticeOpen}
           isSettingsDialogShaking={isSettingsDialogShaking}
           isSongMode={isSongMode}
           jumpToLevel={jumpToLevel}
@@ -2682,6 +2705,7 @@ export function StaffGameView({
           onDifficultyChange={(difficulty) =>
             setSettingsDraft((current) => ({ ...current, difficulty }))
           }
+          onCloseWrongNoteNotice={() => setIsWrongNoteNoticeOpen(false)}
           onDisplayModeChange={(displayMode) =>
             setSettingsDraft((current) => ({ ...current, displayMode }))
           }
@@ -2717,6 +2741,14 @@ export function StaffGameView({
               })
             )
           }
+          onToggleWrongNoteStatistics={() => {
+            const enabling = !settingsDraft.wrongNoteStatisticsEnabled;
+            setSettingsDraft((current) => ({
+              ...current,
+              wrongNoteStatisticsEnabled: !current.wrongNoteStatisticsEnabled,
+            }));
+            if (enabling) setIsWrongNoteNoticeOpen(true);
+          }}
           selectInputMode={selectInputMode}
           settingsDraft={settingsDraft}
           triggerSettingsDialogShake={triggerSettingsDialogShake}

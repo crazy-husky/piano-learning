@@ -72,8 +72,8 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
                   <strong>{song.title}</strong>
                   <small>{song.englishTitle}</small>
                   <span>
-                    {song.difficulty} · {song.noteMidis.length} 个音 · 最佳 {record?.bestScore ?? 0}{" "}
-                    分
+                    {song.difficulty} · {song.noteMidis.length} 个音 · 最佳{" "}
+                    {Math.round(record?.bestScore ?? 0)} 分
                   </span>
                 </span>
                 <strong
@@ -142,7 +142,8 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             ))}
           </strong>
           <small>
-            {record.bestScore} 分 · 首次准确率 {record.bestAccuracy}% · 最高连击 {record.maxCombo}
+            {Math.round(record.bestScore)} 分 · 首次准确率 {Math.round(record.bestAccuracy)}% ·
+            最高连击 {record.maxCombo}
           </small>
         </div>
         <p className="staff-game-song-howto">

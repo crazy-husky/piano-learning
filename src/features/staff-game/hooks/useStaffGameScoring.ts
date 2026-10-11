@@ -8,14 +8,14 @@ import {
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import { STAFF_GAME_SONGS } from "../data/staffGameSongs";
 import {
+  COMBO_BONUS_MAX_STEPS,
   ERROR_FLASH_DURATION_MS,
-  ERROR_FLASH_THRESHOLD,
-  GAME_DIFFICULTIES,
   PITCH_NAMES,
   RUSH_MODE_COMBO_THRESHOLD,
-  STAR_CREDIT_PER_CORRECT_ANSWER,
+  RUSH_SCORE_MULTIPLIER,
+  gameDifficultyPreset,
   starsForSongAccuracy,
-  starsForStarCredit,
+  starsForScore,
   type GameDifficulty,
 } from "../logic/staffGameRules";
 import type { StaffGameTarget } from "./useStaffGameRoundClock";
@@ -38,6 +38,11 @@ export interface StaffGameRushScoreFlight {
   ready: boolean;
 }
 
+export interface StaffGameWrongAnswerRecord {
+  expectedNote: string;
+  recognizedNote: string;
+}
+
 interface StaffGameModeAudioSettings {
   soundEffectsEnabled: boolean;
 }
@@ -45,6 +50,7 @@ interface StaffGameModeAudioSettings {
 interface StaffGameScoringSettings {
   inputMode: "physical" | "virtual" | "midi";
   difficulty: GameDifficulty;
+  wrongNoteStatisticsEnabled: boolean;
   audioByMode: Record<"levels" | "songs", StaffGameModeAudioSettings>;
 }
 
@@ -75,12 +81,11 @@ interface StaffGameScoringOptions {
   scoreAnimationTimerRef: MutableRefObject<number | null>;
   rushScoreFlightsRef: MutableRefObject<StaffGameRushScoreFlight[]>;
   rushScoreFlightTokenRef: MutableRefObject<number>;
-  starCreditRef: MutableRefObject<number>;
   maxComboRef: MutableRefObject<number>;
   comboRef: MutableRefObject<number>;
   comboIndicatorRef: MutableRefObject<StaffGameComboIndicator | null>;
   comboIndicatorFadeTimeoutRef: MutableRefObject<number | null>;
-  consecutiveWrongAnswersRef: MutableRefObject<number>;
+  wrongAnswerRecordsRef: MutableRefObject<StaffGameWrongAnswerRecord[]>;
   errorFlashTimeoutRef: MutableRefObject<number | null>;
   roundFinishedRef: MutableRefObject<boolean>;
   elapsedBeforeRunRef: MutableRefObject<number>;
@@ -104,9 +109,9 @@ interface StaffGameScoringOptions {
   setScore: Dispatch<SetStateAction<number>>;
   setDisplayedScoreImmediately: (score: number) => void;
   setRushScoreFlights: Dispatch<SetStateAction<StaffGameRushScoreFlight[]>>;
-  setStarCredit: Dispatch<SetStateAction<number>>;
   setEarnedStars: Dispatch<SetStateAction<number>>;
   setSummaryAccuracy: Dispatch<SetStateAction<number>>;
+  setSummaryWrongAnswerRecords: Dispatch<SetStateAction<StaffGameWrongAnswerRecord[]>>;
   setFeedback: Dispatch<SetStateAction<string>>;
   setSongNotesCompleted: Dispatch<SetStateAction<number>>;
   setSongFirstTryHits: Dispatch<SetStateAction<number>>;
@@ -143,12 +148,11 @@ export function useStaffGameScoring({
   scoreAnimationTimerRef,
   rushScoreFlightsRef,
   rushScoreFlightTokenRef,
-  starCreditRef,
   maxComboRef,
   comboRef,
   comboIndicatorRef,
   comboIndicatorFadeTimeoutRef,
-  consecutiveWrongAnswersRef,
+  wrongAnswerRecordsRef,
   errorFlashTimeoutRef,
   roundFinishedRef,
   elapsedBeforeRunRef,
@@ -172,9 +176,9 @@ export function useStaffGameScoring({
   setScore,
   setDisplayedScoreImmediately,
   setRushScoreFlights,
-  setStarCredit,
   setEarnedStars,
   setSummaryAccuracy,
+  setSummaryWrongAnswerRecords,
   setFeedback,
   setSongNotesCompleted,
   setSongFirstTryHits,
@@ -199,15 +203,16 @@ export function useStaffGameScoring({
     if (errorFlashTimeoutRef.current !== null) window.clearTimeout(errorFlashTimeoutRef.current);
     errorFlashTimeoutRef.current = null;
     setErrorFlashActive(false);
-    consecutiveWrongAnswersRef.current = 0;
     const isSongMode = gameModeRef.current === "songs";
     const activeSong = STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current);
     const accuracy = activeSong
-      ? Math.round((songFirstTryHitsRef.current * 100) / activeSong.noteMidis.length)
+      ? (songFirstTryHitsRef.current * 100) / activeSong.noteMidis.length
       : 0;
     const finalStars = isSongMode
-      ? starsForSongAccuracy(accuracy)
-      : starsForStarCredit(starCreditRef.current, levelRef.current);
+      ? activeSong
+        ? starsForSongAccuracy(songFirstTryHitsRef.current, activeSong.noteMidis.length)
+        : 0
+      : starsForScore(scoreRef.current, levelRef.current, settingsRef.current.difficulty);
     if (
       finalStars > 0 &&
       settingsRef.current.audioByMode[gameModeRef.current].soundEffectsEnabled
@@ -216,6 +221,7 @@ export function useStaffGameScoring({
     }
     setEarnedStars(finalStars);
     setSummaryAccuracy(accuracy);
+    setSummaryWrongAnswerRecords([...wrongAnswerRecordsRef.current]);
     resetComboDisplay();
     targetRef.current = null;
     setTarget(null);
@@ -233,7 +239,6 @@ export function useStaffGameScoring({
     onSessionActiveChange(false);
   }, [
     burstTimeoutRef,
-    consecutiveWrongAnswersRef,
     errorFlashTimeoutRef,
     flushScorePresentation,
     gameModeRef,
@@ -255,12 +260,13 @@ export function useStaffGameScoring({
     setFeedback,
     setPhase,
     setSummaryAccuracy,
+    setSummaryWrongAnswerRecords,
     setTarget,
     settingsRef,
     songFirstTryHitsRef,
-    starCreditRef,
     targetRef,
     waitingForNextTargetRef,
+    wrongAnswerRecordsRef,
   ]);
 
   const handleRecognizedAnswer = useCallback(
@@ -296,7 +302,6 @@ export function useStaffGameScoring({
           songTargetIndexRef.current += 1;
           setSongNotesCompleted(songTargetIndexRef.current);
         }
-        consecutiveWrongAnswersRef.current = 0;
         triggerMascotReaction("cheer");
         playGameSound("bubblePop");
         targetPoppedRef.current = true;
@@ -319,9 +324,7 @@ export function useStaffGameScoring({
         const nextComboIndicator: StaffGameComboIndicator = {
           token: currentTarget.token,
           count: nextCombo,
-          durationMs:
-            GAME_DIFFICULTIES.find((item) => item.id === settingsRef.current.difficulty)
-              ?.comboWindowMs ?? 2_200,
+          durationMs: gameDifficultyPreset(settingsRef.current.difficulty).comboWindowMs,
         };
         comboIndicatorRef.current = nextComboIndicator;
         setComboIndicator(nextComboIndicator);
@@ -336,20 +339,18 @@ export function useStaffGameScoring({
         playComboFeedback(nextCombo);
         comboRef.current = nextCombo;
         maxComboRef.current = Math.max(maxComboRef.current, nextCombo);
-        const scorePreset =
-          GAME_DIFFICULTIES.find((item) => item.id === settingsRef.current.difficulty) ??
-          GAME_DIFFICULTIES[1];
+        const scorePreset = gameDifficultyPreset(settingsRef.current.difficulty);
         const basePoints =
-          scorePreset.correctPoints + Math.min(5, nextCombo - 1) * scorePreset.comboBonusPoints;
-        const rushScoringActive = nextCombo >= RUSH_MODE_COMBO_THRESHOLD;
-        const points = basePoints * (rushScoringActive ? 2 : 1);
+          scorePreset.correctPoints +
+          Math.min(COMBO_BONUS_MAX_STEPS, nextCombo - 1) * scorePreset.comboBonusPoints;
+        const rushModeActive = nextCombo >= RUSH_MODE_COMBO_THRESHOLD;
+        const points = basePoints * (rushModeActive ? RUSH_SCORE_MULTIPLIER : 1);
         scoreRef.current += points;
         const totalScore = scoreRef.current;
-        starCreditRef.current += STAR_CREDIT_PER_CORRECT_ANSWER;
         setCombo(nextCombo);
         setMaxCombo(maxComboRef.current);
         setScore(totalScore);
-        if (rushScoringActive) {
+        if (rushModeActive) {
           const sceneBounds = sceneRef.current?.getBoundingClientRect();
           if (sceneBounds && bubbleBounds) {
             rushScoreFlightTokenRef.current += 1;
@@ -377,14 +378,12 @@ export function useStaffGameScoring({
         } else {
           setDisplayedScoreImmediately(totalScore);
         }
-        setStarCredit(starCreditRef.current);
         setFeedback(`+${points} · ${noteLabel(currentTarget)}`);
-        const accuracy = activeSong
-          ? Math.round((songFirstTryHitsRef.current * 100) / activeSong.noteMidis.length)
-          : 0;
         const nextStars = isSongMode
-          ? starsForSongAccuracy(accuracy)
-          : starsForStarCredit(starCreditRef.current, levelRef.current);
+          ? activeSong
+            ? starsForSongAccuracy(songFirstTryHitsRef.current, activeSong.noteMidis.length)
+            : 0
+          : starsForScore(totalScore, levelRef.current, settingsRef.current.difficulty);
         setEarnedStars(nextStars);
         if (nextTargetTimeoutRef.current !== null)
           window.clearTimeout(nextTargetTimeoutRef.current);
@@ -410,6 +409,13 @@ export function useStaffGameScoring({
       }
 
       if (targetWrong) return;
+      const heardPitch = PITCH_NAMES[((midi % 12) + 12) % 12];
+      if (settingsRef.current.wrongNoteStatisticsEnabled) {
+        wrongAnswerRecordsRef.current.push({
+          expectedNote: noteLabel(currentTarget),
+          recognizedNote: `${heardPitch}${Math.floor(midi / 12) - 1}`,
+        });
+      }
       triggerMascotReaction("sad");
       if (
         gameModeRef.current === "songs" &&
@@ -417,21 +423,16 @@ export function useStaffGameScoring({
       ) {
         songWrongTargetTokenRef.current = currentTarget.token;
       }
-      const errorFlashInProgress = errorFlashTimeoutRef.current !== null;
-      if (!errorFlashInProgress) consecutiveWrongAnswersRef.current += 1;
       resetComboDisplay();
       setTargetWrong(true);
       if (settingsRef.current.inputMode !== "physical") playGameSound("noteMissed");
-      const heardPitch = PITCH_NAMES[((midi % 12) + 12) % 12];
       setFeedback(`听到 ${heardPitch}${answer.octave ?? ""}，再试一次`);
       if (wrongClearTimeoutRef.current !== null) window.clearTimeout(wrongClearTimeoutRef.current);
       wrongClearTimeoutRef.current = window.setTimeout(() => setTargetWrong(false), 460);
-      if (!errorFlashInProgress && consecutiveWrongAnswersRef.current >= ERROR_FLASH_THRESHOLD) {
-        consecutiveWrongAnswersRef.current = 0;
+      if (errorFlashTimeoutRef.current === null) {
         setErrorFlashActive(true);
         errorFlashTimeoutRef.current = window.setTimeout(() => {
           errorFlashTimeoutRef.current = null;
-          consecutiveWrongAnswersRef.current = 0;
           setErrorFlashActive(false);
         }, ERROR_FLASH_DURATION_MS);
       }
@@ -441,7 +442,6 @@ export function useStaffGameScoring({
       comboIndicatorFadeTimeoutRef,
       comboIndicatorRef,
       comboRef,
-      consecutiveWrongAnswersRef,
       displayedScoreRef,
       elapsedBeforeRunRef,
       errorFlashTimeoutRef,
@@ -478,7 +478,6 @@ export function useStaffGameScoring({
       setScore,
       setSongFirstTryHits,
       setSongNotesCompleted,
-      setStarCredit,
       setTargetPopped,
       setTargetWrong,
       settingsRef,
@@ -486,7 +485,6 @@ export function useStaffGameScoring({
       songTargetIndexRef,
       songWrongTargetTokenRef,
       spawnTargetRef,
-      starCreditRef,
       targetElementRef,
       targetPoppedRef,
       targetRef,
@@ -494,6 +492,7 @@ export function useStaffGameScoring({
       triggerMascotReaction,
       waitingForNextTargetRef,
       wrongClearTimeoutRef,
+      wrongAnswerRecordsRef,
     ]
   );
 

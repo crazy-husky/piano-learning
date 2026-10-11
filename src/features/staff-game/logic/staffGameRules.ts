@@ -1,6 +1,6 @@
 import type { NoteName, PianoKeyName } from "../../../domain/types";
 
-export type GameDifficulty = "easy" | "normal" | "hard" | "nightmare";
+export type GameDifficulty = "muggle" | "easy" | "normal" | "hard" | "nightmare";
 
 export interface StaffGamePitch {
   midi: number;
@@ -11,10 +11,10 @@ export interface StaffGamePitch {
 export const GAME_LEVEL_COUNT = 60;
 export const SONG_STAR_THRESHOLDS = [60, 80, 95] as const;
 export const RUSH_MODE_COMBO_THRESHOLD = 5;
+export const COMBO_BONUS_MAX_STEPS = 5;
+export const RUSH_SCORE_MULTIPLIER = 2;
 export const COMBO_INDICATOR_FADE_DURATION_MS = 280;
 export const RUSH_FALL_SPEED_MULTIPLIER = 0.92;
-export const STAR_CREDIT_PER_CORRECT_ANSWER = 10;
-export const ERROR_FLASH_THRESHOLD = 4;
 export const ERROR_FLASH_DURATION_MS = 2_000;
 export const NOTE_NAMES: NoteName[] = ["C", "D", "E", "F", "G", "A", "B"];
 export const PITCH_NAMES: PianoKeyName[] = [
@@ -68,12 +68,13 @@ export const GAME_NOTE_PROGRESSION: Array<{ midi: number; name: PianoKeyName; oc
       { length: WHITE_NOTE_MIDI_RANGE.max - WHITE_NOTE_MIDI_RANGE.min + 1 },
       (_, index) => pitchForMidi(WHITE_NOTE_MIDI_RANGE.min + index)
     ).filter((note) => note.name.includes("#"));
-    return [
-      ...whiteNotes.filter((note) => note.midi >= 60),
-      ...whiteNotes.filter((note) => note.midi < 60).reverse(),
-      ...blackNotes.filter((note) => note.midi >= 60),
-      ...blackNotes.filter((note) => note.midi < 60).reverse(),
-    ];
+    const interleaveOctaves = (notes: typeof whiteNotes) =>
+      [4, 3, 5, 2, 6, 1].flatMap((octave) =>
+        notes
+          .filter((note) => note.octave === octave)
+          .sort((first, second) => first.midi - second.midi)
+      );
+    return [...interleaveOctaves(whiteNotes), ...interleaveOctaves(blackNotes)];
   })();
 
 export function gameDurationMsForLevel(level: number): number {
@@ -94,12 +95,20 @@ export const GAME_DIFFICULTIES: Array<{
   comboBonusPoints: number;
 }> = [
   {
+    id: "muggle",
+    label: "麻瓜",
+    bubbleDurationMs: 7_000,
+    comboWindowMs: 4_500,
+    correctPoints: 6,
+    comboBonusPoints: 1,
+  },
+  {
     id: "easy",
     label: "简单",
     bubbleDurationMs: 4_900,
     comboWindowMs: 3_000,
     correctPoints: 8,
-    comboBonusPoints: 1,
+    comboBonusPoints: 2,
   },
   {
     id: "normal",
@@ -107,7 +116,7 @@ export const GAME_DIFFICULTIES: Array<{
     bubbleDurationMs: 3_300,
     comboWindowMs: 2_200,
     correctPoints: 10,
-    comboBonusPoints: 2,
+    comboBonusPoints: 3,
   },
   {
     id: "hard",
@@ -115,7 +124,7 @@ export const GAME_DIFFICULTIES: Array<{
     bubbleDurationMs: 2_700,
     comboWindowMs: 1_600,
     correctPoints: 12,
-    comboBonusPoints: 3,
+    comboBonusPoints: 4,
   },
   {
     id: "nightmare",
@@ -123,20 +132,46 @@ export const GAME_DIFFICULTIES: Array<{
     bubbleDurationMs: 2_200,
     comboWindowMs: 1_000,
     correctPoints: 15,
-    comboBonusPoints: 4,
+    comboBonusPoints: 5,
   },
 ];
-export const STAR_THRESHOLDS = [36, 70, 110] as const;
-export const STAR_BASE_DURATION_MS = 30_000;
 
-export function starsForStarCredit(starCredit: number, level: number): number {
-  const durationScale = gameDurationMsForLevel(level) / STAR_BASE_DURATION_MS;
-  return STAR_THRESHOLDS.filter((threshold) => starCredit >= Math.ceil(threshold * durationScale))
-    .length;
+export function gameDifficultyPreset(difficulty: GameDifficulty) {
+  return (
+    GAME_DIFFICULTIES.find((item) => item.id === difficulty) ??
+    GAME_DIFFICULTIES.find((item) => item.id === "normal")!
+  );
 }
 
-export function starsForSongAccuracy(accuracy: number): number {
-  return SONG_STAR_THRESHOLDS.filter((threshold) => accuracy >= threshold).length;
+export const STAR_THRESHOLDS = [36, 70, 110] as const;
+export const DIFFICULTY_SCORE_FACTORS: Record<GameDifficulty, number> = {
+  muggle: 3,
+  easy: 4,
+  normal: 5,
+  hard: 7,
+  nightmare: 16,
+};
+
+export function starScoreThreshold(
+  threshold: number,
+  level: number,
+  difficulty: GameDifficulty
+): number {
+  return Math.ceil(
+    (threshold * gameDurationMsForLevel(level) * DIFFICULTY_SCORE_FACTORS[difficulty]) / 120_000
+  );
+}
+
+export function starsForScore(score: number, level: number, difficulty: GameDifficulty): number {
+  return STAR_THRESHOLDS.filter(
+    (threshold) => score >= starScoreThreshold(threshold, level, difficulty)
+  ).length;
+}
+
+export function starsForSongAccuracy(correctCount: number, totalCount: number): number {
+  if (totalCount <= 0) return 0;
+  return SONG_STAR_THRESHOLDS.filter((threshold) => correctCount * 100 >= threshold * totalCount)
+    .length;
 }
 
 export function gameNoteFromMidi(midi: number): StaffGamePitch {

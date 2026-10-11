@@ -7,6 +7,7 @@ export interface StaffGameSettingsDraft {
   inputMode: StaffGameInputMode;
   displayMode: GameDisplayMode;
   gameEffectsEnabled: boolean;
+  wrongNoteStatisticsEnabled: boolean;
 }
 
 export interface StaffGameAudioSettingsDraft {
