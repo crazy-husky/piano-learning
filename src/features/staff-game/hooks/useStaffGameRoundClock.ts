@@ -97,49 +97,52 @@ export function useStaffGameRoundClock({
   playGameSound,
   noteLabel,
 }: StaffGameRoundClockOptions) {
-  const spawnTarget = useCallback((atGameMs: number): void => {
-    if (phaseRef.current !== "running") return;
-    const drawnNote =
-      gameModeRef.current === "songs"
-        ? (() => {
-            const song = STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current);
-            const midi = song?.noteMidis[songTargetIndexRef.current];
-            return midi === undefined ? null : gameNoteFromMidi(midi);
-          })()
-        : drawNextNote(levelRef.current, noteBagRef.current, recentNoteMidisRef.current);
-    if (!drawnNote) return;
-    targetTokenRef.current += 1;
-    const next = {
-      ...drawnNote,
-      token: targetTokenRef.current,
-      centerX: randomBubbleCenterX(playfieldRef.current),
-    };
-    if (gameModeRef.current === "levels") {
-      recentNoteMidisRef.current = [...recentNoteMidisRef.current, next.midi].slice(-3);
-    }
-    targetSpawnGameMsRef.current = atGameMs;
-    targetRef.current = next;
-    targetPoppedRef.current = false;
-    setTarget(next);
-    setTargetPopped(false);
-    setTargetWrong(false);
-  }, [
-    gameModeRef,
-    levelRef,
-    noteBagRef,
-    phaseRef,
-    playfieldRef,
-    recentNoteMidisRef,
-    selectedSongIdRef,
-    setTarget,
-    setTargetPopped,
-    setTargetWrong,
-    songTargetIndexRef,
-    targetPoppedRef,
-    targetRef,
-    targetSpawnGameMsRef,
-    targetTokenRef,
-  ]);
+  const spawnTarget = useCallback(
+    (atGameMs: number): void => {
+      if (phaseRef.current !== "running") return;
+      const drawnNote =
+        gameModeRef.current === "songs"
+          ? (() => {
+              const song = STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current);
+              const midi = song?.noteMidis[songTargetIndexRef.current];
+              return midi === undefined ? null : gameNoteFromMidi(midi);
+            })()
+          : drawNextNote(levelRef.current, noteBagRef.current, recentNoteMidisRef.current);
+      if (!drawnNote) return;
+      targetTokenRef.current += 1;
+      const next = {
+        ...drawnNote,
+        token: targetTokenRef.current,
+        centerX: randomBubbleCenterX(playfieldRef.current),
+      };
+      if (gameModeRef.current === "levels") {
+        recentNoteMidisRef.current = [...recentNoteMidisRef.current, next.midi].slice(-3);
+      }
+      targetSpawnGameMsRef.current = atGameMs;
+      targetRef.current = next;
+      targetPoppedRef.current = false;
+      setTarget(next);
+      setTargetPopped(false);
+      setTargetWrong(false);
+    },
+    [
+      gameModeRef,
+      levelRef,
+      noteBagRef,
+      phaseRef,
+      playfieldRef,
+      recentNoteMidisRef,
+      selectedSongIdRef,
+      setTarget,
+      setTargetPopped,
+      setTargetWrong,
+      songTargetIndexRef,
+      targetPoppedRef,
+      targetRef,
+      targetSpawnGameMsRef,
+      targetTokenRef,
+    ]
+  );
 
   useEffect(() => {
     if (phase !== "running") return undefined;

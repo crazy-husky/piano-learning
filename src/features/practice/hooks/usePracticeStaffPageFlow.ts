@@ -115,21 +115,24 @@ export function usePracticeStaffPageFlow({
 
   useEffect(() => () => clearStaffPageScrollSchedule(), [clearStaffPageScrollSchedule]);
 
-  const syncStaffPage = useCallback((page: PracticeStaffPageRuntime | null): void => {
-    staffPageRef.current = page;
-    setStaffPageNotes(page?.notes ?? []);
-    setStaffPageIndex(page?.index ?? 0);
-    setStaffPageCompletedCount(page?.completedCount ?? 0);
-    if (!page) {
-      setStaffPageFirstNoteOffset(0);
-    }
-  }, [
-    setStaffPageCompletedCount,
-    setStaffPageFirstNoteOffset,
-    setStaffPageIndex,
-    setStaffPageNotes,
-    staffPageRef,
-  ]);
+  const syncStaffPage = useCallback(
+    (page: PracticeStaffPageRuntime | null): void => {
+      staffPageRef.current = page;
+      setStaffPageNotes(page?.notes ?? []);
+      setStaffPageIndex(page?.index ?? 0);
+      setStaffPageCompletedCount(page?.completedCount ?? 0);
+      if (!page) {
+        setStaffPageFirstNoteOffset(0);
+      }
+    },
+    [
+      setStaffPageCompletedCount,
+      setStaffPageFirstNoteOffset,
+      setStaffPageIndex,
+      setStaffPageNotes,
+      staffPageRef,
+    ]
+  );
 
   const getNextStaffPageCount = useCallback(
     (nextCompletedCount: number): number => {

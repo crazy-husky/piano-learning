@@ -15,6 +15,8 @@ export function useAudioPlayback(material: VocalAudioMaterial | null, volume: nu
   const animationRef = useRef<number | null>(null);
   const [gainPreparedForBlob, setGainPreparedForBlob] = useState<Blob | null>(null);
   volumeRef.current = volume;
+  const materialAudioBlob = material?.audioBlob;
+  const materialId = material?.id;
   const isPreparing = playbackGainIsPreparing(material?.audioBlob ?? null, gainPreparedForBlob);
 
   const applyGain = useCallback(() => {
@@ -69,19 +71,19 @@ export function useAudioPlayback(material: VocalAudioMaterial | null, volume: nu
     if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
     normalizationGainRef.current = 1;
     applyGain();
-    if (!material) {
+    if (materialAudioBlob === undefined) {
       setGainPreparedForBlob(null);
       audioUrlRef.current = null;
       audio.removeAttribute("src");
       audio.load();
       return undefined;
     }
-    const url = URL.createObjectURL(material.audioBlob);
+    const url = URL.createObjectURL(materialAudioBlob);
     audioUrlRef.current = url;
     audio.src = url;
     audio.load();
     let cancelled = false;
-    void decodeAudioBlob(material.audioBlob)
+    void decodeAudioBlob(materialAudioBlob)
       .then((decoded) => {
         if (cancelled) return;
         normalizationGainRef.current = peakNormalizationGain(decoded.samples);
@@ -89,12 +91,12 @@ export function useAudioPlayback(material: VocalAudioMaterial | null, volume: nu
       })
       .catch(() => undefined)
       .finally(() => {
-        if (!cancelled) setGainPreparedForBlob(material.audioBlob);
+        if (!cancelled) setGainPreparedForBlob(materialAudioBlob);
       });
     return () => {
       cancelled = true;
     };
-  }, [applyGain, material?.audioBlob, material?.id]);
+  }, [applyGain, materialAudioBlob, materialId]);
 
   useEffect(() => {
     if (!isPlaying) {

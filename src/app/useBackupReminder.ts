@@ -396,11 +396,7 @@ export function useBackupReminder({
           await getBackupState();
           await refresh();
           if (result === "diverged") {
-            showMessage(
-              backupText.titles.dataConflict,
-              formatBackupConflictDetail(),
-              false
-            );
+            showMessage(backupText.titles.dataConflict, formatBackupConflictDetail(), false);
             return;
           }
           if (result === "synced-up") {

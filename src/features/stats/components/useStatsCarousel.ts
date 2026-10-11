@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -85,49 +86,58 @@ export function useStatsCarousel({
   const [statsCarouselOffset, setStatsCarouselOffset] = useState<0 | 1>(0);
   const [statsCarouselTransitionEnabled, setStatsCarouselTransitionEnabled] = useState(true);
 
-  const commitStatsCarouselIndex = (nextIndex: number): void => {
-    const normalizedIndex = normalizeStatsCarouselIndex(nextIndex);
-    setStatsUiPreferences((current) => {
-      return {
-        ...current,
-        carouselCardId: STATS_CAROUSEL_CARD_IDS[normalizedIndex],
-      };
-    });
-  };
-  const startStatsCarouselMove = (targetIndex: number): void => {
-    if (statsCarouselMovingRef.current) {
-      return;
-    }
-
-    const normalizedIndex = normalizeStatsCarouselIndex(targetIndex);
-    const direction = getStatsCarouselMoveDirection(statsCarouselIndex, normalizedIndex);
-    if (direction === undefined) {
-      commitStatsCarouselIndex(normalizedIndex);
-      return;
-    }
-
-    statsCarouselMovingRef.current = true;
-    statsCarouselMoveDirectionRef.current = direction;
-    commitStatsCarouselIndex(normalizedIndex);
-    if (direction === 1) {
-      setStatsCarouselTransitionEnabled(true);
-      setStatsCarouselOffset(1);
-      return;
-    }
-
-    setStatsCarouselTransitionEnabled(false);
-    setStatsCarouselOrder((current) => rotateStatsCarouselOrder(current, -1));
-    setStatsCarouselOffset(1);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        setStatsCarouselTransitionEnabled(true);
-        setStatsCarouselOffset(0);
+  const commitStatsCarouselIndex = useCallback(
+    (nextIndex: number): void => {
+      const normalizedIndex = normalizeStatsCarouselIndex(nextIndex);
+      setStatsUiPreferences((current) => {
+        return {
+          ...current,
+          carouselCardId: STATS_CAROUSEL_CARD_IDS[normalizedIndex],
+        };
       });
-    });
-  };
-  const moveStatsCarousel = (direction: -1 | 1): void => {
-    startStatsCarouselMove(statsCarouselIndex + direction);
-  };
+    },
+    [setStatsUiPreferences]
+  );
+  const startStatsCarouselMove = useCallback(
+    (targetIndex: number): void => {
+      if (statsCarouselMovingRef.current) {
+        return;
+      }
+
+      const normalizedIndex = normalizeStatsCarouselIndex(targetIndex);
+      const direction = getStatsCarouselMoveDirection(statsCarouselIndex, normalizedIndex);
+      if (direction === undefined) {
+        commitStatsCarouselIndex(normalizedIndex);
+        return;
+      }
+
+      statsCarouselMovingRef.current = true;
+      statsCarouselMoveDirectionRef.current = direction;
+      commitStatsCarouselIndex(normalizedIndex);
+      if (direction === 1) {
+        setStatsCarouselTransitionEnabled(true);
+        setStatsCarouselOffset(1);
+        return;
+      }
+
+      setStatsCarouselTransitionEnabled(false);
+      setStatsCarouselOrder((current) => rotateStatsCarouselOrder(current, -1));
+      setStatsCarouselOffset(1);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setStatsCarouselTransitionEnabled(true);
+          setStatsCarouselOffset(0);
+        });
+      });
+    },
+    [commitStatsCarouselIndex, statsCarouselIndex]
+  );
+  const moveStatsCarousel = useCallback(
+    (direction: -1 | 1): void => {
+      startStatsCarouselMove(statsCarouselIndex + direction);
+    },
+    [startStatsCarouselMove, statsCarouselIndex]
+  );
   const jumpStatsCarousel = (targetIndex: number): void => {
     startStatsCarouselMove(targetIndex);
   };
@@ -149,7 +159,7 @@ export function useStatsCarousel({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [statsCarouselIndex]);
+  }, [moveStatsCarousel]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 820px)");

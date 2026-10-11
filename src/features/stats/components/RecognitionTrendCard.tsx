@@ -13,7 +13,7 @@ import {
   type RecognitionTimeValueMode,
 } from "./recognitionTrend";
 import { STATS_COLORS } from "./statsColors";
-import { getPageThemeColor, useNightMode } from "../../../shared/appearance/pageAppearance";
+import { getPageThemeColor } from "../../../shared/appearance/pageAppearance";
 import { loadECharts } from "../../../shared/charts/loadECharts";
 import { ChartLoadingSkeleton } from "../../../shared/components/LoadingSkeletons";
 
@@ -530,12 +530,11 @@ function RecognitionTrendChart({
   const chartElementRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.EChartsType | null>(null);
   const [chartLoadState, setChartLoadState] = useState<"loading" | "ready" | "error">("loading");
-  const isNightMode = useNightMode();
-  const seriesOptions = useMemo(() => getRecognitionSeriesOptions(), [isNightMode]);
+  const seriesOptions = useMemo(() => getRecognitionSeriesOptions(), []);
   const chartOption = useMemo(
     () =>
       makeRecognitionTimeChartOption(data, metric, valueMode, visibleSeries, relativeBaselineMode),
-    [data, isNightMode, metric, relativeBaselineMode, valueMode, visibleSeries]
+    [data, metric, relativeBaselineMode, valueMode, visibleSeries]
   );
 
   useEffect(() => {

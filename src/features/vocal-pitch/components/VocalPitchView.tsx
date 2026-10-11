@@ -288,7 +288,7 @@ export function VocalPitchView({
         }
       }
     },
-    [runPitchAnalysis]
+    [runPitchAnalysis, setAnalysisMessage]
   );
 
   const analyzeMaterial = useCallback(
@@ -455,7 +455,7 @@ export function VocalPitchView({
         return next;
       }
     },
-    [buildRecordingMaterial, runPitchAnalysis]
+    [buildRecordingMaterial, runPitchAnalysis, setAnalysisMessage]
   );
 
   const acceptRecordingResult = useCallback(
@@ -641,7 +641,7 @@ export function VocalPitchView({
         if (!target.analysis) void analyzeMaterial(normalizedTarget);
       });
     },
-    [analyzeMaterial, cancelAnalysis, runWithReplacementGuard]
+    [analyzeMaterial, cancelAnalysis, runWithReplacementGuard, setAnalysisMessage]
   );
 
   const clearWorkspace = useCallback(() => {
@@ -657,7 +657,7 @@ export function VocalPitchView({
       setAnalysisMessage(null);
       setInlineMessage(null);
     });
-  }, [cancelAnalysis, playback, runWithReplacementGuard]);
+  }, [cancelAnalysis, playback, runWithReplacementGuard, setAnalysisMessage]);
 
   const togglePlayback = useCallback(async () => {
     if (!material) return;
@@ -694,7 +694,7 @@ export function VocalPitchView({
         }
       }
     },
-    [analysisRunning, cancelAnalysis, config, material]
+    [analysisRunning, cancelAnalysis, config, material, setAnalysisMessage]
   );
 
   const reanalyze = useCallback(() => {
@@ -707,7 +707,7 @@ export function VocalPitchView({
     const target = { ...material, config };
     setMaterial(target);
     void analyzeMaterial(target);
-  }, [analysisRunning, analyzeMaterial, cancelAnalysis, config, material]);
+  }, [analysisRunning, analyzeMaterial, cancelAnalysis, config, material, setAnalysisMessage]);
 
   const renameMaterial = useCallback(
     async (target: VocalAudioMaterial, name: string) => {
