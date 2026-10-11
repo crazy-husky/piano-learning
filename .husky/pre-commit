@@ -1,0 +1,2 @@
+uv run --project analysis pre-commit run --hook-stage pre-commit
+npx lint-staged

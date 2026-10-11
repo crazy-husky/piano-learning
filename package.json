@@ -15,7 +15,8 @@
     "dev:open": "vite --host 127.0.0.1 --port 6136 --strictPort --open http://127.0.0.1:6136/",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 6136 --strictPort --open http://127.0.0.1:6136/",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepare": "husky"
   },
   "dependencies": {
     "@audio/pitch-yin": "1.0.5",
@@ -45,10 +46,20 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "fake-indexeddb": "^6.2.5",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
     "prettier": "^3.9.9",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.71.1",
     "vite": "^6.4.3",
     "vitest": "^2.1.9"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --max-warnings 0 --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css,html}": "prettier --write",
+    "*.{yaml,yml}": "prettier --write"
   }
 }
