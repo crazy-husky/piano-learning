@@ -5,6 +5,12 @@
   "type": "module",
   "packageManager": "pnpm@11.10.0",
   "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 200",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check",
     "dev": "vite --host 127.0.0.1 --port 6136 --strictPort",
     "dev:open": "vite --host 127.0.0.1 --port 6136 --strictPort --open http://127.0.0.1:6136/",
     "build": "tsc -b && vite build",
@@ -29,11 +35,19 @@
     "webmidi": "^3.1.16"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^24.13.2",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "fake-indexeddb": "^6.2.5",
+    "prettier": "^3.9.9",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.1",
     "vite": "^6.4.3",
     "vitest": "^2.1.9"
   }
