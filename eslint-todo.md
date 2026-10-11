@@ -25,6 +25,11 @@ After downgrading all recommended `jsx-a11y/*` rules to warnings:
 1. `src/app/useBackupReminder.ts`：三个 effect 有意按备份摘要字段触发，避免无关 `data` 更新重启检查。为保留原触发时机，局部禁用了 6 条 exhaustive-deps 诊断（缺少完整 `data` 依赖及 `data !== null` 的静态分析提示）。人工复核时应对照 `getBackupReminderState`、`backupConflictDetailsMissing` 和入口预检条件，确认字段集合仍完整。
 2. `src/features/staff-game/components/StaffGameView.tsx`：全局按钮音效监听调用由音频 Hook 返回的模块级稳定函数。该 Hook 声明在监听 effect 之后；为满足依赖规则而移动 effect 会改变 effect 注册顺序，因此保留 1 条带说明的局部 disable。后续调整音频 Hook 顺序时可重新评估。
 
+## 后续技术债
+
+1. **游戏音效 Hook 顺序**：`StaffGameView.tsx` 中约第 675 行的按钮监听 effect 引用了约第 789 行才由 `useStaffGameAudio` 返回的 `playGameSound`。局部 disable 抑制的是 exhaustive-deps 诊断，不是运行时 TDZ；若在当前位置把 `playGameSound` 直接放进依赖数组，依赖数组会在该 Hook 初始化之前求值。后续可将 `useStaffGameAudio` 调用移到 effect 之前，再为监听 effect 声明正常依赖。
+2. **备份提醒字段监控**：`useBackupReminder.ts` 的三个 effect 依赖备份状态的明确摘要字段，而不是整个 `data` 对象。若 `backupState` 新增字段，需重新检查 `getBackupReminderState`、冲突详情补齐和入口预检逻辑，判断是否应纳入相应依赖数组。
+
 ## Error Cleanup Baseline
 
 - `@typescript-eslint/no-unused-vars`: 12.
