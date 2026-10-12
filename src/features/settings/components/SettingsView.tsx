@@ -92,6 +92,7 @@ function isUserAbort(error: unknown): boolean {
 interface SettingsViewProps {
   appUpdateStatus: AppUpdateStatus;
   appUpdateMessage: string;
+  hasUpdateAvailable: boolean;
   pageAppearancePreferences: PageAppearancePreferences;
   practiceMicrophonePreferences: PracticeMicrophonePreferences;
   practicePagePreferences: PracticePagePreferences;
@@ -111,6 +112,7 @@ interface SettingsViewProps {
 export function SettingsView({
   appUpdateStatus,
   appUpdateMessage,
+  hasUpdateAvailable,
   pageAppearancePreferences,
   practiceMicrophonePreferences,
   practicePagePreferences,
@@ -817,15 +819,17 @@ export function SettingsView({
             </span>
           </div>
           <button
-            disabled={appUpdateStatus === "checking"}
+            disabled={appUpdateStatus === "checking" || appUpdateStatus === "preparing"}
             onClick={onCheckForUpdates}
             type="button"
           >
             {appUpdateStatus === "checking"
               ? "正在检查…"
-              : appUpdateStatus === "up-to-date" || appUpdateStatus === "available"
-                ? "重新检查"
-                : "检查更新"}
+              : appUpdateStatus === "preparing"
+                ? "正在准备…"
+                : appUpdateStatus === "up-to-date" || hasUpdateAvailable
+                  ? "重新检查"
+                  : "检查更新"}
           </button>
         </div>
         {appUpdateMessage ? (
@@ -836,10 +840,15 @@ export function SettingsView({
             {appUpdateMessage}
           </p>
         ) : null}
-        {appUpdateStatus === "available" ? (
+        {hasUpdateAvailable ? (
           <div className="action-row">
-            <button className="primary" onClick={onApplyUpdate} type="button">
-              立即更新
+            <button
+              className="primary"
+              disabled={appUpdateStatus === "checking" || appUpdateStatus === "preparing"}
+              onClick={onApplyUpdate}
+              type="button"
+            >
+              {appUpdateStatus === "preparing" ? "正在准备新版…" : "立即使用新版"}
             </button>
           </div>
         ) : null}

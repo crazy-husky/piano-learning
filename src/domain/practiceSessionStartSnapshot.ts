@@ -81,8 +81,10 @@ export function buildPracticeSessionStartSnapshot({
 }: BuildPracticeSessionStartSnapshotInput): BuiltPracticeSessionStartSnapshot | undefined {
   const activity = buildPracticeActivitySnapshot({
     answerPitchMode: settings.answerPitchMode,
+    crossGroupPitchIds: settings.crossGroupPitchIds,
     drillNoteNames: settings.drillNoteNames,
     enabledGroupIds: settings.enabledGroupIds,
+    enabledPitchIds: settings.enabledPitchIds,
     includeInterStaffLedgerSpellings: settings.includeInterStaffLedgerSpellings,
     promptDisplayMode: settings.promptDisplayMode,
     promptNoteDuration: settings.promptNoteDuration,
@@ -98,9 +100,13 @@ export function buildPracticeSessionStartSnapshot({
     snapshot: {
       practiceConfig: {
         answerPitchMode: settings.answerPitchMode,
+        crossGroupPitchIds: settings.crossGroupPitchIds
+          ? [...settings.crossGroupPitchIds]
+          : undefined,
         drillNoteNames: [...settings.drillNoteNames],
         effectiveQueueAlgorithm: activity.effectiveQueueAlgorithm,
         enabledGroupIds: [...settings.enabledGroupIds],
+        enabledPitchIds: settings.enabledPitchIds ? [...settings.enabledPitchIds] : undefined,
         fixedCount: mode === "fixed-count" ? settings.fixedCount : undefined,
         fixedDurationSeconds: mode === "fixed-duration" ? settings.fixedDurationSeconds : undefined,
         includeInterStaffLedgerSpellings: applicableLedgerSetting(

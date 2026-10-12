@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  AudioLines,
   BarChart3,
   BellOff,
   BookOpen,
@@ -1108,6 +1107,7 @@ export function App(): JSX.Element {
             <BarChart3 aria-hidden="true" size={18} />
             统计
           </button>
+          {/* 清唱导航入口暂时隐藏，后续需要时可以取消注释并恢复 AudioLines 导入。
           <button
             aria-current={view === "vocal" ? "page" : undefined}
             className={`app-nav-vocal${view === "vocal" ? " active" : ""}`}
@@ -1117,6 +1117,7 @@ export function App(): JSX.Element {
             <AudioLines aria-hidden="true" size={18} />
             清唱
           </button>
+          */}
           <button
             aria-current={view === "settings" ? "page" : undefined}
             className={view === "settings" ? "active" : ""}
@@ -1216,7 +1217,6 @@ export function App(): JSX.Element {
                   sessions={data.practiceHistoryLoaded ? data.sessions : []}
                   reviews={data.practiceHistoryLoaded ? data.reviews : []}
                   navigationExitRequest={practiceExitRequest}
-                  onRequestNavigationExit={selectView}
                   onDataChanged={refreshPracticeHistory}
                   onNavigationExit={handleNavigationExit}
                   onOpenStats={() => selectView("stats")}
@@ -1293,6 +1293,7 @@ export function App(): JSX.Element {
               <SettingsView
                 appUpdateStatus={appUpdateController.status}
                 appUpdateMessage={appUpdateController.message}
+                hasUpdateAvailable={appUpdateController.hasUpdateAvailable}
                 backupState={data.backupState}
                 pageAppearancePreferences={pageAppearancePreferences}
                 practiceMicrophonePreferences={practiceMicrophonePreferences}

@@ -68,20 +68,31 @@ interface PracticeMicrophoneState {
   status: PracticeMicrophoneStatus;
 }
 
-interface PracticeMicrophoneDiagnostics {
+export interface PracticeMicrophoneDiagnostics {
+  alternativeCandidateConfidence: number | null;
+  alternativeCandidateFrequencyHz: number | null;
+  algorithm: PracticeMicrophoneAlgorithm;
   audioContextSampleRate: number;
   audioContextState: string;
   autoGainControl: boolean | null;
+  ambiguous: boolean;
   candidateConfidence: number | null;
   candidateFrequencyHz: number | null;
   candidateNote: string | null;
   channelCount: number | null;
   echoCancellation: boolean | null;
+  detectorDisagreement: boolean;
+  includeAccidentals: boolean;
   inputRms: number;
   analysisRms: number;
   inputRmsThreshold: number;
+  lastRecognizedAtMs: number | null;
+  lastRecognizedMidi: number | null;
+  lastRecognizedNote: string | null;
   noiseSuppression: boolean | null;
   outcome: string;
+  requiredStableFrames: number;
+  requiredStableMs: number;
   trackSampleRate: number | null;
   confidenceThreshold: number;
 }
@@ -291,12 +302,15 @@ export function usePracticeMicrophoneInput(
   });
   const stateRef = useRef<PracticeMicrophoneStatus>("idle");
   const mountedRef = useRef(false);
+  const inputReconnectRequiredRef = useRef(false);
+  const audioContextWasInterruptedRef = useRef(false);
   const startGenerationRef = useRef(0);
   const inputGenerationRef = useRef(0);
   const startPromiseRef = useRef<Promise<boolean> | null>(null);
   const errorRef = useRef<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const audioContextStateChangeCleanupRef = useRef<(() => void) | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const silentGainRef = useRef<GainNode | null>(null);
@@ -348,11 +362,18 @@ export function usePracticeMicrophoneInput(
   const lastVoicedAtRef = useRef(0);
   const latestObservationUiRef = useRef<Pick<
     PracticeMicrophoneDiagnostics,
+    | "ambiguous"
+    | "alternativeCandidateConfidence"
+    | "alternativeCandidateFrequencyHz"
     | "analysisRms"
     | "candidateConfidence"
     | "candidateFrequencyHz"
     | "candidateNote"
+    | "detectorDisagreement"
     | "inputRms"
+    | "lastRecognizedAtMs"
+    | "lastRecognizedMidi"
+    | "lastRecognizedNote"
     | "outcome"
   > | null>(null);
   const detectedNoteUiRef = useRef<string | null>(null);
@@ -501,6 +522,10 @@ export function usePracticeMicrophoneInput(
       settleCaptureStopWaiters();
       const context = audioContextRef.current;
       audioContextRef.current = null;
+      audioContextStateChangeCleanupRef.current?.();
+      audioContextStateChangeCleanupRef.current = null;
+      inputReconnectRequiredRef.current = false;
+      audioContextWasInterruptedRef.current = false;
       if (context && context.state !== "closed") {
         void context.close().catch(() => undefined);
       }
@@ -553,7 +578,11 @@ export function usePracticeMicrophoneInput(
       rawRms: number,
       timeMs: number,
       gain: PracticeMicrophoneAnalysisGain,
-      ambiguous = false
+      ambiguous = false,
+      alternativeCandidate: { confidence: number | null; frequencyHz: number | null } = {
+        confidence: null,
+        frequencyHz: null,
+      }
     ): void => {
       const thresholds = activeThresholdsRef.current;
       const isVoiced =
@@ -615,6 +644,9 @@ export function usePracticeMicrophoneInput(
       }
 
       latestObservationUiRef.current = {
+        ambiguous,
+        alternativeCandidateConfidence: alternativeCandidate.confidence,
+        alternativeCandidateFrequencyHz: alternativeCandidate.frequencyHz,
         analysisRms,
         candidateConfidence: confidence,
         candidateFrequencyHz:
@@ -622,7 +654,16 @@ export function usePracticeMicrophoneInput(
             ? frequencyHz
             : null,
         candidateNote: candidateNote ? `${candidateNote.noteName}${candidateNote.octave}` : null,
+        detectorDisagreement: ambiguous,
         inputRms: rawRms,
+        lastRecognizedAtMs: recognized
+          ? timeMs
+          : (latestObservationUiRef.current?.lastRecognizedAtMs ?? null),
+        lastRecognizedMidi:
+          recognized?.midiNoteNumber ?? latestObservationUiRef.current?.lastRecognizedMidi ?? null,
+        lastRecognizedNote: recognized
+          ? `${recognized.noteName}${recognized.octave}`
+          : (latestObservationUiRef.current?.lastRecognizedNote ?? null),
         outcome,
       };
     },
@@ -785,7 +826,11 @@ export function usePracticeMicrophoneInput(
         pending.rms,
         pending.timeMs,
         pending.gain,
-        detectorDisagreement
+        detectorDisagreement,
+        {
+          confidence: alternativeClarity,
+          frequencyHz: alternativeFrequencyHz > 0 ? alternativeFrequencyHz : null,
+        }
       );
       settleCaptureStopWaiters();
     },
@@ -1056,7 +1101,11 @@ export function usePracticeMicrophoneInput(
               rms,
               now,
               gain,
-              detectorDisagreement
+              detectorDisagreement,
+              {
+                confidence: alternativeCandidate?.clarity ?? null,
+                frequencyHz: alternativeCandidate?.frequencyHz ?? null,
+              }
             );
           }
         }
@@ -1092,12 +1141,29 @@ export function usePracticeMicrophoneInput(
     (options: { includeAccidentals?: boolean } = {}): Promise<boolean> => {
       includeAccidentalsRef.current = options.includeAccidentals === true;
       if (stateRef.current === "listening") {
-        recognizerRef.current = createRecognizerForConfiguration(
-          activeConfigurationRef.current,
-          includeAccidentalsRef.current
-        );
-        return Promise.resolve(true);
+        const context = audioContextRef.current;
+        const stream = streamRef.current;
+        const audioTrack = stream?.getAudioTracks()[0];
+        const inputIsActive =
+          !inputReconnectRequiredRef.current &&
+          !audioContextWasInterruptedRef.current &&
+          context?.state === "running" &&
+          stream?.active === true &&
+          audioTrack?.readyState === "live" &&
+          !audioTrack.muted;
+        if (inputIsActive) {
+          recognizerRef.current = createRecognizerForConfiguration(
+            activeConfigurationRef.current,
+            includeAccidentalsRef.current
+          );
+          return Promise.resolve(true);
+        }
+
+        startGenerationRef.current += 1;
+        releaseDevices();
+        updateStatus("idle");
       }
+
       if (startPromiseRef.current) return startPromiseRef.current;
       if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
         updateStatus("error", "当前浏览器不支持麦克风音频输入。请使用 HTTPS 或 localhost。");
@@ -1121,20 +1187,30 @@ export function usePracticeMicrophoneInput(
         let stream: MediaStream | null = null;
         let context: AudioContext | null = null;
         try {
-          stream = await navigator.mediaDevices.getUserMedia({
+          context = new AudioContext();
+          const contextToResume = context;
+          const contextResumePromise = contextToResume.resume().then(() => undefined);
+          const streamRequest = navigator.mediaDevices.getUserMedia({
             audio: { ...REQUESTED_AUDIO_CONSTRAINTS },
           });
-          if (!mountedRef.current || generation !== startGenerationRef.current) {
-            stream.getTracks().forEach((track) => track.stop());
-            return false;
+          let requestedStream: MediaStream;
+          try {
+            [requestedStream] = await Promise.all([streamRequest, contextResumePromise] as const);
+          } catch (error) {
+            void streamRequest
+              .then((lateStream) => lateStream.getTracks().forEach((track) => track.stop()))
+              .catch(() => undefined);
+            throw error;
           }
-
-          context = new AudioContext();
-          await context.resume();
+          stream = requestedStream;
           if (!mountedRef.current || generation !== startGenerationRef.current) {
             stream.getTracks().forEach((track) => track.stop());
             void context.close().catch(() => undefined);
             return false;
+          }
+
+          if (context.state !== "running") {
+            throw new Error("浏览器未能恢复音频处理，请再次点击继续连接麦克风。");
           }
 
           configuration = resolvePracticeMicrophoneConfiguration(preferencesRef.current);
@@ -1168,20 +1244,31 @@ export function usePracticeMicrophoneInput(
             setState((current) => ({
               ...current,
               diagnostics: {
+                algorithm: configuration.algorithm,
+                alternativeCandidateConfidence: null,
+                alternativeCandidateFrequencyHz: null,
                 audioContextSampleRate: sampleRate,
                 audioContextState,
                 autoGainControl: trackSettings?.autoGainControl ?? null,
+                ambiguous: false,
                 candidateConfidence: null,
                 candidateFrequencyHz: null,
                 candidateNote: null,
                 channelCount: trackSettings?.channelCount ?? null,
                 confidenceThreshold: thresholds.confidenceThreshold,
+                detectorDisagreement: false,
                 echoCancellation: trackSettings?.echoCancellation ?? null,
+                includeAccidentals: includeAccidentalsRef.current,
                 inputRms: 0,
                 analysisRms: 0,
                 inputRmsThreshold: thresholds.inputRmsThreshold,
+                lastRecognizedAtMs: null,
+                lastRecognizedMidi: null,
+                lastRecognizedNote: null,
                 noiseSuppression: trackSettings?.noiseSuppression ?? null,
                 outcome: "等待音高候选",
+                requiredStableFrames: configuration.requiredStableFrames,
+                requiredStableMs: configuration.requiredStableMs,
                 trackSampleRate: trackSettings?.sampleRate ?? null,
               },
             }));
@@ -1236,6 +1323,8 @@ export function usePracticeMicrophoneInput(
           stream = null;
           audioContextRef.current = context;
           context = null;
+          inputReconnectRequiredRef.current = false;
+          audioContextWasInterruptedRef.current = false;
           sourceRef.current = source;
           analyserRef.current = analyser;
           silentGainRef.current = silentGain;
@@ -1245,6 +1334,20 @@ export function usePracticeMicrophoneInput(
             frameSize,
             sampleRate
           );
+          const activeContext = audioContextRef.current;
+          if (activeContext) {
+            const handleAudioContextStateChange = (): void => {
+              if (activeContext.state === "running" || stateRef.current !== "listening") return;
+              inputReconnectRequiredRef.current = true;
+              audioContextWasInterruptedRef.current = true;
+              if (!document.hidden) {
+                fail("麦克风音频处理已暂停，请点击继续重新连接。", "microphone-interrupted");
+              }
+            };
+            activeContext.addEventListener("statechange", handleAudioContextStateChange);
+            audioContextStateChangeCleanupRef.current = () =>
+              activeContext.removeEventListener("statechange", handleAudioContextStateChange);
+          }
           recognizerRef.current.reset();
           latestObservationUiRef.current = null;
           detectedNoteUiRef.current = null;
@@ -1264,6 +1367,9 @@ export function usePracticeMicrophoneInput(
           if (configuration.algorithm === "swiftf0") await ensureWorkerReady();
           else ensurePitchWorker();
           if (!mountedRef.current || generation !== startGenerationRef.current) return false;
+          if (audioContextRef.current?.state !== "running") {
+            throw new Error("浏览器已暂停音频处理，请点击继续重新连接麦克风。");
+          }
           updateStatus("listening");
           animationRef.current = requestAnimationFrame(runLiveAnalysis);
           return true;
@@ -1357,8 +1463,12 @@ export function usePracticeMicrophoneInput(
             ...current,
             diagnostics: {
               ...current.diagnostics,
+              algorithm: configuration.algorithm,
               confidenceThreshold: configuration.confidenceThreshold,
+              includeAccidentals: includeAccidentalsRef.current,
               inputRmsThreshold: configuration.inputRmsThreshold,
+              requiredStableFrames: configuration.requiredStableFrames,
+              requiredStableMs: configuration.requiredStableMs,
             },
           }
         : current
@@ -1645,8 +1755,39 @@ export function usePracticeMicrophoneInput(
 
   useEffect(() => {
     mountedRef.current = true;
+    const markInputForReconnect = (): void => {
+      if (stateRef.current === "listening") inputReconnectRequiredRef.current = true;
+    };
+    const recoverInterruptedInput = (): void => {
+      if (document.hidden) {
+        markInputForReconnect();
+        return;
+      }
+      if (!inputReconnectRequiredRef.current || stateRef.current !== "listening") return;
+      const context = audioContextRef.current;
+      const stream = streamRef.current;
+      const audioTrack = stream?.getAudioTracks()[0];
+      const inputIsUnavailable =
+        context?.state !== "running" ||
+        stream?.active !== true ||
+        audioTrack?.readyState !== "live" ||
+        audioTrack.muted;
+      if (!audioContextWasInterruptedRef.current && !inputIsUnavailable) {
+        inputReconnectRequiredRef.current = false;
+        return;
+      }
+      fail("页面从后台恢复后麦克风输入已中断，请点击继续重新连接。", "microphone-interrupted");
+    };
+    const handleVisibilityChange = (): void => recoverInterruptedInput();
+    const handlePageShow = (): void => recoverInterruptedInput();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("pagehide", markInputForReconnect);
     return () => {
       mountedRef.current = false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("pagehide", markInputForReconnect);
       startGenerationRef.current += 1;
       releaseDevices("component-unmounted");
       workerUnsubscribeRef.current?.();
@@ -1656,7 +1797,7 @@ export function usePracticeMicrophoneInput(
       pitchWorkerRef.current?.terminate();
       pitchWorkerRef.current = null;
     };
-  }, [releaseDevices]);
+  }, [fail, releaseDevices]);
 
   return {
     ...state,

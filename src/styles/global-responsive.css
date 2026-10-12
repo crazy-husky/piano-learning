@@ -1,11 +1,43 @@
+@media (min-width: 1031px) {
+  .global-range-controls {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+    justify-content: flex-start;
+  }
+
+  .global-range-pitch-section {
+    flex: none;
+    max-width: 780px;
+    width: min(100%, 780px);
+  }
+
+  .global-range-groups {
+    grid-template-columns: repeat(6, max-content);
+    justify-content: start;
+  }
+
+  .global-range-staff-section {
+    order: -1;
+  }
+
+  .global-range-divider {
+    display: none;
+  }
+}
+
 @media (max-width: 1030px) {
   .global-range-controls {
+    align-items: stretch;
+    flex-direction: column;
     justify-content: flex-start;
+    min-width: 0;
+    width: 100%;
   }
 
   .global-range-groups {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .global-range-group-choice {
@@ -19,6 +51,11 @@
     width: 100%;
   }
 
+  .global-range-pitch-section {
+    flex: none;
+    width: 100%;
+  }
+
   .global-range-staffs.segmented button {
     flex: 1;
     min-width: 0;
@@ -27,6 +64,13 @@
 
   .global-range-divider {
     display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .global-range-pitch-section-empty .global-range-pitch-summary,
+  .global-range-pitch-section-empty .global-range-cross-section {
+    flex-basis: 100%;
   }
 }
 
@@ -502,13 +546,5 @@
 
   .prompt-note-duration-options button {
     min-width: 0;
-  }
-
-  .global-range-groups {
-    display: flex;
-  }
-
-  .global-range-group-choice {
-    flex: 1 1 calc((100% - 16px) / 3);
   }
 }

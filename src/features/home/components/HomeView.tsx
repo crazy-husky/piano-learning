@@ -1,4 +1,4 @@
-import { AudioLines, BarChart3, BookOpen, Dumbbell, Music2, Settings } from "lucide-react";
+import { BarChart3, BookOpen, Dumbbell, Music2, Settings } from "lucide-react";
 import type { AppRoutePath } from "../../../routing/appRoutes";
 
 interface HomeViewProps {
@@ -51,6 +51,8 @@ const menuItems: Array<{
     path: "/stats",
     tone: "violet",
   },
+  // 清唱菜单入口暂时隐藏；恢复时重新导入 AudioLines 并取消此段注释。
+  /*
   {
     label: "清唱",
     description: "查看音高与音域",
@@ -59,6 +61,7 @@ const menuItems: Array<{
     tone: "pink",
     hideOnMobile: true,
   },
+  */
   {
     label: "设置",
     description: "调整显示和输入设备",

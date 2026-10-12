@@ -71,6 +71,63 @@
   overflow: hidden;
 }
 
+.staff-page-with-row-playback {
+  grid-template-columns: minmax(0, 1fr) 38px;
+  align-items: stretch;
+  gap: 8px;
+  overflow: visible;
+}
+
+.staff-page-with-row-playback .staff-page-renderer {
+  min-width: 0;
+}
+
+.staff-page-row-playback {
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  padding-block: 4px;
+}
+
+.staff-page-row-play-button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface-soft);
+  color: var(--accent-strong);
+}
+
+.staff-page-row-play-button:hover,
+.staff-page-row-play-button.is-playing {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.staff-page-desktop-view {
+  width: 100%;
+}
+
+.staff-page-desktop-view .staff-page {
+  margin-inline: auto;
+}
+
+.staff-page-counter {
+  box-sizing: border-box;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin: 6px auto 0;
+  padding-right: 12px;
+  text-align: right;
+  width: min(980px, 100%);
+}
+
 .staff-page-renderer {
   width: 100%;
   display: grid;

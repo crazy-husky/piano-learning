@@ -10,7 +10,7 @@ import {
   type BackupDomainDecision,
 } from "../domain/backupSync";
 import { backupText } from "../domain/backupText";
-import { normalizeCurrentPracticeGroupIds } from "../domain/notes";
+import { normalizeCurrentPracticeGroupIds, normalizeEnabledPitchIds } from "../domain/notes";
 import { normalizeAnswerKeyboardScale, normalizePianoVolume } from "../domain/settings";
 import type {
   AppSettings,
@@ -1598,6 +1598,8 @@ async function normalizeImportedSettings(manifest: BackupManifest): Promise<AppS
     createdAt: manifest.createdAt,
     firstReviewAt: manifest.firstReviewAt,
     enabledGroupIds: normalizeCurrentPracticeGroupIds(baseSettings.enabledGroupIds),
+    enabledPitchIds: normalizeEnabledPitchIds(baseSettings.enabledPitchIds),
+    crossGroupPitchIds: normalizeEnabledPitchIds(baseSettings.crossGroupPitchIds),
     includeInterStaffLedgerSpellings: baseSettings.includeInterStaffLedgerSpellings,
     queueStrategy: resolveQueueStrategy(baseSettings),
     drillNoteNames: resolveDrillNoteNames(baseSettings),

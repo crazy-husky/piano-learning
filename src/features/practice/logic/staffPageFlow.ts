@@ -2,10 +2,10 @@ import { PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutPro
 
 const STAFF_PAGE_SIZE =
   PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows * PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow;
-const STAFF_PAGE_SCROLL_TRIGGER_REMAINING = 8;
+export const DESKTOP_STAFF_PAGE_NOTE_COUNT = PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow;
 export const MOBILE_STAFF_PAGE_NOTE_COUNT = 8;
 
-export interface MobileStaffPageView<T> {
+export interface StaffPageView<T> {
   completedCount: number;
   currentPage: number;
   noteIndexInPage: number;
@@ -13,7 +13,7 @@ export interface MobileStaffPageView<T> {
   totalPages: number;
 }
 
-export function buildMobileStaffPageView<T>({
+export function buildStaffPageView<T>({
   completedCount,
   currentIndex,
   firstNoteOffset,
@@ -27,7 +27,7 @@ export function buildMobileStaffPageView<T>({
   fixedSessionCount?: number;
   notes: T[];
   pageNoteCount?: number;
-}): MobileStaffPageView<T> {
+}): StaffPageView<T> {
   const resolvedPageNoteCount = Math.max(1, Math.floor(pageNoteCount));
   const pageStartIndex =
     Math.floor(Math.max(0, currentIndex) / resolvedPageNoteCount) * resolvedPageNoteCount;
@@ -44,22 +44,23 @@ export function buildMobileStaffPageView<T>({
   };
 }
 
+export const buildMobileStaffPageView = buildStaffPageView;
+
 export function getStaffPageRefillCount({
   completedSessionCount,
   fixedSessionCount,
   nextIndex,
   plannedNoteCount,
+  pageNoteCount = MOBILE_STAFF_PAGE_NOTE_COUNT,
 }: {
   completedSessionCount: number;
   fixedSessionCount?: number;
   nextIndex: number;
   plannedNoteCount: number;
+  pageNoteCount?: number;
 }): number {
   const remainingVisibleCount = plannedNoteCount - nextIndex;
-  if (
-    plannedNoteCount !== STAFF_PAGE_SIZE ||
-    remainingVisibleCount !== STAFF_PAGE_SCROLL_TRIGGER_REMAINING
-  ) {
+  if (plannedNoteCount !== STAFF_PAGE_SIZE || remainingVisibleCount !== pageNoteCount) {
     return 0;
   }
   const availableFutureCount =

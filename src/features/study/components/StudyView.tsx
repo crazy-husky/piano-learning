@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getNotesForGroups } from "../../../domain/notes";
+import { getNotesForSelection } from "../../../domain/notes";
 import {
   buildNoteNameColumns,
   NOTE_NAME_COLUMNS,
@@ -156,12 +156,20 @@ function StudyMapContent({ settings }: StudyMapContentProps): JSX.Element {
   const staffNotationMode = settings.staffNotationMode;
   const studyNotes = useMemo(
     () =>
-      getNotesForGroups(
+      getNotesForSelection(
         settings.enabledGroupIds,
+        settings.enabledPitchIds,
+        settings.crossGroupPitchIds,
         settings.includeInterStaffLedgerSpellings,
         staffNotationMode
       ),
-    [settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode]
+    [
+      settings.enabledGroupIds,
+      settings.enabledPitchIds,
+      settings.crossGroupPitchIds,
+      settings.includeInterStaffLedgerSpellings,
+      staffNotationMode,
+    ]
   );
   const studyPitches = useMemo(() => getUniqueStudyPitches(studyNotes), [studyNotes]);
   const columns = useMemo(

@@ -4,6 +4,7 @@ import { createUuid } from "../domain/id";
 import {
   DEFAULT_ENABLED_GROUPS,
   normalizeCurrentPracticeGroupIds,
+  normalizeEnabledPitchIds,
   normalizePracticeGroupIds,
 } from "../domain/notes";
 import {
@@ -124,6 +125,8 @@ export function normalizeAppSettings(existing: StoredAppSettings): AppSettings {
       existing.schemaVersion === 2
         ? normalizeCurrentPracticeGroupIds(existing.enabledGroupIds)
         : normalizePracticeGroupIds(existing.enabledGroupIds),
+    enabledPitchIds: normalizeEnabledPitchIds(existing.enabledPitchIds),
+    crossGroupPitchIds: normalizeEnabledPitchIds(existing.crossGroupPitchIds),
     staffNotationMode: normalizeStoredStaffNotationMode(
       "staffNotationMode" in stored ? stored.staffNotationMode : undefined
     ),

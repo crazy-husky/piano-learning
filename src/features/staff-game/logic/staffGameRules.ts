@@ -1,6 +1,8 @@
 import type { NoteName, PianoKeyName } from "../../../domain/types";
 
 export type GameDifficulty = "muggle" | "easy" | "normal" | "hard" | "nightmare";
+export type StaffGameNotePoolScope = "current-group" | "all-history" | "all-history-current-clef";
+export type StaffGameNoteSchedulingStrategy = "random" | "system";
 
 export interface StaffGamePitch {
   midi: number;
@@ -9,6 +11,7 @@ export interface StaffGamePitch {
 }
 
 export const GAME_LEVEL_COUNT = 60;
+export const BUBBLE_FADE_IN_MS = 200;
 export const SONG_STAR_THRESHOLDS = [60, 80, 95] as const;
 export const RUSH_MODE_COMBO_THRESHOLD = 5;
 export const COMBO_BONUS_MAX_STEPS = 5;
@@ -201,10 +204,46 @@ export function canFollowRecentNotes(midi: number, recentNoteMidis: number[]): b
   return true;
 }
 
-export function shuffledNoteBag(level: number): StaffGamePitch[] {
+function notePoolCandidates(
+  level: number,
+  notePoolScope: StaffGameNotePoolScope
+): StaffGamePitch[] {
   const unlockedNotes = GAME_NOTE_PROGRESSION.slice(0, level);
   const focusNote = unlockedNotes[unlockedNotes.length - 1];
   if (!focusNote) return [];
+  if (notePoolScope === "current-group") {
+    return unlockedNotes.filter(
+      (note) => note.octave === focusNote.octave && note.midi <= focusNote.midi
+    );
+  }
+  if (notePoolScope === "all-history-current-clef") {
+    const focusUsesBassClef = focusNote.midi < 60;
+    return unlockedNotes.filter((note) => note.midi < 60 === focusUsesBassClef);
+  }
+  return unlockedNotes;
+}
+
+export function gameLevelForNotePoolScope(
+  level: number,
+  notePoolScope: StaffGameNotePoolScope
+): number {
+  return notePoolScope === "all-history"
+    ? level
+    : Math.max(1, notePoolCandidates(level, notePoolScope).length);
+}
+
+export function shuffledNoteBag(
+  level: number,
+  notePoolScope: StaffGameNotePoolScope = "all-history",
+  noteSchedulingStrategy: StaffGameNoteSchedulingStrategy = "system"
+): StaffGamePitch[] {
+  const unlockedNotes = GAME_NOTE_PROGRESSION.slice(0, level);
+  const focusNote = unlockedNotes[unlockedNotes.length - 1];
+  if (!focusNote) return [];
+  const poolNotes = notePoolCandidates(level, notePoolScope);
+  if (noteSchedulingStrategy === "random") {
+    return shuffledItems(poolNotes.map((note) => ({ ...note })));
+  }
 
   const bag: typeof GAME_NOTE_PROGRESSION = [];
   const addCopies = (note: (typeof GAME_NOTE_PROGRESSION)[number], count: number): void => {
@@ -225,11 +264,11 @@ export function shuffledNoteBag(level: number): StaffGamePitch[] {
   } else if (level <= 5) {
     // A 20-note bag keeps the new focus note at 40%, with the rest reviewing earlier notes.
     addCopies(focusNote, 8);
-    addReviewNotes(unlockedNotes.slice(0, -1), 12);
+    addReviewNotes(poolNotes.slice(0, -1), 12);
   } else {
     // Keep the focus note at 30%; distribute review slots across the newest five and older notes.
     addCopies(focusNote, 6);
-    const earlierNotes = unlockedNotes.slice(0, -1);
+    const earlierNotes = poolNotes.slice(0, -1);
     const recentNotes = earlierNotes.slice(-5);
     const olderNotes = earlierNotes.slice(0, -5);
     if (olderNotes.length === 0) {
@@ -248,20 +287,49 @@ export function shuffledNoteBag(level: number): StaffGamePitch[] {
 export function drawNextNote(
   level: number,
   notePool: StaffGamePitch[],
-  recentNoteMidis: number[]
+  recentNoteMidis: number[],
+  notePoolScope: StaffGameNotePoolScope = "all-history",
+  noteSchedulingStrategy: StaffGameNoteSchedulingStrategy = "system"
 ): StaffGamePitch | null {
   if (level === 1) {
-    if (notePool.length === 0) notePool.push(...shuffledNoteBag(level));
+    if (notePool.length === 0)
+      notePool.push(...shuffledNoteBag(level, notePoolScope, noteSchedulingStrategy));
     return notePool.pop() ?? null;
   }
 
-  if (notePool.length === 0) notePool.push(...shuffledNoteBag(level));
+  if (notePool.length === 0)
+    notePool.push(...shuffledNoteBag(level, notePoolScope, noteSchedulingStrategy));
+  const candidates = notePoolCandidates(level, notePoolScope);
+  // A pool with one distinct note has no legal alternative, so the repeat guard must yield.
+  if (candidates.length <= 1) {
+    return notePool.pop() ?? null;
+  }
+
+  if (noteSchedulingStrategy === "random") {
+    let eligibleIndices = notePool.flatMap((note, index) =>
+      canFollowRecentNotes(note.midi, recentNoteMidis) ? [index] : []
+    );
+    if (eligibleIndices.length === 0) {
+      const notesAlreadyInBag = new Set(notePool.map((note) => note.midi));
+      const missingNotes = candidates
+        .filter((note) => !notesAlreadyInBag.has(note.midi))
+        .map((note) => ({ ...note }));
+      notePool.push(...shuffledItems(missingNotes));
+      eligibleIndices = notePool.flatMap((note, index) =>
+        canFollowRecentNotes(note.midi, recentNoteMidis) ? [index] : []
+      );
+    }
+    if (eligibleIndices.length === 0) return null;
+    const chosenIndex = eligibleIndices[Math.floor(Math.random() * eligibleIndices.length)];
+    return notePool.splice(chosenIndex, 1)[0] ?? null;
+  }
+
   let eligibleIndices = notePool.flatMap((note, index) =>
     canFollowRecentNotes(note.midi, recentNoteMidis) ? [index] : []
   );
   if (eligibleIndices.length === 0) {
     // Keep blocked notes in the pool; add a fresh weighted draw so a legal note is always available.
-    notePool.push(...shuffledNoteBag(level));
+    notePool.push(...shuffledNoteBag(level, notePoolScope, noteSchedulingStrategy));
     eligibleIndices = notePool.flatMap((note, index) =>
       canFollowRecentNotes(note.midi, recentNoteMidis) ? [index] : []
     );

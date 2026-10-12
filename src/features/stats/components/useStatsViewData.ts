@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { getNotesForGroups } from "../../../domain/notes";
+import { getNotesForSelection } from "../../../domain/notes";
 import {
   buildDailyStats,
   buildNoteStats,
@@ -36,7 +36,7 @@ interface UseStatsViewDataOptions {
 }
 
 export interface StatsViewDataModel {
-  activeNotes: ReturnType<typeof getNotesForGroups>;
+  activeNotes: ReturnType<typeof getNotesForSelection>;
   dailyStats: ReturnType<typeof buildDailyStats>;
   errorStaffNotes: StaffHeatNote[];
   errorTertileThresholds: ReturnType<typeof positiveTertileThresholds>;
@@ -93,12 +93,20 @@ export function useStatsViewData({
   const staffNotationMode = settings.staffNotationMode;
   const activeNotes = useMemo(
     () =>
-      getNotesForGroups(
+      getNotesForSelection(
         settings.enabledGroupIds,
+        settings.enabledPitchIds,
+        settings.crossGroupPitchIds,
         settings.includeInterStaffLedgerSpellings,
         staffNotationMode
       ),
-    [settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode]
+    [
+      settings.enabledGroupIds,
+      settings.enabledPitchIds,
+      settings.crossGroupPitchIds,
+      settings.includeInterStaffLedgerSpellings,
+      staffNotationMode,
+    ]
   );
   const rangeScopedReviews = useMemo(() => {
     const rangedIds = new Set(activeNotes.map((note) => note.id));

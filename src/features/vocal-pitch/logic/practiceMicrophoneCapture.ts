@@ -17,6 +17,7 @@ export type PracticeMicrophoneCaptureStopReason =
   | "duration-limit"
   | "practice-paused"
   | "microphone-ended"
+  | "microphone-interrupted"
   | "input-released"
   | "recognition-error"
   | "component-unmounted";

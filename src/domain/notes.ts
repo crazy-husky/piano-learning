@@ -173,11 +173,39 @@ export const PRACTICE_GROUPS: PracticeGroup[] = PRACTICE_GROUP_DEFINITIONS.map((
 }));
 
 export const ALL_NOTES: TargetNote[] = PRACTICE_GROUPS.flatMap((group) => group.notes);
+export const AVAILABLE_PITCH_IDS: PitchId[] = [...new Set(ALL_NOTES.map((note) => note.pitchId))];
+
+const OCTAVE_GROUP_LABELS = new Map<number, string>([
+  [1, "大字一组"],
+  [2, "大字组"],
+  [3, "小字组"],
+  [4, "小字一组"],
+  [5, "小字二组"],
+  [6, "小字三组"],
+]);
+
+export interface PitchOctaveGroup {
+  label: string;
+  pitchIds: PitchId[];
+  rangeLabel: string;
+}
+
+export const PITCH_OCTAVE_GROUPS: PitchOctaveGroup[] = [...OCTAVE_GROUP_LABELS.entries()]
+  .map(([octave, label]) => {
+    const pitchIds = AVAILABLE_PITCH_IDS.filter((pitchId) => pitchId.endsWith(String(octave)));
+    return {
+      label,
+      pitchIds,
+      rangeLabel: pitchIds.length > 0 ? `${pitchIds[0]}–${pitchIds[pitchIds.length - 1]}` : "",
+    };
+  })
+  .filter((group) => group.pitchIds.length > 0);
 
 export const DEFAULT_ENABLED_GROUPS: PracticeGroupId[] = ["G3-F4"];
 
 const CURRENT_GROUP_IDS = PRACTICE_GROUPS.map((group) => group.id);
 const CURRENT_GROUP_ID_SET = new Set<string>(CURRENT_GROUP_IDS);
+const CURRENT_PITCH_ID_SET = new Set<string>(AVAILABLE_PITCH_IDS);
 const ALL_NOTES_BY_ID = new Map<TargetNoteId, TargetNote>(ALL_NOTES.map((note) => [note.id, note]));
 
 function isCurrentPracticeGroupId(groupId: string): groupId is PracticeGroupId {
@@ -214,14 +242,63 @@ export function getNotesForGroups(
   includeInterStaffLedgerSpellings = true,
   staffNotationMode: StaffNotationMode = "grand"
 ): TargetNote[] {
+  return getNotesForSelection(
+    groupIds,
+    undefined,
+    undefined,
+    includeInterStaffLedgerSpellings,
+    staffNotationMode
+  );
+}
+
+export function getPitchIdsForGroups(groupIds: readonly PracticeGroupId[]): PitchId[] {
   const enabled = new Set(groupIds);
+  return AVAILABLE_PITCH_IDS.filter((pitchId) =>
+    ALL_NOTES.some((note) => note.pitchId === pitchId && enabled.has(note.groupId))
+  );
+}
+
+export function getSelectedPitchIds(
+  groupIds: readonly PracticeGroupId[],
+  enabledPitchIds?: readonly PitchId[],
+  crossGroupPitchIds?: readonly PitchId[]
+): PitchId[] {
+  const basePitchIds = enabledPitchIds ?? getPitchIdsForGroups(groupIds);
+  const selected = new Set([...basePitchIds, ...(crossGroupPitchIds ?? [])]);
+  return AVAILABLE_PITCH_IDS.filter((pitchId) => selected.has(pitchId));
+}
+
+export function normalizeEnabledPitchIds(
+  pitchIds: readonly string[] | undefined
+): PitchId[] | undefined {
+  if (pitchIds === undefined) return undefined;
+  const selected = new Set(
+    pitchIds.filter((pitchId): pitchId is PitchId => CURRENT_PITCH_ID_SET.has(pitchId))
+  );
+  return AVAILABLE_PITCH_IDS.filter((pitchId) => selected.has(pitchId));
+}
+
+export function getNotesForSelection(
+  groupIds: PracticeGroupId[],
+  enabledPitchIds?: readonly PitchId[],
+  crossGroupPitchIds?: readonly PitchId[],
+  includeInterStaffLedgerSpellings = true,
+  staffNotationMode: StaffNotationMode = "grand"
+): TargetNote[] {
+  const enabled = new Set(groupIds);
+  const selectedPitchIds =
+    enabledPitchIds === undefined && (crossGroupPitchIds?.length ?? 0) === 0
+      ? undefined
+      : new Set(getSelectedPitchIds(groupIds, enabledPitchIds, crossGroupPitchIds));
+  const isSelected = (note: TargetNote): boolean =>
+    selectedPitchIds ? selectedPitchIds.has(note.pitchId) : enabled.has(note.groupId);
   if (staffNotationMode !== "grand") {
     const staff = staffForSingleClefMode(staffNotationMode);
-    return ALL_NOTES.filter((note) => enabled.has(note.groupId) && note.staff === staff);
+    return ALL_NOTES.filter((note) => isSelected(note) && note.staff === staff);
   }
   return ALL_NOTES.filter(
     (note) =>
-      enabled.has(note.groupId) &&
+      isSelected(note) &&
       (note.staff === getDefaultStaff(note.octave) ||
         (includeInterStaffLedgerSpellings && note.isInterStaffLedgerSpelling))
   );

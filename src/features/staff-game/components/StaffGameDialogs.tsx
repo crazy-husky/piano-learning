@@ -14,6 +14,8 @@ import {
   GAME_DIFFICULTIES,
   GAME_NOTE_PROGRESSION,
   type GameDifficulty,
+  type StaffGameNotePoolScope,
+  type StaffGameNoteSchedulingStrategy,
 } from "../logic/staffGameRules";
 import { STAFF_GAME_ART } from "../logic/staffGameResources";
 
@@ -49,6 +51,8 @@ interface StaffGameDialogsProps {
   onDisplayModeChange: (mode: GameDisplayMode) => void;
   onToggleGameEffects: () => void;
   onDifficultyChange: (difficulty: GameDifficulty) => void;
+  onNotePoolScopeChange: (scope: StaffGameNotePoolScope) => void;
+  onNoteSchedulingStrategyChange: (strategy: StaffGameNoteSchedulingStrategy) => void;
   onToggleWrongNoteStatistics: () => void;
   applyGameSettings: () => void;
 }
@@ -82,6 +86,8 @@ export function StaffGameDialogs({
   onDisplayModeChange,
   onToggleGameEffects,
   onDifficultyChange,
+  onNotePoolScopeChange,
+  onNoteSchedulingStrategyChange,
   onToggleWrongNoteStatistics,
   applyGameSettings,
 }: StaffGameDialogsProps) {
@@ -430,6 +436,64 @@ export function StaffGameDialogs({
                           />
                         </section>
                       </div>
+                      {!isSongMode ? (
+                        <section className="staff-game-settings-section staff-game-settings-row staff-game-note-pool-setting">
+                          <div>
+                            <h3>音符池范围</h3>
+                            <p>当前谱号全部按当前关卡重点音，练习已解锁的全部高音或低音音符。</p>
+                          </div>
+                          <select
+                            aria-label="音符池范围"
+                            className="staff-game-difficulty-select"
+                            onChange={(event) =>
+                              onNotePoolScopeChange(
+                                event.currentTarget.value as StaffGameNotePoolScope
+                              )
+                            }
+                            value={settingsDraft.notePoolScope}
+                          >
+                            <option value="all-history">全部已解锁音符</option>
+                            <option value="all-history-current-clef">当前谱号全部</option>
+                            <option value="current-group">仅当前组</option>
+                          </select>
+                        </section>
+                      ) : null}
+                      {!isSongMode ? (
+                        <section
+                          aria-describedby="staff-game-note-scheduling-description"
+                          aria-labelledby="staff-game-note-scheduling-title"
+                          className="staff-game-settings-section staff-game-note-scheduling-setting"
+                        >
+                          <h3 id="staff-game-note-scheduling-title">出题策略</h3>
+                          <p id="staff-game-note-scheduling-description">
+                            决定当前音符池内，下落音符的安排方式。
+                          </p>
+                          <div
+                            aria-label="出题策略"
+                            className="staff-game-input-options staff-game-note-scheduling-options"
+                            role="group"
+                          >
+                            <button
+                              aria-pressed={settingsDraft.noteSchedulingStrategy === "random"}
+                              className={`staff-game-input-option${settingsDraft.noteSchedulingStrategy === "random" ? " is-selected" : ""}`}
+                              onClick={() => onNoteSchedulingStrategyChange("random")}
+                              type="button"
+                            >
+                              <strong>随机练习</strong>
+                              <small>池内音符等机会随机抽取；尽量避免三连同音和 ABAB 循环。</small>
+                            </button>
+                            <button
+                              aria-pressed={settingsDraft.noteSchedulingStrategy === "system"}
+                              className={`staff-game-input-option${settingsDraft.noteSchedulingStrategy === "system" ? " is-selected" : ""}`}
+                              onClick={() => onNoteSchedulingStrategyChange("system")}
+                              type="button"
+                            >
+                              <strong>系统编排（推荐）</strong>
+                              <small>重点音适度加权，穿插已解锁音符复习。</small>
+                            </button>
+                          </div>
+                        </section>
+                      ) : null}
                       {isSongMode && settingsDraft.inputMode === "virtual" ? (
                         <p className="staff-game-song-mode-notice" role="note">
                           歌曲模式默认关闭背景音乐和游戏音效，让你专注聆听与演奏歌曲。

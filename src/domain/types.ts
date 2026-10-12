@@ -116,8 +116,10 @@ export interface PracticeSessionRecordV2 extends PracticeSessionRecordBase {
 export interface PracticeSessionStartSnapshot {
   practiceConfig: {
     answerPitchMode?: StoredAnswerPitchMode;
+    crossGroupPitchIds?: PitchId[];
     drillNoteNames: NoteName[];
     effectiveQueueAlgorithm: EffectiveQueueAlgorithm;
+    enabledPitchIds?: PitchId[];
     enabledGroupIds: PracticeGroupId[];
     fixedCount?: number;
     fixedDurationSeconds?: number;
@@ -197,7 +199,9 @@ interface AppSettingsBase {
   dataSetId: string;
   createdAt: string;
   firstReviewAt?: string;
+  crossGroupPitchIds?: PitchId[];
   enabledGroupIds: PracticeGroupId[];
+  enabledPitchIds?: PitchId[];
   answerPitchMode: AnswerPitchMode;
   defaultMode: PracticeMode;
   promptDisplayMode: PromptDisplayMode;

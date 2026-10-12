@@ -9,16 +9,20 @@ import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import { STAFF_GAME_SONGS } from "../data/staffGameSongs";
 import {
   COMBO_BONUS_MAX_STEPS,
+  BUBBLE_FADE_IN_MS,
   ERROR_FLASH_DURATION_MS,
   PITCH_NAMES,
   RUSH_MODE_COMBO_THRESHOLD,
   RUSH_SCORE_MULTIPLIER,
+  gameLevelForNotePoolScope,
   gameDifficultyPreset,
   starsForSongAccuracy,
   starsForScore,
   type GameDifficulty,
+  type StaffGameNotePoolScope,
 } from "../logic/staffGameRules";
-import type { StaffGameTarget } from "./useStaffGameRoundClock";
+import { appendStaffGameMicrophoneDebugEvent } from "../logic/staffGameMicrophoneDebug";
+import type { StaffGameLevelRoundMetrics, StaffGameTarget } from "./useStaffGameRoundClock";
 import type { StaffGameSoundName } from "./useStaffGameAudio";
 
 export interface StaffGameComboIndicator {
@@ -50,6 +54,7 @@ interface StaffGameModeAudioSettings {
 interface StaffGameScoringSettings {
   inputMode: "physical" | "virtual" | "midi";
   difficulty: GameDifficulty;
+  notePoolScope: StaffGameNotePoolScope;
   wrongNoteStatisticsEnabled: boolean;
   audioByMode: Record<"levels" | "songs", StaffGameModeAudioSettings>;
 }
@@ -68,6 +73,7 @@ interface StaffGameScoringOptions {
   targetRef: MutableRefObject<StaffGameTarget | null>;
   targetPoppedRef: MutableRefObject<boolean>;
   targetWrong: boolean;
+  roundMetricsRef: MutableRefObject<StaffGameLevelRoundMetrics>;
   settingsRef: MutableRefObject<StaffGameScoringSettings>;
   gameModeRef: MutableRefObject<StaffGameMode>;
   selectedSongIdRef: MutableRefObject<string>;
@@ -135,6 +141,7 @@ export function useStaffGameScoring({
   targetRef,
   targetPoppedRef,
   targetWrong,
+  roundMetricsRef,
   settingsRef,
   gameModeRef,
   selectedSongIdRef,
@@ -212,7 +219,11 @@ export function useStaffGameScoring({
       ? activeSong
         ? starsForSongAccuracy(songFirstTryHitsRef.current, activeSong.noteMidis.length)
         : 0
-      : starsForScore(scoreRef.current, levelRef.current, settingsRef.current.difficulty);
+      : starsForScore(
+          scoreRef.current,
+          gameLevelForNotePoolScope(levelRef.current, settingsRef.current.notePoolScope),
+          settingsRef.current.difficulty
+        );
     if (
       finalStars > 0 &&
       settingsRef.current.audioByMode[gameModeRef.current].soundEffectsEnabled
@@ -287,8 +298,31 @@ export function useStaffGameScoring({
         settingsRef.current.inputMode === "virtual"
           ? ((midi % 12) + 12) % 12 === ((currentTarget.midi % 12) + 12) % 12
           : midi === currentTarget.midi;
+      if (answer.source === "microphone") {
+        appendStaffGameMicrophoneDebugEvent("answer", {
+          answer: {
+            midi,
+            note: `${answer.noteName}${answer.octave ?? ""}`,
+            octave: answer.octave ?? null,
+          },
+          isCorrect,
+          phase: phaseRef.current,
+          target: {
+            midi: currentTarget.midi,
+            note: noteLabel(currentTarget),
+            token: currentTarget.token,
+          },
+        });
+      }
+      if (isCorrect && targetPoppedRef.current) return;
+      if (gameModeRef.current === "levels") {
+        const firstInput = roundMetricsRef.current.firstInputByToken.get(currentTarget.token);
+        if (firstInput && firstInput.firstInputCorrect === null) {
+          firstInput.firstInputCorrect = isCorrect;
+          if (isCorrect) roundMetricsRef.current.firstTryCorrectCount += 1;
+        }
+      }
       if (isCorrect) {
-        if (targetPoppedRef.current) return;
         const isSongMode = gameModeRef.current === "songs";
         const activeSong = isSongMode
           ? STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current)
@@ -301,6 +335,17 @@ export function useStaffGameScoring({
           songWrongTargetTokenRef.current = null;
           songTargetIndexRef.current += 1;
           setSongNotesCompleted(songTargetIndexRef.current);
+        }
+        if (!isSongMode) {
+          const metrics = roundMetricsRef.current;
+          const gameNow =
+            elapsedBeforeRunRef.current + (performance.now() - runSegmentStartedAtRef.current);
+          const reactionMs = gameNow - currentTarget.spawnAt - BUBBLE_FADE_IN_MS;
+          metrics.correctBubbleCount += 1;
+          if (reactionMs > 0) {
+            metrics.responseTotalMs += reactionMs;
+            metrics.responseSampleCount += 1;
+          }
         }
         triggerMascotReaction("cheer");
         playGameSound("bubblePop");
@@ -383,7 +428,11 @@ export function useStaffGameScoring({
           ? activeSong
             ? starsForSongAccuracy(songFirstTryHitsRef.current, activeSong.noteMidis.length)
             : 0
-          : starsForScore(totalScore, levelRef.current, settingsRef.current.difficulty);
+          : starsForScore(
+              totalScore,
+              gameLevelForNotePoolScope(levelRef.current, settingsRef.current.notePoolScope),
+              settingsRef.current.difficulty
+            );
         setEarnedStars(nextStars);
         if (nextTargetTimeoutRef.current !== null)
           window.clearTimeout(nextTargetTimeoutRef.current);
@@ -458,6 +507,7 @@ export function useStaffGameScoring({
       queueRushScore,
       resetComboDisplay,
       restartComboTimer,
+      roundMetricsRef,
       runSegmentStartedAtRef,
       rushScoreFlightTokenRef,
       rushScoreFlightsRef,

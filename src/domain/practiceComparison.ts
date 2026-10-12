@@ -1,4 +1,4 @@
-import { getNotesForGroups } from "./notes";
+import { getNotesForSelection } from "./notes";
 import { buildTargetNoteSetKey } from "./targetNoteSet";
 import type {
   AppSettings,
@@ -27,8 +27,10 @@ export interface PracticeActivitySnapshot extends PracticeComparisonSnapshot {
 
 export interface PracticeComparisonInput {
   answerPitchMode?: AnswerPitchMode;
+  crossGroupPitchIds?: AppSettings["crossGroupPitchIds"];
   drillNoteNames: readonly NoteName[];
   enabledGroupIds: AppSettings["enabledGroupIds"];
+  enabledPitchIds?: AppSettings["enabledPitchIds"];
   includeInterStaffLedgerSpellings: boolean;
   promptDisplayMode: PromptDisplayMode;
   promptNoteDuration: PromptNoteDuration;
@@ -67,20 +69,30 @@ export function applyQueueCandidateFilter(
 }
 
 export function getEffectivePracticeNotes({
+  crossGroupPitchIds,
   drillNoteNames,
   enabledGroupIds,
+  enabledPitchIds,
   includeInterStaffLedgerSpellings,
   queueStrategy,
   staffNotationMode,
 }: {
   drillNoteNames: readonly NoteName[];
   enabledGroupIds: AppSettings["enabledGroupIds"];
+  enabledPitchIds?: AppSettings["enabledPitchIds"];
+  crossGroupPitchIds?: AppSettings["crossGroupPitchIds"];
   includeInterStaffLedgerSpellings: boolean;
   queueStrategy: PracticeQueueStrategy;
   staffNotationMode: StaffNotationMode;
 }): TargetNote[] {
   return applyQueueCandidateFilter(
-    getNotesForGroups(enabledGroupIds, includeInterStaffLedgerSpellings, staffNotationMode),
+    getNotesForSelection(
+      enabledGroupIds,
+      enabledPitchIds,
+      crossGroupPitchIds,
+      includeInterStaffLedgerSpellings,
+      staffNotationMode
+    ),
     queueStrategy,
     drillNoteNames
   );
@@ -88,8 +100,10 @@ export function getEffectivePracticeNotes({
 
 export function buildPracticeComparisonSnapshot({
   answerPitchMode,
+  crossGroupPitchIds,
   drillNoteNames,
   enabledGroupIds,
+  enabledPitchIds,
   includeInterStaffLedgerSpellings,
   promptDisplayMode,
   promptNoteDuration,
@@ -98,8 +112,10 @@ export function buildPracticeComparisonSnapshot({
 }: PracticeComparisonInput): PracticeComparisonSnapshot | undefined {
   const activity = buildPracticeActivitySnapshot({
     answerPitchMode,
+    crossGroupPitchIds,
     drillNoteNames,
     enabledGroupIds,
+    enabledPitchIds,
     includeInterStaffLedgerSpellings,
     promptDisplayMode,
     promptNoteDuration,
@@ -115,8 +131,10 @@ export function buildPracticeComparisonSnapshot({
 
 export function buildPracticeActivitySnapshot({
   answerPitchMode = "note-name",
+  crossGroupPitchIds,
   drillNoteNames,
   enabledGroupIds,
+  enabledPitchIds,
   includeInterStaffLedgerSpellings,
   promptDisplayMode,
   promptNoteDuration,
@@ -124,8 +142,10 @@ export function buildPracticeActivitySnapshot({
   staffNotationMode,
 }: PracticeComparisonInput): PracticeActivitySnapshot | undefined {
   const notes = getEffectivePracticeNotes({
+    crossGroupPitchIds,
     drillNoteNames,
     enabledGroupIds,
+    enabledPitchIds,
     includeInterStaffLedgerSpellings,
     queueStrategy,
     staffNotationMode,

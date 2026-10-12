@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { formatDateTime } from "../formatDateTime";
+import { APP_DIAGNOSTIC_EVENT, type AppDiagnosticSource } from "../diagnostics/appDiagnostics";
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -14,7 +15,8 @@ interface AppErrorBoundaryState {
   errorDetailsOpen: boolean;
 }
 
-type GlobalErrorSource = "window.error" | "unhandledrejection" | "resource-load-error";
+type GlobalErrorSource =
+  "window.error" | "unhandledrejection" | "resource-load-error" | AppDiagnosticSource;
 
 interface GlobalErrorRecord {
   source: GlobalErrorSource;
@@ -22,6 +24,17 @@ interface GlobalErrorRecord {
   firstSeenAt: string;
   lastSeenAt: string;
   count: number;
+}
+
+interface NavigatorWithDiagnostics extends Navigator {
+  connection?: {
+    effectiveType?: string;
+    downlink?: number;
+    rtt?: number;
+    saveData?: boolean;
+  };
+  deviceMemory?: number;
+  standalone?: boolean;
 }
 
 const MAX_GLOBAL_ERROR_RECORDS = 20;
@@ -72,12 +85,20 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     window.addEventListener("error", this.handleWindowError, true);
     window.addEventListener("unhandledrejection", this.handleUnhandledRejection);
     window.addEventListener("vite:preloadError", this.handleVitePreloadError);
+    window.addEventListener(APP_DIAGNOSTIC_EVENT, this.handleAppDiagnostic);
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("message", this.handleServiceWorkerMessage);
+    }
   }
 
   componentWillUnmount(): void {
     window.removeEventListener("error", this.handleWindowError, true);
     window.removeEventListener("unhandledrejection", this.handleUnhandledRejection);
     window.removeEventListener("vite:preloadError", this.handleVitePreloadError);
+    window.removeEventListener(APP_DIAGNOSTIC_EVENT, this.handleAppDiagnostic);
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.removeEventListener("message", this.handleServiceWorkerMessage);
+    }
     if (this.copyStatusTimeout !== null) window.clearTimeout(this.copyStatusTimeout);
     this.clearGlobalErrorNoticeInterval();
   }
@@ -107,7 +128,11 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     if (MODULE_LOAD_FAILURE_PATTERN.test(errorDetails)) this.retryModuleLoadOnce();
   }
 
-  private captureGlobalError = (source: GlobalErrorSource, details: string): void => {
+  private captureGlobalError = (
+    source: GlobalErrorSource,
+    details: string,
+    showNotice = true
+  ): void => {
     const now = Date.now();
     const timestamp = new Date(now).toISOString();
     const boundedDetails =
@@ -120,7 +145,8 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
         (record) =>
           record.source === source &&
           record.details === boundedDetails &&
-          now - Date.parse(record.lastSeenAt) <= GLOBAL_ERROR_DEDUPE_WINDOW_MS
+          now - Date.parse(record.lastSeenAt) <=
+            (source === "app-update" ? 5 * 60_000 : GLOBAL_ERROR_DEDUPE_WINDOW_MS)
       );
 
       let globalErrors: GlobalErrorRecord[];
@@ -145,7 +171,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
       return { globalErrors };
     });
-    if (!this.state.fatalErrorDetails) this.showGlobalErrorNotice();
+    if (showNotice && !this.state.fatalErrorDetails) this.showGlobalErrorNotice();
   };
 
   private clearGlobalErrorNoticeInterval = (): void => {
@@ -239,6 +265,81 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     this.retryModuleLoadOnce();
   };
 
+  private handleAppDiagnostic = (event: Event): void => {
+    const detail = (event as CustomEvent<unknown>).detail;
+    if (!detail || typeof detail !== "object") return;
+    const diagnostic = detail as { source?: unknown; details?: unknown; notify?: unknown };
+    if (
+      (diagnostic.source !== "app-update" &&
+        diagnostic.source !== "service-worker-update" &&
+        diagnostic.source !== "backend") ||
+      typeof diagnostic.details !== "string"
+    )
+      return;
+
+    this.captureGlobalError(diagnostic.source, diagnostic.details, diagnostic.notify !== false);
+  };
+
+  private handleServiceWorkerMessage = (event: MessageEvent<unknown>): void => {
+    if (!event.data || typeof event.data !== "object") return;
+    const message = event.data as { type?: unknown; details?: unknown };
+    if (message.type !== "app-update-diagnostic" || typeof message.details !== "string") return;
+    this.captureGlobalError("service-worker-update", message.details);
+  };
+
+  private describeSource = (source: GlobalErrorSource): string => {
+    switch (source) {
+      case "window.error":
+        return "页面脚本错误";
+      case "unhandledrejection":
+        return "未处理的异步错误";
+      case "resource-load-error":
+        return "页面资源加载错误";
+      case "app-update":
+        return "检查更新错误";
+      case "service-worker-update":
+        return "新版资源预缓存错误";
+      case "backend":
+        return "后端请求错误";
+    }
+  };
+
+  private buildSystemMetadata = (): string[] => {
+    const diagnosticNavigator = navigator as NavigatorWithDiagnostics;
+    const connection = diagnosticNavigator.connection;
+    const connectionDetails = [
+      connection?.effectiveType ? `type=${connection.effectiveType}` : null,
+      connection?.downlink !== undefined ? `downlink=${connection.downlink}Mbps` : null,
+      connection?.rtt !== undefined ? `rtt=${connection.rtt}ms` : null,
+      connection?.saveData !== undefined ? `saveData=${connection.saveData}` : null,
+    ].filter((value): value is string => value !== null);
+    const serviceWorkerController =
+      "serviceWorker" in navigator ? navigator.serviceWorker.controller : null;
+    const isStandaloneDisplay =
+      (typeof window.matchMedia === "function" &&
+        window.matchMedia("(display-mode: standalone)").matches) ||
+      Boolean(diagnosticNavigator.standalone);
+    let timezone = "unavailable";
+    try {
+      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || timezone;
+    } catch {
+      // Timezone is optional diagnostic context.
+    }
+
+    return [
+      `Platform: ${navigator.platform || "unavailable"}`,
+      `Locale: ${navigator.language || "unavailable"}`,
+      `Timezone: ${timezone}`,
+      `Screen: ${window.screen.width} × ${window.screen.height}`,
+      `Device pixel ratio: ${window.devicePixelRatio || 1}`,
+      `Hardware threads: ${navigator.hardwareConcurrency || "unavailable"}`,
+      `Device memory: ${diagnosticNavigator.deviceMemory ? `${diagnosticNavigator.deviceMemory} GB` : "unavailable"}`,
+      `Display mode: ${isStandaloneDisplay ? "standalone" : "browser"}`,
+      `Network details: ${connectionDetails.length > 0 ? connectionDetails.join(", ") : "unavailable"}`,
+      `Service Worker controller: ${serviceWorkerController?.state ?? "none"}`,
+    ];
+  };
+
   private buildDebugInfo = (): string =>
     [
       `Browser: ${navigator.userAgent}`,
@@ -249,16 +350,17 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
       `Build ID: ${__APP_BUILD_ID__}`,
       `Build time: ${formatDateTime(__APP_BUILD_TIME__)}`,
       `Report time: ${formatDateTime(Date.now())}`,
+      ...this.buildSystemMetadata(),
       "",
       this.state.fatalErrorDetails
         ? `Fatal React render error:\n${this.state.fatalErrorDetails}`
         : "Fatal React render error: none",
       "",
-      `Recent unhandled errors (${this.state.globalErrors.length} grouped; limit ${MAX_GLOBAL_ERROR_RECORDS}):`,
+      `Recent runtime and update diagnostics (${this.state.globalErrors.length} grouped; limit ${MAX_GLOBAL_ERROR_RECORDS}):`,
       ...(this.state.globalErrors.length > 0
         ? this.state.globalErrors.map((record) =>
             [
-              `Source: ${record.source}`,
+              `Source: ${this.describeSource(record.source)} (${record.source})`,
               `First seen: ${formatDateTime(record.firstSeenAt)}`,
               `Last seen: ${formatDateTime(record.lastSeenAt)}`,
               `Occurrences: ${record.count}`,
@@ -362,20 +464,22 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
           </div>
         )}
         {this.state.errorDetailsOpen && (
-          <div
-            className="app-global-error-dialog-backdrop"
-            onClick={() => this.setState({ errorDetailsOpen: false })}
-          >
+          <div className="app-global-error-dialog-backdrop">
+            <button
+              aria-label="关闭错误详情"
+              className="app-global-error-dialog-backdrop-close"
+              onClick={() => this.setState({ errorDetailsOpen: false })}
+              type="button"
+            />
             <section
               aria-labelledby="app-global-error-dialog-title"
               aria-modal="true"
               className="app-global-error-dialog"
-              onClick={(event) => event.stopPropagation()}
               role="dialog"
             >
               <header className="app-global-error-dialog-header">
                 <div>
-                  <h2 id="app-global-error-dialog-title">页面运行错误</h2>
+                  <h2 id="app-global-error-dialog-title">运行与更新诊断</h2>
                   <p>
                     已记录 {occurrenceCount} 次、{this.state.globalErrors.length}{" "}
                     类。页面仍可继续使用。

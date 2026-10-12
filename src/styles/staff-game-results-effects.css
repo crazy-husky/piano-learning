@@ -1371,6 +1371,11 @@ body.rush-mode .staff-game-rush-vignette {
   line-height: 1.3;
 }
 
+.staff-game-settings-dialog .staff-game-note-pool-setting .staff-game-difficulty-select {
+  flex: 0 0 auto;
+  width: min(180px, 48%);
+}
+
 .staff-game-wrong-note-notice-backdrop {
   position: fixed;
   z-index: 12010;
@@ -1633,6 +1638,16 @@ body.rush-mode .staff-game-rush-vignette {
   .staff-game-settings-dialog .staff-game-difficulty-summary {
     justify-content: flex-start;
     text-align: left;
+  }
+
+  .staff-game-settings-dialog .staff-game-note-pool-setting {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .staff-game-settings-dialog .staff-game-note-pool-setting .staff-game-difficulty-select {
+    width: 100%;
   }
 
   .staff-game-wrong-answer-details {

@@ -187,6 +187,11 @@
   gap: 8px;
 }
 
+.staff-game-settings-dialog .staff-game-note-scheduling-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 7px;
+}
+
 .staff-game-settings-dialog .staff-game-input-option {
   position: relative;
   box-sizing: border-box;
@@ -615,16 +620,6 @@
   fill: #263f46;
   font-family: "Segoe UI Symbol", "Noto Music", serif;
   font-weight: 800;
-}
-
-.staff-game-note-staff .staff-game-octave-mark {
-  fill: #38545a;
-  font-family: FredokaSystemDigits, Arial, sans-serif;
-  font-size: 20px;
-  font-weight: 850;
-  paint-order: stroke fill;
-  stroke: rgba(255, 255, 255, 0.9);
-  stroke-width: 1.4px;
 }
 
 .staff-game-score-group {

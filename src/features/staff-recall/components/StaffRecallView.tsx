@@ -4,7 +4,7 @@ import { playTargetNote } from "../../../audio/piano";
 import { writeBackupNow } from "../../../data/backup";
 import { saveStaffRecallRun } from "../../../data/db";
 import { createUuid } from "../../../domain/id";
-import { getNotesForGroups, NOTE_NAMES } from "../../../domain/notes";
+import { getNotesForSelection, NOTE_NAMES } from "../../../domain/notes";
 import {
   buildNoteNameColumns,
   buildStaffRecallTargetNoteIds,
@@ -132,12 +132,20 @@ export function StaffRecallView({
   const staffNotationMode = settings.staffNotationMode;
   const inputNotes = useMemo(
     () =>
-      getNotesForGroups(
+      getNotesForSelection(
         settings.enabledGroupIds,
+        settings.enabledPitchIds,
+        settings.crossGroupPitchIds,
         settings.includeInterStaffLedgerSpellings,
         staffNotationMode
       ),
-    [settings.enabledGroupIds, settings.includeInterStaffLedgerSpellings, staffNotationMode]
+    [
+      settings.enabledGroupIds,
+      settings.enabledPitchIds,
+      settings.crossGroupPitchIds,
+      settings.includeInterStaffLedgerSpellings,
+      staffNotationMode,
+    ]
   );
   const targetNoteIds = useMemo(() => buildStaffRecallTargetNoteIds(inputNotes), [inputNotes]);
   const targetNoteSetKey = useMemo(() => buildTargetNoteSetKey(targetNoteIds), [targetNoteIds]);

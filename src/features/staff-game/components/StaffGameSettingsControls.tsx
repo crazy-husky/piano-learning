@@ -1,4 +1,8 @@
 import { ToggleSwitch } from "../../../shared/components/ui/ToggleSwitch";
+import type {
+  StaffGameNotePoolScope,
+  StaffGameNoteSchedulingStrategy,
+} from "../logic/staffGameRules";
 
 export type StaffGameInputMode = "physical" | "virtual" | "midi";
 export type GameDisplayMode = "note" | "solfege" | "number" | "none";
@@ -8,6 +12,8 @@ export interface StaffGameSettingsDraft {
   displayMode: GameDisplayMode;
   gameEffectsEnabled: boolean;
   wrongNoteStatisticsEnabled: boolean;
+  notePoolScope: StaffGameNotePoolScope;
+  noteSchedulingStrategy: StaffGameNoteSchedulingStrategy;
 }
 
 export interface StaffGameAudioSettingsDraft {

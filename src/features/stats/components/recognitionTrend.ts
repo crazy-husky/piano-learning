@@ -1,4 +1,8 @@
-import { getNotesForGroups, normalizeCurrentPracticeGroupIds } from "../../../domain/notes";
+import {
+  getNotesForGroups,
+  getNotesForSelection,
+  normalizeCurrentPracticeGroupIds,
+} from "../../../domain/notes";
 import { localDateKey, type RecognitionTrendPoint } from "../../../domain/stats";
 import { buildTargetNoteSetKey } from "../../../domain/targetNoteSet";
 import type { PracticeSessionRecord, TargetNote, TargetNoteId } from "../../../domain/types";
@@ -76,8 +80,10 @@ export interface RecognitionTrendPhasePoint extends RecognitionTrendPoint {
 function sessionRangeNoteIds(session: PracticeSessionRecord): TargetNoteId[] {
   if (session.schemaVersion === 3 || session.schemaVersion === 4 || session.schemaVersion === 5) {
     const config = session.startSnapshot.practiceConfig;
-    return getNotesForGroups(
+    return getNotesForSelection(
       normalizeCurrentPracticeGroupIds(config.enabledGroupIds),
+      config.enabledPitchIds,
+      config.crossGroupPitchIds,
       config.includeInterStaffLedgerSpellings ?? false,
       config.staffNotationMode
     ).map((note) => note.id);

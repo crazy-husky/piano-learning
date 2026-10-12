@@ -33,7 +33,12 @@ import {
   type PracticeAnswerInput,
 } from "../../../domain/answerInput";
 import { createMelodyGenerationState } from "../../../domain/melody";
-import { ANSWER_BUTTONS, getNotesForGroups, PRACTICE_GROUPS } from "../../../domain/notes";
+import {
+  ANSWER_BUTTONS,
+  getNotesForGroups,
+  getNotesForSelection,
+  PRACTICE_GROUPS,
+} from "../../../domain/notes";
 import { getEffectivePracticeNotes } from "../../../domain/practiceComparison";
 import {
   selectNextNote,
@@ -79,7 +84,11 @@ import {
 import { StaffPagePrompt } from "./StaffPagePrompt";
 import { StaffPrompt } from "./StaffPrompt";
 import { MOBILE_PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
-import { buildMobileStaffPageView, MOBILE_STAFF_PAGE_NOTE_COUNT } from "../logic/staffPageFlow";
+import {
+  buildStaffPageView,
+  DESKTOP_STAFF_PAGE_NOTE_COUNT,
+  MOBILE_STAFF_PAGE_NOTE_COUNT,
+} from "../logic/staffPageFlow";
 import { PROMPT_NOTE_DURATIONS } from "../logic/staffPageNotation";
 import {
   DEFAULT_STAFF_PAGE_UI_PREFERENCES,
@@ -105,7 +114,13 @@ import { usePracticeSummaryData } from "../hooks/usePracticeSummaryData";
 import { PracticeMicrophoneAnalysisDialog } from "./PracticeMicrophoneAnalysisDialog";
 import { PracticeMicrophoneDebugDialog } from "./PracticeMicrophoneDebugDialog";
 import { PracticeSummaryView } from "./PracticeSummaryView";
-import { PracticeSetupView, type PracticeSetupUiPreferences } from "./PracticeSetupView";
+import {
+  PracticeSetupView,
+  type PracticeSetupTab,
+  type PracticeSetupUiPreferences,
+} from "./PracticeSetupView";
+import { SongPracticeView } from "../song-practice/SongPracticeView";
+import type { SongPracticeSelection } from "../song-practice/songPracticeMaterials";
 import { usePracticeMicrophoneInput } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import {
   parseExpectedPracticeNoteSequence,
@@ -143,7 +158,6 @@ interface PracticeViewProps {
   reviews: ReviewRecord[];
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   onNavigationExit?: (targetView: PracticeNavigationExitTarget) => void;
-  onRequestNavigationExit: (targetView: PracticeNavigationExitTarget) => void;
   onSettingsSaved: (
     settings: AppSettings,
     options?: { feedback?: boolean }
@@ -295,7 +309,6 @@ export function PracticeView({
   reviews,
   navigationExitRequest,
   onNavigationExit,
-  onRequestNavigationExit,
   onSettingsSaved,
   onDataChanged,
   onOpenStats,
@@ -352,6 +365,11 @@ export function PracticeView({
     type: "wrong" | "correct";
     noteName?: NoteName;
   } | null>(null);
+  const [songPracticeSelection, setSongPracticeSelection] = useState<SongPracticeSelection | null>(
+    null
+  );
+  const [practiceSetupTab, setPracticeSetupTab] = useState<PracticeSetupTab>("free");
+  const songPracticeMicrophoneAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => {});
   const [tick, setTick] = useState(0);
   const [staffPageNotes, setStaffPageNotes] = useState<TargetNote[]>([]);
   const [staffPageIndex, setStaffPageIndex] = useState(0);
@@ -507,9 +525,20 @@ export function PracticeView({
     resumeActiveTimers,
   } = practiceTimers;
   const submitAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => undefined);
-  const practiceMicrophone = usePracticeMicrophoneInput(
-    (answer) => submitAnswerRef.current(answer),
-    practiceMicrophonePreferences
+  const practiceMicrophone = usePracticeMicrophoneInput((answer) => {
+    if (songPracticeSelection) {
+      if (songPracticeSelection.inputMode === "microphone") {
+        songPracticeMicrophoneAnswerRef.current(answer);
+      }
+    } else {
+      submitAnswerRef.current(answer);
+    }
+  }, practiceMicrophonePreferences);
+  const registerSongPracticeMicrophoneAnswer = useCallback(
+    (handler: (answer: PracticeAnswerInput) => void): void => {
+      songPracticeMicrophoneAnswerRef.current = handler;
+    },
+    []
   );
   const practiceMicrophoneStatus = practiceMicrophone.status;
   const stopPracticeMicrophone = practiceMicrophone.stop;
@@ -665,17 +694,29 @@ export function PracticeView({
     runningStartSnapshot?.practiceConfig.staffNotationMode ?? settings.staffNotationMode;
   const effectiveEnabledGroupIds =
     runningStartSnapshot?.practiceConfig.enabledGroupIds ?? settings.enabledGroupIds;
+  const effectiveEnabledPitchIds =
+    runningStartSnapshot?.practiceConfig.enabledPitchIds ?? settings.enabledPitchIds;
+  const effectiveCrossGroupPitchIds =
+    runningStartSnapshot?.practiceConfig.crossGroupPitchIds ?? settings.crossGroupPitchIds;
   const effectiveInterStaffLedgerSpellings =
     runningStartSnapshot?.practiceConfig.includeInterStaffLedgerSpellings ??
     settings.includeInterStaffLedgerSpellings;
   const enabledNotes = useMemo(
     () =>
-      getNotesForGroups(
+      getNotesForSelection(
         effectiveEnabledGroupIds,
+        effectiveEnabledPitchIds,
+        effectiveCrossGroupPitchIds,
         effectiveInterStaffLedgerSpellings,
         staffNotationMode
       ),
-    [effectiveEnabledGroupIds, effectiveInterStaffLedgerSpellings, staffNotationMode]
+    [
+      effectiveEnabledGroupIds,
+      effectiveEnabledPitchIds,
+      effectiveCrossGroupPitchIds,
+      effectiveInterStaffLedgerSpellings,
+      staffNotationMode,
+    ]
   );
   const useLedgerGap = enabledNotes.some((note) => note.isInterStaffLedgerSpelling);
   const fullPracticeCount = useMemo(
@@ -691,8 +732,10 @@ export function PracticeView({
   const queueNotes = useMemo(
     () =>
       getEffectivePracticeNotes({
+        crossGroupPitchIds: effectiveCrossGroupPitchIds,
         drillNoteNames,
         enabledGroupIds: effectiveEnabledGroupIds,
+        enabledPitchIds: effectiveEnabledPitchIds,
         includeInterStaffLedgerSpellings: effectiveInterStaffLedgerSpellings,
         queueStrategy,
         staffNotationMode,
@@ -701,6 +744,8 @@ export function PracticeView({
       drillNoteNames,
       queueStrategy,
       effectiveEnabledGroupIds,
+      effectiveEnabledPitchIds,
+      effectiveCrossGroupPitchIds,
       effectiveInterStaffLedgerSpellings,
       staffNotationMode,
     ]
@@ -986,7 +1031,11 @@ export function PracticeView({
       drillNoteNames,
       enabledNotes,
       fixedCount,
+      isMobileViewport,
       mode,
+      pageNoteCount: isMobileViewport
+        ? MOBILE_STAFF_PAGE_NOTE_COUNT
+        : DESKTOP_STAFF_PAGE_NOTE_COUNT,
       queueStrategy,
       schedulerReviews,
       sessions,
@@ -1255,7 +1304,7 @@ export function PracticeView({
   }, [completeSession, isMicrophoneAnalysisDialogOpen, isMicrophoneDebugDialogOpen]);
   const { pressedAnswerKeys } = usePracticeInput({
     answerPitchMode,
-    canStartOnMidi: true,
+    canStartOnMidi: songPracticeSelection === null,
     isPausedRef,
     isRunning: phase === "running",
     midi,
@@ -1360,7 +1409,7 @@ export function PracticeView({
 
   const setupDisabledReason =
     enabledNotes.length === 0
-      ? "请至少选择一组上方的音区"
+      ? "请至少选择一个上方的练习音组"
       : queueStrategy === "note-drill" && drillNoteNames.length === 0
         ? "请至少选择一个强化音名"
         : undefined;
@@ -1374,7 +1423,8 @@ export function PracticeView({
     function handleEnter(event: KeyboardEvent): void {
       if (
         !shouldHandleGlobalEnter(event, isInteractiveShortcutTarget(event.target)) ||
-        (phase === "setup" && setupDisabled)
+        (phase === "setup" && setupDisabled) ||
+        songPracticeSelection !== null
       ) {
         return;
       }
@@ -1384,7 +1434,7 @@ export function PracticeView({
 
     window.addEventListener("keydown", handleEnter);
     return () => window.removeEventListener("keydown", handleEnter);
-  }, [phase, setupDisabled, startSession]);
+  }, [phase, setupDisabled, songPracticeSelection, startSession]);
 
   const remainingMs =
     mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
@@ -1406,26 +1456,29 @@ export function PracticeView({
         : staffPageNotes,
     [isMobileStaffPage, mobileStaffPageNoteCount, mobileStaffPageStartIndex, staffPageNotes]
   );
-  const mobileStaffPageView = useMemo(
+  const staffPageNoteCount = isMobileStaffPage
+    ? mobileStaffPageNoteCount
+    : DESKTOP_STAFF_PAGE_NOTE_COUNT;
+  const staffPageView = useMemo(
     () =>
-      isMobileStaffPage
-        ? buildMobileStaffPageView({
+      promptDisplayMode === "staff-page"
+        ? buildStaffPageView({
             completedCount: staffPageCompletedCount,
             currentIndex: staffPageIndex,
             firstNoteOffset: staffPageFirstNoteOffset,
             fixedSessionCount: mode === "fixed-count" ? fixedCount : undefined,
             notes: staffPageNotes,
-            pageNoteCount: mobileStaffPageNoteCount,
+            pageNoteCount: staffPageNoteCount,
           })
         : null,
     [
       fixedCount,
-      isMobileStaffPage,
-      mobileStaffPageNoteCount,
       mode,
+      promptDisplayMode,
       staffPageCompletedCount,
       staffPageFirstNoteOffset,
       staffPageIndex,
+      staffPageNoteCount,
       staffPageNotes,
     ]
   );
@@ -1445,9 +1498,24 @@ export function PracticeView({
     summary,
   });
 
+  if (songPracticeSelection) {
+    return (
+      <SongPracticeView
+        microphone={practiceMicrophone}
+        midi={midi}
+        onBack={() => {
+          setSongPracticeSelection(null);
+        }}
+        onRegisterMicrophoneAnswer={registerSongPracticeMicrophoneAnswer}
+        selection={songPracticeSelection}
+      />
+    );
+  }
+
   if (phase === "setup") {
     return (
       <PracticeSetupView
+        activeTab={practiceSetupTab}
         actions={{
           onAnswerPitchModeChange: setAnswerPitchMode,
           onAutoPlayTargetChange: setAutoPlayTarget,
@@ -1461,9 +1529,18 @@ export function PracticeView({
           onPromptNoteDurationChange: setPromptNoteDuration,
           onQueueStrategyChange: setQueueStrategy,
           onSettingsSaved,
+          onStartSongPractice: async (selection) => {
+            if (selection.inputMode === "microphone") {
+              const microphoneReady = await practiceMicrophone.start();
+              if (!microphoneReady) return false;
+            }
+            setSongPracticeSelection(selection);
+            return true;
+          },
           onStartPausedReadingChange: (enabled) =>
             setStaffPageUiPreferences((current) => ({ ...current, startPausedReading: enabled })),
           onStartSession: () => void startSession(),
+          onSetupTabChange: setPracticeSetupTab,
           onToggleDrillNoteName: toggleDrillNoteName,
         }}
         fixedCountPresets={fixedCountPresets}
@@ -1537,10 +1614,12 @@ export function PracticeView({
         </div>
         <div className="topline-actions">
           <button
-            aria-label="返回首页"
+            aria-label="返回配置"
             className="practice-return-home"
-            title="返回首页"
-            onClick={() => onRequestNavigationExit("home")}
+            title="返回配置"
+            onClick={() =>
+              void completeSession("manual-stop", "manual-stop", { showSummary: false })
+            }
             type="button"
           >
             <ArrowLeft aria-hidden="true" size={18} />
@@ -1769,10 +1848,14 @@ export function PracticeView({
         }
       >
         {promptDisplayMode === "staff-page" ? (
-          <div className={isMobileStaffPage ? "staff-page-mobile-view" : undefined}>
+          <div className={isMobileStaffPage ? "staff-page-mobile-view" : "staff-page-desktop-view"}>
             <StaffPagePrompt
               notes={mobileStaffPageNotes}
-              completedCount={mobileStaffPageView?.completedCount ?? staffPageCompletedCount}
+              completedCount={
+                isMobileStaffPage
+                  ? (staffPageView?.completedCount ?? staffPageCompletedCount)
+                  : staffPageCompletedCount
+              }
               diagnosticSampleId={feedback?.diagnosticSampleId}
               isScrolling={isMobileStaffPage ? false : isStaffPageScrolling}
               layout={isMobileStaffPage ? MOBILE_PRACTICE_PAGE_STAFF_LAYOUT : undefined}
@@ -1787,13 +1870,15 @@ export function PracticeView({
               visibleRowCount={isMobileStaffPage ? mobileStaffPageRowCount : staffPageRowCount}
               wrongIndex={
                 feedback?.type === "wrong"
-                  ? (mobileStaffPageView?.noteIndexInPage ?? staffPageIndex)
+                  ? isMobileStaffPage
+                    ? (staffPageView?.noteIndexInPage ?? staffPageIndex)
+                    : staffPageIndex
                   : undefined
               }
             />
-            {mobileStaffPageView ? (
+            {staffPageView ? (
               <div aria-live="polite" className="staff-page-counter">
-                第 {mobileStaffPageView.currentPage} / {mobileStaffPageView.totalPages} 页
+                第 {staffPageView.currentPage} / {staffPageView.totalPages} 页
               </div>
             ) : null}
           </div>

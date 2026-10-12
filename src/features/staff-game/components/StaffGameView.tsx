@@ -1,4 +1,5 @@
 import { Volume2 } from "lucide-react";
+import "vexflow/bravura";
 import {
   useCallback,
   useEffect,
@@ -11,7 +12,10 @@ import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { NoteName, PianoKeyName } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import type { MidiAccessStatus } from "../../../midi/midiInput";
-import type { usePracticeMicrophoneInput } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
+import type {
+  PracticeMicrophoneDiagnostics,
+  usePracticeMicrophoneInput,
+} from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import {
   readStaffGameSongProgress,
   saveStaffGameSongProgress,
@@ -21,7 +25,10 @@ import {
 import { StaffGameFireworks } from "./StaffGameFireworks";
 import { StaffGameDialogs } from "./StaffGameDialogs";
 import { StaffGameErrorFlash, StaffGameStatusOverlays } from "./StaffGameStatusOverlays";
-import { useStaffGameRoundClock } from "../hooks/useStaffGameRoundClock";
+import {
+  useStaffGameRoundClock,
+  type StaffGameLevelRoundMetrics,
+} from "../hooks/useStaffGameRoundClock";
 import { useStaffGameScoring } from "../hooks/useStaffGameScoring";
 import { useStaffGameAudio } from "../hooks/useStaffGameAudio";
 import type {
@@ -52,6 +59,7 @@ import {
 } from "../logic/staffGameResources";
 import {
   BLACK_KEY_NOTES,
+  BUBBLE_FADE_IN_MS,
   COMBO_INDICATOR_FADE_DURATION_MS,
   COMPUTER_KEY_PITCHES,
   GAME_DIFFICULTIES,
@@ -63,11 +71,18 @@ import {
   RUSH_MODE_COMBO_THRESHOLD,
   STAR_THRESHOLDS,
   gameDurationMsForLevel,
+  gameLevelForNotePoolScope,
   gameDifficultyPreset,
   gameNoteFromMidi,
   starScoreThreshold,
   starsForScore,
+  type StaffGameNotePoolScope,
+  type StaffGameNoteSchedulingStrategy,
 } from "../logic/staffGameRules";
+import {
+  appendStaffGameMicrophoneDebugEvent,
+  resetStaffGameMicrophoneDebug,
+} from "../logic/staffGameMicrophoneDebug";
 import type { GameDifficulty } from "../logic/staffGameRules";
 
 const {
@@ -96,6 +111,7 @@ const COMBO_AMAZING_MILESTONE = 20;
 const COMBO_UNBELIEVABLE_MILESTONE = 30;
 const COMBO_UNBELIEVABLE_INTERVAL = 20;
 const COMBO_VOICE_MILESTONE_BUFFER = 2;
+const FEEDBACK_DISPLAY_DURATION_MS = 2_000;
 
 function isComboVoiceMilestone(comboCount: number): boolean {
   return (
@@ -116,7 +132,8 @@ function isNearComboVoiceMilestone(comboCount: number): boolean {
   return Math.min(offset, COMBO_UNBELIEVABLE_INTERVAL - offset) <= COMBO_VOICE_MILESTONE_BUFFER;
 }
 
-const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v2";
+const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v3";
+const LEGACY_GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v2";
 const GAME_SETTINGS_KEY = "anki-note.staffGameSettings.v1";
 const LOW_FPS_PROMPT_SESSION_KEY = "anki-note.staffGameLowFpsPrompted.v1";
 let lowFpsPromptShownThisPage = false;
@@ -137,17 +154,36 @@ interface StaffGameSettings {
   inputMode: GameInputMode;
   displayMode: GameDisplayMode;
   difficulty: GameDifficulty;
+  notePoolScope: StaffGameNotePoolScope;
+  noteSchedulingStrategy: StaffGameNoteSchedulingStrategy;
   wrongNoteStatisticsEnabled: boolean;
   audioByMode: Record<StaffGameMode, StaffGameAudioSettings>;
   gameEffectsEnabled: boolean;
 }
 
 interface StaffGameProgress {
+  version: 3;
   bestScores: number[];
   bestStars: number[];
   maxCombos: number[];
+  bestAccuracy: Array<Record<GameDifficulty, number | null>>;
+  bestResponseMs: Array<Record<GameDifficulty, number | null>>;
+  /** 仅调试用，后续清理。 */
+  _debugLastRound: StaffGameLevelRoundSummary | null;
   unlockedLevel: number;
   selectedLevel: number;
+}
+
+interface StaffGameLevelRoundSummary {
+  level: number;
+  difficulty: GameDifficulty;
+  generatedBubbleCount: number;
+  firstTryCorrectCount: number;
+  correctBubbleCount: number;
+  responseTotalMs: number;
+  responseSampleCount: number;
+  accuracy: number | null;
+  averageResponseMs: number | null;
 }
 
 interface BubbleBurst {
@@ -159,7 +195,7 @@ interface BubbleBurst {
 type MicrophoneController = Pick<
   ReturnType<typeof usePracticeMicrophoneInput>,
   "detectedNote" | "error" | "inputLevel" | "isListening" | "start" | "status" | "stop"
->;
+> & { diagnostics: PracticeMicrophoneDiagnostics | null };
 
 interface StaffGameViewProps {
   initialMode?: StaffGameMode;
@@ -176,11 +212,37 @@ interface StaffGameViewProps {
   onRegisterAnswerHandler: (handler: ((answer: PracticeAnswerInput) => void) | null) => void;
 }
 
+function createDifficultyMetricSlots(): Array<Record<GameDifficulty, number | null>> {
+  return Array.from(
+    { length: GAME_LEVEL_COUNT },
+    () =>
+      Object.fromEntries(GAME_DIFFICULTIES.map(({ id }) => [id, null])) as Record<
+        GameDifficulty,
+        number | null
+      >
+  );
+}
+
+function createRoundMetrics(): StaffGameLevelRoundMetrics {
+  return {
+    generatedBubbleCount: 0,
+    firstTryCorrectCount: 0,
+    correctBubbleCount: 0,
+    responseTotalMs: 0,
+    responseSampleCount: 0,
+    firstInputByToken: new Map(),
+  };
+}
+
 function defaultProgress(): StaffGameProgress {
   return {
+    version: 3,
     bestScores: Array(GAME_LEVEL_COUNT).fill(0),
     bestStars: Array(GAME_LEVEL_COUNT).fill(0),
     maxCombos: Array(GAME_LEVEL_COUNT).fill(0),
+    bestAccuracy: createDifficultyMetricSlots(),
+    bestResponseMs: createDifficultyMetricSlots(),
+    _debugLastRound: null,
     unlockedLevel: 1,
     selectedLevel: 1,
   };
@@ -206,6 +268,8 @@ function defaultGameSettings(): StaffGameSettings {
     inputMode: "physical",
     displayMode: "note",
     difficulty: "normal",
+    notePoolScope: "all-history",
+    noteSchedulingStrategy: "system",
     wrongNoteStatisticsEnabled: false,
     audioByMode: {
       levels: { soundEffectsEnabled: true, backgroundMusicEnabled: true, pianoSoundEnabled: false },
@@ -280,6 +344,14 @@ function readGameSettings(virtualAvailable: boolean, midiAvailable: boolean): St
         typeof parsed?.wrongNoteStatisticsEnabled === "boolean"
           ? parsed.wrongNoteStatisticsEnabled
           : base.wrongNoteStatisticsEnabled,
+      notePoolScope:
+        parsed?.notePoolScope === "current-group"
+          ? "current-group"
+          : parsed?.notePoolScope === "all-history-current-clef"
+            ? "all-history-current-clef"
+            : base.notePoolScope,
+      noteSchedulingStrategy:
+        parsed?.noteSchedulingStrategy === "random" ? "random" : base.noteSchedulingStrategy,
       audioByMode: { levels: readModeAudio("levels"), songs: readModeAudio("songs") },
       gameEffectsEnabled:
         typeof parsed?.gameEffectsEnabled === "boolean"
@@ -307,6 +379,15 @@ function saveGameSettings(settings: StaffGameSettings): void {
   }
 }
 
+function readStoredJson(key: string): unknown {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 function updateModeAudioSettings(
   settings: StaffGameSettings,
   mode: StaffGameMode,
@@ -323,21 +404,76 @@ function updateModeAudioSettings(
 
 function readProgress(): StaffGameProgress {
   try {
-    const parsed = JSON.parse(
-      localStorage.getItem(GAME_PROGRESS_KEY) ?? "null"
-    ) as Partial<StaffGameProgress> | null;
-    if (!parsed) return defaultProgress();
+    const storedV3 = readStoredJson(GAME_PROGRESS_KEY);
+    const hasValidV3 =
+      Boolean(storedV3) &&
+      typeof storedV3 === "object" &&
+      !Array.isArray(storedV3) &&
+      (storedV3 as { version?: unknown }).version === 3;
+    const storedLegacy = hasValidV3 ? null : readStoredJson(LEGACY_GAME_PROGRESS_KEY);
+    const parsed = (hasValidV3 ? storedV3 : storedLegacy) as Partial<StaffGameProgress> | null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return defaultProgress();
     const base = defaultProgress();
     const readArray = (value: unknown): number[] =>
       Array.from({ length: GAME_LEVEL_COUNT }, (_, index) => {
         const item = Array.isArray(value) ? Number(value[index]) : 0;
         return Number.isFinite(item) ? Math.max(0, Math.floor(item)) : 0;
       });
+    const readMetricSlots = (
+      value: unknown,
+      maxValue: number
+    ): Array<Record<GameDifficulty, number | null>> =>
+      Array.from({ length: GAME_LEVEL_COUNT }, (_, index) => {
+        const row = Array.isArray(value) ? value[index] : null;
+        const record =
+          row && typeof row === "object" && !Array.isArray(row)
+            ? (row as Partial<Record<GameDifficulty, unknown>>)
+            : {};
+        return Object.fromEntries(
+          GAME_DIFFICULTIES.map(({ id }) => {
+            const raw = record[id];
+            if (raw === null || raw === undefined) return [id, null];
+            const metric = Number(raw);
+            return [id, Number.isFinite(metric) ? Math.max(0, Math.min(maxValue, metric)) : null];
+          })
+        ) as Record<GameDifficulty, number | null>;
+      });
+    const readLastRound = (value: unknown): StaffGameLevelRoundSummary | null => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+      const record = value as Record<string, unknown>;
+      const difficulty = GAME_DIFFICULTIES.find(({ id }) => id === record.difficulty)?.id;
+      const level = Math.floor(Number(record.level));
+      if (!difficulty || level < 1 || level > GAME_LEVEL_COUNT) return null;
+      const readCount = (key: string): number => Math.max(0, Math.floor(Number(record[key]) || 0));
+      const readDuration = (key: string): number => Math.max(0, Number(record[key]) || 0);
+      const readOptionalMetric = (key: string): number | null => {
+        if (record[key] === null || record[key] === undefined) return null;
+        const metric = Number(record[key]);
+        return Number.isFinite(metric) ? Math.max(0, metric) : null;
+      };
+      return {
+        level,
+        difficulty,
+        generatedBubbleCount: readCount("generatedBubbleCount"),
+        firstTryCorrectCount: readCount("firstTryCorrectCount"),
+        correctBubbleCount: readCount("correctBubbleCount"),
+        responseTotalMs: readDuration("responseTotalMs"),
+        responseSampleCount: readCount("responseSampleCount"),
+        accuracy: readOptionalMetric("accuracy"),
+        averageResponseMs: readOptionalMetric("averageResponseMs"),
+      };
+    };
     const bestScores = readArray(parsed.bestScores);
-    return {
+    const progress: StaffGameProgress = {
+      version: 3,
       bestScores,
       bestStars: readArray(parsed.bestStars),
       maxCombos: readArray(parsed.maxCombos),
+      bestAccuracy: hasValidV3 ? readMetricSlots(parsed.bestAccuracy, 1) : base.bestAccuracy,
+      bestResponseMs: hasValidV3
+        ? readMetricSlots(parsed.bestResponseMs, Number.MAX_SAFE_INTEGER)
+        : base.bestResponseMs,
+      _debugLastRound: hasValidV3 ? readLastRound(parsed._debugLastRound) : null,
       unlockedLevel: Math.max(
         1,
         Math.min(GAME_LEVEL_COUNT, Math.floor(Number(parsed.unlockedLevel) || base.unlockedLevel))
@@ -352,6 +488,8 @@ function readProgress(): StaffGameProgress {
         )
       ),
     };
+    if (!hasValidV3 && storedLegacy !== null) saveProgress(progress);
+    return progress;
   } catch {
     return defaultProgress();
   }
@@ -385,20 +523,7 @@ function NoteStaff({ note }: { note: GameNote }): JSX.Element {
   const staffBottomStep = clef === "bass" ? -10 : 2;
   const staffTopStep = staffBottomStep + 8;
   const staffCenterStep = staffBottomStep + 4;
-  let displayStep = diatonicStep;
-  if (clef === "treble") {
-    while (displayStep < 0) displayStep += 7;
-    while (displayStep > 12) displayStep -= 7;
-  }
-  const octaveShift = Math.round((diatonicStep - displayStep) / 7);
-  const octaveLabel =
-    clef === "bass" || octaveShift === 0
-      ? null
-      : Math.abs(octaveShift) === 1
-        ? octaveShift > 0
-          ? "8va"
-          : "8vb"
-        : `${Math.abs(octaveShift) * 7 + 1}${octaveShift > 0 ? "ma" : "mb"}`;
+  const displayStep = diatonicStep;
   const stepSpacing = Math.min(10.5, 88 / Math.max(8, Math.abs(displayStep - staffCenterStep)));
   const yForStep = (step: number): number => 100 + (staffCenterStep - step) * stepSpacing;
   const noteY = yForStep(displayStep);
@@ -413,10 +538,12 @@ function NoteStaff({ note }: { note: GameNote }): JSX.Element {
   const stemX = stemGoesUp ? noteX + 9 : noteX - 9;
   const stemEndY = yForStep(displayStep + (stemGoesUp ? 6 : -6));
   const accidental = note.name.includes("#") ? "♯" : note.name.includes("b") ? "♭" : null;
-  const clefFontSize = stepSpacing * 6.5;
-  const clefY = (clef === "bass" ? 100 : yForStep(staffBottomStep) + clefFontSize * 0.22) - 5;
+  const clefFontSize = stepSpacing * 8;
+  const clefAnchorStep = clef === "bass" ? staffTopStep - 2 : staffBottomStep + 2;
   const staffLines = Array.from({ length: 5 }, (_, index) => staffBottomStep + index * 2);
-  const clefGlyph = clef === "bass" ? "𝄢" : "𝄞";
+  // SMuFL clefs use Bravura's musical font metrics; their text baseline is the
+  // staff line that defines the clef (G4 for treble, F3 for bass).
+  const clefGlyph = clef === "bass" ? "\uE062" : "\uE050";
   return (
     <svg
       aria-label={`${noteLabel(note)} 音符`}
@@ -432,10 +559,9 @@ function NoteStaff({ note }: { note: GameNote }): JSX.Element {
       <line x1="172" x2="172" y1={yForStep(staffTopStep)} y2={yForStep(staffBottomStep)} />
       <text
         className="staff-game-clef"
-        dominantBaseline={clef === "bass" ? "central" : undefined}
         style={{ fontSize: clefFontSize }}
         x="18"
-        y={clefY}
+        y={yForStep(clefAnchorStep)}
       >
         {clefGlyph}
       </text>
@@ -461,16 +587,6 @@ function NoteStaff({ note }: { note: GameNote }): JSX.Element {
           style={{ fontSize: stepSpacing * 3.4 }}
         >
           {accidental}
-        </text>
-      ) : null}
-      {octaveLabel ? (
-        <text
-          className="staff-game-octave-mark"
-          dominantBaseline="central"
-          x="126"
-          y={displayStep > staffCenterStep ? 28 : 176}
-        >
-          {octaveLabel}
         </text>
       ) : null}
       <ellipse
@@ -588,6 +704,7 @@ export function StaffGameView({
   const comboIndicatorRef = useRef<ComboIndicator | null>(null);
   const targetRef = useRef<GameNote | null>(null);
   const spawnTargetRef = useRef<(atGameMs: number) => void>(() => undefined);
+  const roundMetricsRef = useRef<StaffGameLevelRoundMetrics>(createRoundMetrics());
   const playfieldRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
   const targetElementRef = useRef<HTMLDivElement>(null);
@@ -625,18 +742,32 @@ export function StaffGameView({
   const phaseRef = useRef(phase);
   const progressRef = useRef(progress);
   const settingsRef = useRef(settings);
+  const notePoolScopeRef = useRef<StaffGameNotePoolScope>(settings.notePoolScope);
+  const noteSchedulingStrategyRef = useRef<StaffGameNoteSchedulingStrategy>(
+    settings.noteSchedulingStrategy
+  );
   const midiRef = useRef(midi);
   const recentNoteMidisRef = useRef<number[]>([]);
   const noteBagRef = useRef<Array<{ midi: number; name: PianoKeyName; octave: number }>>([]);
   const targetTokenRef = useRef(0);
   const elapsedBeforeRunRef = useRef(0);
   const runSegmentStartedAtRef = useRef(0);
-  const targetSpawnGameMsRef = useRef(0);
   const wrongClearTimeoutRef = useRef<number | null>(null);
   const burstTimeoutRef = useRef<number | null>(null);
   const nextTargetTimeoutRef = useRef<number | null>(null);
   const roundFinishedRef = useRef(false);
   const waitingForNextTargetRef = useRef(false);
+  const lastLoggedMicrophoneObservationRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    resetStaffGameMicrophoneDebug();
+  }, []);
+
+  useEffect(() => {
+    if (!feedback) return undefined;
+    const timeout = window.setTimeout(() => setFeedback(""), FEEDBACK_DISPLAY_DURATION_MS);
+    return () => window.clearTimeout(timeout);
+  }, [feedback]);
 
   const triggerMascotReaction = useCallback((action: "cheer" | "sad"): void => {
     // Keep the current one-shot animation intact and coalesce a burst into one follow-up.
@@ -787,6 +918,8 @@ export function StaffGameView({
   selectedSongIdRef.current = selectedSongId;
   songProgressRef.current = songProgress;
   settingsRef.current = settings;
+  notePoolScopeRef.current = settings.notePoolScope;
+  noteSchedulingStrategyRef.current = settings.noteSchedulingStrategy;
   midiRef.current = midi;
 
   const activeAudioSettings = settings.audioByMode[gameMode];
@@ -808,12 +941,13 @@ export function StaffGameView({
   const draftAudioSettings = settingsDraft.audioByMode[gameMode];
   const difficulty = gameDifficultyPreset(settings.difficulty);
   const bubbleDurationMs = difficulty.bubbleDurationMs;
-  const gameDurationMs = gameDurationMsForLevel(level);
+  const durationLevel = gameLevelForNotePoolScope(level, settings.notePoolScope);
+  const gameDurationMs = gameDurationMsForLevel(durationLevel);
   const draftDifficulty = gameDifficultyPreset(settingsDraft.difficulty);
-  const currentRoundStars = starsForScore(score, level, settings.difficulty);
+  const currentRoundStars = starsForScore(score, durationLevel, settings.difficulty);
   const threeStarScore = starScoreThreshold(
     STAR_THRESHOLDS[STAR_THRESHOLDS.length - 1],
-    level,
+    durationLevel,
     settings.difficulty
   );
   const levelProgress = threeStarScore > 0 ? Math.min(1, score / threeStarScore) : 0;
@@ -1034,7 +1168,18 @@ export function StaffGameView({
   const persistRoundResult = useCallback((finalStars: number): void => {
     const index = levelRef.current - 1;
     const current = progressRef.current;
+    const difficulty = settingsRef.current.difficulty;
+    const metrics = roundMetricsRef.current;
+    const accuracy =
+      metrics.generatedBubbleCount > 0
+        ? metrics.firstTryCorrectCount / metrics.generatedBubbleCount
+        : null;
+    const averageResponseMs =
+      metrics.responseSampleCount > 0
+        ? metrics.responseTotalMs / metrics.responseSampleCount
+        : null;
     const next: StaffGameProgress = {
+      version: 3,
       bestScores: current.bestScores.map((best, itemIndex) =>
         itemIndex === index ? Math.max(best, scoreRef.current) : best
       ),
@@ -1044,6 +1189,36 @@ export function StaffGameView({
       maxCombos: current.maxCombos.map((best, itemIndex) =>
         itemIndex === index ? Math.max(best, maxComboRef.current) : best
       ),
+      bestAccuracy: current.bestAccuracy.map((bestByDifficulty, itemIndex) =>
+        itemIndex === index && accuracy !== null
+          ? {
+              ...bestByDifficulty,
+              [difficulty]: Math.max(bestByDifficulty[difficulty] ?? 0, accuracy),
+            }
+          : bestByDifficulty
+      ),
+      bestResponseMs: current.bestResponseMs.map((bestByDifficulty, itemIndex) =>
+        itemIndex === index && averageResponseMs !== null
+          ? {
+              ...bestByDifficulty,
+              [difficulty]: Math.min(
+                bestByDifficulty[difficulty] ?? Number.POSITIVE_INFINITY,
+                averageResponseMs
+              ),
+            }
+          : bestByDifficulty
+      ),
+      _debugLastRound: {
+        level: levelRef.current,
+        difficulty,
+        generatedBubbleCount: metrics.generatedBubbleCount,
+        firstTryCorrectCount: metrics.firstTryCorrectCount,
+        correctBubbleCount: metrics.correctBubbleCount,
+        responseTotalMs: metrics.responseTotalMs,
+        responseSampleCount: metrics.responseSampleCount,
+        accuracy,
+        averageResponseMs,
+      },
       unlockedLevel:
         finalStars > 0
           ? Math.max(current.unlockedLevel, Math.min(GAME_LEVEL_COUNT, levelRef.current + 1))
@@ -1121,6 +1296,7 @@ export function StaffGameView({
     queueRushScore,
     resetComboDisplay,
     restartComboTimer,
+    roundMetricsRef,
     roundFinishedRef,
     rushScoreFlightTokenRef,
     rushScoreFlightsRef,
@@ -1320,6 +1496,8 @@ export function StaffGameView({
     inputMode: settings.inputMode,
     levelRef,
     noteBagRef,
+    notePoolScopeRef,
+    noteSchedulingStrategyRef,
     noteLabel,
     nextTargetTimeoutRef,
     phase,
@@ -1327,6 +1505,7 @@ export function StaffGameView({
     playGameSound,
     playfieldRef,
     recentNoteMidisRef,
+    roundMetricsRef,
     resetComboDisplay,
     runSegmentStartedAtRef,
     selectedSongIdRef,
@@ -1340,7 +1519,6 @@ export function StaffGameView({
     songWrongTargetTokenRef,
     targetPoppedRef,
     targetRef,
-    targetSpawnGameMsRef,
     targetTokenRef,
     triggerMascotReaction,
     waitingForNextTargetRef,
@@ -1368,6 +1546,7 @@ export function StaffGameView({
     noteBagRef.current = [];
     recentNoteMidisRef.current = [];
     roundFinishedRef.current = false;
+    roundMetricsRef.current = createRoundMetrics();
     setTarget(null);
     setBubbleBurst(null);
     setTargetPopped(false);
@@ -1428,12 +1607,20 @@ export function StaffGameView({
     setIsStarting(true);
     setGameError("");
     try {
-      await unlockGameAudio().catch(() => undefined);
-      if (isCancelled()) return false;
-      if (settingsRef.current.inputMode === "physical") {
+      const inputModeAtStart = settingsRef.current.inputMode;
+      const microphoneStartPromise =
+        inputModeAtStart === "physical"
+          ? startMicrophone({ includeAccidentals: true })
+          : Promise.resolve(false);
+      const audioUnlockPromise = unlockGameAudio().catch(() => undefined);
+      if (inputModeAtStart === "physical") {
         let started = false;
         try {
-          started = await startMicrophone({ includeAccidentals: true });
+          const [microphoneStarted] = await Promise.all([
+            microphoneStartPromise,
+            audioUnlockPromise,
+          ]);
+          started = microphoneStarted;
         } catch (error) {
           if (isCancelled()) return false;
           const reason = error instanceof Error ? `（${error.message}）` : "";
@@ -1449,12 +1636,16 @@ export function StaffGameView({
           setGameError(`无法连接麦克风${reason}。请在浏览器的网站权限中允许麦克风，再重新尝试。`);
           return false;
         }
-      } else if (settingsRef.current.inputMode === "midi") {
-        if (!(await connectMidiForRound(isCancelled))) return false;
-        if (isCancelled()) return false;
-        stopMicrophone();
       } else {
-        stopMicrophone();
+        await audioUnlockPromise;
+        if (isCancelled()) return false;
+        if (inputModeAtStart === "midi") {
+          if (!(await connectMidiForRound(isCancelled))) return false;
+          if (isCancelled()) return false;
+          stopMicrophone();
+        } else {
+          stopMicrophone();
+        }
       }
       if (isCancelled()) return false;
       const records = progressRef.current;
@@ -1605,6 +1796,77 @@ export function StaffGameView({
       pauseRound();
     }
   }, [microphone.error, microphone.status, pauseRound, phase, settings.inputMode]);
+
+  useEffect(() => {
+    if (phase !== "running" || settings.inputMode !== "physical") return;
+    const diagnostics = microphone.diagnostics;
+    const currentTarget = targetRef.current;
+    if (!diagnostics || !currentTarget) return;
+    const alternativeCandidateMidi =
+      diagnostics.alternativeCandidateFrequencyHz !== null &&
+      diagnostics.alternativeCandidateFrequencyHz > 0
+        ? Math.round(69 + 12 * Math.log2(diagnostics.alternativeCandidateFrequencyHz / 440))
+        : null;
+    const observationKey = [
+      currentTarget.token,
+      diagnostics.algorithm,
+      diagnostics.candidateNote,
+      diagnostics.outcome,
+      diagnostics.ambiguous,
+      alternativeCandidateMidi,
+      diagnostics.lastRecognizedAtMs,
+      diagnostics.lastRecognizedMidi,
+    ].join("|");
+    if (lastLoggedMicrophoneObservationRef.current === observationKey) return;
+    lastLoggedMicrophoneObservationRef.current = observationKey;
+    appendStaffGameMicrophoneDebugEvent("observation", {
+      game: {
+        inputMode: settings.inputMode,
+        level,
+        mode: gameMode,
+        notePoolScope: settings.notePoolScope,
+      },
+      target: {
+        frequencyHz: 440 * 2 ** ((currentTarget.midi - 69) / 12),
+        midi: currentTarget.midi,
+        note: noteLabel(currentTarget),
+        token: currentTarget.token,
+      },
+      microphone: {
+        algorithm: diagnostics.algorithm,
+        ambiguous: diagnostics.ambiguous,
+        alternativeCandidateConfidence: diagnostics.alternativeCandidateConfidence,
+        alternativeCandidateFrequencyHz: diagnostics.alternativeCandidateFrequencyHz,
+        analysisRms: diagnostics.analysisRms,
+        candidateConfidence: diagnostics.candidateConfidence,
+        candidateFrequencyHz: diagnostics.candidateFrequencyHz,
+        candidateNote: diagnostics.candidateNote,
+        detectedNote: microphone.detectedNote,
+        detectorDisagreement: diagnostics.detectorDisagreement,
+        includeAccidentals: diagnostics.includeAccidentals,
+        inputLevel: microphone.inputLevel,
+        inputRms: diagnostics.inputRms,
+        inputRmsThreshold: diagnostics.inputRmsThreshold,
+        lastRecognizedMidi: diagnostics.lastRecognizedMidi,
+        lastRecognizedNote: diagnostics.lastRecognizedNote,
+        outcome: diagnostics.outcome,
+        requiredStableFrames: diagnostics.requiredStableFrames,
+        requiredStableMs: diagnostics.requiredStableMs,
+        confidenceThreshold: diagnostics.confidenceThreshold,
+        audioContextSampleRate: diagnostics.audioContextSampleRate,
+        trackSampleRate: diagnostics.trackSampleRate,
+      },
+    });
+  }, [
+    microphone.detectedNote,
+    microphone.diagnostics,
+    microphone.inputLevel,
+    gameMode,
+    level,
+    phase,
+    settings.inputMode,
+    settings.notePoolScope,
+  ]);
 
   useEffect(() => {
     if (
@@ -1902,6 +2164,12 @@ export function StaffGameView({
         ? settingsDraft.difficulty
         : "normal",
     };
+    if (
+      nextSettings.notePoolScope !== settingsRef.current.notePoolScope ||
+      nextSettings.noteSchedulingStrategy !== settingsRef.current.noteSchedulingStrategy
+    ) {
+      noteBagRef.current = [];
+    }
     settingsRef.current = nextSettings;
     setSettings(nextSettings);
     setGameSoundsEnabled(nextSettings.audioByMode[gameMode].soundEffectsEnabled);
@@ -1911,6 +2179,7 @@ export function StaffGameView({
     closeGameDialog,
     gameMode,
     midi.status,
+    noteBagRef,
     settingsDraft,
     setGameSoundsEnabled,
     stopMicrophone,
@@ -2003,6 +2272,7 @@ export function StaffGameView({
     ...gameNoteFromMidi(selectedSong.noteMidis[0]),
     token: 0,
     centerX: 0,
+    spawnAt: 0,
   };
   const selectedSongRecord = songProgress[selectedSong.id] ?? {
     bestScore: 0,
@@ -2332,7 +2602,8 @@ export function StaffGameView({
               ref={targetElementRef}
               style={
                 {
-                  animationDuration: `${activeBubbleDurationMs}ms`,
+                  "--staff-game-bubble-fade-duration": `${BUBBLE_FADE_IN_MS}ms`,
+                  "--staff-game-bubble-fall-duration": `${activeBubbleDurationMs - BUBBLE_FADE_IN_MS}ms`,
                   left: `${target.centerX}px`,
                   ...(rushBubbleScreenTopStart?.token === target.token
                     ? { "--staff-game-bubble-start-top": `${rushBubbleScreenTopStart.top}px` }
@@ -2704,6 +2975,12 @@ export function StaffGameView({
           midiOptionAvailable={midiOptionAvailable}
           onDifficultyChange={(difficulty) =>
             setSettingsDraft((current) => ({ ...current, difficulty }))
+          }
+          onNotePoolScopeChange={(notePoolScope) =>
+            setSettingsDraft((current) => ({ ...current, notePoolScope }))
+          }
+          onNoteSchedulingStrategyChange={(noteSchedulingStrategy) =>
+            setSettingsDraft((current) => ({ ...current, noteSchedulingStrategy }))
           }
           onCloseWrongNoteNotice={() => setIsWrongNoteNoticeOpen(false)}
           onDisplayModeChange={(displayMode) =>

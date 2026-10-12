@@ -1,3 +1,4 @@
+import { Play, Square } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { Beam, Formatter, GhostNote, Stave, StaveNote, Stem, Voice } from "vexflow";
 import { markMidiLatencyStage } from "../../../diagnostics/midiLatencyDiagnostics";
@@ -20,7 +21,6 @@ import {
 import {
   getBarlineGapCenter,
   getCrossStaffOuterStemDirection,
-  getQuarterNoteBeats,
   getStaffPageBarlineInterval,
   getStaffPageBeamRuns,
   getVisibleBeamStemDirection,
@@ -28,11 +28,16 @@ import {
 } from "../logic/staffPageNotation";
 
 interface StaffPagePromptProps {
+  barlineAfterNoteIndices?: readonly number[];
   diagnosticSampleId?: number;
   notes: TargetNote[];
+  lyrics?: readonly (readonly string[])[];
+  noteMeasures?: readonly number[];
+  noteOnsets?: readonly number[];
   completedCount: number;
   isScrolling?: boolean;
   noteDuration: PromptNoteDuration;
+  noteDurations?: readonly StaffPageNoteDuration[];
   layout?: PracticePageStaffLayoutProfile;
   scrollDurationMs?: number;
   staffNotationMode: StaffNotationMode;
@@ -42,8 +47,20 @@ interface StaffPagePromptProps {
   maxRowCount?: number;
   minDisplayWidthPx?: number;
   visibleRowCount?: number;
+  breakBeamsAtStaffChange?: boolean;
+  onToggleRowPlayback?: (rowIndex: number) => void;
+  playingRowIndex?: number | null;
   wrongIndex?: number;
 }
+
+export type StaffPageNoteDuration =
+  | PromptNoteDuration
+  | "half"
+  | "dotted-whole"
+  | "dotted-half"
+  | "dotted-quarter"
+  | "dotted-eighth"
+  | "dotted-sixteenth";
 
 const NEUTRAL_COLOR = "#211c18";
 const COMPLETE_COLOR = "#2f8f5f";
@@ -70,12 +87,32 @@ function chunkNotes(notes: TargetNote[], notesPerRow: number, maxRowCount: numbe
 function makeStaveNote(
   note: TargetNote,
   color: string,
-  noteDuration: PromptNoteDuration
+  noteDuration: StaffPageNoteDuration
 ): StaveNote {
+  const vexDuration =
+    noteDuration === "whole"
+      ? "w"
+      : noteDuration === "dotted-whole"
+        ? "wd"
+        : noteDuration === "half"
+          ? "h"
+          : noteDuration === "dotted-half"
+            ? "hd"
+            : noteDuration === "quarter"
+              ? "q"
+              : noteDuration === "dotted-quarter"
+                ? "qd"
+                : noteDuration === "eighth"
+                  ? "8"
+                  : noteDuration === "dotted-eighth"
+                    ? "8d"
+                    : noteDuration === "dotted-sixteenth"
+                      ? "16d"
+                      : "16";
   const stemDirection = getLedgerStemDirection(note);
   const staveNote = new StaveNote({
     clef: note.staff,
-    duration: getVexNoteDuration(noteDuration),
+    duration: vexDuration,
     keys: [noteToVexKey(note)],
     ...(stemDirection === undefined ? {} : { stemDirection }),
   });
@@ -126,9 +163,69 @@ function makeStaffPageBeams(
   rowTickables: readonly StaffPageTickable[],
   noteDuration: PromptNoteDuration,
   visibleYBounds: { bottomY: number; topY: number },
-  neutralColor: string
+  neutralColor: string,
+  options?: {
+    barlineAfterNoteIndices?: readonly number[];
+    breakBeamsAtStaffChange?: boolean;
+    measures: readonly (number | undefined)[];
+    noteDurations: readonly StaffPageNoteDuration[];
+    noteOnsets: readonly (number | undefined)[];
+    rowStartIndex: number;
+  }
 ): Beam[] {
-  return getStaffPageBeamRuns(rowSlots, noteDuration).flatMap(({ size, startIndex }) => {
+  let beamRuns = getStaffPageBeamRuns(rowSlots, noteDuration);
+  if (options) {
+    beamRuns = [];
+    let runStart: number | undefined;
+    const closeRun = (endIndex: number): void => {
+      if (runStart !== undefined && endIndex - runStart >= 2) {
+        beamRuns.push({ size: endIndex - runStart, startIndex: runStart });
+      }
+      runStart = undefined;
+    };
+
+    for (let index = 0; index <= rowSlots.length; index += 1) {
+      const duration = options.noteDurations[index];
+      const isBeamable =
+        index < rowSlots.length &&
+        rowSlots[index] !== undefined &&
+        (duration === "eighth" ||
+          duration === "dotted-eighth" ||
+          duration === "sixteenth" ||
+          duration === "dotted-sixteenth");
+      if (!isBeamable) {
+        closeRun(index);
+        continue;
+      }
+
+      if (runStart !== undefined) {
+        const previousIndex = index - 1;
+        const sameMeasure = options.measures[index] === options.measures[previousIndex];
+        const previousBarline = options.barlineAfterNoteIndices?.includes(
+          options.rowStartIndex + previousIndex
+        );
+        const staffChanged =
+          options.breakBeamsAtStaffChange &&
+          rowSlots[index]?.staff !== rowSlots[previousIndex]?.staff;
+        const onsetGap =
+          (options.noteOnsets[index] ?? 0) - (options.noteOnsets[previousIndex] ?? 0);
+        const expectedGap = quarterBeatsForDuration(options.noteDurations[previousIndex]) / 4;
+        if (
+          !sameMeasure ||
+          previousBarline ||
+          // Single-note mixed passages must begin a new beam when they move between staves.
+          staffChanged ||
+          onsetGap <= 0 ||
+          onsetGap > expectedGap + 0.03
+        ) {
+          closeRun(index);
+        }
+      }
+      runStart ??= index;
+    }
+  }
+
+  return beamRuns.flatMap(({ size, startIndex }) => {
     const groupNotes = rowSlots.slice(startIndex, startIndex + size);
     const tickables = rowTickables.slice(startIndex, startIndex + size);
     if (
@@ -172,6 +269,26 @@ function addBarline(parent: SVGElement, x: number, y1: number, y2: number, color
   parent.appendChild(line);
 }
 
+function addStaffPageLyric(
+  parent: SVGElement,
+  text: string,
+  x: number,
+  y: number,
+  fontSize: number,
+  color: string
+): void {
+  const lyric = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  lyric.setAttribute("class", "staff-page-lyric");
+  lyric.setAttribute("x", x.toFixed(2));
+  lyric.setAttribute("y", y.toFixed(2));
+  lyric.setAttribute("font-size", fontSize.toFixed(2));
+  lyric.setAttribute("fill", color);
+  lyric.setAttribute("text-anchor", "middle");
+  lyric.setAttribute("dominant-baseline", "middle");
+  lyric.textContent = text;
+  parent.appendChild(lyric);
+}
+
 function getBarlineX(
   nextTickable: StaffPageTickable,
   previousNote: StaveNote | undefined,
@@ -202,12 +319,30 @@ function alignRowNotesEvenly(
   );
 }
 
+function quarterBeatsForDuration(duration: StaffPageNoteDuration): number {
+  if (duration === "whole") return 4;
+  if (duration === "dotted-whole") return 6;
+  if (duration === "half") return 2;
+  if (duration === "dotted-half") return 3;
+  if (duration === "quarter") return 1;
+  if (duration === "dotted-quarter") return 1.5;
+  if (duration === "eighth") return 0.5;
+  if (duration === "dotted-eighth") return 0.75;
+  if (duration === "dotted-sixteenth") return 0.375;
+  return 0.25;
+}
+
 export function StaffPagePrompt({
+  barlineAfterNoteIndices,
   diagnosticSampleId,
   notes,
+  lyrics,
+  noteMeasures,
+  noteOnsets,
   completedCount,
   isScrolling = false,
   noteDuration,
+  noteDurations,
   layout = PRACTICE_PAGE_STAFF_LAYOUT,
   scrollDurationMs = 0,
   staffNotationMode,
@@ -217,6 +352,9 @@ export function StaffPagePrompt({
   maxRowCount = layout.multirow.rows + 1,
   minDisplayWidthPx = layout.width.minPx,
   visibleRowCount = layout.multirow.rows,
+  breakBeamsAtStaffChange = false,
+  onToggleRowPlayback,
+  playingRowIndex = null,
   wrongIndex,
 }: StaffPagePromptProps): JSX.Element {
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -297,15 +435,33 @@ export function StaffPagePrompt({
         const rowStartIndex = rowIndex * notesPerRow;
         const rowSlots = Array.from({ length: notesPerRow }, (_, slotIndex) => rowNotes[slotIndex]);
         const vexDuration = getVexNoteDuration(noteDuration);
+        const rowDurations = rowSlots.map(
+          (_, slotIndex) => noteDurations?.[rowStartIndex + slotIndex] ?? noteDuration
+        );
+        const beamOptions =
+          noteDurations && noteMeasures && noteOnsets
+            ? {
+                barlineAfterNoteIndices,
+                breakBeamsAtStaffChange,
+                measures: rowSlots.map((_, slotIndex) => noteMeasures[rowStartIndex + slotIndex]),
+                noteDurations: rowDurations,
+                noteOnsets: rowSlots.map((_, slotIndex) => noteOnsets[rowStartIndex + slotIndex]),
+                rowStartIndex,
+              }
+            : undefined;
         const voiceOptions = {
           beatValue: 4,
-          numBeats: notesPerRow * getQuarterNoteBeats(noteDuration),
+          numBeats: rowDurations.reduce(
+            (total, duration) => total + quarterBeatsForDuration(duration),
+            0
+          ),
         };
         let beams: Beam[];
         let layoutTickables: StaffPageTickable[];
         let visibleTickables: Array<StaveNote | undefined>;
         let barlineTopY: number;
         let barlineBottomY: number;
+        let lyricAnchorY: number;
         const system = drawStaffSystem({
           brace: true,
           columnCount: notesPerRow,
@@ -345,7 +501,7 @@ export function StaffPagePrompt({
                 wrongIndexRef.current,
                 palette
               ),
-              noteDuration
+              rowDurations[slotIndex]
             ).setStave(note.staff === "treble" ? treble : bass);
           });
           const voice = new Voice(voiceOptions).addTickables(tickables);
@@ -358,7 +514,8 @@ export function StaffPagePrompt({
             tickables,
             noteDuration,
             visibleYBounds,
-            palette.ink
+            palette.ink,
+            beamOptions
           );
           const formatter = new Formatter().joinVoices([voice]);
           formatter.format(
@@ -377,6 +534,7 @@ export function StaffPagePrompt({
           );
           barlineTopY = treble.getYForLine(0);
           barlineBottomY = bass.getYForLine(4);
+          lyricAnchorY = treble.getYForLine(4);
         } else {
           const { stave } = system;
           const tickables = rowSlots.map((note, slotIndex) =>
@@ -389,7 +547,7 @@ export function StaffPagePrompt({
                     wrongIndexRef.current,
                     palette
                   ),
-                  noteDuration
+                  rowDurations[slotIndex]
                 ).setStave(stave)
               : new GhostNote(vexDuration).setStave(stave)
           );
@@ -399,7 +557,8 @@ export function StaffPagePrompt({
             tickables,
             noteDuration,
             visibleYBounds,
-            palette.ink
+            palette.ink,
+            beamOptions
           );
           stave.setNoteStartX(noteArea.left);
           stave.setWidth(Math.max(1, noteArea.right - frameMetrics.x));
@@ -414,6 +573,7 @@ export function StaffPagePrompt({
           );
           barlineTopY = stave.getYForLine(0);
           barlineBottomY = stave.getYForLine(4);
+          lyricAnchorY = barlineBottomY;
         }
 
         visibleTickables.forEach((staveNote, slotIndex) => {
@@ -430,12 +590,38 @@ export function StaffPagePrompt({
 
         beams.forEach((beam) => beam.setContext(context).drawWithStyle());
 
+        rowSlots.forEach((note, slotIndex) => {
+          if (!note) return;
+          const noteLyrics = lyrics?.[rowStartIndex + slotIndex];
+          const staveNote = visibleTickables[slotIndex];
+          if (!noteLyrics?.length || !staveNote) return;
+          const noteBounds = staveNote.getBoundingBox();
+          const lyricX = noteBounds.getX() + noteBounds.getW() / 2;
+          noteLyrics.forEach((text, lineIndex) => {
+            if (!text) return;
+            addStaffPageLyric(
+              rowGroup,
+              text,
+              lyricX,
+              lyricAnchorY + logicalPx(20 + lineIndex * 22, surface.scale),
+              logicalPx(15, surface.scale),
+              isNightMode ? "#f0a184" : "#c45c38"
+            );
+          });
+        });
+
         const barlineInterval = getStaffPageBarlineInterval(noteDuration);
-        for (
-          let boundaryIndex = barlineInterval;
-          boundaryIndex <= rowNotes.length && boundaryIndex < notesPerRow;
-          boundaryIndex += barlineInterval
-        ) {
+        const explicitBarlineBoundaries = barlineAfterNoteIndices
+          ?.map((noteIndex) => noteIndex + 1 - rowStartIndex)
+          .filter((boundaryIndex) => boundaryIndex > 0 && boundaryIndex <= rowNotes.length);
+        const barlineBoundaries =
+          explicitBarlineBoundaries ??
+          Array.from(
+            { length: Math.floor(Math.min(rowNotes.length, notesPerRow - 1) / barlineInterval) },
+            (_, index) => (index + 1) * barlineInterval
+          );
+        for (const boundaryIndex of barlineBoundaries) {
+          if (boundaryIndex >= notesPerRow) continue;
           const nextTickable = layoutTickables[boundaryIndex];
           const barlineX = getBarlineX(
             nextTickable,
@@ -457,14 +643,21 @@ export function StaffPagePrompt({
     return () => observer.disconnect();
   }, [
     layout,
+    barlineAfterNoteIndices,
+    isNightMode,
+    lyrics,
+    noteMeasures,
+    noteOnsets,
     minDisplayWidthPx,
     distributeNotesEvenly,
     noteDuration,
+    noteDurations,
     notesPerRow,
     palette,
     rows,
     scrollDurationMs,
     staffNotationMode,
+    breakBeamsAtStaffChange,
     useLedgerGap,
     visibleRowCount,
   ]);
@@ -484,11 +677,43 @@ export function StaffPagePrompt({
   }, [completedCount, isNightMode, palette, wrongIndex]);
 
   return (
-    <div ref={frameRef} className="staff-page" aria-label="谱页">
+    <div
+      ref={frameRef}
+      className={`staff-page${onToggleRowPlayback ? " staff-page-with-row-playback" : ""}`}
+      aria-label="谱页"
+    >
       <div
         ref={rendererTargetRef}
         className={`staff-page-renderer${isScrolling ? " staff-page-renderer-scrolling" : ""}`}
       />
+      {onToggleRowPlayback ? (
+        <div
+          className="staff-page-row-playback"
+          style={{ gridTemplateRows: `repeat(${rows.length}, minmax(0, 1fr))` }}
+        >
+          {rows.map((row, rowIndex) => {
+            if (row.length === 0) return null;
+            const isPlaying = playingRowIndex === rowIndex;
+            return (
+              <button
+                aria-label={`${isPlaying ? "停止" : "播放"}第 ${rowIndex + 1} 行`}
+                aria-pressed={isPlaying}
+                className={`staff-page-row-play-button${isPlaying ? " is-playing" : ""}`}
+                key={rowIndex}
+                title={`${isPlaying ? "停止" : "播放"}当前行`}
+                type="button"
+                onClick={() => onToggleRowPlayback(rowIndex)}
+              >
+                {isPlaying ? (
+                  <Square aria-hidden="true" size={16} />
+                ) : (
+                  <Play aria-hidden="true" size={16} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

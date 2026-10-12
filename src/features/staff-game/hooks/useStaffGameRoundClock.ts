@@ -12,6 +12,8 @@ import {
   drawNextNote,
   gameNoteFromMidi,
   randomBubbleCenterX,
+  type StaffGameNotePoolScope,
+  type StaffGameNoteSchedulingStrategy,
   type StaffGamePitch,
 } from "../logic/staffGameRules";
 import type { StaffGameSoundName } from "./useStaffGameAudio";
@@ -22,6 +24,16 @@ export interface StaffGameTarget {
   octave: number;
   token: number;
   centerX: number;
+  spawnAt: number;
+}
+
+export interface StaffGameLevelRoundMetrics {
+  generatedBubbleCount: number;
+  firstTryCorrectCount: number;
+  correctBubbleCount: number;
+  responseTotalMs: number;
+  responseSampleCount: number;
+  firstInputByToken: Map<number, { firstInputCorrect: boolean | null }>;
 }
 
 type StaffGameMode = "levels" | "songs";
@@ -40,9 +52,11 @@ interface StaffGameRoundClockOptions {
   songTargetIndexRef: MutableRefObject<number>;
   songWrongTargetTokenRef: MutableRefObject<number | null>;
   noteBagRef: MutableRefObject<StaffGamePitch[]>;
+  notePoolScopeRef: MutableRefObject<StaffGameNotePoolScope>;
+  noteSchedulingStrategyRef: MutableRefObject<StaffGameNoteSchedulingStrategy>;
   recentNoteMidisRef: MutableRefObject<number[]>;
   targetTokenRef: MutableRefObject<number>;
-  targetSpawnGameMsRef: MutableRefObject<number>;
+  roundMetricsRef: MutableRefObject<StaffGameLevelRoundMetrics>;
   elapsedBeforeRunRef: MutableRefObject<number>;
   runSegmentStartedAtRef: MutableRefObject<number>;
   targetRef: MutableRefObject<StaffGameTarget | null>;
@@ -75,9 +89,11 @@ export function useStaffGameRoundClock({
   songTargetIndexRef,
   songWrongTargetTokenRef,
   noteBagRef,
+  notePoolScopeRef,
+  noteSchedulingStrategyRef,
   recentNoteMidisRef,
   targetTokenRef,
-  targetSpawnGameMsRef,
+  roundMetricsRef,
   elapsedBeforeRunRef,
   runSegmentStartedAtRef,
   targetRef,
@@ -107,18 +123,28 @@ export function useStaffGameRoundClock({
               const midi = song?.noteMidis[songTargetIndexRef.current];
               return midi === undefined ? null : gameNoteFromMidi(midi);
             })()
-          : drawNextNote(levelRef.current, noteBagRef.current, recentNoteMidisRef.current);
+          : drawNextNote(
+              levelRef.current,
+              noteBagRef.current,
+              recentNoteMidisRef.current,
+              notePoolScopeRef.current,
+              noteSchedulingStrategyRef.current
+            );
       if (!drawnNote) return;
       targetTokenRef.current += 1;
       const next = {
         ...drawnNote,
         token: targetTokenRef.current,
         centerX: randomBubbleCenterX(playfieldRef.current),
+        spawnAt: atGameMs,
       };
       if (gameModeRef.current === "levels") {
+        roundMetricsRef.current.generatedBubbleCount += 1;
+        roundMetricsRef.current.firstInputByToken.set(next.token, {
+          firstInputCorrect: null,
+        });
         recentNoteMidisRef.current = [...recentNoteMidisRef.current, next.midi].slice(-3);
       }
-      targetSpawnGameMsRef.current = atGameMs;
       targetRef.current = next;
       targetPoppedRef.current = false;
       setTarget(next);
@@ -131,7 +157,10 @@ export function useStaffGameRoundClock({
       noteBagRef,
       phaseRef,
       playfieldRef,
+      notePoolScopeRef,
+      noteSchedulingStrategyRef,
       recentNoteMidisRef,
+      roundMetricsRef,
       selectedSongIdRef,
       setTarget,
       setTargetPopped,
@@ -139,7 +168,6 @@ export function useStaffGameRoundClock({
       songTargetIndexRef,
       targetPoppedRef,
       targetRef,
-      targetSpawnGameMsRef,
       targetTokenRef,
     ]
   );
@@ -164,7 +192,7 @@ export function useStaffGameRoundClock({
       if (
         targetRef.current &&
         !targetPoppedRef.current &&
-        gameTime - targetSpawnGameMsRef.current >= activeBubbleDurationMs
+        gameTime - targetRef.current.spawnAt >= activeBubbleDurationMs
       ) {
         const missedTarget = targetRef.current;
         targetRef.current = null;
@@ -222,6 +250,7 @@ export function useStaffGameRoundClock({
     phaseRef,
     playGameSound,
     resetComboDisplay,
+    roundMetricsRef,
     runSegmentStartedAtRef,
     selectedSongIdRef,
     setElapsedMs,
@@ -233,7 +262,6 @@ export function useStaffGameRoundClock({
     spawnTarget,
     targetPoppedRef,
     targetRef,
-    targetSpawnGameMsRef,
     triggerMascotReaction,
     waitingForNextTargetRef,
   ]);

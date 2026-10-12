@@ -27,7 +27,9 @@ interface PracticeStaffPageFlowValues {
   drillNoteNames: NoteName[];
   enabledNotes: TargetNote[];
   fixedCount: number;
+  isMobileViewport: boolean;
   mode: PracticeMode;
+  pageNoteCount: number;
   queueStrategy: PracticeQueueStrategy;
   schedulerReviews: ReviewRecord[];
   sessions: PracticeSessionRecord[];
@@ -75,7 +77,9 @@ export function usePracticeStaffPageFlow({
     drillNoteNames,
     enabledNotes,
     fixedCount,
+    isMobileViewport,
     mode,
+    pageNoteCount,
     queueStrategy,
     schedulerReviews,
     sessions,
@@ -249,36 +253,46 @@ export function usePracticeStaffPageFlow({
         completedSessionCount: nextCompletedCount,
         fixedSessionCount: mode === "fixed-count" ? fixedCount : undefined,
         nextIndex,
+        pageNoteCount,
         plannedNoteCount: page.notes.length,
       });
-      if (nextRowCount === 0) {
+      const hasNextPageOnDesktop =
+        !isMobileViewport &&
+        nextIndex > page.index &&
+        nextIndex % pageNoteCount === 0 &&
+        nextIndex < page.notes.length;
+      if (nextRowCount === 0 && !hasNextPageOnDesktop) {
         return false;
       }
 
-      const pageSelectionOptions = {
-        notes: enabledNotes,
-        reviews: [...schedulerReviews, ...sessionReviewsRef.current],
-        sessions,
-        currentSessionId: sessionRef.current?.id,
-        queueStrategy,
-        drillNoteNames,
-        lastTargetNoteId: page.notes[page.notes.length - 1]?.id,
-        plannedTargetNoteIds: remainingVisibleNotes.map((note) => note.id),
-        melodyState: melodyGenerationStateRef.current,
-        count: nextRowCount,
-      };
-      const nextRow =
-        queueStrategy !== "melody"
-          ? (adaptiveSchedulerRef.current?.selectPage(nextRowCount, {
-              lastTargetNoteId: pageSelectionOptions.lastTargetNoteId,
-              plannedTargetNoteIds: pageSelectionOptions.plannedTargetNoteIds,
-            }) ?? selectNotePage(pageSelectionOptions))
-          : selectNotePage(pageSelectionOptions);
+      let nextNotes = page.notes;
+      if (nextRowCount > 0) {
+        const pageSelectionOptions = {
+          notes: enabledNotes,
+          reviews: [...schedulerReviews, ...sessionReviewsRef.current],
+          sessions,
+          currentSessionId: sessionRef.current?.id,
+          queueStrategy,
+          drillNoteNames,
+          lastTargetNoteId: page.notes[page.notes.length - 1]?.id,
+          plannedTargetNoteIds: remainingVisibleNotes.map((note) => note.id),
+          melodyState: melodyGenerationStateRef.current,
+          count: nextRowCount,
+        };
+        const nextRow =
+          queueStrategy !== "melody"
+            ? (adaptiveSchedulerRef.current?.selectPage(nextRowCount, {
+                lastTargetNoteId: pageSelectionOptions.lastTargetNoteId,
+                plannedTargetNoteIds: pageSelectionOptions.plannedTargetNoteIds,
+              }) ?? selectNotePage(pageSelectionOptions))
+            : selectNotePage(pageSelectionOptions);
+        nextNotes = [...page.notes, ...nextRow];
+      }
       const sessionId = sessionRef.current?.id;
       syncStaffPage({
         ...page,
         index: nextIndex,
-        notes: [...page.notes, ...nextRow],
+        notes: nextNotes,
       });
       const finishScroll = (): void => {
         staffPageScrollTimeoutRef.current = null;
@@ -286,7 +300,10 @@ export function usePracticeStaffPageFlow({
           return;
         }
         const scrolledPage = staffPageRef.current;
-        if (!scrolledPage || scrolledPage.notes.length <= STAFF_PAGE_SIZE) {
+        if (
+          !scrolledPage ||
+          scrolledPage.notes.length <= PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
+        ) {
           setIsStaffPageScrolling(false);
           return;
         }
@@ -327,10 +344,12 @@ export function usePracticeStaffPageFlow({
       drillNoteNames,
       enabledNotes,
       fixedCount,
+      isMobileViewport,
       adaptiveSchedulerRef,
       isPausedRef,
       melodyGenerationStateRef,
       mode,
+      pageNoteCount,
       pendingAfterPauseRef,
       queueStrategy,
       resumeActiveTimers,
