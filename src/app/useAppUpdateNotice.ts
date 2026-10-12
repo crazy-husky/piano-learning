@@ -7,6 +7,23 @@ const UPDATE_CHECK_TIMEOUT_MS = 8_000;
 const WORKER_INSTALL_TIMEOUT_MS = 120_000;
 const WORKER_ACTIVATION_TIMEOUT_MS = 15_000;
 const UPDATE_NOTICE_ID = "app-update-available";
+const UPDATE_RESULT_NOTICE_ID = "app-update-result";
+const PENDING_UPDATE_STORAGE_KEY_PREFIX = "piano-learning.pending-app-update:";
+const UPDATE_TAB_ID_STORAGE_KEY = "piano-learning.update-tab-id";
+const UPDATE_RELOAD_PARAM = "__app_update";
+const UPDATE_RECOVERY_TTL_MS = 15 * 60_000;
+const MAX_FORCED_UPDATE_RELOADS = 1;
+const UPDATE_FAILURE_MESSAGE =
+  "新版暂未能加载，请关闭此页面后重新进入；如果仍未更新，请检查网络后重试。";
+
+interface PendingAppUpdate {
+  ownerTabId: string;
+  sourceBuildId: string;
+  targetBuildId: string;
+  startedAt: number;
+  forcedReloads: number;
+  phase: "preparing" | "refresh-requested";
+}
 
 interface BuildVersionResponse {
   version?: unknown;
@@ -15,7 +32,7 @@ interface BuildVersionResponse {
 }
 
 export type AppUpdateStatus =
-  "idle" | "checking" | "up-to-date" | "available" | "preparing" | "error";
+  "idle" | "checking" | "up-to-date" | "available" | "preparing" | "reloading" | "error";
 
 export interface AppUpdateController {
   status: AppUpdateStatus;
@@ -38,6 +55,191 @@ function getVersionUrl(): URL {
 
 function isBuildVersionResponse(value: unknown): value is BuildVersionResponse {
   return Boolean(value && typeof value === "object" && "buildId" in value);
+}
+
+function getUpdateTabId(): string | null {
+  try {
+    const existingId = window.sessionStorage.getItem(UPDATE_TAB_ID_STORAGE_KEY);
+    if (existingId) return existingId;
+    const newId =
+      window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    window.sessionStorage.setItem(UPDATE_TAB_ID_STORAGE_KEY, newId);
+    return newId;
+  } catch {
+    return null;
+  }
+}
+
+function getPendingUpdateStorageKey(ownerTabId: string): string {
+  return `${PENDING_UPDATE_STORAGE_KEY_PREFIX}${ownerTabId}`;
+}
+
+function parsePendingAppUpdate(value: string): PendingAppUpdate | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object") return null;
+    const update = parsed as Partial<PendingAppUpdate>;
+    if (
+      typeof update.ownerTabId !== "string" ||
+      typeof update.sourceBuildId !== "string" ||
+      typeof update.targetBuildId !== "string" ||
+      typeof update.startedAt !== "number" ||
+      !Number.isFinite(update.startedAt) ||
+      typeof update.forcedReloads !== "number" ||
+      !Number.isInteger(update.forcedReloads) ||
+      update.forcedReloads < 0 ||
+      (update.phase !== "preparing" && update.phase !== "refresh-requested")
+    ) {
+      return null;
+    }
+    return update as PendingAppUpdate;
+  } catch {
+    return null;
+  }
+}
+
+function readPendingAppUpdate(ownerTabId: string): PendingAppUpdate | null {
+  const storageKey = getPendingUpdateStorageKey(ownerTabId);
+  for (const storageName of ["localStorage", "sessionStorage"] as const) {
+    try {
+      const storage = window[storageName];
+      const value = storage.getItem(storageKey);
+      if (!value) continue;
+      const update = parsePendingAppUpdate(value);
+      if (update?.ownerTabId === ownerTabId) return update;
+      storage.removeItem(storageKey);
+    } catch {
+      // Try the next storage area when this one is unavailable.
+    }
+  }
+  return null;
+}
+
+function writePendingAppUpdate(update: PendingAppUpdate): boolean {
+  const value = JSON.stringify(update);
+  const storageKey = getPendingUpdateStorageKey(update.ownerTabId);
+  for (const storageName of ["localStorage", "sessionStorage"] as const) {
+    try {
+      window[storageName].setItem(storageKey, value);
+      return true;
+    } catch {
+      // Fall back to session storage if persistent storage is unavailable.
+      try {
+        window[storageName].removeItem(storageKey);
+      } catch {
+        // Storage may be entirely unavailable.
+      }
+    }
+  }
+  return false;
+}
+
+function clearPendingAppUpdate(ownerTabId: string): void {
+  const storageKey = getPendingUpdateStorageKey(ownerTabId);
+  for (const storageName of ["localStorage", "sessionStorage"] as const) {
+    try {
+      window[storageName].removeItem(storageKey);
+    } catch {
+      // Storage may be unavailable in private browsing.
+    }
+  }
+}
+
+function clearUpdateReloadParameter(): void {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(UPDATE_RELOAD_PARAM)) return;
+    url.searchParams.delete(UPDATE_RELOAD_PARAM);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`
+    );
+  } catch (error) {
+    reportAppDiagnostic({
+      source: "app-update",
+      details: `Stage: reload-parameter-cleanup\n${describeThrownValue(error)}`,
+    });
+  }
+}
+
+function requestForcedUpdateReload(update: PendingAppUpdate, reason: string): boolean {
+  if (update.forcedReloads >= MAX_FORCED_UPDATE_RELOADS) return false;
+  const nextUpdate: PendingAppUpdate = {
+    ...update,
+    forcedReloads: update.forcedReloads + 1,
+    phase: "refresh-requested",
+  };
+  if (!writePendingAppUpdate(nextUpdate)) {
+    reportAppDiagnostic({
+      source: "app-update",
+      details: [
+        "Stage: update-state-storage",
+        `Local build: ${update.sourceBuildId}`,
+        `Remote build: ${update.targetBuildId}`,
+        "Could not persist the reload guard; automatic reload was cancelled to prevent a loop.",
+      ].join("\n"),
+    });
+    return false;
+  }
+
+  reportAppDiagnostic({
+    source: "app-update",
+    details: [
+      "Stage: fallback-reload",
+      `Local build: ${update.sourceBuildId}`,
+      `Remote build: ${update.targetBuildId}`,
+      `Attempt: ${nextUpdate.forcedReloads}/${MAX_FORCED_UPDATE_RELOADS}`,
+      `Reason: ${reason}`,
+    ].join("\n"),
+  });
+
+  try {
+    const refreshUrl = new URL(window.location.href);
+    refreshUrl.searchParams.set(UPDATE_RELOAD_PARAM, String(Date.now()));
+    window.location.replace(refreshUrl.toString());
+    return true;
+  } catch (error) {
+    reportAppDiagnostic({
+      source: "app-update",
+      details: `Stage: fallback-reload-navigation\n${describeThrownValue(error)}`,
+    });
+    return false;
+  }
+}
+
+function markUpdateRefreshRequested(update: PendingAppUpdate): PendingAppUpdate | null {
+  const refreshRequestedUpdate: PendingAppUpdate = { ...update, phase: "refresh-requested" };
+  if (writePendingAppUpdate(refreshRequestedUpdate)) return refreshRequestedUpdate;
+
+  reportAppDiagnostic({
+    source: "app-update",
+    details: [
+      "Stage: update-state-storage",
+      `Local build: ${update.sourceBuildId}`,
+      `Remote build: ${update.targetBuildId}`,
+      "Could not persist the refresh request; automatic activation was cancelled to prevent an unconfirmed reload.",
+    ].join("\n"),
+  });
+  return null;
+}
+
+function describePendingUpdate(update: PendingAppUpdate, stage: string, reason: string): string {
+  return [
+    `Stage: ${stage}`,
+    `Local build: ${update.sourceBuildId}`,
+    `Remote build: ${update.targetBuildId}`,
+    `Forced reloads: ${update.forcedReloads}/${MAX_FORCED_UPDATE_RELOADS}`,
+    `Reason: ${reason}`,
+  ].join("\n");
+}
+
+function showUpdateFailureNotice(description: string): void {
+  toast.error("新版暂未能加载", {
+    id: UPDATE_RESULT_NOTICE_ID,
+    description,
+    duration: 15_000,
+  });
 }
 
 type ServiceWorkerReadyResult =
@@ -328,6 +530,7 @@ export function useAppUpdateNotice(): AppUpdateController {
   const remoteBuildIdRef = useRef<string | null>(null);
   const preparationInProgressRef = useRef(false);
   const activeCheckRef = useRef<Promise<VersionCheckResult> | null>(null);
+  const startupUpdateRecoveryHandledRef = useRef(false);
 
   const runVersionCheck = useCallback((): Promise<VersionCheckResult> => {
     if (activeCheckRef.current) return activeCheckRef.current;
@@ -370,12 +573,118 @@ export function useAppUpdateNotice(): AppUpdateController {
     });
   }, [runVersionCheck]);
 
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+
+    const ownerTabId = getUpdateTabId();
+    clearUpdateReloadParameter();
+    if (!ownerTabId) return;
+
+    const pendingUpdate = readPendingAppUpdate(ownerTabId);
+    if (!pendingUpdate) return;
+
+    const ageMs = Date.now() - pendingUpdate.startedAt;
+    if (ageMs < 0 || ageMs > UPDATE_RECOVERY_TTL_MS) {
+      clearPendingAppUpdate(ownerTabId);
+      return;
+    }
+
+    if (pendingUpdate.phase !== "refresh-requested") {
+      // The tab was refreshed while the Service Worker was still being prepared.
+      // Do not treat that as a failed update or start a competing fallback reload.
+      clearPendingAppUpdate(ownerTabId);
+      return;
+    }
+
+    startupUpdateRecoveryHandledRef.current = true;
+    if (__APP_BUILD_ID__ !== pendingUpdate.sourceBuildId) {
+      clearPendingAppUpdate(ownerTabId);
+      setStatus("up-to-date");
+      setMessage("更新完成，当前版本已启用");
+      toast.dismiss(UPDATE_NOTICE_ID);
+      toast.success("更新完成", {
+        id: UPDATE_RESULT_NOTICE_ID,
+        description: "新版已成功启用。",
+        duration: 7_000,
+      });
+      return;
+    }
+
+    if (pendingUpdate.forcedReloads < MAX_FORCED_UPDATE_RELOADS) {
+      setStatus("reloading");
+      setMessage("正在重新加载页面以完成更新…");
+      if (requestForcedUpdateReload(pendingUpdate, "刷新后仍运行旧版本，执行一次缓存绕过刷新")) {
+        return;
+      }
+      clearPendingAppUpdate(ownerTabId);
+    } else {
+      clearPendingAppUpdate(ownerTabId);
+    }
+
+    const failureReason =
+      pendingUpdate.forcedReloads >= MAX_FORCED_UPDATE_RELOADS
+        ? "页面刷新后仍运行旧版本，自动兜底次数已用完。"
+        : "无法安全发起缓存绕过刷新。";
+    reportAppDiagnostic({
+      source: "app-update",
+      details: describePendingUpdate(pendingUpdate, "update-verification", failureReason),
+    });
+    setHasUpdateAvailable(false);
+    hasUpdateAvailableRef.current = false;
+    setStatus("error");
+    setMessage(UPDATE_FAILURE_MESSAGE);
+    showUpdateFailureNotice(UPDATE_FAILURE_MESSAGE);
+  }, []);
+
   const applyUpdate = useCallback(async (): Promise<void> => {
     if (!hasUpdateAvailableRef.current || preparationInProgressRef.current) return;
 
     preparationInProgressRef.current = true;
     setStatus("preparing");
     setMessage("正在准备新版资源…");
+    const ownerTabId = getUpdateTabId();
+    if (!ownerTabId) {
+      const storageFailureMessage =
+        "无法安全记录当前页面，已暂停自动更新。请稍后重试；若仍失败，请关闭此页面后重新进入。";
+      reportAppDiagnostic({
+        source: "app-update",
+        details:
+          "Stage: update-tab-identity\nCould not persist the current tab identity in session storage.",
+      });
+      setStatus("error");
+      setMessage(storageFailureMessage);
+      toast.error("无法安全启动更新", { description: storageFailureMessage });
+      preparationInProgressRef.current = false;
+      return;
+    }
+
+    const pendingUpdate: PendingAppUpdate = {
+      ownerTabId,
+      sourceBuildId: __APP_BUILD_ID__,
+      targetBuildId: remoteBuildIdRef.current ?? "unknown",
+      startedAt: Date.now(),
+      forcedReloads: 0,
+      phase: "preparing",
+    };
+    if (!writePendingAppUpdate(pendingUpdate)) {
+      reportAppDiagnostic({
+        source: "app-update",
+        details: [
+          "Stage: update-state-storage",
+          `Local build: ${pendingUpdate.sourceBuildId}`,
+          `Remote build: ${pendingUpdate.targetBuildId}`,
+          "Could not persist the update state; update activation was stopped to prevent a reload loop without confirmation.",
+        ].join("\n"),
+      });
+      setStatus("error");
+      const storageFailureMessage =
+        "无法安全记录更新状态，已暂停自动刷新以避免循环。请稍后重试；若仍失败，请关闭此页面后重新进入。";
+      setMessage(storageFailureMessage);
+      toast.error("无法安全启动更新", { description: storageFailureMessage });
+      preparationInProgressRef.current = false;
+      return;
+    }
+
     try {
       const serviceWorkerResult = await stageServiceWorkerUpdate();
       if (serviceWorkerResult.status === "error") {
@@ -388,27 +697,77 @@ export function useAppUpdateNotice(): AppUpdateController {
             serviceWorkerResult.diagnostic,
           ].join("\n"),
         });
+        if (requestForcedUpdateReload(pendingUpdate, serviceWorkerResult.diagnostic)) {
+          toast.dismiss(UPDATE_NOTICE_ID);
+          setStatus("reloading");
+          setMessage("新版资源准备未完成，正在强制刷新页面…");
+        } else {
+          clearPendingAppUpdate(ownerTabId);
+          setStatus("error");
+          setMessage(UPDATE_FAILURE_MESSAGE);
+          showUpdateFailureNotice(UPDATE_FAILURE_MESSAGE);
+        }
+        return;
+      }
+
+      const refreshRequestedUpdate = markUpdateRefreshRequested(pendingUpdate);
+      if (!refreshRequestedUpdate) {
+        clearPendingAppUpdate(ownerTabId);
         setStatus("error");
-        setMessage("新版资源准备失败，请查看右下角诊断后重试");
+        setMessage("无法安全确认刷新状态，暂未启用新版。请重新检查更新后重试。");
+        toast.error("无法安全启用新版", {
+          description: "刷新状态保存失败，已取消自动刷新以避免循环。",
+        });
         return;
       }
 
       if (!applyAvailableUpdate(serviceWorkerResult.preparedUpdate)) {
         const waitingWorker = serviceWorkerResult.preparedUpdate.registration.waiting;
+        const diagnostic = [
+          "Stage: apply-update",
+          `Expected waiting worker state: installed; actual state: ${waitingWorker?.state ?? "no waiting worker"}.`,
+        ].join("\n");
         reportAppDiagnostic({
           source: "app-update",
-          details: [
-            "Stage: apply-update",
-            `Expected waiting worker state: installed; actual state: ${waitingWorker?.state ?? "no waiting worker"}.`,
-          ].join("\n"),
+          details: diagnostic,
         });
-        setStatus("error");
-        setMessage("新版启用失败，请查看右下角诊断后重试");
+        if (requestForcedUpdateReload(refreshRequestedUpdate, diagnostic)) {
+          toast.dismiss(UPDATE_NOTICE_ID);
+          setStatus("reloading");
+          setMessage("新版启用未完成，正在强制刷新页面…");
+        } else {
+          clearPendingAppUpdate(ownerTabId);
+          setStatus("error");
+          setMessage(UPDATE_FAILURE_MESSAGE);
+          showUpdateFailureNotice(UPDATE_FAILURE_MESSAGE);
+        }
         return;
       }
 
       toast.dismiss(UPDATE_NOTICE_ID);
+      setStatus("reloading");
       setMessage("正在重新加载…");
+    } catch (error) {
+      const diagnostic = describeThrownValue(error);
+      reportAppDiagnostic({
+        source: "app-update",
+        details: [
+          "Stage: prepare-update",
+          `Local build: ${pendingUpdate.sourceBuildId}`,
+          `Remote build: ${pendingUpdate.targetBuildId}`,
+          diagnostic,
+        ].join("\n"),
+      });
+      if (requestForcedUpdateReload(pendingUpdate, diagnostic)) {
+        toast.dismiss(UPDATE_NOTICE_ID);
+        setStatus("reloading");
+        setMessage("新版准备遇到问题，正在强制刷新页面…");
+      } else {
+        clearPendingAppUpdate(ownerTabId);
+        setStatus("error");
+        setMessage(UPDATE_FAILURE_MESSAGE);
+        showUpdateFailureNotice(UPDATE_FAILURE_MESSAGE);
+      }
     } finally {
       preparationInProgressRef.current = false;
     }
@@ -423,6 +782,7 @@ export function useAppUpdateNotice(): AppUpdateController {
     const checkForUpdate = async (): Promise<void> => {
       if (
         disposed ||
+        startupUpdateRecoveryHandledRef.current ||
         updateFound ||
         hasUpdateAvailableRef.current ||
         document.visibilityState === "hidden"
@@ -477,7 +837,8 @@ export function useAppUpdateNotice(): AppUpdateController {
     if (!hasUpdateAvailable) return;
     toast.warning("发现新版本", {
       id: UPDATE_NOTICE_ID,
-      description: "检测到新版本。点击立即使用会下载并缓存新版资源，准备完成后自动刷新页面。",
+      description:
+        "检测到新版本。点击立即使用会准备新版并刷新页面；若自动更新准备失败，将尝试强制刷新。",
       duration: Number.POSITIVE_INFINITY,
       action: {
         label: "立即使用新版",

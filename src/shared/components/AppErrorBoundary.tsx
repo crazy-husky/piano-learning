@@ -296,7 +296,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
       case "resource-load-error":
         return "页面资源加载错误";
       case "app-update":
-        return "检查更新错误";
+        return "应用更新错误";
       case "service-worker-update":
         return "新版资源预缓存错误";
       case "backend":

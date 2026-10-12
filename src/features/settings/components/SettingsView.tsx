@@ -819,7 +819,11 @@ export function SettingsView({
             </span>
           </div>
           <button
-            disabled={appUpdateStatus === "checking" || appUpdateStatus === "preparing"}
+            disabled={
+              appUpdateStatus === "checking" ||
+              appUpdateStatus === "preparing" ||
+              appUpdateStatus === "reloading"
+            }
             onClick={onCheckForUpdates}
             type="button"
           >
@@ -827,9 +831,11 @@ export function SettingsView({
               ? "正在检查…"
               : appUpdateStatus === "preparing"
                 ? "正在准备…"
-                : appUpdateStatus === "up-to-date" || hasUpdateAvailable
-                  ? "重新检查"
-                  : "检查更新"}
+                : appUpdateStatus === "reloading"
+                  ? "正在刷新…"
+                  : appUpdateStatus === "up-to-date" || hasUpdateAvailable
+                    ? "重新检查"
+                    : "检查更新"}
           </button>
         </div>
         {appUpdateMessage ? (
@@ -844,11 +850,19 @@ export function SettingsView({
           <div className="action-row">
             <button
               className="primary"
-              disabled={appUpdateStatus === "checking" || appUpdateStatus === "preparing"}
+              disabled={
+                appUpdateStatus === "checking" ||
+                appUpdateStatus === "preparing" ||
+                appUpdateStatus === "reloading"
+              }
               onClick={onApplyUpdate}
               type="button"
             >
-              {appUpdateStatus === "preparing" ? "正在准备新版…" : "立即使用新版"}
+              {appUpdateStatus === "preparing"
+                ? "正在准备新版…"
+                : appUpdateStatus === "reloading"
+                  ? "正在刷新页面…"
+                  : "立即使用新版"}
             </button>
           </div>
         ) : null}
