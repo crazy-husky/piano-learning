@@ -4,6 +4,7 @@ const APP_CACHE_PREFIX = "anki-note-app-";
 const CACHE_NAME = `${APP_CACHE_PREFIX}${APP_BUILD_ID}`;
 const PRELOAD_MAX_ATTEMPTS = 4;
 const PRELOAD_RETRY_DELAYS_MS = [300, 900, 1800];
+const RUNTIME_ASSET_MAX_ATTEMPTS = 4;
 const scopeUrl = new URL(self.registration.scope);
 const indexUrl = new URL("index.html", scopeUrl).toString();
 const APP_SHELL = ["", "index.html", "manifest.webmanifest", "icons/icon.svg?v=2"].map((path) =>
@@ -55,6 +56,7 @@ function waitBeforePreloadRetry(attempt) {
 
 async function preloadAsset(cache, assetUrl) {
   const cacheKey = getBuildCacheKey(assetUrl);
+  const request = new Request(assetUrl);
   let response;
   let attempts = 0;
 
@@ -68,6 +70,20 @@ async function preloadAsset(cache, assetUrl) {
       }
       await waitBeforePreloadRetry(attempts);
       continue;
+    }
+
+    const htmlFallback =
+      response.ok && isRetryableRuntimeAsset(request) && isHtmlFallbackResponse(response);
+    if (htmlFallback) {
+      const reason = [
+        "Unexpected HTML response for runtime asset",
+        `Content type: ${response.headers.get("content-type") || "unavailable"}`,
+      ].join("; ");
+      if (attempts < PRELOAD_MAX_ATTEMPTS) {
+        await waitBeforePreloadRetry(attempts);
+        continue;
+      }
+      throw createPreloadError("invalid-runtime-response", assetUrl, attempts, reason);
     }
 
     if (!response.ok || response.type !== "basic") {
@@ -146,6 +162,11 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("message", (event) => {
+  if (event.data?.type === "get-service-worker-build-id") {
+    event.ports[0]?.postMessage({ type: "service-worker-build-id", buildId: APP_BUILD_ID });
+    return;
+  }
+
   if (event.data === "skip-waiting") {
     event.waitUntil(self.skipWaiting());
   }
@@ -162,7 +183,12 @@ function canHandle(request) {
 
 async function cacheResponse(request, response) {
   const url = new URL(request.url);
-  if (!response.ok || response.type !== "basic" || !isCacheableAssetUrl(url)) {
+  if (
+    !response.ok ||
+    response.type !== "basic" ||
+    !isCacheableAssetUrl(url) ||
+    (isRetryableRuntimeAsset(request) && isHtmlFallbackResponse(response))
+  ) {
     return response;
   }
   try {
@@ -172,6 +198,143 @@ async function cacheResponse(request, response) {
     // Cache writes are best-effort; the network response remains usable.
   }
   return response;
+}
+
+function isRetryableRuntimeAsset(request) {
+  const url = new URL(request.url);
+  const relativePath = url.pathname.slice(scopeUrl.pathname.length).toLowerCase();
+  return (
+    request.method === "GET" &&
+    url.origin === self.location.origin &&
+    url.pathname.startsWith(scopeUrl.pathname) &&
+    relativePath.startsWith("assets/") &&
+    /\.(?:js|css)$/.test(relativePath)
+  );
+}
+
+function isRetryableRuntimeResponse(response) {
+  return (
+    response.status === 404 ||
+    response.status === 408 ||
+    response.status === 429 ||
+    (response.status >= 500 && response.status < 600)
+  );
+}
+
+function isHtmlFallbackResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+  return /\b(?:text\/html|application\/xhtml\+xml)\b/i.test(contentType);
+}
+
+function isRuntimeAssetOffline() {
+  return typeof self.navigator?.onLine === "boolean" && !self.navigator.onLine;
+}
+
+async function notifyRuntimeAssetClient(clientId, message) {
+  if (!clientId) return;
+  try {
+    const client = await self.clients.get(clientId);
+    client?.postMessage(message);
+  } catch {
+    // Resource recovery should continue even if the page cannot receive progress updates.
+  }
+}
+
+async function fetchRuntimeAssetWithRetries(request, clientId) {
+  const assetUrl = request.url;
+  let attempts = 0;
+
+  while (attempts < RUNTIME_ASSET_MAX_ATTEMPTS) {
+    attempts += 1;
+    let response;
+
+    try {
+      response = await fetch(new Request(request, { cache: "reload" }));
+    } catch (error) {
+      const offline = isRuntimeAssetOffline();
+      if (offline || attempts >= RUNTIME_ASSET_MAX_ATTEMPTS) {
+        await notifyRuntimeAssetClient(clientId, {
+          type: "app-runtime-asset-retry-failed",
+          assetUrl,
+          attempts,
+          maxRetries: RUNTIME_ASSET_MAX_ATTEMPTS - 1,
+          offline,
+          reason: describeFailure(error),
+        });
+        throw error;
+      }
+
+      await notifyRuntimeAssetClient(clientId, {
+        type: "app-runtime-asset-retrying",
+        assetUrl,
+        retry: attempts,
+        maxRetries: RUNTIME_ASSET_MAX_ATTEMPTS - 1,
+      });
+      await waitBeforePreloadRetry(attempts);
+      continue;
+    }
+
+    if (response.ok && isHtmlFallbackResponse(response)) {
+      const reason = [
+        "Unexpected HTML response for runtime asset",
+        `Content type: ${response.headers.get("content-type") || "unavailable"}`,
+      ].join("; ");
+      if (attempts >= RUNTIME_ASSET_MAX_ATTEMPTS) {
+        await notifyRuntimeAssetClient(clientId, {
+          type: "app-runtime-asset-retry-failed",
+          assetUrl,
+          attempts,
+          maxRetries: RUNTIME_ASSET_MAX_ATTEMPTS - 1,
+          reason,
+        });
+        throw new Error(reason);
+      }
+
+      await notifyRuntimeAssetClient(clientId, {
+        type: "app-runtime-asset-retrying",
+        assetUrl,
+        retry: attempts,
+        maxRetries: RUNTIME_ASSET_MAX_ATTEMPTS - 1,
+        reason,
+      });
+      await waitBeforePreloadRetry(attempts);
+      continue;
+    }
+
+    if (response.ok) {
+      if (attempts > 1) {
+        await notifyRuntimeAssetClient(clientId, {
+          type: "app-runtime-asset-recovered",
+          assetUrl,
+          attempts,
+        });
+      }
+      return response;
+    }
+
+    if (!isRetryableRuntimeResponse(response) || attempts >= RUNTIME_ASSET_MAX_ATTEMPTS) {
+      if (attempts > 1 || isRetryableRuntimeResponse(response)) {
+        await notifyRuntimeAssetClient(clientId, {
+          type: "app-runtime-asset-retry-failed",
+          assetUrl,
+          attempts,
+          maxRetries: RUNTIME_ASSET_MAX_ATTEMPTS - 1,
+          reason: `HTTP ${response.status} ${response.statusText}`,
+        });
+      }
+      return response;
+    }
+
+    await notifyRuntimeAssetClient(clientId, {
+      type: "app-runtime-asset-retrying",
+      assetUrl,
+      retry: attempts,
+      maxRetries: RUNTIME_ASSET_MAX_ATTEMPTS - 1,
+    });
+    await waitBeforePreloadRetry(attempts);
+  }
+
+  throw new Error(`Runtime asset request exhausted retries: ${new URL(assetUrl).pathname}`);
 }
 
 self.addEventListener("fetch", (event) => {
@@ -197,9 +360,10 @@ self.addEventListener("fetch", (event) => {
       if (cached) {
         return cached;
       }
-      return fetch(event.request, { cache: "reload" }).then((response) =>
-        cacheResponse(event.request, response)
-      );
+      const response = isRetryableRuntimeAsset(event.request)
+        ? await fetchRuntimeAssetWithRetries(event.request, event.clientId)
+        : await fetch(event.request, { cache: "reload" });
+      return cacheResponse(event.request, response);
     })
   );
 });

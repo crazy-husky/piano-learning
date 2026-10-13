@@ -6,7 +6,9 @@
 
 在线演示：[https://gohusky.cn/piano-learning/](https://gohusky.cn/piano-learning/)
 
-源仓库目前没有提供 `LICENSE` 文件。此处注明来源不代表额外授予使用或再分发许可；公开分发前请确认相应授权。
+## 许可证
+
+本项目采用 [PolyForm Noncommercial License 1.0.0](LICENSE)。
 
 <details name="screenshots" open>
 <summary>练习设置</summary>

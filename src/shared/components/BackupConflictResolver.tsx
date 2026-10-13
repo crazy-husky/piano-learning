@@ -62,6 +62,8 @@ export function BackupConflictResolver({
     summary: string
   ): JSX.Element {
     const selected = resolution[domain] === source;
+    const sourceLabel =
+      source === "browser" ? backupText.labels.browser : backupText.labels.backupDirectory;
     return (
       <label className={`backup-domain-option${selected ? " selected" : ""}`}>
         <input
@@ -73,9 +75,7 @@ export function BackupConflictResolver({
           value={source}
         />
         <span>
-          <strong>
-            {source === "browser" ? backupText.labels.browser : backupText.labels.backupDirectory}
-          </strong>
+          {sourceLabel}
           <small>{summary}</small>
         </span>
       </label>

@@ -6,6 +6,7 @@ const UPDATE_CHECK_INTERVAL_MS = 60_000;
 const UPDATE_CHECK_TIMEOUT_MS = 8_000;
 const WORKER_INSTALL_TIMEOUT_MS = 120_000;
 const WORKER_ACTIVATION_TIMEOUT_MS = 15_000;
+const UPDATE_NOTICE_DURATION_MS = 10_000;
 const UPDATE_NOTICE_ID = "app-update-available";
 const UPDATE_RESULT_NOTICE_ID = "app-update-result";
 const PENDING_UPDATE_STORAGE_KEY_PREFIX = "piano-learning.pending-app-update:";
@@ -38,6 +39,7 @@ export interface AppUpdateController {
   status: AppUpdateStatus;
   message: string;
   hasUpdateAvailable: boolean;
+  hasPreparedUpdate: boolean;
   checkForUpdates: () => void;
   applyUpdate: () => void;
 }
@@ -252,9 +254,65 @@ type ServiceWorkerUpdateResult =
   | { status: "prepared"; preparedUpdate: PreparedServiceWorkerUpdate }
   | { status: "error"; diagnostic: string };
 
+type UpdatePreparationOutcome =
+  | { buildId: string; status: "prepared"; preparedUpdate: PreparedServiceWorkerUpdate }
+  | { buildId: string; status: "error"; diagnostic: string };
+
 interface PreparedServiceWorkerUpdate {
   registration: ServiceWorkerRegistration;
   result: Extract<ServiceWorkerReadyResult, { state: "waiting" | "activated" }>;
+}
+
+async function readServiceWorkerBuildId(worker: ServiceWorker): Promise<string | null> {
+  if (typeof MessageChannel === "undefined") return null;
+
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    const timeoutId = window.setTimeout(() => finish(null), 3_000);
+    let settled = false;
+
+    const finish = (buildId: string | null): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      channel.port1.close();
+      resolve(buildId);
+    };
+
+    channel.port1.onmessage = (event: MessageEvent<unknown>): void => {
+      const response = event.data;
+      if (
+        response &&
+        typeof response === "object" &&
+        "type" in response &&
+        response.type === "service-worker-build-id" &&
+        "buildId" in response &&
+        typeof response.buildId === "string"
+      ) {
+        finish(response.buildId);
+      }
+    };
+
+    try {
+      worker.postMessage({ type: "get-service-worker-build-id" }, [channel.port2]);
+    } catch {
+      finish(null);
+    }
+  });
+}
+
+async function verifyServiceWorkerBuild(
+  worker: ServiceWorker,
+  expectedBuildId: string
+): Promise<string | null> {
+  const actualBuildId = await readServiceWorkerBuildId(worker);
+  if (actualBuildId === expectedBuildId) return null;
+
+  return [
+    "Stage: service-worker-build-verification",
+    `Expected build: ${expectedBuildId}`,
+    `Prepared build: ${actualBuildId ?? "unavailable"}`,
+  ].join("\n");
 }
 
 function waitForWorkerReady(
@@ -329,7 +387,19 @@ function describeThrownValue(value: unknown): string {
   }
 }
 
-async function stageServiceWorkerUpdate(): Promise<ServiceWorkerUpdateResult> {
+async function createPreparedServiceWorkerUpdate(
+  registration: ServiceWorkerRegistration,
+  result: Extract<ServiceWorkerReadyResult, { state: "waiting" | "activated" }>,
+  expectedBuildId: string
+): Promise<ServiceWorkerUpdateResult> {
+  const diagnostic = await verifyServiceWorkerBuild(result.worker, expectedBuildId);
+  if (diagnostic) return { status: "error", diagnostic };
+  return { status: "prepared", preparedUpdate: { registration, result } };
+}
+
+async function stageServiceWorkerUpdate(
+  expectedBuildId: string
+): Promise<ServiceWorkerUpdateResult> {
   if (!("serviceWorker" in navigator)) {
     return {
       status: "error",
@@ -340,29 +410,30 @@ async function stageServiceWorkerUpdate(): Promise<ServiceWorkerUpdateResult> {
   let registration: ServiceWorkerRegistration | undefined;
   try {
     registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) {
+      const appBaseUrl = new URL(import.meta.env.BASE_URL, window.location.href);
+      registration = await navigator.serviceWorker.register(
+        new URL("service-worker.js", appBaseUrl).toString(),
+        { scope: appBaseUrl.pathname }
+      );
+    }
   } catch (error) {
     return {
       status: "error",
-      diagnostic: `Stage: service-worker-registration\ngetRegistration() failed:\n${describeThrownValue(error)}`,
-    };
-  }
-  if (!registration) {
-    return {
-      status: "error",
-      diagnostic:
-        "Stage: service-worker-registration\nNo Service Worker registration was found for this page.",
+      diagnostic: [
+        "Stage: service-worker-registration",
+        `Could not find or register the app Service Worker:\n${describeThrownValue(error)}`,
+      ].join("\n"),
     };
   }
 
   try {
     if (registration.waiting) {
-      return {
-        status: "prepared",
-        preparedUpdate: {
-          registration,
-          result: { state: "waiting", worker: registration.waiting },
-        },
-      };
+      return createPreparedServiceWorkerUpdate(
+        registration,
+        { state: "waiting", worker: registration.waiting },
+        expectedBuildId
+      );
     }
 
     const previousActiveWorker = registration.active;
@@ -376,22 +447,18 @@ async function stageServiceWorkerUpdate(): Promise<ServiceWorkerUpdateResult> {
     }
 
     if (registration.waiting) {
-      return {
-        status: "prepared",
-        preparedUpdate: {
-          registration,
-          result: { state: "waiting", worker: registration.waiting },
-        },
-      };
+      return createPreparedServiceWorkerUpdate(
+        registration,
+        { state: "waiting", worker: registration.waiting },
+        expectedBuildId
+      );
     }
     if (registration.active && registration.active !== previousActiveWorker) {
-      return {
-        status: "prepared",
-        preparedUpdate: {
-          registration,
-          result: { state: "activated", worker: registration.active },
-        },
-      };
+      return createPreparedServiceWorkerUpdate(
+        registration,
+        { state: "activated", worker: registration.active },
+        expectedBuildId
+      );
     }
     if (!registration.installing) {
       return {
@@ -424,10 +491,7 @@ async function stageServiceWorkerUpdate(): Promise<ServiceWorkerUpdateResult> {
         ].join("\n"),
       };
     }
-    return {
-      status: "prepared",
-      preparedUpdate: { registration, result },
-    };
+    return createPreparedServiceWorkerUpdate(registration, result, expectedBuildId);
   } catch (error) {
     return {
       status: "error",
@@ -526,9 +590,15 @@ export function useAppUpdateNotice(): AppUpdateController {
   const [hasUpdateAvailable, setHasUpdateAvailable] = useState(false);
   const [status, setStatus] = useState<AppUpdateStatus>("idle");
   const [message, setMessage] = useState("");
+  const [preparationOutcome, setPreparationOutcome] = useState<UpdatePreparationOutcome | null>(
+    null
+  );
   const hasUpdateAvailableRef = useRef(false);
   const remoteBuildIdRef = useRef<string | null>(null);
-  const preparationInProgressRef = useRef(false);
+  const preparationOutcomeRef = useRef<UpdatePreparationOutcome | null>(null);
+  const preparingBuildIdRef = useRef<string | null>(null);
+  const dismissedBuildIdsRef = useRef(new Set<string>());
+  const applyingUpdateRef = useRef(false);
   const activeCheckRef = useRef<Promise<VersionCheckResult> | null>(null);
   const startupUpdateRecoveryHandledRef = useRef(false);
 
@@ -543,6 +613,120 @@ export function useAppUpdateNotice(): AppUpdateController {
     return check;
   }, []);
 
+  const beginBackgroundPreparation = useCallback((buildId: string): void => {
+    if (preparationOutcomeRef.current?.buildId === buildId) return;
+    if (preparingBuildIdRef.current) return;
+
+    preparingBuildIdRef.current = buildId;
+    setStatus("preparing");
+    setMessage("");
+
+    void stageServiceWorkerUpdate(buildId)
+      .then((result): void => {
+        if (preparingBuildIdRef.current === buildId) preparingBuildIdRef.current = null;
+
+        const latestBuildId = remoteBuildIdRef.current;
+        if (latestBuildId !== buildId) {
+          if (latestBuildId) beginBackgroundPreparation(latestBuildId);
+          return;
+        }
+
+        const outcome: UpdatePreparationOutcome =
+          result.status === "prepared"
+            ? { buildId, status: "prepared", preparedUpdate: result.preparedUpdate }
+            : { buildId, status: "error", diagnostic: result.diagnostic };
+        preparationOutcomeRef.current = outcome;
+        setPreparationOutcome(outcome);
+
+        if (outcome.status === "prepared") {
+          setStatus("available");
+          setMessage("新版已准备好，可立即使用");
+        } else {
+          reportAppDiagnostic({
+            source: "app-update",
+            details: [
+              "Stage: background-prepare-update",
+              `Local build: ${__APP_BUILD_ID__}`,
+              `Remote build: ${buildId}`,
+              outcome.diagnostic,
+            ].join("\n"),
+          });
+          setStatus("error");
+          setMessage("新版已发布，自动准备未完成；刷新时会尝试加载新版。");
+        }
+
+        if (dismissedBuildIdsRef.current.has(buildId)) {
+          setHasUpdateAvailable(false);
+          return;
+        }
+        hasUpdateAvailableRef.current = true;
+        setHasUpdateAvailable(true);
+      })
+      .catch((error: unknown): void => {
+        if (preparingBuildIdRef.current === buildId) preparingBuildIdRef.current = null;
+        if (remoteBuildIdRef.current !== buildId) return;
+
+        const diagnostic = describeThrownValue(error);
+        const outcome: UpdatePreparationOutcome = { buildId, status: "error", diagnostic };
+        preparationOutcomeRef.current = outcome;
+        setPreparationOutcome(outcome);
+        reportAppDiagnostic({
+          source: "app-update",
+          details: [
+            "Stage: background-prepare-update",
+            `Local build: ${__APP_BUILD_ID__}`,
+            `Remote build: ${buildId}`,
+            diagnostic,
+          ].join("\n"),
+        });
+        setStatus("error");
+        setMessage("新版已发布，自动准备未完成；刷新时会尝试加载新版。");
+        hasUpdateAvailableRef.current = true;
+        setHasUpdateAvailable(!dismissedBuildIdsRef.current.has(buildId));
+      });
+  }, []);
+
+  const acceptAvailableBuild = useCallback(
+    (buildId: string, manualCheck: boolean): void => {
+      const previousBuildId = remoteBuildIdRef.current;
+      if (previousBuildId !== buildId) {
+        remoteBuildIdRef.current = buildId;
+        preparationOutcomeRef.current = null;
+        setPreparationOutcome(null);
+        setHasUpdateAvailable(false);
+      }
+      hasUpdateAvailableRef.current = true;
+
+      const existingOutcome = preparationOutcomeRef.current;
+      if (existingOutcome?.buildId === buildId) {
+        if (manualCheck) {
+          setHasUpdateAvailable(true);
+          setStatus(existingOutcome.status === "prepared" ? "available" : "error");
+          setMessage(
+            existingOutcome.status === "prepared"
+              ? "新版已准备好，可立即使用"
+              : "新版已发布，刷新时会尝试加载新版。"
+          );
+        }
+        return;
+      }
+
+      if (preparingBuildIdRef.current === buildId) {
+        setStatus("preparing");
+        setMessage("");
+        return;
+      }
+
+      if (dismissedBuildIdsRef.current.has(buildId) && !manualCheck) {
+        setHasUpdateAvailable(false);
+        return;
+      }
+
+      beginBackgroundPreparation(buildId);
+    },
+    [beginBackgroundPreparation]
+  );
+
   const checkForUpdates = useCallback((): void => {
     if (import.meta.env.DEV) {
       setStatus("error");
@@ -556,22 +740,20 @@ export function useAppUpdateNotice(): AppUpdateController {
         hasUpdateAvailableRef.current = false;
         remoteBuildIdRef.current = null;
         setHasUpdateAvailable(false);
+        setPreparationOutcome(null);
+        preparationOutcomeRef.current = null;
         toast.dismiss(UPDATE_NOTICE_ID);
         setStatus("up-to-date");
         setMessage("当前已是最新版本");
       } else if (result.status === "available") {
-        hasUpdateAvailableRef.current = true;
-        remoteBuildIdRef.current = result.buildId;
-        setHasUpdateAvailable(true);
-        setStatus("available");
-        setMessage("发现新版本，可选择立即使用");
+        acceptAvailableBuild(result.buildId, true);
       } else {
         reportAppDiagnostic({ source: "app-update", details: result.diagnostic });
         setStatus("error");
         setMessage(navigator.onLine ? "检查失败，请稍后重试" : "当前离线，连接网络后可重试");
       }
     });
-  }, [runVersionCheck]);
+  }, [acceptAvailableBuild, runVersionCheck]);
 
   useEffect(() => {
     if (import.meta.env.DEV) return;
@@ -636,12 +818,28 @@ export function useAppUpdateNotice(): AppUpdateController {
     showUpdateFailureNotice(UPDATE_FAILURE_MESSAGE);
   }, []);
 
-  const applyUpdate = useCallback(async (): Promise<void> => {
-    if (!hasUpdateAvailableRef.current || preparationInProgressRef.current) return;
+  const applyUpdate = useCallback((): void => {
+    const buildId = remoteBuildIdRef.current;
+    const outcome = preparationOutcomeRef.current;
+    if (
+      !hasUpdateAvailableRef.current ||
+      applyingUpdateRef.current ||
+      !buildId ||
+      !outcome ||
+      outcome.buildId !== buildId
+    )
+      return;
 
-    preparationInProgressRef.current = true;
-    setStatus("preparing");
-    setMessage("正在准备新版资源…");
+    applyingUpdateRef.current = true;
+    dismissedBuildIdsRef.current.add(buildId);
+    setHasUpdateAvailable(false);
+    setStatus("reloading");
+    setMessage("正在切换到新版…");
+    toast.loading("正在切换到新版…", {
+      id: UPDATE_NOTICE_ID,
+      duration: Number.POSITIVE_INFINITY,
+    });
+
     const ownerTabId = getUpdateTabId();
     if (!ownerTabId) {
       const storageFailureMessage =
@@ -653,8 +851,9 @@ export function useAppUpdateNotice(): AppUpdateController {
       });
       setStatus("error");
       setMessage(storageFailureMessage);
+      toast.dismiss(UPDATE_NOTICE_ID);
       toast.error("无法安全启动更新", { description: storageFailureMessage });
-      preparationInProgressRef.current = false;
+      applyingUpdateRef.current = false;
       return;
     }
 
@@ -680,111 +879,72 @@ export function useAppUpdateNotice(): AppUpdateController {
       const storageFailureMessage =
         "无法安全记录更新状态，已暂停自动刷新以避免循环。请稍后重试；若仍失败，请关闭此页面后重新进入。";
       setMessage(storageFailureMessage);
+      toast.dismiss(UPDATE_NOTICE_ID);
       toast.error("无法安全启动更新", { description: storageFailureMessage });
-      preparationInProgressRef.current = false;
+      applyingUpdateRef.current = false;
       return;
     }
 
-    try {
-      const serviceWorkerResult = await stageServiceWorkerUpdate();
-      if (serviceWorkerResult.status === "error") {
-        reportAppDiagnostic({
-          source: "app-update",
-          details: [
-            "Stage: prepare-update",
-            `Local build: ${__APP_BUILD_ID__}`,
-            `Remote build: ${remoteBuildIdRef.current ?? "unavailable"}`,
-            serviceWorkerResult.diagnostic,
-          ].join("\n"),
-        });
-        if (requestForcedUpdateReload(pendingUpdate, serviceWorkerResult.diagnostic)) {
-          toast.dismiss(UPDATE_NOTICE_ID);
-          setStatus("reloading");
-          setMessage("新版资源准备未完成，正在强制刷新页面…");
-        } else {
-          clearPendingAppUpdate(ownerTabId);
-          setStatus("error");
-          setMessage(UPDATE_FAILURE_MESSAGE);
-          showUpdateFailureNotice(UPDATE_FAILURE_MESSAGE);
-        }
+    if (outcome.status === "error") {
+      if (requestForcedUpdateReload(pendingUpdate, outcome.diagnostic)) {
+        setMessage("正在强制刷新并尝试加载新版…");
         return;
       }
-
-      const refreshRequestedUpdate = markUpdateRefreshRequested(pendingUpdate);
-      if (!refreshRequestedUpdate) {
-        clearPendingAppUpdate(ownerTabId);
-        setStatus("error");
-        setMessage("无法安全确认刷新状态，暂未启用新版。请重新检查更新后重试。");
-        toast.error("无法安全启用新版", {
-          description: "刷新状态保存失败，已取消自动刷新以避免循环。",
-        });
-        return;
-      }
-
-      if (!applyAvailableUpdate(serviceWorkerResult.preparedUpdate)) {
-        const waitingWorker = serviceWorkerResult.preparedUpdate.registration.waiting;
-        const diagnostic = [
-          "Stage: apply-update",
-          `Expected waiting worker state: installed; actual state: ${waitingWorker?.state ?? "no waiting worker"}.`,
-        ].join("\n");
-        reportAppDiagnostic({
-          source: "app-update",
-          details: diagnostic,
-        });
-        if (requestForcedUpdateReload(refreshRequestedUpdate, diagnostic)) {
-          toast.dismiss(UPDATE_NOTICE_ID);
-          setStatus("reloading");
-          setMessage("新版启用未完成，正在强制刷新页面…");
-        } else {
-          clearPendingAppUpdate(ownerTabId);
-          setStatus("error");
-          setMessage(UPDATE_FAILURE_MESSAGE);
-          showUpdateFailureNotice(UPDATE_FAILURE_MESSAGE);
-        }
-        return;
-      }
-
+      clearPendingAppUpdate(ownerTabId);
+      applyingUpdateRef.current = false;
+      setStatus("error");
+      setMessage(UPDATE_FAILURE_MESSAGE);
       toast.dismiss(UPDATE_NOTICE_ID);
-      setStatus("reloading");
-      setMessage("正在重新加载…");
-    } catch (error) {
-      const diagnostic = describeThrownValue(error);
-      reportAppDiagnostic({
-        source: "app-update",
-        details: [
-          "Stage: prepare-update",
-          `Local build: ${pendingUpdate.sourceBuildId}`,
-          `Remote build: ${pendingUpdate.targetBuildId}`,
-          diagnostic,
-        ].join("\n"),
-      });
-      if (requestForcedUpdateReload(pendingUpdate, diagnostic)) {
-        toast.dismiss(UPDATE_NOTICE_ID);
-        setStatus("reloading");
-        setMessage("新版准备遇到问题，正在强制刷新页面…");
-      } else {
-        clearPendingAppUpdate(ownerTabId);
-        setStatus("error");
-        setMessage(UPDATE_FAILURE_MESSAGE);
-        showUpdateFailureNotice(UPDATE_FAILURE_MESSAGE);
-      }
-    } finally {
-      preparationInProgressRef.current = false;
+      showUpdateFailureNotice(UPDATE_FAILURE_MESSAGE);
+      return;
     }
+
+    const refreshRequestedUpdate = markUpdateRefreshRequested(pendingUpdate);
+    if (!refreshRequestedUpdate) {
+      clearPendingAppUpdate(ownerTabId);
+      applyingUpdateRef.current = false;
+      setStatus("error");
+      setMessage("无法安全确认刷新状态，暂未启用新版。请重新检查更新后重试。");
+      toast.dismiss(UPDATE_NOTICE_ID);
+      toast.error("无法安全启用更新", {
+        description: "刷新状态保存失败，已取消自动刷新以避免循环。",
+      });
+      return;
+    }
+
+    if (!applyAvailableUpdate(outcome.preparedUpdate)) {
+      const waitingWorker = outcome.preparedUpdate.registration.waiting;
+      const diagnostic = [
+        "Stage: apply-update",
+        `Expected waiting worker state: installed; actual state: ${waitingWorker?.state ?? "no waiting worker"}.`,
+      ].join("\n");
+      reportAppDiagnostic({ source: "app-update", details: diagnostic });
+      if (requestForcedUpdateReload(refreshRequestedUpdate, diagnostic)) {
+        setMessage("新版启用未完成，正在强制刷新尝试加载…");
+        return;
+      }
+
+      clearPendingAppUpdate(ownerTabId);
+      applyingUpdateRef.current = false;
+      setStatus("error");
+      setMessage(UPDATE_FAILURE_MESSAGE);
+      toast.dismiss(UPDATE_NOTICE_ID);
+      showUpdateFailureNotice(UPDATE_FAILURE_MESSAGE);
+      return;
+    }
+
+    setMessage("正在重新加载…");
   }, []);
 
   useEffect(() => {
     if (import.meta.env.DEV) return;
 
     let disposed = false;
-    let updateFound = false;
 
     const checkForUpdate = async (): Promise<void> => {
       if (
         disposed ||
         startupUpdateRecoveryHandledRef.current ||
-        updateFound ||
-        hasUpdateAvailableRef.current ||
         document.visibilityState === "hidden"
       )
         return;
@@ -801,13 +961,8 @@ export function useAppUpdateNotice(): AppUpdateController {
         }
         if (result.status !== "available") return;
 
-        updateFound = true;
         if (!disposed) {
-          hasUpdateAvailableRef.current = true;
-          remoteBuildIdRef.current = result.buildId;
-          setHasUpdateAvailable(true);
-          setStatus("available");
-          setMessage("发现新版本，可选择立即使用");
+          acceptAvailableBuild(result.buildId, false);
         }
       } catch {
         // A failed automatic check is transient; the next interval, focus, or reconnect retries it.
@@ -831,24 +986,54 @@ export function useAppUpdateNotice(): AppUpdateController {
       window.removeEventListener("online", checkWhenVisible);
       document.removeEventListener("visibilitychange", checkWhenVisible);
     };
-  }, [runVersionCheck]);
+  }, [acceptAvailableBuild, runVersionCheck]);
 
   useEffect(() => {
-    if (!hasUpdateAvailable) return;
-    toast.warning("发现新版本", {
+    if (!hasUpdateAvailable || !preparationOutcome) return;
+    const buildId = remoteBuildIdRef.current;
+    if (
+      !buildId ||
+      preparationOutcome.buildId !== buildId ||
+      dismissedBuildIdsRef.current.has(buildId)
+    )
+      return;
+
+    let actionStarted = false;
+    const suppressBuildNotice = (): void => {
+      if (actionStarted) return;
+      dismissedBuildIdsRef.current.add(buildId);
+      setHasUpdateAvailable(false);
+      setStatus("idle");
+      setMessage("");
+    };
+    const ready = preparationOutcome.status === "prepared";
+    toast.warning("新版已发布，快来试试吧～", {
       id: UPDATE_NOTICE_ID,
-      description:
-        "检测到新版本。点击立即使用会准备新版并刷新页面；若自动更新准备失败，将尝试强制刷新。",
-      duration: Number.POSITIVE_INFINITY,
+      description: ready
+        ? "新版资源已在后台准备好，点击后即可切换。"
+        : "后台准备未成功，点击将强制刷新并尝试加载新版。",
+      duration: UPDATE_NOTICE_DURATION_MS,
+      onAutoClose: suppressBuildNotice,
+      onDismiss: suppressBuildNotice,
       action: {
-        label: "立即使用新版",
-        onClick: applyUpdate,
+        label: ready ? "立即使用新版" : "刷新试试",
+        onClick: () => {
+          actionStarted = true;
+          applyUpdate();
+        },
       },
     });
     return () => {
-      toast.dismiss(UPDATE_NOTICE_ID);
+      if (!actionStarted) toast.dismiss(UPDATE_NOTICE_ID);
     };
-  }, [applyUpdate, hasUpdateAvailable]);
+  }, [applyUpdate, hasUpdateAvailable, preparationOutcome]);
 
-  return { status, message, hasUpdateAvailable, checkForUpdates, applyUpdate };
+  return {
+    status,
+    message,
+    hasUpdateAvailable,
+    hasPreparedUpdate: preparationOutcome?.status === "prepared",
+    checkForUpdates,
+    applyUpdate,
+  };
 }

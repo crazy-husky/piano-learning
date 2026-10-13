@@ -17,8 +17,8 @@ After downgrading all recommended `jsx-a11y/*` rules to warnings:
 - 第一批已清除 19 个 ESLint error 报告；当前 error 数为 0。
 - 两处 `@typescript-eslint/no-floating-promises` 已处理，当前没有该规则 warning。
 - `react-hooks/exhaustive-deps` 基线为 51 条：44 条已修复，7 条诊断由有原因的局部 disable 保留，当前活动 warning 数为 0。
-- 当前全仓 lint 为 35 warnings、0 errors，35 条均为下方 JSX 无障碍待办。
-- lint 脚本阈值仍为 200。当前实测 warning 数为 35，可手动收紧到 50；无障碍项清理完后再收紧到 0。暂存 TypeScript 文件仍使用 0 warning 阈值。
+- 2026-10-14 当前全仓 lint 为 16 warnings、0 errors，均为下方 JSX 无障碍待办。
+- lint 脚本阈值仍为 200；当前 warning 数为 16。无障碍项清理完成后再收紧到 0。暂存 TypeScript 文件仍使用 0 warning 阈值。
 
 ## 待人工复核
 
@@ -42,21 +42,20 @@ After downgrading all recommended `jsx-a11y/*` rules to warnings:
 
 ### JSX Accessibility
 
-The 35 findings are warnings pending a dedicated component review. The current distribution is:
+The 16 remaining findings are warnings pending a dedicated component review. The current distribution is:
 
-- Missing `alt` text: 5.
-- Missing `aria-label`: 0; no current finding identifies this issue.
-- Other: 30, distributed by rule:
-  - `jsx-a11y/click-events-have-key-events`: 10.
-  - `jsx-a11y/no-noninteractive-element-interactions`: 6.
-  - `jsx-a11y/no-static-element-interactions`: 4.
+- Missing `alt` text: 0.
+- Missing `aria-label`: 0.
+- Other: 16, distributed by rule:
+  - `jsx-a11y/click-events-have-key-events`: 5.
+  - `jsx-a11y/no-noninteractive-element-interactions`: 3.
+  - `jsx-a11y/no-static-element-interactions`: 2.
   - `jsx-a11y/no-autofocus`: 4.
-  - `jsx-a11y/label-has-associated-control`: 3.
-  - `jsx-a11y/no-noninteractive-tabindex`: 2.
+  - `jsx-a11y/no-noninteractive-tabindex`: 1.
   - `jsx-a11y/interactive-supports-focus`: 1.
 
 Planned batches:
 
-1. Resolve 5 missing image `alt` values and 3 label text/control association findings; target 8 resolved.
-2. Review keyboard support, element semantics, and focusability findings; target 23 resolved.
-3. Review and remove or replace 4 autofocus usages; target all 35 resolved.
+1. Review click and keyboard semantics in the practice-microphone dialogs, staff-recall map, vocal sidebar, and vocal-pitch view.
+2. Review the 4 autofocus usages against each dialog's focus-management behavior.
+3. Confirm the data-table scroll region needs keyboard focus and retain or replace its current `tabIndex` accordingly.

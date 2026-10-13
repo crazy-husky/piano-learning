@@ -1294,6 +1294,7 @@ export function App(): JSX.Element {
                 appUpdateStatus={appUpdateController.status}
                 appUpdateMessage={appUpdateController.message}
                 hasUpdateAvailable={appUpdateController.hasUpdateAvailable}
+                hasPreparedUpdate={appUpdateController.hasPreparedUpdate}
                 backupState={data.backupState}
                 pageAppearancePreferences={pageAppearancePreferences}
                 practiceMicrophonePreferences={practiceMicrophonePreferences}

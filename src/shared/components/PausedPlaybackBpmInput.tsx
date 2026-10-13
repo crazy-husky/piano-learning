@@ -7,12 +7,14 @@ import {
 
 interface PausedPlaybackBpmInputProps {
   className?: string;
+  id?: string;
   onChange: (bpm: number) => void;
   value: number;
 }
 
 export function PausedPlaybackBpmInput({
   className,
+  id,
   onChange,
   value,
 }: PausedPlaybackBpmInputProps): JSX.Element {
@@ -30,6 +32,7 @@ export function PausedPlaybackBpmInput({
     <input
       aria-label="播放剩余 BPM"
       className={className}
+      id={id}
       max={MAX_PAUSED_PLAYBACK_BPM}
       min={MIN_PAUSED_PLAYBACK_BPM}
       step={1}

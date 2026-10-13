@@ -93,6 +93,7 @@ interface SettingsViewProps {
   appUpdateStatus: AppUpdateStatus;
   appUpdateMessage: string;
   hasUpdateAvailable: boolean;
+  hasPreparedUpdate: boolean;
   pageAppearancePreferences: PageAppearancePreferences;
   practiceMicrophonePreferences: PracticeMicrophonePreferences;
   practicePagePreferences: PracticePagePreferences;
@@ -113,6 +114,7 @@ export function SettingsView({
   appUpdateStatus,
   appUpdateMessage,
   hasUpdateAvailable,
+  hasPreparedUpdate,
   pageAppearancePreferences,
   practiceMicrophonePreferences,
   practicePagePreferences,
@@ -819,23 +821,17 @@ export function SettingsView({
             </span>
           </div>
           <button
-            disabled={
-              appUpdateStatus === "checking" ||
-              appUpdateStatus === "preparing" ||
-              appUpdateStatus === "reloading"
-            }
+            disabled={appUpdateStatus === "checking" || appUpdateStatus === "reloading"}
             onClick={onCheckForUpdates}
             type="button"
           >
             {appUpdateStatus === "checking"
               ? "正在检查…"
-              : appUpdateStatus === "preparing"
-                ? "正在准备…"
-                : appUpdateStatus === "reloading"
-                  ? "正在刷新…"
-                  : appUpdateStatus === "up-to-date" || hasUpdateAvailable
-                    ? "重新检查"
-                    : "检查更新"}
+              : appUpdateStatus === "reloading"
+                ? "正在刷新…"
+                : appUpdateStatus === "up-to-date" || hasUpdateAvailable
+                  ? "重新检查"
+                  : "检查更新"}
           </button>
         </div>
         {appUpdateMessage ? (
@@ -850,19 +846,15 @@ export function SettingsView({
           <div className="action-row">
             <button
               className="primary"
-              disabled={
-                appUpdateStatus === "checking" ||
-                appUpdateStatus === "preparing" ||
-                appUpdateStatus === "reloading"
-              }
+              disabled={appUpdateStatus === "checking" || appUpdateStatus === "reloading"}
               onClick={onApplyUpdate}
               type="button"
             >
-              {appUpdateStatus === "preparing"
-                ? "正在准备新版…"
-                : appUpdateStatus === "reloading"
-                  ? "正在刷新页面…"
-                  : "立即使用新版"}
+              {appUpdateStatus === "reloading"
+                ? "正在刷新页面…"
+                : hasPreparedUpdate
+                  ? "立即使用新版"
+                  : "刷新试试"}
             </button>
           </div>
         ) : null}

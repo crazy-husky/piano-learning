@@ -21,6 +21,7 @@ export default tseslint.config(
       "node_modules/**",
       "coverage/**",
       "server_monitor/**",
+      "**/.venv/**",
       "**/*.d.ts",
       "vite.config.js",
       "vitest.config.js",

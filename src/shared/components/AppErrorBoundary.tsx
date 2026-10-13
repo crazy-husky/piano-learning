@@ -9,10 +9,18 @@ interface AppErrorBoundaryProps {
 interface AppErrorBoundaryState {
   fatalErrorDetails: string | null;
   globalErrors: GlobalErrorRecord[];
+  resourceRetryStatuses: Record<string, ResourceRetryStatus>;
   copyStatus: string;
   globalErrorNoticeVisible: boolean;
   globalErrorNoticeSecondsRemaining: number;
   errorDetailsOpen: boolean;
+}
+
+interface ResourceRetryStatus {
+  kind: "asset" | "page-reload";
+  phase: "retrying" | "offline" | "failed";
+  retry: number;
+  maxRetries: number;
 }
 
 type GlobalErrorSource =
@@ -42,8 +50,25 @@ const GLOBAL_ERROR_DEDUPE_WINDOW_MS = 30_000;
 const MAX_GLOBAL_ERROR_DETAILS_LENGTH = 12_000;
 const GLOBAL_ERROR_NOTICE_DURATION_SECONDS = 10;
 const MODULE_LOAD_RETRY_SESSION_KEY = `app-module-load-retry:${__APP_BUILD_ID__}`;
+const OFFLINE_MODULE_LOAD_RETRY_SESSION_KEY = `app-offline-module-load-retry:${__APP_BUILD_ID__}`;
 const MODULE_LOAD_FAILURE_PATTERN =
   /importing a module script failed|failed to fetch dynamically imported module|unable to preload (?:css|module)|loading chunk .* failed/i;
+
+function getAppCodeAssetPath(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  try {
+    const url = new URL(value, window.location.href);
+    if (
+      url.origin !== window.location.origin ||
+      !/\/assets\/[^/]+\.(?:js|css)$/i.test(url.pathname)
+    ) {
+      return null;
+    }
+    return url.pathname;
+  } catch {
+    return null;
+  }
+}
 
 function describeError(error: unknown): string {
   if (typeof error === "string") return `Message: ${error}`;
@@ -73,6 +98,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   state: AppErrorBoundaryState = {
     fatalErrorDetails: null,
     globalErrors: [],
+    resourceRetryStatuses: {},
     copyStatus: "",
     globalErrorNoticeVisible: false,
     globalErrorNoticeSecondsRemaining: 0,
@@ -80,11 +106,18 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   };
   private copyStatusTimeout: number | null = null;
   private globalErrorNoticeInterval: number | null = null;
+  private moduleReloadScheduled = false;
+  private moduleReloadTimer: number | null = null;
+  private networkIsOffline = typeof navigator !== "undefined" && !navigator.onLine;
+  private offlineResourceRecoveryPending = false;
 
   componentDidMount(): void {
+    this.networkIsOffline = !navigator.onLine;
     window.addEventListener("error", this.handleWindowError, true);
     window.addEventListener("unhandledrejection", this.handleUnhandledRejection);
     window.addEventListener("vite:preloadError", this.handleVitePreloadError);
+    window.addEventListener("offline", this.handleBrowserOffline);
+    window.addEventListener("online", this.handleBrowserOnline);
     window.addEventListener(APP_DIAGNOSTIC_EVENT, this.handleAppDiagnostic);
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.addEventListener("message", this.handleServiceWorkerMessage);
@@ -95,12 +128,15 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     window.removeEventListener("error", this.handleWindowError, true);
     window.removeEventListener("unhandledrejection", this.handleUnhandledRejection);
     window.removeEventListener("vite:preloadError", this.handleVitePreloadError);
+    window.removeEventListener("offline", this.handleBrowserOffline);
+    window.removeEventListener("online", this.handleBrowserOnline);
     window.removeEventListener(APP_DIAGNOSTIC_EVENT, this.handleAppDiagnostic);
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.removeEventListener("message", this.handleServiceWorkerMessage);
     }
     if (this.copyStatusTimeout !== null) window.clearTimeout(this.copyStatusTimeout);
     this.clearGlobalErrorNoticeInterval();
+    if (this.moduleReloadTimer !== null) window.clearTimeout(this.moduleReloadTimer);
   }
 
   componentDidUpdate(
@@ -206,7 +242,10 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
   private refreshPage = (clearRetryGuard = true): void => {
     try {
-      if (clearRetryGuard) window.sessionStorage.removeItem(MODULE_LOAD_RETRY_SESSION_KEY);
+      if (clearRetryGuard) {
+        window.sessionStorage.removeItem(MODULE_LOAD_RETRY_SESSION_KEY);
+        window.sessionStorage.removeItem(OFFLINE_MODULE_LOAD_RETRY_SESSION_KEY);
+      }
     } catch {
       // Storage may be unavailable in private browsing; the page can still navigate.
     }
@@ -218,26 +257,178 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     window.location.replace(refreshUrl.toString());
   };
 
-  private retryModuleLoadOnce = (): void => {
+  private handleBrowserOffline = (): void => {
+    this.networkIsOffline = true;
+    const hasRetryInProgress = Object.values(this.state.resourceRetryStatuses).some(
+      (status) => status.kind === "asset" && status.phase === "retrying"
+    );
+    const hasFailedResource = Object.values(this.state.resourceRetryStatuses).some(
+      (status) => status.phase === "failed"
+    );
+    if (hasRetryInProgress || hasFailedResource) {
+      this.offlineResourceRecoveryPending = true;
+    }
+    if (hasFailedResource) {
+      this.setState((current) => ({
+        resourceRetryStatuses: Object.fromEntries(
+          Object.entries(current.resourceRetryStatuses).map(([key, status]) => [
+            key,
+            status.phase === "failed" ? { ...status, phase: "offline" as const } : status,
+          ])
+        ),
+      }));
+    }
+  };
+
+  private handleBrowserOnline = (): void => {
+    this.networkIsOffline = false;
+    if (!this.offlineResourceRecoveryPending) return;
+    const retryStillRunning = Object.values(this.state.resourceRetryStatuses).some(
+      (status) => status.kind === "asset" && status.phase === "retrying"
+    );
+    if (!retryStillRunning) this.scheduleOfflineResourceRetry();
+  };
+
+  private showOfflineResourceStatus = (
+    phase: "offline" | "failed",
+    fallbackKind: ResourceRetryStatus["kind"] = "asset"
+  ): void => {
+    this.offlineResourceRecoveryPending = phase === "offline";
+    this.setState((current) => {
+      const resourceRetryStatuses = Object.fromEntries(
+        Object.entries(current.resourceRetryStatuses).map(([key, status]) => [
+          key,
+          { ...status, phase },
+        ])
+      );
+      if (Object.keys(resourceRetryStatuses).length === 0) {
+        resourceRetryStatuses["module-load"] = {
+          kind: fallbackKind,
+          phase,
+          retry: 0,
+          maxRetries: fallbackKind === "page-reload" ? 1 : 3,
+        };
+      }
+      return {
+        resourceRetryStatuses,
+      };
+    });
+  };
+
+  private scheduleOfflineResourceRetry = (): void => {
+    if (!this.offlineResourceRecoveryPending || this.moduleReloadScheduled || !navigator.onLine) {
+      return;
+    }
+    this.offlineResourceRecoveryPending = false;
+    this.retryModuleLoadOnce(true);
+  };
+
+  private retryModuleLoadOnce = (allowControlledReload = false): void => {
+    if (
+      !allowControlledReload &&
+      "serviceWorker" in navigator &&
+      navigator.serviceWorker.controller
+    ) {
+      return;
+    }
+    if (this.moduleReloadScheduled) return;
+
+    if (!navigator.onLine) {
+      this.networkIsOffline = true;
+      this.showOfflineResourceStatus("offline", "page-reload");
+      return;
+    }
+    this.networkIsOffline = false;
+
+    const retrySessionKey = allowControlledReload
+      ? OFFLINE_MODULE_LOAD_RETRY_SESSION_KEY
+      : MODULE_LOAD_RETRY_SESSION_KEY;
     try {
-      if (window.sessionStorage.getItem(MODULE_LOAD_RETRY_SESSION_KEY) === "1") return;
-      window.sessionStorage.setItem(MODULE_LOAD_RETRY_SESSION_KEY, "1");
+      if (window.sessionStorage.getItem(retrySessionKey) === "1") {
+        this.setState((current) => ({
+          resourceRetryStatuses: {
+            ...current.resourceRetryStatuses,
+            "module-load": { kind: "page-reload", phase: "failed", retry: 1, maxRetries: 1 },
+          },
+        }));
+        return;
+      }
+      window.sessionStorage.setItem(retrySessionKey, "1");
     } catch {
       // Do not auto-retry when the guard cannot be persisted; that could cause a reload loop.
+      this.setState((current) => ({
+        resourceRetryStatuses: {
+          ...current.resourceRetryStatuses,
+          "module-load": { kind: "page-reload", phase: "failed", retry: 1, maxRetries: 1 },
+        },
+      }));
       return;
     }
 
-    window.setTimeout(() => this.refreshPage(false), 0);
+    this.moduleReloadScheduled = true;
+    this.setState((current) => ({
+      resourceRetryStatuses: {
+        ...current.resourceRetryStatuses,
+        "module-load": { kind: "page-reload", phase: "retrying", retry: 1, maxRetries: 1 },
+      },
+    }));
+    this.moduleReloadTimer = window.setTimeout(() => {
+      this.moduleReloadTimer = null;
+      if (!navigator.onLine) {
+        this.moduleReloadScheduled = false;
+        this.offlineResourceRecoveryPending = true;
+        try {
+          window.sessionStorage.removeItem(retrySessionKey);
+        } catch {
+          // The waiting notice remains useful when session storage is unavailable.
+        }
+        this.showOfflineResourceStatus("offline", "page-reload");
+        return;
+      }
+      this.refreshPage(false);
+    }, 650);
+  };
+
+  private hasModuleLoadRetryBeenUsed = (): boolean => {
+    try {
+      return (
+        window.sessionStorage.getItem(MODULE_LOAD_RETRY_SESSION_KEY) === "1" ||
+        window.sessionStorage.getItem(OFFLINE_MODULE_LOAD_RETRY_SESSION_KEY) === "1"
+      );
+    } catch {
+      // Auto-retry is disabled when its loop guard cannot be read reliably.
+      return true;
+    }
   };
 
   private handleWindowError = (event: Event): void => {
     if (!(event instanceof ErrorEvent)) {
       const target = event.target;
-      // Recoverable image/font failures should not replace the entire app with a crash screen.
-      // A failed script should be recorded too; React render failures are handled by the boundary below.
-      if (!(target instanceof HTMLScriptElement)) return;
-      const failedElement = `script src=${target.src}`;
-      this.captureGlobalError("resource-load-error", `Failed element: ${failedElement}`);
+      // Only record failures for app code chunks; image and font failures are recoverable.
+      const resourceUrl =
+        target instanceof HTMLScriptElement
+          ? target.src
+          : target instanceof HTMLLinkElement
+            ? target.href
+            : "";
+      const assetPath = getAppCodeAssetPath(resourceUrl);
+      if (!assetPath) return;
+      const failedElement = `app asset ${assetPath}`;
+      this.captureGlobalError("resource-load-error", `Failed element: ${failedElement}`, false);
+      if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+        if (!navigator.onLine || this.networkIsOffline) {
+          this.showOfflineResourceStatus("offline", "asset");
+        } else {
+          this.setState((current) => ({
+            resourceRetryStatuses: {
+              ...current.resourceRetryStatuses,
+              [assetPath]: { kind: "asset", phase: "failed", retry: 0, maxRetries: 0 },
+            },
+          }));
+        }
+      } else {
+        this.retryModuleLoadOnce();
+      }
       return;
     }
     const location = event.filename
@@ -260,7 +451,8 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   private handleVitePreloadError = (event: VitePreloadErrorEvent): void => {
     this.captureGlobalError(
       "resource-load-error",
-      `Vite module preload error:\n${describeError(event.payload)}`
+      `Vite module preload error:\n${describeError(event.payload)}`,
+      false
     );
     this.retryModuleLoadOnce();
   };
@@ -282,10 +474,124 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
   private handleServiceWorkerMessage = (event: MessageEvent<unknown>): void => {
     if (!event.data || typeof event.data !== "object") return;
-    const message = event.data as { type?: unknown; details?: unknown };
+    const message = event.data as {
+      type?: unknown;
+      details?: unknown;
+      assetUrl?: unknown;
+      retry?: unknown;
+      maxRetries?: unknown;
+      attempts?: unknown;
+      offline?: unknown;
+      reason?: unknown;
+    };
+    const assetPath = getAppCodeAssetPath(message.assetUrl);
+    if (assetPath && message.type === "app-runtime-asset-retrying") {
+      const retry = typeof message.retry === "number" ? message.retry : 1;
+      const maxRetries = typeof message.maxRetries === "number" ? message.maxRetries : 3;
+      if (!navigator.onLine || this.networkIsOffline) {
+        this.offlineResourceRecoveryPending = true;
+      }
+      this.setState((current) => ({
+        resourceRetryStatuses: {
+          ...current.resourceRetryStatuses,
+          [assetPath]: { kind: "asset", phase: "retrying", retry, maxRetries },
+        },
+      }));
+      return;
+    }
+    if (assetPath && message.type === "app-runtime-asset-recovered") {
+      const offlineRecoveryWasPending = this.offlineResourceRecoveryPending;
+      this.setState(
+        (current) => {
+          const resourceRetryStatuses = { ...current.resourceRetryStatuses };
+          delete resourceRetryStatuses[assetPath];
+          return { resourceRetryStatuses };
+        },
+        () => {
+          if (!offlineRecoveryWasPending || !this.offlineResourceRecoveryPending) return;
+          this.offlineResourceRecoveryPending = Object.values(
+            this.state.resourceRetryStatuses
+          ).some(
+            (status) =>
+              status.phase === "offline" || status.phase === "failed" || status.phase === "retrying"
+          );
+        }
+      );
+      return;
+    }
+    if (assetPath && message.type === "app-runtime-asset-retry-failed") {
+      const attempts = typeof message.attempts === "number" ? message.attempts : 4;
+      const maxRetries = typeof message.maxRetries === "number" ? message.maxRetries : 3;
+      const offlineOccurred = this.offlineResourceRecoveryPending;
+      const offline = message.offline === true || !navigator.onLine || this.networkIsOffline;
+      this.offlineResourceRecoveryPending = offline || offlineOccurred;
+      this.setState((current) => ({
+        resourceRetryStatuses: {
+          ...current.resourceRetryStatuses,
+          [assetPath]: {
+            kind: "asset",
+            phase: offline ? "offline" : "failed",
+            retry: Math.max(0, attempts - 1),
+            maxRetries,
+          },
+        },
+      }));
+      this.captureGlobalError(
+        "resource-load-error",
+        `App asset retry failed: ${assetPath}\nAttempts: ${attempts}\nReason: ${String(message.reason ?? "unavailable")}`,
+        false
+      );
+      if (this.offlineResourceRecoveryPending && navigator.onLine) {
+        this.scheduleOfflineResourceRetry();
+      }
+      return;
+    }
     if (message.type !== "app-update-diagnostic" || typeof message.details !== "string") return;
     this.captureGlobalError("service-worker-update", message.details);
   };
+
+  private dismissResourceRetryNotice = (): void => {
+    this.setState({ resourceRetryStatuses: {} });
+  };
+
+  private renderResourceRetryNotice(): ReactNode {
+    const statuses = Object.values(this.state.resourceRetryStatuses);
+    if (statuses.length === 0) return null;
+
+    const isRetrying = statuses.some((status) => status.phase === "retrying");
+    const isOffline = statuses.some((status) => status.phase === "offline");
+    const status = statuses.find((item) => item.phase === "retrying") ?? statuses[0];
+    const message = isRetrying
+      ? status.kind === "page-reload"
+        ? "运行资源加载失败，正在尝试重新打开页面…"
+        : `运行资源加载失败，正在重试（${status.retry}/${status.maxRetries}）…`
+      : isOffline
+        ? "当前似乎处于离线状态，联网后将自动重新尝试加载运行资源。"
+        : "运行资源仍未能加载，请刷新页面重试。";
+
+    return (
+      <div
+        aria-live={isRetrying || isOffline ? "polite" : "assertive"}
+        className={`app-runtime-asset-notice${isRetrying ? " is-retrying" : isOffline ? " is-offline" : " is-failed"}`}
+        role={isRetrying || isOffline ? "status" : "alert"}
+      >
+        {isRetrying ? <span aria-hidden="true" className="app-runtime-asset-spinner" /> : null}
+        <span className="app-runtime-asset-message">{message}</span>
+        {!isRetrying && !isOffline ? (
+          <button onClick={() => this.refreshPage()} type="button">
+            刷新页面
+          </button>
+        ) : null}
+        <button
+          aria-label="关闭资源加载提示"
+          onClick={this.dismissResourceRetryNotice}
+          type="button"
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
 
   private describeSource = (source: GlobalErrorSource): string => {
     switch (source) {
@@ -521,38 +827,97 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
   render(): ReactNode {
     if (this.state.fatalErrorDetails) {
+      const isModuleLoadFailure = MODULE_LOAD_FAILURE_PATTERN.test(this.state.fatalErrorDetails);
+      const isWaitingForNetwork = Object.values(this.state.resourceRetryStatuses).some(
+        (status) => status.phase === "offline"
+      );
+      const isAutoReloading = Object.values(this.state.resourceRetryStatuses).some(
+        (status) => status.kind === "page-reload" && status.phase === "retrying"
+      );
+      const hasTerminalModuleRetryFailure = Object.values(this.state.resourceRetryStatuses).some(
+        (status) => status.kind === "page-reload" && status.phase === "failed"
+      );
+      const hasUncontrolledModuleRetry =
+        isModuleLoadFailure &&
+        !("serviceWorker" in navigator && navigator.serviceWorker.controller);
+      const shouldShowModuleRetryFallback =
+        isModuleLoadFailure &&
+        (isAutoReloading ||
+          isWaitingForNetwork ||
+          (hasUncontrolledModuleRetry &&
+            !this.hasModuleLoadRetryBeenUsed() &&
+            !hasTerminalModuleRetryFailure));
+
+      if (shouldShowModuleRetryFallback) {
+        return (
+          <>
+            {this.renderResourceRetryNotice()}
+            <main className="app-module-load-retry" role="status">
+              <div className="app-module-load-retry-card">
+                {!isWaitingForNetwork ? (
+                  <span aria-hidden="true" className="app-runtime-asset-spinner" />
+                ) : null}
+                <p>
+                  {isWaitingForNetwork
+                    ? "当前似乎处于离线状态，联网后将自动重试运行资源。"
+                    : "菜单运行资源加载失败，正在自动重试…"}
+                </p>
+              </div>
+            </main>
+          </>
+        );
+      }
+
       return (
-        <main className="app-error-debug" role="alert">
-          <section className="app-error-debug-card">
-            <div className="app-error-debug-toolbar">
-              <div>
-                <h1>页面渲染失败</h1>
-                <p>当前页面无法正常显示。请复制调试信息并反馈，方便定位问题。</p>
-                <p className="app-error-build-info">
-                  版本 {__APP_VERSION__} · 构建时间 {formatDateTime(__APP_BUILD_TIME__)}
-                </p>
-              </div>
-              <div className="app-error-debug-copy-control">
-                <div className="app-error-debug-actions">
-                  <button onClick={() => void this.copyDebugInfo()} type="button">
-                    复制调试信息
-                  </button>
-                  <button onClick={() => void this.refreshPage()} type="button">
-                    刷新页面
-                  </button>
+        <>
+          {this.renderResourceRetryNotice()}
+          <main className="app-error-debug" role="alert">
+            <section className="app-error-debug-card">
+              <div className="app-error-debug-toolbar">
+                <div>
+                  <h1>{isModuleLoadFailure ? "页面资源加载失败" : "页面渲染失败"}</h1>
+                  <p>
+                    {isModuleLoadFailure
+                      ? isWaitingForNetwork
+                        ? "当前似乎处于离线状态，联网后会自动重新加载并重试菜单资源。"
+                        : "菜单页面所需的运行资源暂时无法加载。请刷新页面重试，或复制诊断信息反馈。"
+                      : "当前页面无法正常显示。请复制调试信息并反馈，方便定位问题。"}
+                  </p>
+                  <p className="app-error-build-info">
+                    版本 {__APP_VERSION__} · 构建时间 {formatDateTime(__APP_BUILD_TIME__)}
+                  </p>
                 </div>
-                <p aria-live="polite" className="app-error-debug-copy-status">
-                  {this.state.copyStatus}
-                </p>
+                <div className="app-error-debug-copy-control">
+                  <div className="app-error-debug-actions">
+                    <button onClick={() => void this.copyDebugInfo()} type="button">
+                      复制调试信息
+                    </button>
+                    <button
+                      disabled={isWaitingForNetwork || isAutoReloading}
+                      onClick={() => void this.refreshPage()}
+                      type="button"
+                    >
+                      {isWaitingForNetwork
+                        ? "等待联网"
+                        : isAutoReloading
+                          ? "正在重试…"
+                          : "刷新页面"}
+                    </button>
+                  </div>
+                  <p aria-live="polite" className="app-error-debug-copy-status">
+                    {this.state.copyStatus}
+                  </p>
+                </div>
               </div>
-            </div>
-            <pre>{this.buildDebugInfo()}</pre>
-          </section>
-        </main>
+              <pre>{this.buildDebugInfo()}</pre>
+            </section>
+          </main>
+        </>
       );
     }
     return (
       <>
+        {this.renderResourceRetryNotice()}
         {this.props.children}
         {this.renderGlobalErrorNotice()}
       </>
