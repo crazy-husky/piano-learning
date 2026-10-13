@@ -15,9 +15,9 @@ import {
 } from "./practiceMicrophonePreferences";
 
 describe("practice microphone preferences", () => {
-  it("defaults to the standard level and preserves the existing standard recognition behavior", () => {
+  it("defaults to SwiftF0 with the standard sensitivity level", () => {
     expect(DEFAULT_PRACTICE_MICROPHONE_PREFERENCES).toEqual({
-      algorithm: "mpm-c",
+      algorithm: "swiftf0",
       debugMode: false,
       debugParameters: {
         analysisGain: 1,

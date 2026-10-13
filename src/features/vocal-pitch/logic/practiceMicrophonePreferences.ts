@@ -59,7 +59,7 @@ const DEFAULT_DEBUG_PARAMETERS: PracticeMicrophoneDebugParameters = {
 };
 
 export const DEFAULT_PRACTICE_MICROPHONE_PREFERENCES: PracticeMicrophonePreferences = {
-  algorithm: "mpm-c",
+  algorithm: "swiftf0",
   debugMode: false,
   debugParameters: DEFAULT_DEBUG_PARAMETERS,
   sensitivityLevel: 3,
