@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { BarChart3, Keyboard, Mic, Music2, Play, Radio } from "lucide-react";
+import { BarChart3, Music2, Play } from "lucide-react";
+import { toast } from "sonner";
 import type {
   AnswerPitchMode,
   AppSettings,
@@ -12,13 +13,23 @@ import type {
 import { ANSWER_BUTTONS } from "../../../domain/notes";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
+import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import {
-  resolveSongPracticeTrack,
-  type SongPracticeInputMode,
+  resolveSongPracticeArrangement,
+  type SongPracticeHandMode,
+  type SongPracticeKeyVersion,
   type SongPracticeSelection,
-  type SongPracticeTrackMode,
 } from "../song-practice/songPracticeMaterials";
-import { BUILT_IN_YE_QU_SCORE } from "../song-practice/yeQuScore";
+import {
+  BUILT_IN_SONG_PRACTICE_SCORES,
+  getBuiltInSongPracticeScore,
+  getSongPracticeScore,
+} from "../song-practice/songPracticeCatalog";
+import {
+  DEFAULT_SONG_PRACTICE_UI_PREFERENCES,
+  parseSongPracticeUiPreferences,
+  SONG_PRACTICE_UI_PREFERENCES_KEY,
+} from "../song-practice/songPracticePreferences";
 
 export interface PracticeSetupUiPreferences {
   answerPitchMode: AnswerPitchMode;
@@ -61,7 +72,7 @@ interface PracticeSetupViewProps {
   fixedCountPresets: number[];
   isBusy: boolean;
   microphoneError: string | null;
-  midi: Pick<MidiInputController, "connect" | "isConnected" | "selectedInput" | "status">;
+  midi: Pick<MidiInputController, "isConnected" | "selectedInput">;
   preferences: PracticeSetupUiPreferences;
   setupDisabledReason?: string;
   startPausedReading: boolean;
@@ -112,14 +123,35 @@ const PRACTICE_QUEUE_OPTIONS: Array<{
   },
 ];
 
-const SONG_TRACK_OPTIONS: Array<{
-  id: SongPracticeTrackMode;
+const SONG_HAND_OPTIONS: Array<{
+  id: SongPracticeHandMode;
   label: string;
   detail: string;
 }> = [
-  { id: "treble", label: "只弹高音", detail: "上排旋律" },
-  { id: "bass", label: "只弹低音", detail: "下排单音" },
-  { id: "mixed", label: "混合", detail: "按谱面先后单音弹奏" },
+  {
+    id: "right",
+    label: "右手",
+    detail: "只练高音声部，按 MIDI 音高逐个作答。",
+  },
+  {
+    id: "left",
+    label: "左手",
+    detail: "只练低音声部，按 MIDI 音高逐个作答。",
+  },
+  {
+    id: "both",
+    label: "混弹",
+    detail: "左右手按原时间位置合并，同时音和和弦需一起弹出。",
+  },
+];
+
+const SONG_KEY_OPTIONS: Array<{
+  id: Exclude<SongPracticeKeyVersion, "source">;
+  label: string;
+  detail: string;
+}> = [
+  { id: "c", label: "C 调简单版", detail: "使用你提供的 C 调 MIDI 原始事件。" },
+  { id: "original", label: "原调完整版", detail: "使用原调 MIDI 原始事件，保留升降音与完整声部。" },
 ];
 
 export function PracticeSetupView({
@@ -166,30 +198,57 @@ export function PracticeSetupView({
     onToggleDrillNoteName: toggleDrillNoteName,
   } = actions;
   const setupDisabled = setupDisabledReason !== undefined;
-  const [songInputMode, setSongInputMode] = useState<SongPracticeInputMode>("virtual");
-  const [songTrackMode, setSongTrackMode] = useState<SongPracticeTrackMode>("treble");
+  const [songPreferences, setSongPreferences] = useLocalStorageState(
+    SONG_PRACTICE_UI_PREFERENCES_KEY,
+    DEFAULT_SONG_PRACTICE_UI_PREFERENCES,
+    { parse: parseSongPracticeUiPreferences }
+  );
+  const { selectedSongId, keyVersion: songKeyVersion, handMode: songHandMode } = songPreferences;
+  const updateSongPreferences = (
+    update: Partial<typeof DEFAULT_SONG_PRACTICE_UI_PREFERENCES>
+  ): void => setSongPreferences((current) => ({ ...current, ...update }));
   const [isStartingSongPractice, setIsStartingSongPractice] = useState(false);
   const [songStartError, setSongStartError] = useState<string | null>(null);
-  const resolvedSongTrack = resolveSongPracticeTrack(BUILT_IN_YE_QU_SCORE, songTrackMode);
-
-  const selectSongTrackMode = (trackMode: SongPracticeTrackMode): void => {
-    setSongTrackMode(trackMode);
-    if (trackMode === "mixed" && songInputMode === "virtual") setSongInputMode("midi");
-  };
+  const isMidiSong = selectedSongId === "cong-cong-na-nian" || selectedSongId === "always-with-me";
+  const selectedScore = isMidiSong
+    ? getSongPracticeScore(selectedSongId, songKeyVersion)
+    : getBuiltInSongPracticeScore(selectedSongId);
+  const activeHandMode = songHandMode === "both" && !midi.isConnected ? "right" : songHandMode;
+  const resolvedArrangement = resolveSongPracticeArrangement(selectedScore, activeHandMode);
+  const simultaneousTargetCount = resolvedArrangement.targets.filter(
+    (target) => target.notes.length > 1
+  ).length;
+  const requiresMidi = songHandMode === "both";
+  const preferredInputMode = midi.isConnected ? "midi" : "microphone";
+  const activeInputMode = preferredInputMode;
+  const showSongArrangementWarning =
+    (requiresMidi && !midi.isConnected) ||
+    (activeInputMode === "microphone" && simultaneousTargetCount > 0);
 
   const startSongPractice = async (): Promise<void> => {
-    if (resolvedSongTrack.notes.length === 0 || isStartingSongPractice) return;
+    if (requiresMidi && !midi.isConnected) {
+      setSongStartError(null);
+      toast.error("混弹需要连接 MIDI 键盘，请连接后再进入练习。", { duration: 3500 });
+      return;
+    }
+    if (isStartingSongPractice) {
+      setSongStartError("正在进入练习，请稍候。");
+      return;
+    }
+    if (resolvedArrangement.targets.length === 0) {
+      setSongStartError("这首曲目暂无可练习音符。");
+      return;
+    }
     setSongStartError(null);
     setIsStartingSongPractice(true);
     try {
       const entered = await onStartSongPractice({
-        inputMode: songInputMode,
-        notes: resolvedSongTrack.notes,
-        partName: resolvedSongTrack.partName,
-        scoreTitle: BUILT_IN_YE_QU_SCORE.title,
-        songId: "ye-qu",
-        trackMode: songTrackMode,
-        skippedBassNoteCount: resolvedSongTrack.skippedBassNoteCount,
+        handMode: songHandMode,
+        inputMode: activeInputMode,
+        keyVersion: isMidiSong ? songKeyVersion : "source",
+        preferredInputMode,
+        score: selectedScore,
+        songId: isMidiSong ? selectedSongId : selectedScore.id,
       });
       if (!entered) setSongStartError("麦克风未能启动，请检查权限和输入设备后重试。");
     } catch (error) {
@@ -560,7 +619,8 @@ export function PracticeSetupView({
             <div>
               <h1>歌曲练习</h1>
               <p className="song-practice-description">
-                选择曲目和输入方式，按确认后进入整首谱面跟弹。
+                选择歌曲版本和手型，练习数据会单独保存，不计入自由练习的音符熟练度。已提供 MIDI
+                的曲目按各自文件中的音符与时间信息录入。
               </p>
             </div>
             <div className="practice-midi-heading-status">
@@ -573,123 +633,150 @@ export function PracticeSetupView({
 
           <div className="song-selection-section">
             <h2>选择歌曲</h2>
-            <button aria-pressed="true" className="song-choice-card is-selected" type="button">
-              <span className="song-choice-icon">
-                <Music2 aria-hidden="true" size={20} />
-              </span>
-              <span className="song-choice-copy">
-                <strong>夜曲</strong>
-                <span>用户提供的四页谱面 · 高低音已整理</span>
-              </span>
-              <span className="song-choice-key">C 调单音</span>
-            </button>
+            <div className="song-choice-list">
+              {BUILT_IN_SONG_PRACTICE_SCORES.map((score) => {
+                const isSelected = selectedSongId === score.id;
+                return (
+                  <button
+                    aria-pressed={isSelected}
+                    className={`song-choice-card${isSelected ? " is-selected" : ""}`}
+                    disabled={isStartingSongPractice}
+                    key={score.id}
+                    type="button"
+                    onClick={() => {
+                      updateSongPreferences({ selectedSongId: score.id });
+                      setSongStartError(null);
+                    }}
+                  >
+                    <span className="song-choice-icon">
+                      <Music2 aria-hidden="true" size={20} />
+                    </span>
+                    <span className="song-choice-copy">
+                      <strong>{score.title}</strong>
+                      <span>
+                        {score.source.pageCount ? `${score.source.pageCount} 页谱图 · ` : ""}
+                        {score.parts.length} 个声部
+                      </span>
+                    </span>
+                    <span className="song-choice-key">
+                      {score.source.originalKey.replace(/ major| minor/, "")} 调
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
             <p className="song-loaded-part">
-              已整理 {BUILT_IN_YE_QU_SCORE.parts[0].notes.length} 个高音和{" "}
-              {BUILT_IN_YE_QU_SCORE.parts[1].notes.length} 个低音单音。
+              当前版本含右手{" "}
+              {selectedScore.parts.find((part) => part.id === "treble")?.notes.length ?? 0}{" "}
+              个音符事件、左手{" "}
+              {selectedScore.parts.find((part) => part.id === "bass")?.notes.length ?? 0}{" "}
+              个音符事件；不移调、不合并或删除原 MIDI 音符。
             </p>
           </div>
 
+          {isMidiSong ? (
+            <div className="song-selection-section">
+              <h2>选择调性版本</h2>
+              <div
+                className="song-track-options"
+                role="group"
+                aria-label={`${selectedScore.title}调性版本`}
+              >
+                {SONG_KEY_OPTIONS.map(({ id, label, detail }) => {
+                  const versionScore = getSongPracticeScore(selectedSongId, id);
+                  const versionArrangement = resolveSongPracticeArrangement(
+                    versionScore,
+                    songHandMode
+                  );
+                  return (
+                    <button
+                      aria-pressed={songKeyVersion === id}
+                      className={`song-track-option${songKeyVersion === id ? " is-selected" : ""}`}
+                      disabled={isStartingSongPractice}
+                      key={id}
+                      type="button"
+                      onClick={() => {
+                        updateSongPreferences({ keyVersion: id });
+                        setSongStartError(null);
+                      }}
+                    >
+                      <strong>{label}</strong>
+                      <span>{detail}</span>
+                      <small>
+                        {versionArrangement.targets.length} 个演奏时点 ·{" "}
+                        {versionArrangement.noteCount} 个音符 · {versionScore.tempoBpm} BPM ·{" "}
+                        {versionScore.practiceKey} 调
+                      </small>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="song-score-conversion-note">
+                两个版本分别读取对应 MIDI 文件，不互相移调。练习时切换手型会保留当前乐曲时间位置。
+              </p>
+            </div>
+          ) : null}
+
           <div className="song-selection-section">
-            <h2>选择声部</h2>
-            <div className="song-track-options" role="group" aria-label="歌曲声部">
-              {SONG_TRACK_OPTIONS.map(({ id, label, detail }) => (
+            <h2>选择演奏手型</h2>
+            <div className="song-track-options" role="group" aria-label="歌曲演奏手型">
+              {SONG_HAND_OPTIONS.map(({ id, label, detail }) => (
                 <button
-                  aria-pressed={songTrackMode === id}
-                  className={`song-track-option${songTrackMode === id ? " is-selected" : ""}`}
+                  aria-pressed={songHandMode === id}
+                  className={`song-track-option${songHandMode === id ? " is-selected" : ""}`}
                   disabled={isStartingSongPractice}
                   key={id}
                   type="button"
                   onClick={() => {
-                    selectSongTrackMode(id);
+                    updateSongPreferences({
+                      handMode: id,
+                    });
                     setSongStartError(null);
                   }}
                 >
                   <strong>{label}</strong>
                   <span>{detail}</span>
                   <small>
-                    {resolveSongPracticeTrack(BUILT_IN_YE_QU_SCORE, id).notes.length} 个单音
+                    {resolveSongPracticeArrangement(selectedScore, id).targets.length} 个演奏时点 ·{" "}
+                    {resolveSongPracticeArrangement(selectedScore, id).noteCount} 个音
                   </small>
                 </button>
               ))}
             </div>
-            <p className="song-score-conversion-note">
-              {songTrackMode === "mixed"
-                ? `混合时有 ${resolvedSongTrack.skippedBassNoteCount} 个低音与高音同拍，已略去低音；同一时刻只保留一个目标音。`
-                : "原谱按级数转为 C 调自然音；歌词跟随高音旋律，伴奏和弦不练。"}
+            <p
+              className={`song-score-conversion-note${showSongArrangementWarning ? " song-requirement-warning" : ""}`}
+            >
+              {requiresMidi && !midi.isConnected
+                ? "混弹需要连接 MIDI 键盘；连接后才能进入混弹练习。"
+                : songHandMode === "both"
+                  ? "已连接 MIDI，进入后自动使用 MIDI 保留左右手和弦。"
+                  : simultaneousTargetCount > 0
+                    ? activeInputMode === "midi"
+                      ? `原谱有 ${simultaneousTargetCount} 处同拍多音；MIDI 模式会保留全部音符。`
+                      : `原谱有 ${simultaneousTargetCount} 处同拍多音；麦克风模式会简化为单音：右手保留最高音，左手保留最低音。`
+                    : `进入后自动使用${midi.isConnected ? "已连接的 MIDI 键盘" : "麦克风"}。`}
             </p>
           </div>
 
           <div className="song-selection-section">
-            <h2>选择输入方式</h2>
-            <div className="song-input-options" role="group" aria-label="歌曲输入方式">
-              {(
-                [
-                  { icon: Keyboard, id: "virtual", label: "虚拟键盘", detail: "点击屏幕琴键" },
-                  {
-                    icon: Radio,
-                    id: "midi",
-                    label: "MIDI 键盘",
-                    detail: midi.isConnected
-                      ? (midi.selectedInput?.name ?? "已连接")
-                      : "连接外接键盘",
-                  },
-                  { icon: Mic, id: "microphone", label: "麦克风", detail: "识别钢琴或键盘声音" },
-                ] as const
-              ).map(({ icon: Icon, id, label, detail }) => (
-                <button
-                  aria-pressed={songInputMode === id}
-                  className={`song-input-option${songInputMode === id ? " is-selected" : ""}`}
-                  disabled={
-                    isStartingSongPractice || (songTrackMode === "mixed" && id === "virtual")
-                  }
-                  key={id}
-                  type="button"
-                  onClick={() => {
-                    setSongInputMode(id);
-                    setSongStartError(null);
-                  }}
-                >
-                  <Icon aria-hidden="true" size={20} />
-                  <strong>{label}</strong>
-                  <span>
-                    {songTrackMode === "mixed" && id === "virtual" ? "混合模式不可用" : detail}
-                  </span>
-                </button>
-              ))}
-            </div>
-            {songInputMode === "midi" && !midi.isConnected ? (
-              <button
-                className="song-connect-midi"
-                type="button"
-                onClick={() => void midi.connect()}
-              >
-                连接 MIDI 键盘
-              </button>
-            ) : null}
-            {songInputMode === "microphone" && (songStartError || microphoneError) ? (
+            <h2>系统会自动选择输入方式</h2>
+            <p className="song-score-conversion-note">
+              {midi.isConnected
+                ? `已连接${midi.selectedInput?.name ? ` ${midi.selectedInput.name}` : " MIDI 键盘"}，进入后自动使用 MIDI。`
+                : "未连接 MIDI 时，单手模式会自动使用麦克风；混弹需要先连接 MIDI。"}
+            </p>
+            {songStartError || (!midi.isConnected && microphoneError) ? (
               <div className="song-selection-error" role="status">
-                {songStartError ? <p>{songStartError}</p> : null}
-                {microphoneError && microphoneError !== songStartError ? (
-                  <p>{microphoneError}</p>
-                ) : null}
+                <p>{songStartError ?? microphoneError}</p>
               </div>
             ) : null}
           </div>
 
           <div className="song-selection-footer">
-            <span>确认后进入谱面；弹完当前页会自动翻页。</span>
-            <button
-              className="primary"
-              disabled={
-                isStartingSongPractice ||
-                resolvedSongTrack.notes.length === 0 ||
-                (songInputMode === "midi" && !midi.isConnected)
-              }
-              type="button"
-              onClick={() => void startSongPractice()}
-            >
+            <span>进入后可随时切换左手、右手和混弹；当前：{resolvedArrangement.partName}。</span>
+            <button className="primary" type="button" onClick={() => void startSongPractice()}>
               {isStartingSongPractice
-                ? songInputMode === "microphone"
+                ? activeInputMode === "microphone"
                   ? "正在申请麦克风…"
                   : "正在进入练习…"
                 : "确认并进入练习"}

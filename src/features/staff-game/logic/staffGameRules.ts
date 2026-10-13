@@ -18,7 +18,7 @@ export const COMBO_BONUS_MAX_STEPS = 5;
 export const RUSH_SCORE_MULTIPLIER = 2;
 export const COMBO_INDICATOR_FADE_DURATION_MS = 280;
 export const RUSH_FALL_SPEED_MULTIPLIER = 0.92;
-export const ERROR_FLASH_DURATION_MS = 2_000;
+export const ERROR_FLASH_DURATION_MS = 1_500;
 export const NOTE_NAMES: NoteName[] = ["C", "D", "E", "F", "G", "A", "B"];
 export const PITCH_NAMES: PianoKeyName[] = [
   "C",

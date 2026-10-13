@@ -92,6 +92,10 @@
 .staff-page-row-play-button {
   width: 34px;
   height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  aspect-ratio: 1;
+  flex: none;
   display: grid;
   place-items: center;
   padding: 0;
@@ -139,6 +143,19 @@
 .staff-page-renderer-scrolling {
   transform: translateY(calc(-1 * var(--staff-page-scroll-distance, 0px)));
   transition: transform var(--staff-page-scroll-duration, 0ms) ease-in-out;
+}
+
+.staff-page-progress-marker {
+  pointer-events: none;
+  transition: opacity 90ms linear;
+}
+
+.staff-page-progress-marker.is-practice {
+  fill: #ee78a5;
+}
+
+.staff-page-progress-marker.is-playback {
+  fill: #3fc777;
 }
 
 .staff-page svg {

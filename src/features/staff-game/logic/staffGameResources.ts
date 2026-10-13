@@ -164,7 +164,7 @@ export function createStaffGameResourceProgress(): StaffGameResourceProgress[] {
     status: "loading" as const,
   }));
 }
-export const STAFF_GAME_RESOURCE_MAX_RETRIES = 3;
+export const STAFF_GAME_RESOURCE_MAX_RETRIES = 4;
 export const STAFF_GAME_RESOURCE_RETRY_DELAY_MS = 500;
 const STAFF_GAME_IMAGE_TIMEOUT_MS = 15_000;
 const STAFF_GAME_BACKGROUND_AUDIO_TIMEOUT_MS = 15_000;

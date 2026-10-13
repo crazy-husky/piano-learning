@@ -123,12 +123,39 @@ const DETECTED_NOTE_HOLD_MS = 1200;
 const CAPTURE_MAX_DURATION_MS = 30000;
 const SWIFT_F0_ANALYSIS_TIMEOUT_MS = 10000;
 const PITCH_ANALYSIS_TIMEOUT_MS = 3000;
+const MICROPHONE_RECOVERY_TIMEOUT_MS = 8_000;
+const MICROPHONE_RECOVERY_RETRY_DELAY_MS = 350;
+const MICROPHONE_RECOVERY_RELOAD_DELAY_MS = 1_200;
+const MICROPHONE_BACKGROUND_RECOVERY_MIN_DURATION_MS = 1_200;
+const MICROPHONE_RECOVERY_RELOAD_KEY = "piano-learning.microphone-recovery-reload-attempted";
 const REQUESTED_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   autoGainControl: false,
   channelCount: 1,
   echoCancellation: false,
   noiseSuppression: false,
 };
+
+export interface PracticeMicrophoneRecoveryOptions {
+  beforeRecoveryReload?: () => void | Promise<void>;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: number | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+  });
+}
+
+function hasAttemptedMicrophoneRecoveryReload(): boolean | null {
+  try {
+    return window.sessionStorage.getItem(MICROPHONE_RECOVERY_RELOAD_KEY) === "1";
+  } catch {
+    return null;
+  }
+}
 
 function getConstraintValues(
   constraints: MediaTrackConstraints | null | undefined
@@ -286,7 +313,8 @@ function downloadCaptureFile(file: File): void {
 
 export function usePracticeMicrophoneInput(
   onAnswer: (answer: PracticeAnswerInput) => void,
-  preferences: PracticeMicrophonePreferences = DEFAULT_PRACTICE_MICROPHONE_PREFERENCES
+  preferences: PracticeMicrophonePreferences = DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
+  recoveryOptions: PracticeMicrophoneRecoveryOptions = {}
 ) {
   const [state, setState] = useState<PracticeMicrophoneState>({
     captureFrameCount: 0,
@@ -304,6 +332,10 @@ export function usePracticeMicrophoneInput(
   const mountedRef = useRef(false);
   const inputReconnectRequiredRef = useRef(false);
   const audioContextWasInterruptedRef = useRef(false);
+  const lifecycleRecoveryPendingRef = useRef(false);
+  const lifecycleRecoveryAttemptCountRef = useRef(0);
+  const backgroundedAtRef = useRef<number | null>(null);
+  const recoveryReloadTimeoutRef = useRef<number | null>(null);
   const startGenerationRef = useRef(0);
   const inputGenerationRef = useRef(0);
   const startPromiseRef = useRef<Promise<boolean> | null>(null);
@@ -379,6 +411,8 @@ export function usePracticeMicrophoneInput(
   const detectedNoteUiRef = useRef<string | null>(null);
   const callbacksRef = useRef({ onAnswer });
   callbacksRef.current = { onAnswer };
+  const recoveryOptionsRef = useRef(recoveryOptions);
+  recoveryOptionsRef.current = recoveryOptions;
 
   const settleCaptureStopWaiters = useCallback((): void => {
     const waiters = captureStopWaitersRef.current;
@@ -871,9 +905,9 @@ export function usePracticeMicrophoneInput(
     }
   }, [settleCaptureStopWaiters]);
 
-  const ensureWorkerReady = useCallback(async (): Promise<void> => {
+  const ensureWorkerReady = useCallback(async (timeoutMs?: number): Promise<void> => {
     if (workerReadyRef.current) return;
-    await ensureSwiftF0PracticeRuntimeReady();
+    await ensureSwiftF0PracticeRuntimeReady(timeoutMs);
     if (!mountedRef.current) return;
     workerRef.current = getReadySwiftF0PracticeWorker();
     workerUnsubscribeRef.current ??= subscribeToSwiftF0PracticeMessages((message) => {
@@ -1173,6 +1207,10 @@ export function usePracticeMicrophoneInput(
       let configuration = resolvePracticeMicrophoneConfiguration(preferencesRef.current);
       let thresholds = resolvePracticeMicrophoneThresholds(configuration);
       let frameIntervalMs = resolvePracticeMicrophoneFrameIntervalMs(configuration);
+      const recoveringFromBackground = lifecycleRecoveryPendingRef.current;
+      const recoveryDeadlineAt = recoveringFromBackground
+        ? Date.now() + MICROPHONE_RECOVERY_TIMEOUT_MS
+        : null;
       activeConfigurationRef.current = configuration;
       activeAlgorithmRef.current = configuration.algorithm;
       activeThresholdsRef.current = thresholds;
@@ -1182,8 +1220,10 @@ export function usePracticeMicrophoneInput(
         includeAccidentalsRef.current
       );
       updateStatus("requesting");
-      const generation = ++startGenerationRef.current;
-      const pending = (async (): Promise<boolean> => {
+      let attemptGeneration = 0;
+      const startSingleAttempt = async (): Promise<boolean> => {
+        const generation = ++startGenerationRef.current;
+        attemptGeneration = generation;
         let stream: MediaStream | null = null;
         let context: AudioContext | null = null;
         try {
@@ -1195,7 +1235,14 @@ export function usePracticeMicrophoneInput(
           });
           let requestedStream: MediaStream;
           try {
-            [requestedStream] = await Promise.all([streamRequest, contextResumePromise] as const);
+            const connectionPromise = Promise.all([streamRequest, contextResumePromise] as const);
+            [requestedStream] = recoveringFromBackground
+              ? await withTimeout(
+                  connectionPromise,
+                  Math.max(1, (recoveryDeadlineAt ?? Date.now()) - Date.now()),
+                  "后台恢复后连接麦克风超时，请重试。"
+                )
+              : await connectionPromise;
           } catch (error) {
             void streamRequest
               .then((lateStream) => lateStream.getTracks().forEach((track) => track.stop()))
@@ -1210,7 +1257,7 @@ export function usePracticeMicrophoneInput(
           }
 
           if (context.state !== "running") {
-            throw new Error("浏览器未能恢复音频处理，请再次点击继续连接麦克风。");
+            throw new Error("浏览器未能恢复音频处理，麦克风需要重新连接。");
           }
 
           configuration = resolvePracticeMicrophoneConfiguration(preferencesRef.current);
@@ -1341,7 +1388,7 @@ export function usePracticeMicrophoneInput(
               inputReconnectRequiredRef.current = true;
               audioContextWasInterruptedRef.current = true;
               if (!document.hidden) {
-                fail("麦克风音频处理已暂停，请点击继续重新连接。", "microphone-interrupted");
+                fail("麦克风音频处理已暂停，需要重新连接麦克风。", "microphone-interrupted");
               }
             };
             activeContext.addEventListener("statechange", handleAudioContextStateChange);
@@ -1364,11 +1411,16 @@ export function usePracticeMicrophoneInput(
             });
           }
 
-          if (configuration.algorithm === "swiftf0") await ensureWorkerReady();
-          else ensurePitchWorker();
+          if (configuration.algorithm === "swiftf0") {
+            const workerTimeoutMs =
+              recoveryDeadlineAt === null
+                ? undefined
+                : Math.max(1, recoveryDeadlineAt - Date.now());
+            await ensureWorkerReady(workerTimeoutMs);
+          } else ensurePitchWorker();
           if (!mountedRef.current || generation !== startGenerationRef.current) return false;
           if (audioContextRef.current?.state !== "running") {
-            throw new Error("浏览器已暂停音频处理，请点击继续重新连接麦克风。");
+            throw new Error("浏览器已暂停音频处理，麦克风需要重新连接。");
           }
           updateStatus("listening");
           animationRef.current = requestAnimationFrame(runLiveAnalysis);
@@ -1380,11 +1432,110 @@ export function usePracticeMicrophoneInput(
           }
           if (generation === startGenerationRef.current) {
             releaseDevices();
-            updateStatus("error", formatStartError(error));
+            const reloadAlreadyAttempted = hasAttemptedMicrophoneRecoveryReload() === true;
+            updateStatus(
+              "error",
+              reloadAlreadyAttempted
+                ? "页面刷新后麦克风仍无法连接，请关闭当前页面后重新进入。"
+                : formatStartError(error)
+            );
           }
           return false;
         }
+      };
+      const pendingRef: { current: Promise<boolean> | null } = { current: null };
+      const pending = (async (): Promise<boolean> => {
+        const started = await startSingleAttempt();
+        if (started) {
+          lifecycleRecoveryPendingRef.current = false;
+          lifecycleRecoveryAttemptCountRef.current = 0;
+          backgroundedAtRef.current = null;
+          inputReconnectRequiredRef.current = false;
+          if (recoveryReloadTimeoutRef.current !== null) {
+            window.clearTimeout(recoveryReloadTimeoutRef.current);
+            recoveryReloadTimeoutRef.current = null;
+          }
+          try {
+            window.sessionStorage.removeItem(MICROPHONE_RECOVERY_RELOAD_KEY);
+          } catch {
+            // A successful connection does not depend on session storage.
+          }
+          return true;
+        }
+
+        if (attemptGeneration !== startGenerationRef.current) return false;
+        if (!recoveringFromBackground || !lifecycleRecoveryPendingRef.current) return false;
+        if (lifecycleRecoveryAttemptCountRef.current === 0) {
+          lifecycleRecoveryAttemptCountRef.current = 1;
+          updateStatus("requesting", "麦克风恢复失败，正在重新连接…");
+          await new Promise<void>((resolve) =>
+            window.setTimeout(resolve, MICROPHONE_RECOVERY_RETRY_DELAY_MS)
+          );
+          if (
+            !mountedRef.current ||
+            stateRef.current !== "requesting" ||
+            document.visibilityState === "hidden"
+          ) {
+            return false;
+          }
+          if (startPromiseRef.current === pendingRef.current) startPromiseRef.current = null;
+          return start(options);
+        }
+
+        const reloadAttempted = hasAttemptedMicrophoneRecoveryReload();
+        if (reloadAttempted === true) {
+          updateStatus("error", "麦克风重连和页面刷新后仍无法恢复，请关闭当前页面后重新进入。");
+          return false;
+        }
+        if (reloadAttempted === null) {
+          updateStatus(
+            "error",
+            "麦克风无法恢复，浏览器也无法保存刷新保护状态；请关闭当前页面后重新进入。"
+          );
+          return false;
+        }
+
+        let recoveryCheckpointSaved = true;
+        try {
+          await recoveryOptionsRef.current.beforeRecoveryReload?.();
+        } catch {
+          recoveryCheckpointSaved = false;
+        }
+        if (
+          !mountedRef.current ||
+          !lifecycleRecoveryPendingRef.current ||
+          stateRef.current !== "error"
+        ) {
+          return false;
+        }
+        try {
+          window.sessionStorage.setItem(MICROPHONE_RECOVERY_RELOAD_KEY, "1");
+        } catch {
+          updateStatus("error", "麦克风无法恢复，请关闭当前页面后重新进入。");
+          return false;
+        }
+        updateStatus(
+          "error",
+          recoveryCheckpointSaved
+            ? "麦克风恢复失败，正在刷新页面；练习会记为中断，游戏本局会重新开始。"
+            : "练习中断记录未能保存，仍会刷新页面尝试恢复麦克风…"
+        );
+        recoveryReloadTimeoutRef.current = window.setTimeout(() => {
+          recoveryReloadTimeoutRef.current = null;
+          if (!mountedRef.current || !lifecycleRecoveryPendingRef.current) return;
+          if (stateRef.current !== "error") {
+            try {
+              window.sessionStorage.removeItem(MICROPHONE_RECOVERY_RELOAD_KEY);
+            } catch {
+              // A later recovery attempt can still proceed without session storage.
+            }
+            return;
+          }
+          window.location.reload();
+        }, MICROPHONE_RECOVERY_RELOAD_DELAY_MS);
+        return false;
       })();
+      pendingRef.current = pending;
       startPromiseRef.current = pending;
       void pending.finally(() => {
         if (startPromiseRef.current === pending) startPromiseRef.current = null;
@@ -1482,6 +1633,22 @@ export function usePracticeMicrophoneInput(
         preserveError?: boolean;
       } = {}
     ): void => {
+      const recoveryWasPending = lifecycleRecoveryPendingRef.current;
+      lifecycleRecoveryPendingRef.current = false;
+      lifecycleRecoveryAttemptCountRef.current = 0;
+      backgroundedAtRef.current = null;
+      inputReconnectRequiredRef.current = false;
+      if (recoveryReloadTimeoutRef.current !== null) {
+        window.clearTimeout(recoveryReloadTimeoutRef.current);
+        recoveryReloadTimeoutRef.current = null;
+      }
+      if (recoveryWasPending) {
+        try {
+          window.sessionStorage.removeItem(MICROPHONE_RECOVERY_RELOAD_KEY);
+        } catch {
+          // Cancelling recovery does not depend on session storage.
+        }
+      }
       startGenerationRef.current += 1;
       releaseDevices(options.captureStopReason ?? "input-released");
       updateStatus("idle", options.preserveError ? errorRef.current : null);
@@ -1756,38 +1923,74 @@ export function usePracticeMicrophoneInput(
   useEffect(() => {
     mountedRef.current = true;
     const markInputForReconnect = (): void => {
-      if (stateRef.current === "listening") inputReconnectRequiredRef.current = true;
+      if (stateRef.current !== "listening" && stateRef.current !== "requesting") return;
+      const isBackgrounded = document.visibilityState === "hidden" || !document.hasFocus();
+      if (!isBackgrounded) return;
+      backgroundedAtRef.current ??= Date.now();
+      lifecycleRecoveryPendingRef.current = true;
+      lifecycleRecoveryAttemptCountRef.current = 0;
+      inputReconnectRequiredRef.current = true;
     };
     const recoverInterruptedInput = (): void => {
       if (document.hidden) {
         markInputForReconnect();
         return;
       }
-      if (!inputReconnectRequiredRef.current || stateRef.current !== "listening") return;
-      const context = audioContextRef.current;
-      const stream = streamRef.current;
-      const audioTrack = stream?.getAudioTracks()[0];
-      const inputIsUnavailable =
-        context?.state !== "running" ||
-        stream?.active !== true ||
-        audioTrack?.readyState !== "live" ||
-        audioTrack.muted;
-      if (!audioContextWasInterruptedRef.current && !inputIsUnavailable) {
+      if (!lifecycleRecoveryPendingRef.current) return;
+      if (stateRef.current !== "listening" && stateRef.current !== "requesting") {
+        lifecycleRecoveryPendingRef.current = false;
+        lifecycleRecoveryAttemptCountRef.current = 0;
+        backgroundedAtRef.current = null;
         inputReconnectRequiredRef.current = false;
         return;
       }
-      fail("页面从后台恢复后麦克风输入已中断，请点击继续重新连接。", "microphone-interrupted");
+      const backgroundDurationMs =
+        backgroundedAtRef.current === null
+          ? Number.POSITIVE_INFINITY
+          : Date.now() - backgroundedAtRef.current;
+      const context = audioContextRef.current;
+      const stream = streamRef.current;
+      const audioTrack = stream?.getAudioTracks()[0];
+      const inputLooksAvailable =
+        context?.state === "running" &&
+        stream?.active === true &&
+        audioTrack?.readyState === "live" &&
+        !audioTrack.muted;
+      backgroundedAtRef.current = null;
+      if (
+        stateRef.current === "listening" &&
+        backgroundDurationMs < MICROPHONE_BACKGROUND_RECOVERY_MIN_DURATION_MS &&
+        inputLooksAvailable
+      ) {
+        lifecycleRecoveryPendingRef.current = false;
+        lifecycleRecoveryAttemptCountRef.current = 0;
+        inputReconnectRequiredRef.current = false;
+        return;
+      }
+      if (stateRef.current === "listening" || stateRef.current === "requesting") {
+        fail("页面从后台恢复后，麦克风连接已中断，需要重新连接。", "microphone-interrupted");
+      }
     };
     const handleVisibilityChange = (): void => recoverInterruptedInput();
     const handlePageShow = (): void => recoverInterruptedInput();
+    const handleWindowBlur = (): void => markInputForReconnect();
+    const handleWindowFocus = (): void => recoverInterruptedInput();
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
     window.addEventListener("pagehide", markInputForReconnect);
     return () => {
       mountedRef.current = false;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener("pagehide", markInputForReconnect);
+      if (recoveryReloadTimeoutRef.current !== null) {
+        window.clearTimeout(recoveryReloadTimeoutRef.current);
+        recoveryReloadTimeoutRef.current = null;
+      }
       startGenerationRef.current += 1;
       releaseDevices("component-unmounted");
       workerUnsubscribeRef.current?.();

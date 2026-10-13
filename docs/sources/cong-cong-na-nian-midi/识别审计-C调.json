@@ -1,0 +1,38 @@
+{
+  "sourceFile": "匆匆那年-简单C调.mid",
+  "sha256": "9b2f8cf9e3e62e2672fbffe32429f08c842a9884c8d5c65535cadab0935cca93",
+  "fileBytes": 3356,
+  "fileFormat": 1,
+  "trackCount": 3,
+  "ticksPerQuarter": 480,
+  "tempoBpm": 112.0001,
+  "timeSignature": [3, 4],
+  "keySignatureFifths": 0,
+  "keySignatureIsMinor": false,
+  "measureCountByLastNoteOff": 58.0,
+  "parts": [
+    {
+      "id": "treble",
+      "midiTrackIndex": 1,
+      "eventCount": 193,
+      "pitchRange": [64, 84],
+      "channels": [0],
+      "firstOnsetTick": 0,
+      "lastNoteOffTick": 83520
+    },
+    {
+      "id": "bass",
+      "midiTrackIndex": 2,
+      "eventCount": 170,
+      "pitchRange": [34, 67],
+      "channels": [0],
+      "firstOnsetTick": 0,
+      "lastNoteOffTick": 83520
+    }
+  ],
+  "noteOnOffPairing": "all note-on events matched exactly one note-off",
+  "limitations": [
+    "This report validates MIDI structure and event preservation, not musical correctness against the score images.",
+    "Repeated sections remain in the MIDI's performed order; the printed score pages are retained as provenance, not used to reorder events."
+  ]
+}

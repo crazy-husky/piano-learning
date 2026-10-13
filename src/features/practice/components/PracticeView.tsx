@@ -120,7 +120,10 @@ import {
   type PracticeSetupUiPreferences,
 } from "./PracticeSetupView";
 import { SongPracticeView } from "../song-practice/SongPracticeView";
-import type { SongPracticeSelection } from "../song-practice/songPracticeMaterials";
+import type {
+  SongPracticeInputMode,
+  SongPracticeSelection,
+} from "../song-practice/songPracticeMaterials";
 import { usePracticeMicrophoneInput } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import {
   parseExpectedPracticeNoteSequence,
@@ -368,6 +371,8 @@ export function PracticeView({
   const [songPracticeSelection, setSongPracticeSelection] = useState<SongPracticeSelection | null>(
     null
   );
+  const midiConnectedRef = useRef(midi.isConnected);
+  midiConnectedRef.current = midi.isConnected;
   const [practiceSetupTab, setPracticeSetupTab] = useState<PracticeSetupTab>("free");
   const songPracticeMicrophoneAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => {});
   const [tick, setTick] = useState(0);
@@ -514,6 +519,7 @@ export function PracticeView({
   const lastBackupAtRef = useRef<number>(performance.now());
   const handledNavigationExitRequestIdRef = useRef<number | null>(null);
   const microphoneResumeInFlightRef = useRef(false);
+  const prepareMicrophoneRecoveryReloadRef = useRef<() => Promise<void>>(async () => undefined);
   const practiceTimers = usePracticeTimers(promptRef);
   const {
     getPromptActiveMs,
@@ -525,15 +531,19 @@ export function PracticeView({
     resumeActiveTimers,
   } = practiceTimers;
   const submitAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => undefined);
-  const practiceMicrophone = usePracticeMicrophoneInput((answer) => {
-    if (songPracticeSelection) {
-      if (songPracticeSelection.inputMode === "microphone") {
+  const practiceMicrophone = usePracticeMicrophoneInput(
+    (answer) => {
+      if (songPracticeSelection) {
         songPracticeMicrophoneAnswerRef.current(answer);
+      } else {
+        submitAnswerRef.current(answer);
       }
-    } else {
-      submitAnswerRef.current(answer);
+    },
+    practiceMicrophonePreferences,
+    {
+      beforeRecoveryReload: () => prepareMicrophoneRecoveryReloadRef.current(),
     }
-  }, practiceMicrophonePreferences);
+  );
   const registerSongPracticeMicrophoneAnswer = useCallback(
     (handler: (answer: PracticeAnswerInput) => void): void => {
       songPracticeMicrophoneAnswerRef.current = handler;
@@ -1171,6 +1181,13 @@ export function PracticeView({
     services: sessionLifecycleServices,
     ui: sessionLifecycleUi,
   });
+  prepareMicrophoneRecoveryReloadRef.current = async (): Promise<void> => {
+    if (!sessionRef.current) return;
+    await completeSession("manual-stop", "microphone-disconnected", {
+      showSummary: false,
+      updateUi: false,
+    });
+  };
 
   useEffect(() => {
     if (
@@ -1530,11 +1547,18 @@ export function PracticeView({
           onQueueStrategyChange: setQueueStrategy,
           onSettingsSaved,
           onStartSongPractice: async (selection) => {
-            if (selection.inputMode === "microphone") {
-              const microphoneReady = await practiceMicrophone.start();
-              if (!microphoneReady) return false;
+            let activeInputMode: SongPracticeInputMode = midiConnectedRef.current
+              ? "midi"
+              : "microphone";
+            if (activeInputMode === "microphone") {
+              const microphoneReady = await practiceMicrophone.start({ includeAccidentals: true });
+              if (!microphoneReady && !midiConnectedRef.current) return false;
+              activeInputMode = midiConnectedRef.current ? "midi" : "microphone";
             }
-            setSongPracticeSelection(selection);
+            if (activeInputMode === "midi") {
+              practiceMicrophone.stop();
+            }
+            setSongPracticeSelection({ ...selection, inputMode: activeInputMode });
             return true;
           },
           onStartPausedReadingChange: (enabled) =>

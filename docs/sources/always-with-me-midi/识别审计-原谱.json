@@ -1,0 +1,677 @@
+{
+  "sourceFile": "Always with Me-原谱.mid",
+  "sha256": "7483bcb08fe551ef5c42138010f23a70dd40e5d31375ea81654181975b6e530e",
+  "fileBytes": 13194,
+  "fileFormat": 1,
+  "trackCount": 4,
+  "ticksPerQuarter": 480,
+  "tempoBpm": 108.0001,
+  "timeSignature": [3, 4],
+  "keySignatureFifths": -1,
+  "keySignatureIsMinor": false,
+  "measureCountByLastNoteOff": 155.0,
+  "tempoEvents": [
+    {
+      "tick": 0,
+      "microsecondsPerQuarter": 526315,
+      "trackIndex": 0
+    },
+    {
+      "tick": 0,
+      "microsecondsPerQuarter": 555555,
+      "trackIndex": 0
+    },
+    {
+      "tick": 1440,
+      "microsecondsPerQuarter": 600000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 2880,
+      "microsecondsPerQuarter": 759493,
+      "trackIndex": 0
+    },
+    {
+      "tick": 4320,
+      "microsecondsPerQuarter": 674157,
+      "trackIndex": 0
+    },
+    {
+      "tick": 5760,
+      "microsecondsPerQuarter": 582524,
+      "trackIndex": 0
+    },
+    {
+      "tick": 7200,
+      "microsecondsPerQuarter": 555555,
+      "trackIndex": 0
+    },
+    {
+      "tick": 8640,
+      "microsecondsPerQuarter": 560747,
+      "trackIndex": 0
+    },
+    {
+      "tick": 14400,
+      "microsecondsPerQuarter": 600000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 15840,
+      "microsecondsPerQuarter": 666666,
+      "trackIndex": 0
+    },
+    {
+      "tick": 17280,
+      "microsecondsPerQuarter": 594059,
+      "trackIndex": 0
+    },
+    {
+      "tick": 18720,
+      "microsecondsPerQuarter": 571428,
+      "trackIndex": 0
+    },
+    {
+      "tick": 20160,
+      "microsecondsPerQuarter": 560747,
+      "trackIndex": 0
+    },
+    {
+      "tick": 21600,
+      "microsecondsPerQuarter": 550458,
+      "trackIndex": 0
+    },
+    {
+      "tick": 23040,
+      "microsecondsPerQuarter": 540540,
+      "trackIndex": 0
+    },
+    {
+      "tick": 25920,
+      "microsecondsPerQuarter": 631578,
+      "trackIndex": 0
+    },
+    {
+      "tick": 27360,
+      "microsecondsPerQuarter": 535714,
+      "trackIndex": 0
+    },
+    {
+      "tick": 28800,
+      "microsecondsPerQuarter": 526315,
+      "trackIndex": 0
+    },
+    {
+      "tick": 30240,
+      "microsecondsPerQuarter": 517241,
+      "trackIndex": 0
+    },
+    {
+      "tick": 36000,
+      "microsecondsPerQuarter": 521739,
+      "trackIndex": 0
+    },
+    {
+      "tick": 37440,
+      "microsecondsPerQuarter": 508474,
+      "trackIndex": 0
+    },
+    {
+      "tick": 40320,
+      "microsecondsPerQuarter": 504201,
+      "trackIndex": 0
+    },
+    {
+      "tick": 41760,
+      "microsecondsPerQuarter": 495867,
+      "trackIndex": 0
+    },
+    {
+      "tick": 43200,
+      "microsecondsPerQuarter": 491803,
+      "trackIndex": 0
+    },
+    {
+      "tick": 50400,
+      "microsecondsPerQuarter": 582524,
+      "trackIndex": 0
+    },
+    {
+      "tick": 51840,
+      "microsecondsPerQuarter": 571428,
+      "trackIndex": 0
+    },
+    {
+      "tick": 53280,
+      "microsecondsPerQuarter": 508474,
+      "trackIndex": 0
+    },
+    {
+      "tick": 54720,
+      "microsecondsPerQuarter": 512820,
+      "trackIndex": 0
+    },
+    {
+      "tick": 56160,
+      "microsecondsPerQuarter": 504201,
+      "trackIndex": 0
+    },
+    {
+      "tick": 57600,
+      "microsecondsPerQuarter": 483870,
+      "trackIndex": 0
+    },
+    {
+      "tick": 59040,
+      "microsecondsPerQuarter": 476190,
+      "trackIndex": 0
+    },
+    {
+      "tick": 60480,
+      "microsecondsPerQuarter": 495867,
+      "trackIndex": 0
+    },
+    {
+      "tick": 61920,
+      "microsecondsPerQuarter": 480000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 63360,
+      "microsecondsPerQuarter": 487804,
+      "trackIndex": 0
+    },
+    {
+      "tick": 64800,
+      "microsecondsPerQuarter": 631578,
+      "trackIndex": 0
+    },
+    {
+      "tick": 66240,
+      "microsecondsPerQuarter": 535714,
+      "trackIndex": 0
+    },
+    {
+      "tick": 67680,
+      "microsecondsPerQuarter": 495867,
+      "trackIndex": 0
+    },
+    {
+      "tick": 69120,
+      "microsecondsPerQuarter": 530973,
+      "trackIndex": 0
+    },
+    {
+      "tick": 70560,
+      "microsecondsPerQuarter": 526315,
+      "trackIndex": 0
+    },
+    {
+      "tick": 72000,
+      "microsecondsPerQuarter": 500000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 74880,
+      "microsecondsPerQuarter": 714285,
+      "trackIndex": 0
+    },
+    {
+      "tick": 76320,
+      "microsecondsPerQuarter": 705882,
+      "trackIndex": 0
+    },
+    {
+      "tick": 77760,
+      "microsecondsPerQuarter": 526315,
+      "trackIndex": 0
+    },
+    {
+      "tick": 80640,
+      "microsecondsPerQuarter": 566037,
+      "trackIndex": 0
+    },
+    {
+      "tick": 82080,
+      "microsecondsPerQuarter": 530973,
+      "trackIndex": 0
+    },
+    {
+      "tick": 83520,
+      "microsecondsPerQuarter": 508474,
+      "trackIndex": 0
+    },
+    {
+      "tick": 93600,
+      "microsecondsPerQuarter": 576923,
+      "trackIndex": 0
+    },
+    {
+      "tick": 95040,
+      "microsecondsPerQuarter": 495867,
+      "trackIndex": 0
+    },
+    {
+      "tick": 96480,
+      "microsecondsPerQuarter": 483870,
+      "trackIndex": 0
+    },
+    {
+      "tick": 100800,
+      "microsecondsPerQuarter": 530973,
+      "trackIndex": 0
+    },
+    {
+      "tick": 102240,
+      "microsecondsPerQuarter": 545454,
+      "trackIndex": 0
+    },
+    {
+      "tick": 103680,
+      "microsecondsPerQuarter": 526315,
+      "trackIndex": 0
+    },
+    {
+      "tick": 105120,
+      "microsecondsPerQuarter": 500000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 108000,
+      "microsecondsPerQuarter": 600000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 109440,
+      "microsecondsPerQuarter": 594059,
+      "trackIndex": 0
+    },
+    {
+      "tick": 110880,
+      "microsecondsPerQuarter": 504201,
+      "trackIndex": 0
+    },
+    {
+      "tick": 116640,
+      "microsecondsPerQuarter": 530973,
+      "trackIndex": 0
+    },
+    {
+      "tick": 118080,
+      "microsecondsPerQuarter": 517241,
+      "trackIndex": 0
+    },
+    {
+      "tick": 119520,
+      "microsecondsPerQuarter": 526315,
+      "trackIndex": 0
+    },
+    {
+      "tick": 120960,
+      "microsecondsPerQuarter": 521739,
+      "trackIndex": 0
+    },
+    {
+      "tick": 125280,
+      "microsecondsPerQuarter": 526315,
+      "trackIndex": 0
+    },
+    {
+      "tick": 128160,
+      "microsecondsPerQuarter": 594059,
+      "trackIndex": 0
+    },
+    {
+      "tick": 129600,
+      "microsecondsPerQuarter": 600000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 131040,
+      "microsecondsPerQuarter": 588235,
+      "trackIndex": 0
+    },
+    {
+      "tick": 132480,
+      "microsecondsPerQuarter": 571428,
+      "trackIndex": 0
+    },
+    {
+      "tick": 133920,
+      "microsecondsPerQuarter": 535714,
+      "trackIndex": 0
+    },
+    {
+      "tick": 144000,
+      "microsecondsPerQuarter": 697674,
+      "trackIndex": 0
+    },
+    {
+      "tick": 145440,
+      "microsecondsPerQuarter": 530973,
+      "trackIndex": 0
+    },
+    {
+      "tick": 152640,
+      "microsecondsPerQuarter": 625000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 154080,
+      "microsecondsPerQuarter": 618556,
+      "trackIndex": 0
+    },
+    {
+      "tick": 155520,
+      "microsecondsPerQuarter": 689655,
+      "trackIndex": 0
+    },
+    {
+      "tick": 156960,
+      "microsecondsPerQuarter": 566037,
+      "trackIndex": 0
+    },
+    {
+      "tick": 158400,
+      "microsecondsPerQuarter": 722891,
+      "trackIndex": 0
+    },
+    {
+      "tick": 159840,
+      "microsecondsPerQuarter": 731707,
+      "trackIndex": 0
+    },
+    {
+      "tick": 161280,
+      "microsecondsPerQuarter": 606060,
+      "trackIndex": 0
+    },
+    {
+      "tick": 164160,
+      "microsecondsPerQuarter": 625000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 165600,
+      "microsecondsPerQuarter": 631578,
+      "trackIndex": 0
+    },
+    {
+      "tick": 167040,
+      "microsecondsPerQuarter": 588235,
+      "trackIndex": 0
+    },
+    {
+      "tick": 168480,
+      "microsecondsPerQuarter": 600000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 169920,
+      "microsecondsPerQuarter": 618556,
+      "trackIndex": 0
+    },
+    {
+      "tick": 171360,
+      "microsecondsPerQuarter": 689655,
+      "trackIndex": 0
+    },
+    {
+      "tick": 172800,
+      "microsecondsPerQuarter": 631578,
+      "trackIndex": 0
+    },
+    {
+      "tick": 174240,
+      "microsecondsPerQuarter": 618556,
+      "trackIndex": 0
+    },
+    {
+      "tick": 175680,
+      "microsecondsPerQuarter": 625000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 178560,
+      "microsecondsPerQuarter": 612244,
+      "trackIndex": 0
+    },
+    {
+      "tick": 180000,
+      "microsecondsPerQuarter": 588235,
+      "trackIndex": 0
+    },
+    {
+      "tick": 181440,
+      "microsecondsPerQuarter": 594059,
+      "trackIndex": 0
+    },
+    {
+      "tick": 182880,
+      "microsecondsPerQuarter": 645161,
+      "trackIndex": 0
+    },
+    {
+      "tick": 184320,
+      "microsecondsPerQuarter": 625000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 185760,
+      "microsecondsPerQuarter": 566037,
+      "trackIndex": 0
+    },
+    {
+      "tick": 187200,
+      "microsecondsPerQuarter": 631578,
+      "trackIndex": 0
+    },
+    {
+      "tick": 188640,
+      "microsecondsPerQuarter": 517241,
+      "trackIndex": 0
+    },
+    {
+      "tick": 190080,
+      "microsecondsPerQuarter": 512820,
+      "trackIndex": 0
+    },
+    {
+      "tick": 191520,
+      "microsecondsPerQuarter": 576923,
+      "trackIndex": 0
+    },
+    {
+      "tick": 192960,
+      "microsecondsPerQuarter": 582524,
+      "trackIndex": 0
+    },
+    {
+      "tick": 194400,
+      "microsecondsPerQuarter": 530973,
+      "trackIndex": 0
+    },
+    {
+      "tick": 197280,
+      "microsecondsPerQuarter": 517241,
+      "trackIndex": 0
+    },
+    {
+      "tick": 198720,
+      "microsecondsPerQuarter": 500000,
+      "trackIndex": 0
+    },
+    {
+      "tick": 200160,
+      "microsecondsPerQuarter": 508474,
+      "trackIndex": 0
+    },
+    {
+      "tick": 201600,
+      "microsecondsPerQuarter": 530973,
+      "trackIndex": 0
+    },
+    {
+      "tick": 203040,
+      "microsecondsPerQuarter": 526315,
+      "trackIndex": 0
+    },
+    {
+      "tick": 204480,
+      "microsecondsPerQuarter": 666666,
+      "trackIndex": 0
+    },
+    {
+      "tick": 205920,
+      "microsecondsPerQuarter": 526315,
+      "trackIndex": 0
+    },
+    {
+      "tick": 213120,
+      "microsecondsPerQuarter": 571428,
+      "trackIndex": 0
+    },
+    {
+      "tick": 214560,
+      "microsecondsPerQuarter": 566037,
+      "trackIndex": 0
+    },
+    {
+      "tick": 216000,
+      "microsecondsPerQuarter": 681818,
+      "trackIndex": 0
+    },
+    {
+      "tick": 217440,
+      "microsecondsPerQuarter": 571428,
+      "trackIndex": 0
+    },
+    {
+      "tick": 218880,
+      "microsecondsPerQuarter": 588235,
+      "trackIndex": 0
+    },
+    {
+      "tick": 220320,
+      "microsecondsPerQuarter": 800000,
+      "trackIndex": 0
+    }
+  ],
+  "parts": [
+    {
+      "id": "treble",
+      "midiTrackIndex": 1,
+      "eventCount": 723,
+      "pitchRange": [57, 96],
+      "channels": [0],
+      "firstOnsetTick": 480,
+      "lastNoteOffTick": 223200
+    },
+    {
+      "id": "bass",
+      "midiTrackIndex": 2,
+      "eventCount": 628,
+      "pitchRange": [29, 72],
+      "channels": [0],
+      "firstOnsetTick": 0,
+      "lastNoteOffTick": 223200
+    }
+  ],
+  "trackDiagnostics": [
+    {
+      "trackIndex": 0,
+      "noteOnCount": 0,
+      "pairedNoteCount": 0,
+      "unmatchedNoteOffCount": 0,
+      "unmatchedNoteOffSamples": []
+    },
+    {
+      "trackIndex": 1,
+      "noteOnCount": 723,
+      "pairedNoteCount": 723,
+      "unmatchedNoteOffCount": 28,
+      "unmatchedNoteOffSamples": [
+        {
+          "tick": 82560,
+          "channel": 0,
+          "midiPitch": 96,
+          "velocity": 101
+        },
+        {
+          "tick": 83040,
+          "channel": 0,
+          "midiPitch": 96,
+          "velocity": 88
+        },
+        {
+          "tick": 84000,
+          "channel": 0,
+          "midiPitch": 96,
+          "velocity": 101
+        },
+        {
+          "tick": 84240,
+          "channel": 0,
+          "midiPitch": 96,
+          "velocity": 88
+        },
+        {
+          "tick": 84480,
+          "channel": 0,
+          "midiPitch": 96,
+          "velocity": 88
+        }
+      ]
+    },
+    {
+      "trackIndex": 2,
+      "noteOnCount": 628,
+      "pairedNoteCount": 628,
+      "unmatchedNoteOffCount": 32,
+      "unmatchedNoteOffSamples": [
+        {
+          "tick": 82560,
+          "channel": 0,
+          "midiPitch": 96,
+          "velocity": 88
+        },
+        {
+          "tick": 83040,
+          "channel": 0,
+          "midiPitch": 96,
+          "velocity": 76
+        },
+        {
+          "tick": 83520,
+          "channel": 0,
+          "midiPitch": 96,
+          "velocity": 69
+        },
+        {
+          "tick": 84000,
+          "channel": 0,
+          "midiPitch": 96,
+          "velocity": 88
+        },
+        {
+          "tick": 84480,
+          "channel": 0,
+          "midiPitch": 96,
+          "velocity": 76
+        }
+      ]
+    },
+    {
+      "trackIndex": 3,
+      "noteOnCount": 0,
+      "pairedNoteCount": 0,
+      "unmatchedNoteOffCount": 0,
+      "unmatchedNoteOffSamples": []
+    }
+  ],
+  "noteOnOffPairing": "all note-ons paired; unmatched note-offs are reported separately and excluded from score notes",
+  "limitations": [
+    "This report validates MIDI structure and event preservation, not musical correctness against the score images.",
+    "Repeated sections remain in the MIDI's performed order; the printed score pages are retained as provenance, not used to reorder events."
+  ]
+}

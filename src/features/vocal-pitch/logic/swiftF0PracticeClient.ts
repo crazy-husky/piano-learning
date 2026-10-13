@@ -7,9 +7,20 @@ let ready = false;
 let initializationPromise: Promise<void> | null = null;
 let resolveInitialization: (() => void) | null = null;
 let rejectInitialization: ((error: Error) => void) | null = null;
+let initializationTimeoutId: number | null = null;
+let initializationDeadlineAt = 0;
 const messageListeners = new Set<MessageListener>();
 
+function clearInitializationTimeout(): void {
+  if (initializationTimeoutId !== null) {
+    window.clearTimeout(initializationTimeoutId);
+    initializationTimeoutId = null;
+  }
+  initializationDeadlineAt = 0;
+}
+
 function clearWorker(): void {
+  clearInitializationTimeout();
   worker?.terminate();
   worker = null;
   ready = false;
@@ -31,12 +42,14 @@ function getWorker(): Worker {
     const message = event.data;
     if (message.type === "ready") {
       ready = true;
+      clearInitializationTimeout();
       const resolve = resolveInitialization;
       initializationPromise = null;
       resolveInitialization = null;
       rejectInitialization = null;
       resolve?.();
     } else if (message.type === "error" && message.id === undefined && !ready) {
+      clearInitializationTimeout();
       const reject = rejectInitialization;
       initializationPromise = null;
       resolveInitialization = null;
@@ -48,6 +61,7 @@ function getWorker(): Worker {
     dispatch(message);
   });
   nextWorker.addEventListener("error", (event: ErrorEvent) => {
+    clearInitializationTimeout();
     const error = new Error(event.message || "SwiftF0 Worker 启动失败");
     const reject = rejectInitialization;
     initializationPromise = null;
@@ -65,9 +79,32 @@ export function isSwiftF0PracticeRuntimeReady(): boolean {
   return ready;
 }
 
-export function ensureSwiftF0PracticeRuntimeReady(): Promise<void> {
+export function ensureSwiftF0PracticeRuntimeReady(timeoutMs = 20_000): Promise<void> {
   if (ready) return Promise.resolve();
-  if (initializationPromise) return initializationPromise;
+  const effectiveTimeoutMs = Number.isFinite(timeoutMs) ? Math.max(1, timeoutMs) : 20_000;
+  const deadlineAt = Date.now() + effectiveTimeoutMs;
+  if (initializationPromise) {
+    if (initializationTimeoutId === null || deadlineAt < initializationDeadlineAt) {
+      clearInitializationTimeout();
+      initializationDeadlineAt = deadlineAt;
+      initializationTimeoutId = window.setTimeout(
+        () => {
+          initializationTimeoutId = null;
+          initializationDeadlineAt = 0;
+          const activeWorker = worker;
+          if (!activeWorker || ready) return;
+          const reject = rejectInitialization;
+          initializationPromise = null;
+          resolveInitialization = null;
+          rejectInitialization = null;
+          clearWorker();
+          reject?.(new Error("SwiftF0 Worker 初始化超时，请重试。"));
+        },
+        Math.max(1, deadlineAt - Date.now())
+      );
+    }
+    return initializationPromise;
+  }
 
   const activeWorker = getWorker();
   const promise = new Promise<void>((resolve, reject) => {
@@ -75,6 +112,21 @@ export function ensureSwiftF0PracticeRuntimeReady(): Promise<void> {
     rejectInitialization = reject;
   });
   initializationPromise = promise;
+  initializationDeadlineAt = deadlineAt;
+  initializationTimeoutId = window.setTimeout(
+    () => {
+      initializationTimeoutId = null;
+      initializationDeadlineAt = 0;
+      if (worker !== activeWorker || ready) return;
+      const reject = rejectInitialization;
+      initializationPromise = null;
+      resolveInitialization = null;
+      rejectInitialization = null;
+      clearWorker();
+      reject?.(new Error("SwiftF0 Worker 初始化超时，请重试。"));
+    },
+    Math.max(1, deadlineAt - Date.now())
+  );
   try {
     activeWorker.postMessage({ type: "initialize" } satisfies SwiftF0PracticeRequest);
   } catch (error) {
@@ -101,6 +153,7 @@ export function subscribeToSwiftF0PracticeMessages(listener: MessageListener): (
 }
 
 export function releaseSwiftF0PracticeRuntime(): void {
+  clearInitializationTimeout();
   const reject = rejectInitialization;
   initializationPromise = null;
   resolveInitialization = null;

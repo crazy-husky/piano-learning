@@ -698,7 +698,7 @@ export function App(): JSX.Element {
   }, []);
 
   useLayoutEffect(() => {
-    document.documentElement.dataset.theme = isNightMode ? "dark" : "light";
+    document.documentElement.dataset.appTheme = isNightMode ? "dark" : "light";
     const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     if (themeColor) {
       themeColor.content = isNightMode ? "#171b19" : "#f6f1e8";

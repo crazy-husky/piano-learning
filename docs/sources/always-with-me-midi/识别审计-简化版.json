@@ -1,0 +1,68 @@
+{
+  "sourceFile": "Always with Me-简单C调.mid",
+  "sha256": "fbc72542b5eec6880e66a926dee3a3ff548495ff8c9bca0473d21c0a54db1815",
+  "fileBytes": 2352,
+  "fileFormat": 1,
+  "trackCount": 3,
+  "ticksPerQuarter": 480,
+  "tempoBpm": 120.0,
+  "timeSignature": [3, 4],
+  "keySignatureFifths": 0,
+  "keySignatureIsMinor": false,
+  "measureCountByLastNoteOff": 34.0,
+  "tempoEvents": [
+    {
+      "tick": 0,
+      "microsecondsPerQuarter": 500000,
+      "trackIndex": 0
+    }
+  ],
+  "parts": [
+    {
+      "id": "treble",
+      "midiTrackIndex": 1,
+      "eventCount": 124,
+      "pitchRange": [67, 81],
+      "channels": [0],
+      "firstOnsetTick": 960,
+      "lastNoteOffTick": 48960
+    },
+    {
+      "id": "bass",
+      "midiTrackIndex": 2,
+      "eventCount": 127,
+      "pitchRange": [36, 67],
+      "channels": [0],
+      "firstOnsetTick": 1440,
+      "lastNoteOffTick": 48960
+    }
+  ],
+  "trackDiagnostics": [
+    {
+      "trackIndex": 0,
+      "noteOnCount": 0,
+      "pairedNoteCount": 0,
+      "unmatchedNoteOffCount": 0,
+      "unmatchedNoteOffSamples": []
+    },
+    {
+      "trackIndex": 1,
+      "noteOnCount": 124,
+      "pairedNoteCount": 124,
+      "unmatchedNoteOffCount": 0,
+      "unmatchedNoteOffSamples": []
+    },
+    {
+      "trackIndex": 2,
+      "noteOnCount": 127,
+      "pairedNoteCount": 127,
+      "unmatchedNoteOffCount": 0,
+      "unmatchedNoteOffSamples": []
+    }
+  ],
+  "noteOnOffPairing": "all note-ons paired; unmatched note-offs are reported separately and excluded from score notes",
+  "limitations": [
+    "This report validates MIDI structure and event preservation, not musical correctness against the score images.",
+    "Repeated sections remain in the MIDI's performed order; the printed score pages are retained as provenance, not used to reorder events."
+  ]
+}

@@ -1,5 +1,6 @@
-import { ArrowLeft, Check, Mic, Music2, RotateCcw } from "lucide-react";
+import { ArrowLeft, AudioLines, Check, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type {
   Octave,
@@ -9,35 +10,68 @@ import type {
   TargetNoteId,
 } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
-import {
-  NATURAL_PIANO_KEYS,
-  PianoKeyboard,
-  isNaturalPianoKey,
-} from "../../../shared/components/PianoKeyboard";
+import type { MidiNoteInputEvent } from "../../../midi/midiInput";
 import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import { StaffPagePrompt } from "../components/StaffPagePrompt";
+import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { useSongRowPlayback, type SongRowPlaybackNote } from "./useSongRowPlayback";
-import type {
-  SongPracticeDuration,
-  SongPracticeSelection,
-  SongPracticeTrackMode,
+import {
+  resolveSongPracticeArrangement,
+  simplifySongPracticeArrangement,
+  type SongPracticeDuration,
+  type SongPracticeHandMode,
+  type SongPracticeInputMode,
+  type SongPracticeNote,
+  type SongPracticeSelection,
+  type SongPracticeStaff,
+  type SongPracticeTrackMode,
 } from "./songPracticeMaterials";
+import {
+  recordSongPracticeAttempt,
+  recordSongPracticeSessionCompleted,
+  recordSongPracticeSessionStarted,
+} from "./songPracticeProgress";
+import {
+  DEFAULT_SONG_PRACTICE_UI_PREFERENCES,
+  parseSongPracticeUiPreferences,
+  SONG_PRACTICE_UI_PREFERENCES_KEY,
+} from "./songPracticePreferences";
 import { PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
 
-const MIXED_STAFF_LAYOUT = {
+const SONG_PRACTICE_STAFF_LAYOUT = {
   ...PRACTICE_PAGE_STAFF_LAYOUT,
-  vertical: { ...PRACTICE_PAGE_STAFF_LAYOUT.vertical, gapPx: 112 },
+  vertical: {
+    ...PRACTICE_PAGE_STAFF_LAYOUT.vertical,
+    trebleOnlyYPx: 0,
+    bassOnlyYPx: 0,
+    viewHeightPx: 128,
+  },
+  multirow: {
+    ...PRACTICE_PAGE_STAFF_LAYOUT.multirow,
+    rowGapPx: 4,
+  },
+};
+
+const MIXED_STAFF_LAYOUT = {
+  ...SONG_PRACTICE_STAFF_LAYOUT,
+  vertical: {
+    ...SONG_PRACTICE_STAFF_LAYOUT.vertical,
+    centerYPx: 36,
+    gapPx: 72,
+    viewHeightPx: 190,
+  },
 };
 
 const NOTES_PER_PAGE = 24;
 const NOTES_PER_ROW = 12;
-// Measure 10 is where the supplied score moves from the instrumental intro into the sung section.
-const MAIN_SONG_START_MEASURE = 10;
+const WRONG_FEEDBACK_DURATION_MS = 2000;
+const WRONG_INPUT_LOCK_MS = 80;
 
 interface SongPracticeMicrophone {
   error: string | null;
+  inputLevel: number;
   isListening: boolean;
-  start: () => Promise<boolean>;
+  start: (options?: { includeAccidentals?: boolean }) => Promise<boolean>;
   status: PracticeMicrophoneStatus;
   stop: () => void;
 }
@@ -56,7 +90,7 @@ interface AnswerFeedback {
   type: "correct" | "wrong";
 }
 
-function resolveTargetNote(note: SongPracticeSelection["notes"][number]): TargetNote {
+function resolveTargetNote(note: SongPracticeNote): TargetNote {
   const pitchId = `${note.noteName}${note.octave}` as PitchId;
   const groupId =
     note.octave <= 2
@@ -69,9 +103,10 @@ function resolveTargetNote(note: SongPracticeSelection["notes"][number]): Target
             ? "G4-F5"
             : "G5-G6";
   return {
-    id: `${pitchId}-treble` as TargetNoteId,
+    id: `${pitchId}-${note.staff}` as TargetNoteId,
     pitchId,
     noteName: note.noteName,
+    accidental: note.accidental,
     octave: note.octave as Octave,
     groupId,
     staff: note.staff,
@@ -79,39 +114,67 @@ function resolveTargetNote(note: SongPracticeSelection["notes"][number]): Target
   };
 }
 
+const KEY_SEMITONES: Record<PianoKeyName, number> = {
+  C: 0,
+  "C#": 1,
+  D: 2,
+  "D#": 3,
+  E: 4,
+  F: 5,
+  "F#": 6,
+  G: 7,
+  "G#": 8,
+  A: 9,
+  "A#": 10,
+  B: 11,
+};
+
+function midiPitchForKey(noteName: PianoKeyName, octave: number): number {
+  return (octave + 1) * 12 + KEY_SEMITONES[noteName];
+}
+
+const PIANO_KEY_BY_SEMITONE: readonly PianoKeyName[] = [
+  "C",
+  "C#",
+  "D",
+  "D#",
+  "E",
+  "F",
+  "F#",
+  "G",
+  "G#",
+  "A",
+  "A#",
+  "B",
+];
+
+function resolvePianoKeyFromMidi(
+  midiNoteNumber: number
+): { noteName: PianoKeyName; octave: number } | null {
+  if (!Number.isInteger(midiNoteNumber) || midiNoteNumber < 0 || midiNoteNumber > 127) return null;
+  const noteName = PIANO_KEY_BY_SEMITONE[midiNoteNumber % 12];
+  if (!noteName) return null;
+  return { noteName, octave: Math.floor(midiNoteNumber / 12) - 1 };
+}
+
 function resolveStaffDuration(duration: SongPracticeDuration): SongPracticeDuration {
   return duration;
 }
 
-function durationInQuarterBeats(duration: SongPracticeDuration): number {
-  switch (duration) {
-    case "whole":
-      return 4;
-    case "dotted-whole":
-      return 6;
-    case "half":
-      return 2;
-    case "dotted-half":
-      return 3;
-    case "quarter":
-      return 1;
-    case "dotted-quarter":
-      return 1.5;
-    case "eighth":
-      return 0.5;
-    case "dotted-eighth":
-      return 0.75;
-    case "sixteenth":
-      return 0.25;
-    case "dotted-sixteenth":
-      return 0.375;
-  }
+function sourceLabel(mode: SongPracticeInputMode): string {
+  if (mode === "midi") return "MIDI 键盘";
+  return "麦克风";
 }
 
-function sourceLabel(mode: SongPracticeSelection["inputMode"]): string {
-  if (mode === "midi") return "MIDI 键盘";
-  if (mode === "microphone") return "麦克风";
-  return "虚拟键盘";
+async function startMicrophoneAndGetError(
+  start: () => Promise<boolean>,
+  fallbackMessage: string
+): Promise<string | null> {
+  try {
+    return (await start()) ? null : fallbackMessage;
+  } catch (error) {
+    return error instanceof Error && error.message ? error.message : fallbackMessage;
+  }
 }
 
 function staffNotationMode(
@@ -122,6 +185,35 @@ function staffNotationMode(
   return "treble-only";
 }
 
+function absoluteBeat(
+  note: { measure: number; onsetBeat: number },
+  beatsPerMeasure: number
+): number {
+  return (note.measure - 1) * beatsPerMeasure + note.onsetBeat;
+}
+
+function mapArrangementIndex(
+  previous: ReturnType<typeof resolveSongPracticeArrangement>,
+  previousIndex: number,
+  next: ReturnType<typeof resolveSongPracticeArrangement>,
+  beatsPerMeasure: number
+): number {
+  if (previousIndex >= previous.targets.length) return next.targets.length;
+  const currentTarget = previous.targets[previousIndex];
+  if (!currentTarget) return 0;
+  const currentBeat = absoluteBeat(currentTarget, beatsPerMeasure);
+  const mappedIndex = next.targets.findIndex(
+    (target) => absoluteBeat(target, beatsPerMeasure) >= currentBeat - 1e-6
+  );
+  return mappedIndex < 0 ? next.targets.length : mappedIndex;
+}
+
+function versionLabel(selection: SongPracticeSelection): string {
+  if (selection.keyVersion === "c") return "C 调版";
+  if (selection.keyVersion === "original") return "原调版";
+  return "来源调性";
+}
+
 export function SongPracticeView({
   midi,
   microphone,
@@ -129,49 +221,194 @@ export function SongPracticeView({
   onRegisterMicrophoneAnswer,
   selection,
 }: SongPracticeViewProps): JSX.Element {
+  const initialInputMode: SongPracticeInputMode = midi.isConnected ? "midi" : "microphone";
+  const initialHandMode =
+    selection.handMode === "both" && !midi.isConnected ? "right" : selection.handMode;
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [activeHandMode, setActiveHandMode] = useState(initialHandMode);
+  const [activeInputMode, setActiveInputMode] = useState(initialInputMode);
+  const activeInputModeRef = useRef<SongPracticeInputMode>(initialInputMode);
+  const activeHandModeRef = useRef<SongPracticeHandMode>(initialHandMode);
+  const currentIndexRef = useRef(0);
+  const midiConnectionRef = useRef(midi.isConnected);
+  const midiConnectionLiveRef = useRef(midi.isConnected);
+  midiConnectionLiveRef.current = midi.isConnected;
+  const inputTransitionTokenRef = useRef(0);
+  const inputTransitionRef = useRef(false);
+  const initialMicrophoneAttemptRef = useRef(false);
+  const initialFallbackNoticeRef = useRef(!midi.isConnected && selection.handMode === "both");
+  const [, setSongPreferences] = useLocalStorageState(
+    SONG_PRACTICE_UI_PREFERENCES_KEY,
+    DEFAULT_SONG_PRACTICE_UI_PREFERENCES,
+    { parse: parseSongPracticeUiPreferences }
+  );
   const [hasStarted, setHasStarted] = useState(true);
+  const [initialMicrophoneStatusDelayPassed, setInitialMicrophoneStatusDelayPassed] =
+    useState(false);
   const [feedback, setFeedback] = useState<AnswerFeedback | null>(null);
-  const [startError, setStartError] = useState<string | null>(null);
+  const [isInputSwitching, setIsInputSwitching] = useState(false);
   const [pageInputValue, setPageInputValue] = useState("1");
   const answerLockedRef = useRef(false);
   const feedbackTimerRef = useRef<number | undefined>(undefined);
-  const microphoneSubmitRef = useRef<(noteName: PianoKeyName, octave: number) => void>(() => {});
+  const answerUnlockTimerRef = useRef<number | undefined>(undefined);
+  const pendingWrongFeedbackRef = useRef<AnswerFeedback | null>(null);
+  const isWrongFeedbackVisibleRef = useRef(false);
+  const heldMidiNumbersRef = useRef(new Set<number>());
+  const microphoneSubmitRef = useRef<(midiNoteNumber: number) => void>(() => {});
   const playbackRowRef = useRef<number | null>(null);
   const ignoreMicrophoneUntilRef = useRef(0);
+  const sessionStartedAtRef = useRef<number | null>(null);
+  const sessionCompletedRef = useRef(false);
+  const restartPendingRef = useRef(false);
   const {
     cancel: cancelRowPlayback,
+    playingNoteIndex,
     playingRowIndex,
     toggleRow: toggleSongRow,
   } = useSongRowPlayback();
   const microphoneError = microphone.error;
   const microphoneIsListening = microphone.isListening;
-  const microphoneStart = microphone.start;
-  const stopMicrophone = microphone.stop;
-  const targetNotes = useMemo(() => selection.notes.map(resolveTargetNote), [selection.notes]);
-  const currentNote = selection.notes[currentIndex];
-  const isFinished = hasStarted && currentIndex >= selection.notes.length;
-  const mainSongStartIndex = useMemo(
-    () => selection.notes.findIndex((note) => note.measure >= MAIN_SONG_START_MEASURE),
-    [selection.notes]
+  const { start: startMicrophone } = microphone;
+  const microphoneStart = useCallback(
+    () => startMicrophone({ includeAccidentals: true }),
+    [startMicrophone]
   );
-  const pageStarts = useMemo(() => {
-    if (selection.notes.length === 0) return [0];
-    const boundaries =
-      mainSongStartIndex > 0 && mainSongStartIndex < selection.notes.length
-        ? [0, mainSongStartIndex, selection.notes.length]
-        : [0, selection.notes.length];
-    const starts: number[] = [];
-    for (let segmentIndex = 0; segmentIndex < boundaries.length - 1; segmentIndex += 1) {
-      const segmentStart = boundaries[segmentIndex];
-      const segmentEnd = boundaries[segmentIndex + 1];
-      for (let start = segmentStart; start < segmentEnd; start += NOTES_PER_PAGE) {
-        starts.push(start);
+  const stopMicrophone = microphone.stop;
+  const lastNotifiedMicrophoneErrorRef = useRef<string | null>(null);
+  const microphoneReconnectInFlightRef = useRef(false);
+  const midiErrorRef = useRef(midi.errorMessage);
+  midiErrorRef.current = midi.errorMessage;
+  const beginProgressSession = useCallback((): void => {
+    sessionStartedAtRef.current = Date.now();
+    sessionCompletedRef.current = false;
+    restartPendingRef.current = false;
+    recordSongPracticeSessionStarted(selection.songId, selection.keyVersion);
+  }, [selection.keyVersion, selection.songId]);
+  const sourceArrangement = useMemo(
+    () => resolveSongPracticeArrangement(selection.score, activeHandMode),
+    [activeHandMode, selection.score]
+  );
+  const simultaneousTargetCount = sourceArrangement.targets.filter(
+    (target) => target.notes.length > 1
+  ).length;
+  const requiresMidi = activeHandMode === "both";
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setInitialMicrophoneStatusDelayPassed(true);
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const reconnectMicrophone = useCallback(
+    async (options: { showToast?: boolean } = {}): Promise<boolean> => {
+      if (microphoneReconnectInFlightRef.current) return false;
+      microphoneReconnectInFlightRef.current = true;
+      try {
+        const reconnectError = await startMicrophoneAndGetError(
+          microphoneStart,
+          "麦克风未能重新连接，请检查权限和输入设备后重试。"
+        );
+        if (reconnectError) {
+          lastNotifiedMicrophoneErrorRef.current = reconnectError;
+          if (options.showToast !== false) toast.error(reconnectError, { duration: 4000 });
+          return false;
+        }
+        lastNotifiedMicrophoneErrorRef.current = null;
+        if (restartPendingRef.current) {
+          beginProgressSession();
+        }
+        setHasStarted(true);
+        if (options.showToast !== false) {
+          toast.success("麦克风已重新连接，继续当前音符。", { duration: 3000 });
+        }
+        return true;
+      } finally {
+        microphoneReconnectInFlightRef.current = false;
       }
+    },
+    [beginProgressSession, microphoneStart]
+  );
+
+  const notifyMicrophoneError = useCallback(
+    (message: string): void => {
+      const isRecoverableInterruption = /后台恢复|音频处理|连接已中断|重新连接设备/.test(message);
+      const previousMessage = lastNotifiedMicrophoneErrorRef.current;
+      if (
+        previousMessage === message ||
+        (isRecoverableInterruption &&
+          previousMessage !== null &&
+          /后台恢复|音频处理|连接已中断|重新连接设备/.test(previousMessage))
+      ) {
+        return;
+      }
+      if (microphoneReconnectInFlightRef.current) return;
+      lastNotifiedMicrophoneErrorRef.current = message;
+      if (isRecoverableInterruption) {
+        void reconnectMicrophone({ showToast: false }).then((reconnected) => {
+          if (reconnected) {
+            toast.success("麦克风已自动恢复，继续当前音符。", { duration: 2200 });
+            return;
+          }
+          toast.warning("麦克风未能自动恢复", {
+            id: "song-practice-microphone-reconnect",
+            description: "点击“重新连接”再试一次。",
+            duration: 6000,
+            action: { label: "重新连接", onClick: () => void reconnectMicrophone() },
+          });
+        });
+        return;
+      }
+      toast.error(message, { duration: 4000 });
+    },
+    [reconnectMicrophone]
+  );
+
+  useEffect(() => {
+    if (!microphoneError) {
+      lastNotifiedMicrophoneErrorRef.current = null;
+      return;
     }
-    return starts.length > 0 ? starts : [0];
-  }, [mainSongStartIndex, selection.notes.length]);
-  const activeNoteIndex = Math.min(currentIndex, Math.max(0, selection.notes.length - 1));
+    notifyMicrophoneError(microphoneError);
+  }, [microphoneError, notifyMicrophoneError]);
+
+  useEffect(() => {
+    if (initialFallbackNoticeRef.current) {
+      toast.warning("未检测到 MIDI，已切换到麦克风和右手单音。", {
+        id: "song-practice-midi-fallback",
+        duration: 3500,
+      });
+    }
+  }, []);
+  const simplifiesForSingleNoteInput =
+    !requiresMidi && activeInputMode !== "midi" && simultaneousTargetCount > 0;
+  const arrangement = useMemo(
+    () =>
+      simplifiesForSingleNoteInput
+        ? simplifySongPracticeArrangement(sourceArrangement, activeHandMode)
+        : sourceArrangement,
+    [activeHandMode, simplifiesForSingleNoteInput, sourceArrangement]
+  );
+  const targetNotes = useMemo(() => arrangement.notes.map(resolveTargetNote), [arrangement.notes]);
+  const targetNoteGroups = useMemo(
+    () => arrangement.targets.map((target) => target.notes.map(resolveTargetNote)),
+    [arrangement.targets]
+  );
+  const currentTarget = arrangement.targets[currentIndex];
+  activeInputModeRef.current = activeInputMode;
+  activeHandModeRef.current = activeHandMode;
+  currentIndexRef.current = currentIndex;
+  const isFinished = hasStarted && currentIndex >= arrangement.targets.length;
+  const meter = selection.score.meter;
+  const tempoBpm = selection.score.tempoBpm;
+  const pageStarts = useMemo(() => {
+    if (arrangement.targets.length === 0) return [0];
+    return Array.from(
+      { length: Math.ceil(arrangement.targets.length / NOTES_PER_PAGE) },
+      (_, index) => index * NOTES_PER_PAGE
+    );
+  }, [arrangement.targets.length]);
+  const activeNoteIndex = Math.min(currentIndex, Math.max(0, arrangement.targets.length - 1));
   const pageIndex = Math.max(
     0,
     pageStarts.reduce(
@@ -180,92 +417,430 @@ export function SongPracticeView({
     )
   );
   const pageStartIndex = pageStarts[pageIndex] ?? 0;
-  const pageEndIndex = pageStarts[pageIndex + 1] ?? selection.notes.length;
-  const pageNotes = targetNotes.slice(pageStartIndex, pageEndIndex);
+  const pageEndIndex = pageStarts[pageIndex + 1] ?? arrangement.targets.length;
+  const pageNotes = useMemo(
+    () => targetNotes.slice(pageStartIndex, pageEndIndex),
+    [pageEndIndex, pageStartIndex, targetNotes]
+  );
+  const pageNoteGroups = useMemo(
+    () => targetNoteGroups.slice(pageStartIndex, pageEndIndex),
+    [pageEndIndex, pageStartIndex, targetNoteGroups]
+  );
   const pageMeasures = useMemo(
-    () => selection.notes.slice(pageStartIndex, pageEndIndex).map((note) => note.measure),
-    [pageEndIndex, pageStartIndex, selection.notes]
+    () => arrangement.targets.slice(pageStartIndex, pageEndIndex).map((target) => target.measure),
+    [arrangement.targets, pageEndIndex, pageStartIndex]
   );
   const pageOnsets = useMemo(
-    () => selection.notes.slice(pageStartIndex, pageEndIndex).map((note) => note.onset),
-    [pageEndIndex, pageStartIndex, selection.notes]
+    () =>
+      arrangement.targets
+        .slice(pageStartIndex, pageEndIndex)
+        .map((target) => absoluteBeat(target, selection.score.meter.quarterBeatsPerMeasure)),
+    [
+      arrangement.targets,
+      pageEndIndex,
+      pageStartIndex,
+      selection.score.meter.quarterBeatsPerMeasure,
+    ]
   );
   const pageDurations = useMemo(
     () =>
-      selection.notes
+      arrangement.targets
         .slice(pageStartIndex, pageEndIndex)
-        .map((note) => resolveStaffDuration(note.duration)),
-    [pageEndIndex, pageStartIndex, selection.notes]
+        .map((target) => resolveStaffDuration(target.duration)),
+    [arrangement.targets, pageEndIndex, pageStartIndex]
+  );
+  const pageStaffNoteDurations = useMemo(
+    () =>
+      arrangement.targets.slice(pageStartIndex, pageEndIndex).map((target) => {
+        const longestDurationForStaff = (
+          staff: SongPracticeStaff
+        ): SongPracticeDuration | undefined => {
+          const staffNotes = target.notes.filter((note) => note.staff === staff);
+          if (staffNotes.length === 0) return undefined;
+          return staffNotes.reduce((longest, note) =>
+            note.durationBeats > longest.durationBeats ? note : longest
+          ).duration;
+        };
+        return {
+          treble: longestDurationForStaff("treble"),
+          bass: longestDurationForStaff("bass"),
+        };
+      }),
+    [arrangement.targets, pageEndIndex, pageStartIndex]
   );
   const pageLyrics = useMemo(
-    () => selection.notes.slice(pageStartIndex, pageEndIndex).map((note) => note.lyrics ?? []),
-    [pageEndIndex, pageStartIndex, selection.notes]
+    () => arrangement.targets.slice(pageStartIndex, pageEndIndex).map(() => [] as string[]),
+    [arrangement.targets, pageEndIndex, pageStartIndex]
   );
   const pagePlaybackRows = useMemo(() => {
-    const pageSourceNotes = selection.notes.slice(pageStartIndex, pageEndIndex);
+    const pageTargets = arrangement.targets.slice(pageStartIndex, pageEndIndex);
     const rows: SongRowPlaybackNote[][] = [];
-    for (let rowStart = 0; rowStart < pageSourceNotes.length; rowStart += NOTES_PER_ROW) {
-      const row = pageSourceNotes.slice(rowStart, rowStart + NOTES_PER_ROW);
+    for (let rowStart = 0; rowStart < pageTargets.length; rowStart += NOTES_PER_ROW) {
+      const row = pageTargets.slice(rowStart, rowStart + NOTES_PER_ROW);
       const firstMeasure = row[0]?.measure ?? 1;
       rows.push(
-        row.map((note, index) => ({
-          durationBeats: durationInQuarterBeats(note.duration),
-          note: targetNotes[pageStartIndex + rowStart + index],
-          startBeat: (note.measure - firstMeasure) * 4 + note.onset * 4,
-        }))
+        row.flatMap((target, index) =>
+          target.notes.map((note) => ({
+            durationBeats: note.durationBeats,
+            durationTicks: note.sourceMidiLocation?.durationTicks,
+            eventIndex: rowStart + index,
+            note: resolveTargetNote(note),
+            startBeat:
+              (target.measure - firstMeasure) * selection.score.meter.quarterBeatsPerMeasure +
+              target.onsetBeat,
+            startTick: note.sourceMidiLocation?.onsetTick,
+          }))
+        )
       );
     }
     return rows;
-  }, [pageEndIndex, pageStartIndex, selection.notes, targetNotes]);
+  }, [
+    arrangement.targets,
+    pageEndIndex,
+    pageStartIndex,
+    selection.score.meter.quarterBeatsPerMeasure,
+  ]);
   const barlineAfterNoteIndices = useMemo(() => {
-    const pageSourceNotes = selection.notes.slice(pageStartIndex, pageEndIndex);
-    return pageSourceNotes.flatMap((note, index) =>
-      pageSourceNotes[index + 1] && pageSourceNotes[index + 1].measure !== note.measure
-        ? [index]
-        : []
+    const pageTargets = arrangement.targets.slice(pageStartIndex, pageEndIndex);
+    return pageTargets.flatMap((target, index) =>
+      pageTargets[index + 1] && pageTargets[index + 1].measure !== target.measure ? [index] : []
     );
-  }, [pageEndIndex, pageStartIndex, selection.notes]);
+  }, [arrangement.targets, pageEndIndex, pageStartIndex]);
   const currentPageNumber = pageIndex + 1;
   const totalPages = pageStarts.length;
-  const mainSongPageIndex = mainSongStartIndex >= 0 ? pageStarts.indexOf(mainSongStartIndex) : -1;
-  const keyboardOctave = currentNote?.octave ?? selection.notes.at(-1)?.octave ?? 4;
   const subscribeMidi = midi.subscribe;
+
+  const requestMidiConnection = async (): Promise<void> => {
+    toast.message("正在查找 MIDI 键盘…", {
+      id: "song-practice-midi-connect",
+      duration: 2000,
+    });
+    try {
+      await midi.connect();
+      window.setTimeout(() => {
+        if (!midiConnectionLiveRef.current) {
+          toast.error(midiErrorRef.current ?? "未检测到 MIDI 键盘，仍在使用麦克风。", {
+            id: "song-practice-midi-connect",
+            duration: 3500,
+          });
+        }
+      }, 1200);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "MIDI 连接失败，仍在使用麦克风。", {
+        id: "song-practice-midi-connect",
+        duration: 3500,
+      });
+    }
+  };
+
+  useEffect(() => {
+    const wasConnected = midiConnectionRef.current;
+    if (wasConnected === midi.isConnected) return;
+    midiConnectionRef.current = midi.isConnected;
+    const transitionToken = ++inputTransitionTokenRef.current;
+    const previousInputMode = activeInputModeRef.current;
+
+    inputTransitionRef.current = true;
+    setIsInputSwitching(true);
+    answerLockedRef.current = false;
+    heldMidiNumbersRef.current.clear();
+    if (feedbackTimerRef.current !== undefined) {
+      window.clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = undefined;
+    }
+    if (answerUnlockTimerRef.current !== undefined) {
+      window.clearTimeout(answerUnlockTimerRef.current);
+      answerUnlockTimerRef.current = undefined;
+    }
+    pendingWrongFeedbackRef.current = null;
+    isWrongFeedbackVisibleRef.current = false;
+    setFeedback(null);
+    cancelRowPlayback();
+    playbackRowRef.current = null;
+    ignoreMicrophoneUntilRef.current = Date.now() + 400;
+
+    if (midi.isConnected) {
+      if (previousInputMode === "microphone") stopMicrophone();
+      if (restartPendingRef.current) beginProgressSession();
+      const nextMidiArrangement = resolveSongPracticeArrangement(
+        selection.score,
+        activeHandModeRef.current
+      );
+      const nextIndex = mapArrangementIndex(
+        arrangement,
+        currentIndexRef.current,
+        nextMidiArrangement,
+        selection.score.meter.quarterBeatsPerMeasure
+      );
+      setCurrentIndex(nextIndex);
+      if (nextIndex < nextMidiArrangement.targets.length) setHasStarted(true);
+      activeInputModeRef.current = "midi";
+      setActiveInputMode("midi");
+      setSongPreferences((current) => ({ ...current, inputMode: "midi" }));
+      toast.success(
+        `已切换到 MIDI 键盘${midi.selectedInput?.name ? `：${midi.selectedInput.name}` : ""}。`,
+        { duration: 3000 }
+      );
+      inputTransitionRef.current = false;
+      setIsInputSwitching(false);
+      return;
+    }
+
+    if (previousInputMode !== "midi") {
+      inputTransitionRef.current = false;
+      setIsInputSwitching(false);
+      return;
+    }
+
+    const previousHandMode = activeHandModeRef.current;
+    const nextHandMode = previousHandMode === "both" ? "right" : previousHandMode;
+    const previousArrangement = arrangement;
+    const nextSourceArrangement = resolveSongPracticeArrangement(selection.score, nextHandMode);
+    const nextArrangement = simplifySongPracticeArrangement(nextSourceArrangement, nextHandMode);
+    const nextIndex = mapArrangementIndex(
+      previousArrangement,
+      currentIndexRef.current,
+      nextArrangement,
+      selection.score.meter.quarterBeatsPerMeasure
+    );
+    setCurrentIndex(nextIndex);
+    setActiveHandMode(nextHandMode);
+    activeHandModeRef.current = nextHandMode;
+    activeInputModeRef.current = "microphone";
+    initialMicrophoneAttemptRef.current = true;
+    setActiveInputMode("microphone");
+    setSongPreferences((current) => ({
+      ...current,
+      handMode: nextHandMode,
+      inputMode: "microphone",
+    }));
+
+    const shouldResumeListening =
+      hasStarted && currentIndexRef.current < previousArrangement.targets.length;
+    void (async () => {
+      let started = true;
+      let microphoneStartFailure: string | null = null;
+      try {
+        started = shouldResumeListening ? await microphoneStart() : true;
+      } catch (error) {
+        started = false;
+        microphoneStartFailure = error instanceof Error ? error.message : null;
+      }
+      if (transitionToken !== inputTransitionTokenRef.current) {
+        if (started && midiConnectionLiveRef.current) stopMicrophone();
+        return;
+      }
+      inputTransitionRef.current = false;
+      setIsInputSwitching(false);
+      if (!started) {
+        setHasStarted(false);
+        notifyMicrophoneError(
+          microphoneStartFailure ??
+            microphone.error ??
+            "MIDI 已断开，麦克风也无法使用。请检查麦克风权限和输入设备后重试。"
+        );
+        return;
+      }
+      toast.success(
+        previousHandMode === "both" ? "已切换到麦克风和右手单音。" : "已切换到麦克风。",
+        { duration: 3000 }
+      );
+    })();
+  }, [
+    cancelRowPlayback,
+    beginProgressSession,
+    arrangement,
+    hasStarted,
+    midi.isConnected,
+    midi.selectedInput?.name,
+    microphone.error,
+    microphoneStart,
+    notifyMicrophoneError,
+    selection.score,
+    setSongPreferences,
+    stopMicrophone,
+  ]);
+
+  useEffect(() => {
+    if (sessionStartedAtRef.current === null) beginProgressSession();
+  }, [beginProgressSession]);
+
+  useEffect(() => {
+    if (!isFinished || sessionCompletedRef.current || sessionStartedAtRef.current === null) return;
+    sessionCompletedRef.current = true;
+    recordSongPracticeSessionCompleted(
+      selection.songId,
+      selection.keyVersion,
+      Date.now() - sessionStartedAtRef.current
+    );
+  }, [isFinished, selection.keyVersion, selection.songId]);
 
   const clearFeedbackTimer = useCallback((): void => {
     if (feedbackTimerRef.current !== undefined) {
       window.clearTimeout(feedbackTimerRef.current);
       feedbackTimerRef.current = undefined;
     }
+    if (answerUnlockTimerRef.current !== undefined) {
+      window.clearTimeout(answerUnlockTimerRef.current);
+      answerUnlockTimerRef.current = undefined;
+    }
+    pendingWrongFeedbackRef.current = null;
+    isWrongFeedbackVisibleRef.current = false;
   }, []);
 
-  const submitPitch = useCallback(
-    (noteName: PianoKeyName, octave: number): void => {
-      if (!hasStarted || !currentNote || answerLockedRef.current) return;
+  const finishAttempt = useCallback(
+    (correct: boolean, noteName: PianoKeyName, octave: number): void => {
+      if (!currentTarget || answerLockedRef.current) return;
       answerLockedRef.current = true;
-      const correct =
-        isNaturalPianoKey(noteName) &&
-        noteName === currentNote.noteName &&
-        octave === currentNote.octave;
-      setFeedback({ noteName, octave, type: correct ? "correct" : "wrong" });
-      clearFeedbackTimer();
-      feedbackTimerRef.current = window.setTimeout(
-        () => {
-          if (correct) setCurrentIndex((index) => index + 1);
+      recordSongPracticeAttempt(selection.songId, selection.keyVersion, activeHandMode, correct);
+      if (correct) {
+        clearFeedbackTimer();
+        setFeedback({ noteName, octave, type: "correct" });
+        feedbackTimerRef.current = window.setTimeout(() => {
+          setCurrentIndex((index) => index + 1);
           answerLockedRef.current = false;
           feedbackTimerRef.current = undefined;
           setFeedback(null);
-        },
-        correct ? 160 : 360
+          heldMidiNumbersRef.current.clear();
+        }, 160);
+        return;
+      }
+
+      const nextFeedback: AnswerFeedback = { noteName, octave, type: "wrong" };
+      if (isWrongFeedbackVisibleRef.current) {
+        // Keep the visible error readable; collapse rapid repeats to the latest note.
+        pendingWrongFeedbackRef.current = nextFeedback;
+      } else {
+        setFeedback(nextFeedback);
+        isWrongFeedbackVisibleRef.current = true;
+        const showLatestPendingWrongFeedback = (): void => {
+          feedbackTimerRef.current = window.setTimeout(() => {
+            const pendingFeedback = pendingWrongFeedbackRef.current;
+            pendingWrongFeedbackRef.current = null;
+            if (pendingFeedback) {
+              setFeedback(pendingFeedback);
+              showLatestPendingWrongFeedback();
+              return;
+            }
+            feedbackTimerRef.current = undefined;
+            isWrongFeedbackVisibleRef.current = false;
+            setFeedback(null);
+          }, WRONG_FEEDBACK_DURATION_MS);
+        };
+        showLatestPendingWrongFeedback();
+      }
+
+      heldMidiNumbersRef.current.clear();
+      answerUnlockTimerRef.current = window.setTimeout(() => {
+        answerLockedRef.current = false;
+        answerUnlockTimerRef.current = undefined;
+      }, WRONG_INPUT_LOCK_MS);
+    },
+    [activeHandMode, clearFeedbackTimer, currentTarget, selection.keyVersion, selection.songId]
+  );
+
+  const submitPitch = useCallback(
+    (noteName: PianoKeyName, octave: number): void => {
+      if (
+        !hasStarted ||
+        inputTransitionRef.current ||
+        !currentTarget ||
+        answerLockedRef.current ||
+        playbackRowRef.current !== null
+      ) {
+        return;
+      }
+      const requiredMidiNumbers = [...new Set(currentTarget.notes.map((note) => note.midiPitch))];
+      if (requiredMidiNumbers.length > 1) {
+        finishAttempt(false, noteName, octave);
+        return;
+      }
+      finishAttempt(
+        midiPitchForKey(noteName, octave) === currentTarget.notes[0]?.midiPitch,
+        noteName,
+        octave
       );
     },
-    [clearFeedbackTimer, currentNote, hasStarted]
+    [currentTarget, finishAttempt, hasStarted]
   );
+
+  const submitMidiPitch = useCallback(
+    (midiNoteNumber: number): void => {
+      const answerKey = resolvePianoKeyFromMidi(midiNoteNumber);
+      if (
+        !answerKey ||
+        !hasStarted ||
+        inputTransitionRef.current ||
+        !currentTarget ||
+        answerLockedRef.current ||
+        playbackRowRef.current !== null
+      ) {
+        return;
+      }
+      const requiredMidiNumbers = [...new Set(currentTarget.notes.map((note) => note.midiPitch))];
+      finishAttempt(
+        requiredMidiNumbers.length === 1 && requiredMidiNumbers[0] === midiNoteNumber,
+        answerKey.noteName,
+        answerKey.octave
+      );
+    },
+    [currentTarget, finishAttempt, hasStarted]
+  );
+
+  const handleMidiEvent = useCallback(
+    (event: MidiNoteInputEvent): void => {
+      if (inputTransitionRef.current || activeInputModeRef.current !== "midi") return;
+      if (event.type === "reset") {
+        heldMidiNumbersRef.current.clear();
+        return;
+      }
+      if (event.type === "release") {
+        heldMidiNumbersRef.current.delete(event.note.midiNoteNumber);
+        return;
+      }
+      if (
+        !hasStarted ||
+        !currentTarget ||
+        answerLockedRef.current ||
+        playbackRowRef.current !== null
+      ) {
+        return;
+      }
+      const requiredMidiNumbers = [...new Set(currentTarget.notes.map((note) => note.midiPitch))];
+      if (requiredMidiNumbers.length <= 1) {
+        submitPitch(event.note.keyName, event.note.octave);
+        return;
+      }
+      heldMidiNumbersRef.current.add(event.note.midiNoteNumber);
+      const isRequiredPitch = requiredMidiNumbers.includes(event.note.midiNoteNumber);
+      const chordComplete = requiredMidiNumbers.every((pitch) =>
+        heldMidiNumbersRef.current.has(pitch)
+      );
+      if (!isRequiredPitch) {
+        finishAttempt(false, event.note.keyName, event.note.octave);
+      } else if (chordComplete) {
+        finishAttempt(true, event.note.keyName, event.note.octave);
+      }
+    },
+    [currentTarget, finishAttempt, hasStarted, submitPitch]
+  );
+
   const handleMicrophoneAnswer = useCallback((answer: PracticeAnswerInput): void => {
-    if (playbackRowRef.current !== null || Date.now() < ignoreMicrophoneUntilRef.current) {
+    if (
+      inputTransitionRef.current ||
+      activeInputModeRef.current !== "microphone" ||
+      playbackRowRef.current !== null ||
+      Date.now() < ignoreMicrophoneUntilRef.current
+    ) {
       return;
     }
-    if (answer.octave !== undefined) microphoneSubmitRef.current(answer.noteName, answer.octave);
+    if (answer.midiNoteNumber !== undefined) {
+      microphoneSubmitRef.current(answer.midiNoteNumber);
+    } else if (answer.octave !== undefined) {
+      microphoneSubmitRef.current(midiPitchForKey(answer.noteName, answer.octave));
+    }
   }, []);
+
   useEffect(() => {
     onRegisterMicrophoneAnswer(handleMicrophoneAnswer);
     return () => onRegisterMicrophoneAnswer(() => undefined);
@@ -284,9 +859,13 @@ export function SongPracticeView({
         playbackRowRef.current = rowIndex;
         ignoreMicrophoneUntilRef.current = Number.POSITIVE_INFINITY;
       }
-      toggleSongRow(rowIndex, pagePlaybackRows[rowIndex] ?? []);
+      toggleSongRow(rowIndex, pagePlaybackRows[rowIndex] ?? [], {
+        tempoBpm,
+        tempoEvents: selection.score.source.sourceTempoEvents,
+        ticksPerQuarter: selection.score.source.ticksPerQuarter,
+      });
     },
-    [pagePlaybackRows, toggleSongRow]
+    [pagePlaybackRows, selection.score.source, tempoBpm, toggleSongRow]
   );
 
   useEffect(() => {
@@ -306,69 +885,102 @@ export function SongPracticeView({
     };
   }, [cancelRowPlayback, pageIndex]);
 
-  microphoneSubmitRef.current = submitPitch;
+  microphoneSubmitRef.current = submitMidiPitch;
 
   useEffect(() => {
-    if (selection.inputMode !== "midi") return undefined;
-    return subscribeMidi((event) => {
-      if (event.type === "press") submitPitch(event.note.keyName, event.note.octave);
-    });
-  }, [selection.inputMode, subscribeMidi, submitPitch]);
+    if (activeInputMode !== "midi") return undefined;
+    return subscribeMidi(handleMidiEvent);
+  }, [activeInputMode, handleMidiEvent, subscribeMidi]);
+
+  useEffect(() => {
+    if (
+      activeInputMode !== "microphone" ||
+      microphoneIsListening ||
+      initialMicrophoneAttemptRef.current
+    ) {
+      return;
+    }
+    initialMicrophoneAttemptRef.current = true;
+    void microphoneStart()
+      .then((started) => {
+        if (midiConnectionLiveRef.current) {
+          if (started) stopMicrophone();
+          return;
+        }
+        if (!started) {
+          setHasStarted(false);
+          notifyMicrophoneError(
+            microphone.error ?? "麦克风无法启动。请检查麦克风权限和输入设备后重试。"
+          );
+        }
+      })
+      .catch((error: unknown) => {
+        if (midiConnectionLiveRef.current) return;
+        setHasStarted(false);
+        notifyMicrophoneError(
+          error instanceof Error
+            ? error.message
+            : "麦克风无法启动。请检查麦克风权限和输入设备后重试。"
+        );
+      });
+  }, [
+    activeInputMode,
+    microphone.error,
+    microphoneIsListening,
+    microphoneStart,
+    notifyMicrophoneError,
+    stopMicrophone,
+  ]);
+
+  useEffect(() => {
+    if (activeInputMode === "midi") stopMicrophone();
+  }, [activeInputMode, stopMicrophone]);
 
   useEffect(
     () => () => {
       clearFeedbackTimer();
-      if (selection.inputMode === "microphone") stopMicrophone();
+      if (activeInputMode === "microphone") stopMicrophone();
       answerLockedRef.current = false;
     },
-    [clearFeedbackTimer, selection.inputMode, stopMicrophone]
+    [activeInputMode, clearFeedbackTimer, stopMicrophone]
   );
 
   useEffect(() => {
-    if (isFinished && selection.inputMode === "microphone") stopMicrophone();
-  }, [isFinished, selection.inputMode, stopMicrophone]);
-
-  const startPractice = async (): Promise<void> => {
-    setStartError(null);
-    if (selection.inputMode === "microphone" && !microphoneIsListening) {
-      const started = await microphoneStart();
-      if (!started) {
-        setStartError(microphoneError ?? "麦克风未能启动，请检查权限后重试。");
-        setHasStarted(false);
-        return;
-      }
-    }
-    answerLockedRef.current = false;
-    setFeedback(null);
-    setHasStarted(true);
-  };
+    if (isFinished && activeInputMode === "microphone") stopMicrophone();
+  }, [activeInputMode, isFinished, stopMicrophone]);
 
   const goToPage = useCallback(
     async (targetPageIndex: number): Promise<void> => {
+      if (isInputSwitching) return;
       const nextPageIndex = Math.max(0, Math.min(totalPages - 1, targetPageIndex));
       const nextStartIndex = pageStarts[nextPageIndex] ?? 0;
-      if (selection.inputMode === "microphone" && !microphoneIsListening) {
-        const started = await microphoneStart();
-        if (!started) {
-          setStartError(microphoneError ?? "麦克风未能启动，请检查权限后重试。");
+      if (activeInputMode === "microphone" && !microphoneIsListening) {
+        const microphoneStartError = await startMicrophoneAndGetError(
+          microphoneStart,
+          microphoneError ?? "麦克风未能启动，请检查权限后重试。"
+        );
+        if (microphoneStartError) {
           setHasStarted(false);
+          notifyMicrophoneError(microphoneStartError);
           return;
         }
         setHasStarted(true);
       }
       clearFeedbackTimer();
       answerLockedRef.current = false;
+      heldMidiNumbersRef.current.clear();
       setFeedback(null);
-      setStartError(null);
       setCurrentIndex(nextStartIndex);
     },
     [
+      activeInputMode,
       clearFeedbackTimer,
+      isInputSwitching,
       microphoneError,
       microphoneIsListening,
       microphoneStart,
+      notifyMicrophoneError,
       pageStarts,
-      selection.inputMode,
       totalPages,
     ]
   );
@@ -392,48 +1004,112 @@ export function SongPracticeView({
       } else if (event.key === "ArrowRight" && pageIndex < totalPages - 1) {
         event.preventDefault();
         void goToPage(pageIndex + 1);
-      } else if (event.key.toLowerCase() === "m" && mainSongPageIndex >= 0) {
-        event.preventDefault();
-        void goToPage(mainSongPageIndex);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [goToPage, mainSongPageIndex, pageIndex, totalPages]);
+  }, [goToPage, pageIndex, totalPages]);
 
   const restart = async (): Promise<void> => {
+    if (isInputSwitching) return;
     cancelRowPlayback();
     playbackRowRef.current = null;
     ignoreMicrophoneUntilRef.current = Date.now() + 400;
     clearFeedbackTimer();
     answerLockedRef.current = false;
+    heldMidiNumbersRef.current.clear();
     setCurrentIndex(0);
     setFeedback(null);
-    setStartError(null);
-    if (selection.inputMode === "microphone") {
+    setHasStarted(false);
+    restartPendingRef.current = true;
+    if (activeInputMode === "microphone") {
       stopMicrophone();
-      const started = await microphoneStart();
-      if (!started) {
+      const microphoneStartError = await startMicrophoneAndGetError(
+        microphoneStart,
+        microphoneError ?? "麦克风未能启动，请检查权限后重试。"
+      );
+      if (microphoneStartError) {
         setHasStarted(false);
-        setStartError("麦克风未能启动，请检查权限后重试。");
+        notifyMicrophoneError(microphoneStartError);
         return;
       }
     }
+    beginProgressSession();
+    restartPendingRef.current = false;
     setHasStarted(true);
   };
 
-  const feedbackText = isFinished
-    ? "整首练习完成了，可以重新开始。"
-    : feedback?.type === "correct"
-      ? "正确，继续看下一个音。"
-      : feedback?.type === "wrong"
-        ? `刚才弹的是 ${feedback.noteName}${feedback.octave}，看准当前音再试一次。`
-        : !hasStarted
-          ? "练习暂时停止，请检查输入设备后重试。"
-          : selection.inputMode === "microphone" && microphoneIsListening
-            ? "麦克风已就绪，按谱弹奏当前单音。"
-            : "看谱弹奏当前单音；弹对后会自动前进。";
+  const changeHandMode = (nextMode: SongPracticeHandMode): void => {
+    if (nextMode === activeHandMode || isInputSwitching || inputTransitionRef.current) return;
+    if (nextMode === "both" && !midi.isConnected) {
+      toast.error("混弹需要连接 MIDI 键盘。当前手型和进度已保留。", { duration: 3500 });
+      return;
+    }
+    const nextSourceArrangement = resolveSongPracticeArrangement(selection.score, nextMode);
+    const nextRequiresMidi = nextMode === "both";
+    const nextArrangement =
+      nextRequiresMidi || activeInputMode === "midi"
+        ? nextSourceArrangement
+        : simplifySongPracticeArrangement(nextSourceArrangement, nextMode);
+    const nextIndex = mapArrangementIndex(
+      arrangement,
+      currentIndex,
+      nextArrangement,
+      selection.score.meter.quarterBeatsPerMeasure
+    );
 
+    cancelRowPlayback();
+    playbackRowRef.current = null;
+    ignoreMicrophoneUntilRef.current = Date.now() + 400;
+    clearFeedbackTimer();
+    answerLockedRef.current = false;
+    heldMidiNumbersRef.current.clear();
+    setFeedback(null);
+    setCurrentIndex(nextIndex);
+    setActiveHandMode(nextMode);
+    activeHandModeRef.current = nextMode;
+
+    if (nextRequiresMidi) {
+      inputTransitionRef.current = true;
+      setIsInputSwitching(true);
+      if (activeInputMode === "microphone") stopMicrophone();
+      activeInputModeRef.current = "midi";
+      setActiveInputMode("midi");
+      setSongPreferences((current) => ({ ...current, handMode: nextMode, inputMode: "midi" }));
+      inputTransitionRef.current = false;
+      setIsInputSwitching(false);
+    } else {
+      setSongPreferences((current) => ({ ...current, handMode: nextMode }));
+    }
+    const handLabel = nextMode === "right" ? "右手" : nextMode === "left" ? "左手" : "混弹";
+    toast.success(
+      `已切换到${handLabel}（${sourceLabel(nextRequiresMidi ? "midi" : activeInputMode)}）。`,
+      {
+        duration: 3000,
+      }
+    );
+  };
+
+  const feedbackText = isInputSwitching
+    ? "正在切换输入方式…"
+    : isFinished
+      ? "整首练习完成了，可以重新开始。"
+      : feedback?.type === "correct"
+        ? "正确，继续看下一个目标。"
+        : feedback?.type === "wrong"
+          ? `刚才弹的是 ${feedback.noteName}${feedback.octave}，看准当前音再试一次。`
+          : !hasStarted
+            ? ""
+            : activeInputMode === "microphone" && microphoneIsListening
+              ? "麦克风已就绪，按谱弹奏当前单音。"
+              : (currentTarget?.notes.length ?? 0) > 1
+                ? "看准当前和弦，同时按下目标音；全部按对后会自动前进。"
+                : "看谱弹奏当前音；弹对后会自动前进。";
+  const keyLabel = selection.score.practiceKey;
+  const keyName =
+    keyLabel.includes("major") || keyLabel.includes("minor")
+      ? keyLabel.replace(/ major| minor/, "")
+      : keyLabel;
   return (
     <section className="practice-shell song-practice-shell">
       <div className="practice-topline song-practice-topline">
@@ -448,38 +1124,111 @@ export function SongPracticeView({
       <div className="song-practice-content">
         <section className="panel song-practice-panel">
           <header className="song-practice-heading">
-            <div>
-              <span className="song-practice-eyebrow">
-                <Music2 aria-hidden="true" size={15} /> 歌曲 · {sourceLabel(selection.inputMode)}
-              </span>
-              <h1>{selection.scoreTitle}</h1>
-              <p>{selection.partName} · C 调自然音单音 · 前奏与正歌分开分页</p>
+            <div className="song-practice-heading-row">
+              <div className="song-practice-hand-switch" role="group" aria-label="切换演奏手型">
+                {(
+                  [
+                    ["left", "左手"],
+                    ["right", "右手"],
+                    ["both", "混弹"],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    aria-pressed={activeHandMode === mode}
+                    className={activeHandMode === mode ? "is-active" : ""}
+                    disabled={isInputSwitching}
+                    key={mode}
+                    type="button"
+                    onClick={() => changeHandMode(mode)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="song-practice-heading-main">
+                <h1>{selection.score.title}</h1>
+                <div className="song-practice-tags">
+                  <span>
+                    {versionLabel(selection)} · {keyName} 调
+                  </span>
+                  <span>{arrangement.partName}</span>
+                </div>
+              </div>
+              {midi.isConnected ? (
+                <span className="song-practice-midi-status" role="status">
+                  MIDI 已连接{midi.selectedInput?.name ? ` · ${midi.selectedInput.name}` : ""}
+                </span>
+              ) : (
+                <button
+                  className="song-connect-midi"
+                  disabled={isInputSwitching}
+                  type="button"
+                  onClick={() => void requestMidiConnection()}
+                >
+                  连接 MIDI
+                </button>
+              )}
             </div>
-            <span className="song-practice-key-badge">C 调</span>
+            <p className="song-practice-reading-note">
+              <span>本模式只判断音高顺序，不评节奏。谱面上的时值和间距用于熟悉真实乐谱；</span>
+              <span>
+                按顺序弹出对应音符即可。原谱速度仅供跟弹参考，不影响练习结果。切换手型会沿当前乐曲位置继续。
+              </span>
+            </p>
+            <div className="song-practice-score-meta" aria-label="乐谱信息">
+              <strong>♩ = {tempoBpm}</strong>
+              <span>
+                {meter.numerator}/{meter.denominator} 拍
+              </span>
+              {activeInputMode === "midi" ? (
+                <span className="song-practice-current-input is-midi" role="status">
+                  当前输入方式：MIDI
+                </span>
+              ) : microphone.status === "requesting" ? (
+                <span className="song-practice-current-input" role="status">
+                  <AudioLines aria-hidden="true" size={15} />
+                  当前输入方式：麦克风（连接中）
+                </span>
+              ) : !microphoneIsListening ? (
+                initialMicrophoneStatusDelayPassed ? (
+                  <span className="song-practice-current-input is-error">
+                    <AudioLines aria-hidden="true" size={15} />
+                    <span>当前输入方式：麦克风未连接，</span>
+                    <button
+                      className="song-practice-reconnect-link"
+                      type="button"
+                      onClick={() => void reconnectMicrophone()}
+                    >
+                      重新连接
+                    </button>
+                  </span>
+                ) : null
+              ) : (
+                <span className="song-practice-current-input is-listening" role="status">
+                  <AudioLines aria-hidden="true" size={15} />
+                  <span>当前输入方式：麦克风</span>
+                  <progress
+                    aria-label="麦克风输入电平"
+                    className="song-practice-mic-level"
+                    max={1}
+                    value={Math.max(0, Math.min(1, microphone.inputLevel))}
+                  />
+                </span>
+              )}
+            </div>
           </header>
 
-          <div className="song-practice-prompt-wrap">
-            <div className="song-practice-status" aria-live="polite" role="status">
-              <span className={`song-practice-feedback${feedback ? ` is-${feedback.type}` : ""}`}>
-                {feedbackText}
-              </span>
-              {selection.inputMode === "midi" ? (
-                <span>
-                  {midi.isConnected
-                    ? `MIDI 已连接：${midi.selectedInput?.name ?? "设备"}`
-                    : "MIDI 连接已断开"}
-                </span>
-              ) : null}
-              {selection.inputMode === "microphone" && microphone.status === "listening" ? (
-                <span>
-                  <Mic aria-hidden="true" size={14} /> 麦克风正在监听
-                </span>
-              ) : null}
-              {startError ? <span className="song-practice-error">{startError}</span> : null}
-              {selection.inputMode === "microphone" && microphoneError ? (
-                <span className="song-practice-error">{microphoneError}</span>
-              ) : null}
-            </div>
+          <div className="song-practice-status" aria-live="polite" role="status">
+            <span className={`song-practice-feedback${feedback ? ` is-${feedback.type}` : ""}`}>
+              {feedbackText}
+            </span>
+          </div>
+
+          <div
+            className={`song-practice-prompt-wrap${
+              arrangement.trackMode === "mixed" ? " is-grand-staff" : ""
+            }`}
+          >
             {pageNotes.length > 0 ? (
               <StaffPagePrompt
                 barlineAfterNoteIndices={barlineAfterNoteIndices}
@@ -487,19 +1236,31 @@ export function SongPracticeView({
                   0,
                   Math.min(pageNotes.length, currentIndex - pageStartIndex)
                 )}
-                breakBeamsAtStaffChange={selection.trackMode === "mixed"}
+                breakBeamsAtStaffChange={arrangement.trackMode === "mixed"}
                 lyrics={pageLyrics}
                 noteMeasures={pageMeasures}
                 noteOnsets={pageOnsets}
+                beatsPerMeasure={selection.score.meter.quarterBeatsPerMeasure}
                 maxRowCount={2}
                 noteDuration="quarter"
                 noteDurations={pageDurations}
+                staffNoteDurations={pageStaffNoteDurations}
                 notes={pageNotes}
+                noteGroups={pageNoteGroups}
                 notesPerRow={NOTES_PER_ROW}
                 onToggleRowPlayback={toggleRowPlayback}
                 playingRowIndex={playingRowIndex}
-                staffNotationMode={staffNotationMode(selection.trackMode)}
-                layout={selection.trackMode === "mixed" ? MIXED_STAFF_LAYOUT : undefined}
+                playbackProgressIndex={
+                  playingRowIndex !== null && playingNoteIndex !== null
+                    ? (pagePlaybackRows[playingRowIndex]?.[playingNoteIndex]?.eventIndex ?? null)
+                    : null
+                }
+                staffNotationMode={staffNotationMode(arrangement.trackMode)}
+                layout={
+                  arrangement.trackMode === "mixed"
+                    ? MIXED_STAFF_LAYOUT
+                    : SONG_PRACTICE_STAFF_LAYOUT
+                }
                 useLedgerGap={false}
                 visibleRowCount={2}
                 wrongIndex={feedback?.type === "wrong" ? currentIndex - pageStartIndex : undefined}
@@ -513,114 +1274,64 @@ export function SongPracticeView({
             )}
           </div>
 
-          {currentNote && selection.inputMode === "virtual" ? (
-            <>
-              <PianoKeyboard
-                ariaLabel={`虚拟键盘，从 C${keyboardOctave} 到 C${keyboardOctave + 1}`}
-                className="practice-piano-keyboard song-practice-keyboard"
-                enabledKeys={NATURAL_PIANO_KEYS}
-                feedback={
-                  feedback ? { keyName: feedback.noteName, type: feedback.type } : undefined
-                }
-                includeUpperC
-                keyOctave={keyboardOctave}
-                onKeyPress={(key) => {
-                  if (isNaturalPianoKey(key.keyName)) {
-                    submitPitch(key.keyName, keyboardOctave + key.octaveOffset);
-                  }
-                }}
-                scale={0.76}
-                touchLabels
-              />
-              <p className="song-practice-keyboard-range">
-                屏幕琴键：C{keyboardOctave}–C{keyboardOctave + 1}
-              </p>
-            </>
-          ) : null}
-
-          <div className="song-practice-actions">
-            {!hasStarted || isFinished ? (
-              <button
-                className="primary"
-                type="button"
-                onClick={() => void (isFinished ? restart() : startPractice())}
-              >
-                {isFinished ? <RotateCcw aria-hidden="true" size={16} /> : null}
-                {isFinished ? "重新练习" : "重试输入"}
-              </button>
-            ) : null}
-            {hasStarted && !isFinished ? (
+          <nav className="song-page-navigation" aria-label="乐谱分页">
+            <div className="song-page-controls">
               <button
                 className="song-practice-restart"
+                disabled={isInputSwitching}
                 type="button"
                 onClick={() => void restart()}
               >
                 <RotateCcw aria-hidden="true" size={15} />
-                从头开始
+                {isFinished ? "重新练习" : "从头开始"}
               </button>
-            ) : null}
-            {currentNote ? (
-              <span>
-                当前目标：{currentNote.noteName}
-                {currentNote.octave}
-              </span>
-            ) : null}
-          </div>
-
-          <nav className="song-page-navigation" aria-label="乐谱分页">
-            <button
-              aria-label="上一页"
-              disabled={pageIndex <= 0}
-              type="button"
-              onClick={() => void goToPage(pageIndex - 1)}
-            >
-              上一页
-            </button>
-            <form
-              className="song-page-jump"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const requestedPage = Number(pageInputValue);
-                if (Number.isFinite(requestedPage)) {
-                  const clampedPage = Math.max(1, Math.min(totalPages, Math.trunc(requestedPage)));
-                  setPageInputValue(String(clampedPage));
-                  void goToPage(clampedPage - 1);
-                }
-              }}
-            >
-              <label className="sr-only" htmlFor="song-page-number">
-                跳转到第几页
-              </label>
-              <input
-                id="song-page-number"
-                max={totalPages}
-                min={1}
-                type="number"
-                value={pageInputValue}
-                onChange={(event) => setPageInputValue(event.target.value)}
-              />
-              <span>/ {totalPages}</span>
-              <button type="submit">跳转</button>
-            </form>
-            <button
-              aria-label="下一页"
-              disabled={pageIndex >= totalPages - 1}
-              type="button"
-              onClick={() => void goToPage(pageIndex + 1)}
-            >
-              下一页
-            </button>
-            {mainSongPageIndex >= 0 ? (
               <button
-                aria-keyshortcuts="M"
-                className="song-main-section-jump"
+                aria-label="上一页"
+                disabled={pageIndex <= 0}
                 type="button"
-                onClick={() => void goToPage(mainSongPageIndex)}
+                onClick={() => void goToPage(pageIndex - 1)}
               >
-                正歌
+                上一页
               </button>
-            ) : null}
-            <span className="song-page-shortcuts">← / → 翻页 · M 正歌</span>
+              <form
+                className="song-page-jump"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const requestedPage = Number(pageInputValue);
+                  if (Number.isFinite(requestedPage)) {
+                    const clampedPage = Math.max(
+                      1,
+                      Math.min(totalPages, Math.trunc(requestedPage))
+                    );
+                    setPageInputValue(String(clampedPage));
+                    void goToPage(clampedPage - 1);
+                  }
+                }}
+              >
+                <label className="sr-only" htmlFor="song-page-number">
+                  跳转到第几页
+                </label>
+                <input
+                  id="song-page-number"
+                  max={totalPages}
+                  min={1}
+                  type="number"
+                  value={pageInputValue}
+                  onChange={(event) => setPageInputValue(event.target.value)}
+                />
+                <span>/ {totalPages}</span>
+                <button type="submit">跳转</button>
+              </form>
+              <button
+                aria-label="下一页"
+                disabled={pageIndex >= totalPages - 1}
+                type="button"
+                onClick={() => void goToPage(pageIndex + 1)}
+              >
+                下一页
+              </button>
+              <span className="song-page-shortcuts">← / → 翻页</span>
+            </div>
           </nav>
         </section>
       </div>

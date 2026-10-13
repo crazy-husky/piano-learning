@@ -106,7 +106,7 @@
   --segmented-control-height: 44px;
 }
 
-:root[data-theme="dark"] {
+:root[data-app-theme="dark"] {
   color-scheme: dark;
   --bg: #171c19;
   --surface: #232a26;

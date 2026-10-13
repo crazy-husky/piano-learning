@@ -1,6 +1,6 @@
 import * as Tone from "tone";
 import { noteToToneName } from "../domain/notes";
-import type { Octave, PianoKeyName, TargetNote } from "../domain/types";
+import type { NoteName, Octave, PianoKeyName, TargetNote } from "../domain/types";
 import { getPianoVolume } from "./pianoSettings";
 export { setPianoVolume } from "./pianoSettings";
 
@@ -163,15 +163,37 @@ export async function unlockAudio(): Promise<void> {
   getSampler({ retryFailed: true });
 }
 
-export async function playPianoNote(noteName: PianoKeyName, octave: Octave): Promise<void> {
+const NATURAL_NOTE_SEMITONES: Record<NoteName, number> = {
+  C: 0,
+  D: 2,
+  E: 4,
+  F: 5,
+  G: 7,
+  A: 9,
+  B: 11,
+};
+
+function targetNoteToToneName(note: TargetNote): string {
+  if (!note.accidental) return noteToToneName(note.noteName, note.octave);
+  const midi =
+    (note.octave + 1) * 12 +
+    NATURAL_NOTE_SEMITONES[note.noteName] +
+    (note.accidental === "sharp" ? 1 : -1);
+  return Tone.Frequency(midi, "midi").toNote();
+}
+
+async function playToneName(note: string): Promise<void> {
   await unlockAudio();
-  const note = noteToToneName(noteName, octave);
   const sampledPiano = getLoadedSampler();
   if (sampledPiano) {
     sampledPiano.triggerAttackRelease(note, "8n", undefined, getPianoVolume());
     return;
   }
   getFallbackSynth().triggerAttackRelease(note, "8n", undefined, getPianoVolume());
+}
+
+export async function playPianoNote(noteName: PianoKeyName, octave: Octave): Promise<void> {
+  await playToneName(noteToToneName(noteName, octave));
 }
 
 async function startToneNote(note: string): Promise<SustainedPianoNote> {
@@ -213,9 +235,9 @@ export async function startPianoNote(
 }
 
 export async function playTargetNote(note: TargetNote): Promise<void> {
-  await playPianoNote(note.noteName, note.octave);
+  await playToneName(targetNoteToToneName(note));
 }
 
 export async function startTargetNote(note: TargetNote): Promise<SustainedPianoNote> {
-  return startPianoNote(note.noteName, note.octave);
+  return startToneNote(targetNoteToToneName(note));
 }

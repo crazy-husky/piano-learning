@@ -19,6 +19,7 @@ import {
   type RecognitionTimeValueMode,
 } from "./recognitionTrend";
 import { SessionProgressCard } from "./SessionProgressCard";
+import { SongPracticeStatsPanel } from "./SongPracticeStatsPanel";
 import { StatsRangeStaff } from "./StatsRangeStaff";
 import { STATS_COLORS } from "./statsColors";
 import { parseStatsRangeDays, STATS_RANGE_PRESETS, type StatsRange } from "./statsRange";
@@ -431,6 +432,8 @@ export function StatsView({
           </div>
         </div>
       </div>
+
+      <SongPracticeStatsPanel />
 
       {primaryContentReady ? (
         <PracticeHeatmap dailyStats={dailyStats} range={range} />

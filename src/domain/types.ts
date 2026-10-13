@@ -33,6 +33,7 @@ export interface TargetNote {
   id: TargetNoteId;
   pitchId: PitchId;
   noteName: NoteName;
+  accidental?: "sharp" | "flat";
   octave: Octave;
   groupId: PracticeGroupId;
   staff: Staff;

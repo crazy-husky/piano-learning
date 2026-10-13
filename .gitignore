@@ -20,4 +20,5 @@ __pycache__/
 /demo/chart-interaction-demo.html
 /scripts/deploy/*
 !/scripts/deploy/README.md
+/local-testing/
 /%SystemDrive%/
