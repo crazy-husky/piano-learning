@@ -35,10 +35,10 @@ describe("practice microphone preferences", () => {
       resolvePracticeMicrophoneConfiguration(DEFAULT_PRACTICE_MICROPHONE_PREFERENCES)
     ).toMatchObject({
       analysisGain: 1,
-      confidenceThreshold: 0.75,
+      confidenceThreshold: 0.6,
       frameIntervalMs: "auto",
       inputRmsThreshold: 0.0018,
-      primaryClarityThreshold: 0.8,
+      primaryClarityThreshold: 0.65,
       requiredStableFrames: 4,
       requiredStableMs: 80,
       sensitivityLevel: 3,
@@ -116,7 +116,7 @@ describe("practice microphone preferences", () => {
     );
 
     expect(configs.map(({ confidenceThreshold }) => confidenceThreshold)).toEqual([
-      0.6, 0.675, 0.75, 0.825, 0.9,
+      0.4, 0.5, 0.6, 0.7, 0.8,
     ]);
     expect(configs.map(({ inputRmsThreshold }) => inputRmsThreshold)).toEqual([
       0.0009, 0.00135, 0.0018, 0.0027, 0.0036,
@@ -206,9 +206,10 @@ describe("practice microphone preferences", () => {
 
     expect(resolvePracticeMicrophoneConfiguration(preferences)).toMatchObject({
       analysisGain: 1,
-      confidenceThreshold: 0.75,
+      confidenceThreshold: 0.6,
       frameIntervalMs: "auto",
       inputRmsThreshold: 0.0018,
+      primaryClarityThreshold: 0.65,
       requiredStableFrames: 4,
     });
     expect(
@@ -242,7 +243,7 @@ describe("practice microphone preferences", () => {
         sensitivityLevel: 9,
       })
     ).toMatchObject({
-      algorithm: "mpm-c",
+      algorithm: "swiftf0",
       debugMode: true,
       sensitivityLevel: 3,
       debugParameters: {
