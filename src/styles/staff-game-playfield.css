@@ -343,6 +343,74 @@
   padding: 4px;
 }
 
+.app-global-debug-badge {
+  position: fixed;
+  z-index: 14999;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--accent);
+}
+
+.app-global-debug-badge.has-error-badge {
+  bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+}
+
+.app-global-debug-badge button {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.app-global-debug-badge button:active,
+.app-global-error-badge-details:active {
+  cursor: grabbing;
+}
+
+.app-global-debug-badge button:hover {
+  background: var(--surface-soft);
+}
+
+.app-global-debug-badge button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.app-global-debug-badge-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: grid;
+  min-width: 17px;
+  height: 17px;
+  place-items: center;
+  border: 1px solid var(--surface);
+  border-radius: 999px;
+  background: var(--accent-fill);
+  color: #fff;
+  padding: 0 3px;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .app-runtime-asset-notice {
   position: fixed;
   z-index: 30001;
@@ -437,6 +505,9 @@
   gap: 6px;
   border-radius: 999px;
   padding: 0 8px !important;
+  cursor: grab !important;
+  touch-action: none;
+  user-select: none;
 }
 
 .app-global-error-badge-icon {
@@ -512,6 +583,18 @@
   color: var(--text);
   padding: 18px;
   box-shadow: var(--shadow);
+}
+
+.app-global-debug-dialog {
+  border-color: var(--border-strong);
+}
+
+.app-global-debug-dialog .app-global-error-dialog-header h2 {
+  color: var(--accent);
+}
+
+.app-global-debug-dialog details {
+  border-top-color: var(--border);
 }
 
 .app-global-error-dialog-header {

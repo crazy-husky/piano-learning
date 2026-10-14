@@ -200,7 +200,15 @@ interface BubbleBurst {
 
 type MicrophoneController = Pick<
   ReturnType<typeof usePracticeMicrophoneInput>,
-  "detectedNote" | "error" | "inputLevel" | "isListening" | "start" | "status" | "stop"
+  | "detectedNote"
+  | "error"
+  | "inputLevel"
+  | "isListening"
+  | "isPreparingSwiftF0"
+  | "prepare"
+  | "start"
+  | "status"
+  | "stop"
 > & { diagnostics: PracticeMicrophoneDiagnostics | null };
 
 interface StaffGameViewProps {
@@ -774,10 +782,16 @@ export function StaffGameView({
   const roundFinishedRef = useRef(false);
   const waitingForNextTargetRef = useRef(false);
   const lastLoggedMicrophoneObservationRef = useRef<string | null>(null);
+  const prepareMicrophone = microphone.prepare;
 
   useEffect(() => {
     resetStaffGameMicrophoneDebug();
   }, []);
+
+  useEffect(() => {
+    if (settings.inputMode !== "physical") return;
+    void prepareMicrophone().catch(() => undefined);
+  }, [prepareMicrophone, settings.inputMode]);
 
   useEffect(() => {
     if (!feedback) return undefined;
@@ -2408,7 +2422,9 @@ export function StaffGameView({
   const microphoneReadyText = microphone.isListening
     ? "麦克风已连接，可以开始听音"
     : microphone.status === "requesting"
-      ? "正在连接麦克风…"
+      ? microphone.isPreparingSwiftF0
+        ? "正在准备，请稍等…"
+        : "正在连接麦克风…"
       : microphone.error
         ? "麦克风权限或设备需要处理"
         : "点击开始后请求麦克风权限";
@@ -2811,6 +2827,7 @@ export function StaffGameView({
             <StaffGameReadyPanel
               bubbleImage={bubbleShell}
               isStarting={isStarting}
+              isPreparingMicrophone={microphone.isPreparingSwiftF0}
               onStartSong={startSelectedSong}
               previewNotation={<NoteStaff note={selectedSongPreviewNote} />}
               record={selectedSongRecord}

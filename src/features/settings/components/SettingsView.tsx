@@ -50,6 +50,14 @@ import {
   STAFF_PAGE_UI_PREFERENCES_KEY,
 } from "../../../shared/preferences/staffPageUiPreferences";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
+import {
+  clearGlobalDebugEvents,
+  GLOBAL_DEBUG_ENABLED_KEY,
+  GLOBAL_DEBUG_MODE_CHANGE_EVENT,
+  isGlobalDebugEnabled,
+  setGlobalDebugEnabled,
+} from "../../../shared/diagnostics/globalDebug";
+import { LOCAL_STORAGE_PREFERENCES_RESET_EVENT } from "../../../storage/localPreferenceEvents";
 
 type StoredBackupState = BackupState & { restoreRequiredBeforeBackup?: boolean };
 type SettingsActionFeedback = { description?: string; kind?: "danger"; title: string };
@@ -133,6 +141,31 @@ export function SettingsView({
   const confirmDialog = useConfirmDialog();
   const [busy, setBusy] = useState(false);
   const [isRestoringConfiguration, setIsRestoringConfiguration] = useState(false);
+  const [globalDebugEnabled, setGlobalDebugEnabledState] = useState(isGlobalDebugEnabled);
+
+  useEffect(() => {
+    const syncGlobalDebugEnabled = (event?: Event): void => {
+      const enabled = (event as CustomEvent<{ enabled?: unknown }> | undefined)?.detail?.enabled;
+      setGlobalDebugEnabledState(typeof enabled === "boolean" ? enabled : isGlobalDebugEnabled());
+    };
+    const resetGlobalDebugEnabled = (): void => {
+      setGlobalDebugEnabledState(false);
+      clearGlobalDebugEvents();
+    };
+    const syncFromOtherTab = (event: StorageEvent): void => {
+      if (event.key !== GLOBAL_DEBUG_ENABLED_KEY && event.key !== null) return;
+      setGlobalDebugEnabledState(isGlobalDebugEnabled());
+    };
+
+    window.addEventListener(GLOBAL_DEBUG_MODE_CHANGE_EVENT, syncGlobalDebugEnabled);
+    window.addEventListener(LOCAL_STORAGE_PREFERENCES_RESET_EVENT, resetGlobalDebugEnabled);
+    window.addEventListener("storage", syncFromOtherTab);
+    return () => {
+      window.removeEventListener(GLOBAL_DEBUG_MODE_CHANGE_EVENT, syncGlobalDebugEnabled);
+      window.removeEventListener(LOCAL_STORAGE_PREFERENCES_RESET_EVENT, resetGlobalDebugEnabled);
+      window.removeEventListener("storage", syncFromOtherTab);
+    };
+  }, []);
   const [selectedMicrophoneAlgorithm, setSelectedMicrophoneAlgorithm] = useState(
     practiceMicrophonePreferences.algorithm
   );
@@ -467,14 +500,14 @@ export function SettingsView({
           </div>
           <div className="setting-row settings-switch-row">
             <div>
-              <strong>调试开关</strong>
+              <strong>麦克风调试</strong>
               <span>
                 开启后由详细参数接管识别，算法敏感度档位暂时隐藏；关闭后恢复之前选择的档位。详细参数可在练习页的“调试设置”中调整。
               </span>
             </div>
             <div className="settings-switch-control">
               <ToggleSwitch
-                aria-label="调试开关"
+                aria-label="麦克风调试"
                 checked={practiceMicrophonePreferences.debugMode}
                 disabled={isLoadingMicrophoneAlgorithm}
                 onCheckedChange={(debugMode) =>
@@ -529,6 +562,31 @@ export function SettingsView({
               </div>
             </>
           ) : null}
+        </div>
+
+        <div className="panel settings-panel">
+          <div className="panel-heading">
+            <h2>全局调试</h2>
+          </div>
+          <div className="setting-row settings-switch-row">
+            <div>
+              <strong>全局调试开关</strong>
+              <span>
+                开启后显示右下角调试入口，可查看页面错误和设备环境信息，并手动导出
+                JSON。信息保留在当前页面会话，不录制麦克风声音，也不会自动上传。
+              </span>
+            </div>
+            <div className="settings-switch-control">
+              <ToggleSwitch
+                aria-label="全局调试开关"
+                checked={globalDebugEnabled}
+                onCheckedChange={(enabled) => {
+                  setGlobalDebugEnabledState(enabled);
+                  setGlobalDebugEnabled(enabled);
+                }}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="panel settings-panel">

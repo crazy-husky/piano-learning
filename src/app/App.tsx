@@ -131,6 +131,7 @@ const INITIAL_PRACTICE_MICROPHONE_PREFERENCES = (() => {
 })();
 
 const LOCAL_PREFERENCE_FEEDBACK_KEYS = new Set([
+  "anki-note.globalDebugEnabled",
   "anki-note.pageAppearancePreferences",
   "anki-note.practiceMicrophonePreferences",
   "anki-note.practicePagePreferences",

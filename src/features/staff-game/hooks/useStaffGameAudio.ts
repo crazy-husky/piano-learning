@@ -51,7 +51,6 @@ export function useStaffGameAudio({
       phase === "running" &&
       backgroundMusicEnabled &&
       inputMode !== "physical";
-
     const removeUnlockListeners = (): void => {
       document.removeEventListener("pointerdown", unlockMusic);
       document.removeEventListener("keydown", unlockMusic);

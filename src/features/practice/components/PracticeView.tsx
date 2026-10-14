@@ -544,6 +544,13 @@ export function PracticeView({
       beforeRecoveryReload: () => prepareMicrophoneRecoveryReloadRef.current(),
     }
   );
+  const preparePracticeMicrophone = practiceMicrophone.prepare;
+  useEffect(() => {
+    if (answerPitchMode !== "microphone" || practiceMicrophonePreferences.algorithm !== "swiftf0") {
+      return;
+    }
+    void preparePracticeMicrophone().catch(() => undefined);
+  }, [answerPitchMode, preparePracticeMicrophone, practiceMicrophonePreferences.algorithm]);
   const registerSongPracticeMicrophoneAnswer = useCallback(
     (handler: (answer: PracticeAnswerInput) => void): void => {
       songPracticeMicrophoneAnswerRef.current = handler;
@@ -1693,7 +1700,9 @@ export function PracticeView({
             {practiceMicrophone.status === "listening"
               ? `正在监听麦克风 · ${practiceMicrophoneAlgorithmLabel(practiceMicrophonePreferences.algorithm)}`
               : practiceMicrophone.status === "requesting"
-                ? `正在连接麦克风并加载 ${practiceMicrophoneAlgorithmLabel(practiceMicrophonePreferences.algorithm)}`
+                ? practiceMicrophone.isPreparingSwiftF0
+                  ? "正在准备，请稍等…"
+                  : "正在连接麦克风…"
                 : (practiceMicrophone.error ??
                   (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))}
           </span>

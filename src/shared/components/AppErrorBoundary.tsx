@@ -1,6 +1,23 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import {
+  Component,
+  createRef,
+  type CSSProperties,
+  type ErrorInfo,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
+import { Bug } from "lucide-react";
 import { formatDateTime } from "../formatDateTime";
 import { APP_DIAGNOSTIC_EVENT, type AppDiagnosticSource } from "../diagnostics/appDiagnostics";
+import {
+  clearGlobalDebugEvents,
+  getGlobalDebugEvents,
+  GLOBAL_DEBUG_ENABLED_KEY,
+  GLOBAL_DEBUG_ENTRY_EVENT,
+  GLOBAL_DEBUG_MODE_CHANGE_EVENT,
+  isGlobalDebugEnabled,
+} from "../diagnostics/globalDebug";
+import { LOCAL_STORAGE_PREFERENCES_RESET_EVENT } from "../../storage/localPreferenceEvents";
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -14,6 +31,11 @@ interface AppErrorBoundaryState {
   globalErrorNoticeVisible: boolean;
   globalErrorNoticeSecondsRemaining: number;
   errorDetailsOpen: boolean;
+  globalDebugEnabled: boolean;
+  globalDebugDialogOpen: boolean;
+  globalDebugEventCount: number;
+  globalErrorBadgePosition: FloatingBadgePosition | null;
+  globalDebugBadgePosition: FloatingBadgePosition | null;
 }
 
 interface ResourceRetryStatus {
@@ -45,14 +67,76 @@ interface NavigatorWithDiagnostics extends Navigator {
   standalone?: boolean;
 }
 
+interface FloatingBadgePosition {
+  x: number;
+  y: number;
+}
+
+type FloatingBadgeKind = "error" | "debug";
+
+interface ActiveBadgeDrag {
+  kind: FloatingBadgeKind;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startLeft: number;
+  startTop: number;
+  moved: boolean;
+  lastPosition: FloatingBadgePosition | null;
+}
+
+type NavigatorWithFileShare = Pick<Navigator, "maxTouchPoints"> & {
+  canShare?: (data: ShareData) => boolean;
+  share?: (data?: ShareData) => Promise<void>;
+};
+
 const MAX_GLOBAL_ERROR_RECORDS = 20;
 const GLOBAL_ERROR_DEDUPE_WINDOW_MS = 30_000;
 const MAX_GLOBAL_ERROR_DETAILS_LENGTH = 12_000;
 const GLOBAL_ERROR_NOTICE_DURATION_SECONDS = 10;
+const FLOATING_BADGE_POSITION_STORAGE_KEYS: Record<FloatingBadgeKind, string> = {
+  error: "anki-note.globalErrorBadgePosition",
+  debug: "anki-note.globalDebugBadgePosition",
+};
+const FLOATING_BADGE_DRAG_THRESHOLD_PX = 6;
 const MODULE_LOAD_RETRY_SESSION_KEY = `app-module-load-retry:${__APP_BUILD_ID__}`;
 const OFFLINE_MODULE_LOAD_RETRY_SESSION_KEY = `app-offline-module-load-retry:${__APP_BUILD_ID__}`;
 const MODULE_LOAD_FAILURE_PATTERN =
   /importing a module script failed|failed to fetch dynamically imported module|unable to preload (?:css|module)|loading chunk .* failed/i;
+
+function readFloatingBadgePosition(kind: FloatingBadgeKind): FloatingBadgePosition | null {
+  try {
+    const value = JSON.parse(
+      window.localStorage.getItem(FLOATING_BADGE_POSITION_STORAGE_KEYS[kind]) ?? "null"
+    ) as { x?: unknown; y?: unknown } | null;
+    if (
+      !value ||
+      typeof value.x !== "number" ||
+      !Number.isFinite(value.x) ||
+      typeof value.y !== "number" ||
+      !Number.isFinite(value.y)
+    ) {
+      return null;
+    }
+    return { x: Math.min(1, Math.max(0, value.x)), y: Math.min(1, Math.max(0, value.y)) };
+  } catch {
+    return null;
+  }
+}
+
+function writeFloatingBadgePosition(
+  kind: FloatingBadgeKind,
+  position: FloatingBadgePosition
+): void {
+  try {
+    window.localStorage.setItem(
+      FLOATING_BADGE_POSITION_STORAGE_KEYS[kind],
+      JSON.stringify(position)
+    );
+  } catch {
+    // Keeping the latest position in memory is enough when storage is unavailable.
+  }
+}
 
 function getAppCodeAssetPath(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0) return null;
@@ -103,9 +187,20 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     globalErrorNoticeVisible: false,
     globalErrorNoticeSecondsRemaining: 0,
     errorDetailsOpen: false,
+    globalDebugEnabled: isGlobalDebugEnabled(),
+    globalDebugDialogOpen: false,
+    globalDebugEventCount: getGlobalDebugEvents().length,
+    globalErrorBadgePosition: null,
+    globalDebugBadgePosition: null,
   };
+  private errorBadgeRef = createRef<HTMLDivElement>();
+  private globalDebugBadgeRef = createRef<HTMLDivElement>();
+  private activeBadgeDrag: ActiveBadgeDrag | null = null;
+  private suppressNextBadgeClick: FloatingBadgeKind | null = null;
+  private suppressBadgeClickTimeout: number | null = null;
   private copyStatusTimeout: number | null = null;
   private globalErrorNoticeInterval: number | null = null;
+  private globalDebugCountUpdateTimeout: number | null = null;
   private moduleReloadScheduled = false;
   private moduleReloadTimer: number | null = null;
   private networkIsOffline = typeof navigator !== "undefined" && !navigator.onLine;
@@ -113,12 +208,21 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
   componentDidMount(): void {
     this.networkIsOffline = !navigator.onLine;
+    this.setState({
+      globalErrorBadgePosition: readFloatingBadgePosition("error"),
+      globalDebugBadgePosition: readFloatingBadgePosition("debug"),
+    });
+    window.addEventListener("resize", this.handleBadgeViewportResize);
     window.addEventListener("error", this.handleWindowError, true);
     window.addEventListener("unhandledrejection", this.handleUnhandledRejection);
     window.addEventListener("vite:preloadError", this.handleVitePreloadError);
     window.addEventListener("offline", this.handleBrowserOffline);
     window.addEventListener("online", this.handleBrowserOnline);
     window.addEventListener(APP_DIAGNOSTIC_EVENT, this.handleAppDiagnostic);
+    window.addEventListener(GLOBAL_DEBUG_MODE_CHANGE_EVENT, this.handleGlobalDebugModeChange);
+    window.addEventListener(GLOBAL_DEBUG_ENTRY_EVENT, this.handleGlobalDebugEntriesChange);
+    window.addEventListener(LOCAL_STORAGE_PREFERENCES_RESET_EVENT, this.handlePreferencesReset);
+    window.addEventListener("storage", this.handleStorageChange);
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.addEventListener("message", this.handleServiceWorkerMessage);
     }
@@ -131,13 +235,147 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     window.removeEventListener("offline", this.handleBrowserOffline);
     window.removeEventListener("online", this.handleBrowserOnline);
     window.removeEventListener(APP_DIAGNOSTIC_EVENT, this.handleAppDiagnostic);
+    window.removeEventListener(GLOBAL_DEBUG_MODE_CHANGE_EVENT, this.handleGlobalDebugModeChange);
+    window.removeEventListener(GLOBAL_DEBUG_ENTRY_EVENT, this.handleGlobalDebugEntriesChange);
+    window.removeEventListener(LOCAL_STORAGE_PREFERENCES_RESET_EVENT, this.handlePreferencesReset);
+    window.removeEventListener("storage", this.handleStorageChange);
+    window.removeEventListener("resize", this.handleBadgeViewportResize);
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.removeEventListener("message", this.handleServiceWorkerMessage);
     }
     if (this.copyStatusTimeout !== null) window.clearTimeout(this.copyStatusTimeout);
+    if (this.suppressBadgeClickTimeout !== null) {
+      window.clearTimeout(this.suppressBadgeClickTimeout);
+    }
+    if (this.globalDebugCountUpdateTimeout !== null) {
+      window.clearTimeout(this.globalDebugCountUpdateTimeout);
+    }
     this.clearGlobalErrorNoticeInterval();
     if (this.moduleReloadTimer !== null) window.clearTimeout(this.moduleReloadTimer);
   }
+
+  private getBadgeElement(kind: FloatingBadgeKind): HTMLDivElement | null {
+    return kind === "error" ? this.errorBadgeRef.current : this.globalDebugBadgeRef.current;
+  }
+
+  private getBadgePosition(kind: FloatingBadgeKind): FloatingBadgePosition | null {
+    return kind === "error"
+      ? this.state.globalErrorBadgePosition
+      : this.state.globalDebugBadgePosition;
+  }
+
+  private getBadgePositionStyle(kind: FloatingBadgeKind): CSSProperties | undefined {
+    const position = this.getBadgePosition(kind);
+    if (!position) return undefined;
+
+    const rect = this.getBadgeElement(kind)?.getBoundingClientRect();
+    const width = rect?.width ?? (kind === "error" ? 140 : 42);
+    const height = rect?.height ?? 42;
+    const maxLeft = Math.max(0, window.innerWidth - width - 16);
+    const maxTop = Math.max(0, window.innerHeight - height - 16);
+    return {
+      bottom: "auto",
+      left: `${8 + position.x * maxLeft}px`,
+      right: "auto",
+      top: `${8 + position.y * maxTop}px`,
+    };
+  }
+
+  private setBadgePosition(kind: FloatingBadgeKind, position: FloatingBadgePosition): void {
+    if (kind === "error") this.setState({ globalErrorBadgePosition: position });
+    else this.setState({ globalDebugBadgePosition: position });
+  }
+
+  private handleBadgePointerDown = (
+    kind: FloatingBadgeKind,
+    event: ReactPointerEvent<HTMLButtonElement>
+  ): void => {
+    if (event.button !== 0) return;
+    const badge = this.getBadgeElement(kind);
+    if (!badge) return;
+    const rect = badge.getBoundingClientRect();
+    this.activeBadgeDrag = {
+      kind,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startLeft: rect.left,
+      startTop: rect.top,
+      moved: false,
+      lastPosition: null,
+    };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is best-effort; the control still works with normal pointer events.
+    }
+  };
+
+  private handleBadgePointerMove = (
+    kind: FloatingBadgeKind,
+    event: ReactPointerEvent<HTMLButtonElement>
+  ): void => {
+    const drag = this.activeBadgeDrag;
+    if (!drag || drag.kind !== kind || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startClientX;
+    const deltaY = event.clientY - drag.startClientY;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < FLOATING_BADGE_DRAG_THRESHOLD_PX) return;
+
+    drag.moved = true;
+    event.preventDefault();
+    const rect = this.getBadgeElement(kind)?.getBoundingClientRect();
+    const width = rect?.width ?? (kind === "error" ? 140 : 42);
+    const height = rect?.height ?? 42;
+    const maxLeft = Math.max(0, window.innerWidth - width - 16);
+    const maxTop = Math.max(0, window.innerHeight - height - 16);
+    const left = Math.min(maxLeft + 8, Math.max(8, drag.startLeft + deltaX));
+    const top = Math.min(maxTop + 8, Math.max(8, drag.startTop + deltaY));
+    const position = {
+      x: maxLeft > 0 ? (left - 8) / maxLeft : 0,
+      y: maxTop > 0 ? (top - 8) / maxTop : 0,
+    };
+    drag.lastPosition = position;
+    this.setBadgePosition(kind, position);
+  };
+
+  private finishBadgeDrag = (
+    kind: FloatingBadgeKind,
+    event: ReactPointerEvent<HTMLButtonElement>
+  ): void => {
+    const drag = this.activeBadgeDrag;
+    if (!drag || drag.kind !== kind || drag.pointerId !== event.pointerId) return;
+    this.activeBadgeDrag = null;
+    if (drag.moved && drag.lastPosition) {
+      writeFloatingBadgePosition(kind, drag.lastPosition);
+      this.suppressNextBadgeClick = kind;
+      if (this.suppressBadgeClickTimeout !== null) {
+        window.clearTimeout(this.suppressBadgeClickTimeout);
+      }
+      this.suppressBadgeClickTimeout = window.setTimeout(() => {
+        if (this.suppressNextBadgeClick === kind) this.suppressNextBadgeClick = null;
+        this.suppressBadgeClickTimeout = null;
+      }, 0);
+    }
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // The pointer may already have been released by the browser.
+    }
+  };
+
+  private consumeSuppressedBadgeClick(kind: FloatingBadgeKind): boolean {
+    if (this.suppressNextBadgeClick !== kind) return false;
+    this.suppressNextBadgeClick = null;
+    if (this.suppressBadgeClickTimeout !== null) {
+      window.clearTimeout(this.suppressBadgeClickTimeout);
+      this.suppressBadgeClickTimeout = null;
+    }
+    return true;
+  }
+
+  private handleBadgeViewportResize = (): void => {
+    this.forceUpdate();
+  };
 
   componentDidUpdate(
     _previousProps: AppErrorBoundaryProps,
@@ -163,6 +401,49 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
     if (MODULE_LOAD_FAILURE_PATTERN.test(errorDetails)) this.retryModuleLoadOnce();
   }
+
+  private handleGlobalDebugModeChange = (event: Event): void => {
+    const enabled = (event as CustomEvent<{ enabled?: unknown }>).detail?.enabled;
+    const nextEnabled = typeof enabled === "boolean" ? enabled : isGlobalDebugEnabled();
+    if (!nextEnabled) clearGlobalDebugEvents();
+    this.setState({
+      globalDebugEnabled: nextEnabled,
+      globalDebugEventCount: getGlobalDebugEvents().length,
+      globalDebugDialogOpen: nextEnabled ? this.state.globalDebugDialogOpen : false,
+    });
+  };
+
+  private handleGlobalDebugEntriesChange = (): void => {
+    if (this.globalDebugCountUpdateTimeout !== null) return;
+    this.globalDebugCountUpdateTimeout = window.setTimeout(() => {
+      this.globalDebugCountUpdateTimeout = null;
+      this.setState({ globalDebugEventCount: getGlobalDebugEvents().length });
+    }, 250);
+  };
+
+  private handlePreferencesReset = (): void => {
+    clearGlobalDebugEvents();
+    if (this.globalDebugCountUpdateTimeout !== null) {
+      window.clearTimeout(this.globalDebugCountUpdateTimeout);
+      this.globalDebugCountUpdateTimeout = null;
+    }
+    this.setState({
+      globalDebugEnabled: false,
+      globalDebugDialogOpen: false,
+      globalDebugEventCount: 0,
+    });
+  };
+
+  private handleStorageChange = (event: StorageEvent): void => {
+    if (event.key !== GLOBAL_DEBUG_ENABLED_KEY && event.key !== null) return;
+    const enabled = isGlobalDebugEnabled();
+    if (!enabled) clearGlobalDebugEvents();
+    this.setState({
+      globalDebugEnabled: enabled,
+      globalDebugDialogOpen: enabled ? this.state.globalDebugDialogOpen : false,
+      globalDebugEventCount: getGlobalDebugEvents().length,
+    });
+  };
 
   private captureGlobalError = (
     source: GlobalErrorSource,
@@ -610,15 +891,9 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     }
   };
 
-  private buildSystemMetadata = (): string[] => {
+  private buildSystemMetadata = (): Record<string, unknown> => {
     const diagnosticNavigator = navigator as NavigatorWithDiagnostics;
     const connection = diagnosticNavigator.connection;
-    const connectionDetails = [
-      connection?.effectiveType ? `type=${connection.effectiveType}` : null,
-      connection?.downlink !== undefined ? `downlink=${connection.downlink}Mbps` : null,
-      connection?.rtt !== undefined ? `rtt=${connection.rtt}ms` : null,
-      connection?.saveData !== undefined ? `saveData=${connection.saveData}` : null,
-    ].filter((value): value is string => value !== null);
     const serviceWorkerController =
       "serviceWorker" in navigator ? navigator.serviceWorker.controller : null;
     const isStandaloneDisplay =
@@ -632,49 +907,115 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
       // Timezone is optional diagnostic context.
     }
 
-    return [
-      `Platform: ${navigator.platform || "unavailable"}`,
-      `Locale: ${navigator.language || "unavailable"}`,
-      `Timezone: ${timezone}`,
-      `Screen: ${window.screen.width} × ${window.screen.height}`,
-      `Device pixel ratio: ${window.devicePixelRatio || 1}`,
-      `Hardware threads: ${navigator.hardwareConcurrency || "unavailable"}`,
-      `Device memory: ${diagnosticNavigator.deviceMemory ? `${diagnosticNavigator.deviceMemory} GB` : "unavailable"}`,
-      `Display mode: ${isStandaloneDisplay ? "standalone" : "browser"}`,
-      `Network details: ${connectionDetails.length > 0 ? connectionDetails.join(", ") : "unavailable"}`,
-      `Service Worker controller: ${serviceWorkerController?.state ?? "none"}`,
-    ];
+    return {
+      platform: navigator.platform || "unavailable",
+      locale: navigator.language || "unavailable",
+      timezone,
+      screen: { width: window.screen.width, height: window.screen.height },
+      devicePixelRatio: window.devicePixelRatio || 1,
+      hardwareThreads: navigator.hardwareConcurrency || null,
+      deviceMemoryGb: diagnosticNavigator.deviceMemory ?? null,
+      displayMode: isStandaloneDisplay ? "standalone" : "browser",
+      network: {
+        effectiveType: connection?.effectiveType ?? null,
+        downlinkMbps: connection?.downlink ?? null,
+        rttMs: connection?.rtt ?? null,
+        saveData: connection?.saveData ?? null,
+      },
+      serviceWorkerControllerState: serviceWorkerController?.state ?? "none",
+    };
   };
 
-  private buildDebugInfo = (): string =>
-    [
-      `Browser: ${navigator.userAgent}`,
-      `Page: ${window.location.pathname}${window.location.hash}`,
-      `Viewport: ${window.innerWidth} × ${window.innerHeight}`,
-      `Online: ${navigator.onLine ? "yes" : "no"}`,
-      `Version: ${__APP_VERSION__}`,
-      `Build ID: ${__APP_BUILD_ID__}`,
-      `Build time: ${formatDateTime(__APP_BUILD_TIME__)}`,
-      `Report time: ${formatDateTime(Date.now())}`,
-      ...this.buildSystemMetadata(),
-      "",
-      this.state.fatalErrorDetails
-        ? `Fatal React render error:\n${this.state.fatalErrorDetails}`
-        : "Fatal React render error: none",
-      "",
-      `Recent runtime and update diagnostics (${this.state.globalErrors.length} grouped; limit ${MAX_GLOBAL_ERROR_RECORDS}):`,
-      ...(this.state.globalErrors.length > 0
-        ? this.state.globalErrors.map((record) =>
-            [
-              `Source: ${this.describeSource(record.source)} (${record.source})`,
-              `First seen: ${formatDateTime(record.firstSeenAt)}`,
-              `Last seen: ${formatDateTime(record.lastSeenAt)}`,
-              `Occurrences: ${record.count}`,
-              record.details,
-            ].join("\n")
-          )
-        : ["(none)"]),
-    ].join("\n");
+  private buildDebugInfo = (): string => {
+    const payload = {
+      format: "piano-learning-global-debug",
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      app: {
+        version: __APP_VERSION__,
+        buildId: __APP_BUILD_ID__,
+        buildTime: __APP_BUILD_TIME__,
+      },
+      environment: {
+        browser: navigator.userAgent,
+        page: window.location.pathname + window.location.hash,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        online: navigator.onLine,
+        ...this.buildSystemMetadata(),
+      },
+      errors: {
+        fatalReactRenderError: this.state.fatalErrorDetails,
+        runtimeAndUpdate: this.state.globalErrors.map((record) => ({
+          ...record,
+          sourceLabel: this.describeSource(record.source),
+        })),
+      },
+      events: getGlobalDebugEvents(),
+    };
+    return JSON.stringify(payload, null, 2);
+  };
+
+  private downloadDebugFile = (file: File): void => {
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.name;
+    link.hidden = true;
+    document.body.append(link);
+    try {
+      link.click();
+    } finally {
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }
+  };
+
+  private shareDebugInfo = async (): Promise<void> => {
+    this.showCopyStatus("");
+    try {
+      const fileName =
+        "piano-learning-debug-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
+      const file = new File([this.buildDebugInfo()], fileName, {
+        type: "application/json",
+      });
+      const shareNavigator = navigator as NavigatorWithFileShare;
+      let canShareFile = false;
+      try {
+        canShareFile =
+          navigator.maxTouchPoints > 0 &&
+          Boolean(shareNavigator.share && shareNavigator.canShare?.({ files: [file] }));
+      } catch {
+        canShareFile = false;
+      }
+
+      if (canShareFile && shareNavigator.share) {
+        try {
+          await shareNavigator.share({ files: [file], title: "钢琴练习调试信息" });
+          this.showCopyStatus("调试 JSON 已通过系统分享", true);
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            this.showCopyStatus("已取消分享，调试记录仍保留", true);
+            return;
+          }
+          this.downloadDebugFile(file);
+          this.showCopyStatus("系统分享未完成，已下载调试 JSON", true);
+          return;
+        }
+      }
+
+      this.downloadDebugFile(file);
+      this.showCopyStatus(
+        navigator.maxTouchPoints > 0
+          ? "当前浏览器不支持分享文件，已下载调试 JSON"
+          : "调试 JSON 已下载",
+        true
+      );
+    } catch (error) {
+      const message = error instanceof Error && error.message ? "：" + error.message : "";
+      this.showCopyStatus("调试 JSON 导出失败" + message, true);
+    }
+  };
 
   private copyWithTextarea = (text: string): boolean => {
     const textarea = document.createElement("textarea");
@@ -734,7 +1075,8 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   };
 
   private renderGlobalErrorNotice(): ReactNode {
-    if (this.state.globalErrors.length === 0 || this.state.fatalErrorDetails) return null;
+    const hasGlobalErrors = this.state.globalErrors.length > 0 && !this.state.fatalErrorDetails;
+    if (!hasGlobalErrors && !this.state.globalDebugEnabled) return null;
 
     const occurrenceCount = this.state.globalErrors.reduce(
       (total, record) => total + record.count,
@@ -744,12 +1086,24 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
     return (
       <>
-        {this.state.globalErrorNoticeVisible && (
-          <div className="app-global-error-badge" role="status">
+        {this.state.globalErrorNoticeVisible && hasGlobalErrors && (
+          <div
+            className="app-global-error-badge"
+            ref={this.errorBadgeRef}
+            role="status"
+            style={this.getBadgePositionStyle("error")}
+          >
             <button
               aria-label={`打开错误详情，${this.state.globalErrorNoticeSecondsRemaining} 秒后提示自动关闭`}
               className="app-global-error-badge-details"
-              onClick={() => this.setState({ errorDetailsOpen: true })}
+              onPointerDown={(event) => this.handleBadgePointerDown("error", event)}
+              onPointerMove={(event) => this.handleBadgePointerMove("error", event)}
+              onPointerUp={(event) => this.finishBadgeDrag("error", event)}
+              onPointerCancel={(event) => this.finishBadgeDrag("error", event)}
+              onClick={() => {
+                if (this.consumeSuppressedBadgeClick("error")) return;
+                this.setState({ errorDetailsOpen: true, globalDebugDialogOpen: false });
+              }}
               type="button"
             >
               <span aria-hidden="true" className="app-global-error-badge-icon">
@@ -766,6 +1120,42 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
               type="button"
             >
               ×
+            </button>
+          </div>
+        )}
+        {this.state.globalDebugEnabled && (
+          <div
+            className={
+              this.state.globalErrorNoticeVisible && hasGlobalErrors
+                ? "app-global-debug-badge has-error-badge"
+                : "app-global-debug-badge"
+            }
+            ref={this.globalDebugBadgeRef}
+            style={this.getBadgePositionStyle("debug")}
+          >
+            <button
+              aria-label={
+                this.state.globalDebugEventCount > 0
+                  ? "打开调试信息，已记录 " + this.state.globalDebugEventCount + " 条"
+                  : "打开调试信息"
+              }
+              onPointerDown={(event) => this.handleBadgePointerDown("debug", event)}
+              onPointerMove={(event) => this.handleBadgePointerMove("debug", event)}
+              onPointerUp={(event) => this.finishBadgeDrag("debug", event)}
+              onPointerCancel={(event) => this.finishBadgeDrag("debug", event)}
+              onClick={() => {
+                if (this.consumeSuppressedBadgeClick("debug")) return;
+                this.setState({ globalDebugDialogOpen: true, errorDetailsOpen: false });
+              }}
+              title="调试信息"
+              type="button"
+            >
+              <Bug aria-hidden="true" size={19} />
+              {this.state.globalDebugEventCount > 0 ? (
+                <span aria-hidden="true" className="app-global-debug-badge-count">
+                  {this.state.globalDebugEventCount > 99 ? "99+" : this.state.globalDebugEventCount}
+                </span>
+              ) : null}
             </button>
           </div>
         )}
@@ -816,6 +1206,59 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
               </p>
               <details open={copyFailed}>
                 <summary>错误详情（可手动复制）</summary>
+                <pre>{this.buildDebugInfo()}</pre>
+              </details>
+            </section>
+          </div>
+        )}
+        {this.state.globalDebugDialogOpen && this.state.globalDebugEnabled && (
+          <div className="app-global-error-dialog-backdrop">
+            <button
+              aria-label="关闭调试信息"
+              className="app-global-error-dialog-backdrop-close"
+              onClick={() => this.setState({ globalDebugDialogOpen: false })}
+              type="button"
+            />
+            <section
+              aria-labelledby="app-global-debug-dialog-title"
+              aria-modal="true"
+              className="app-global-error-dialog app-global-debug-dialog"
+              role="dialog"
+            >
+              <header className="app-global-error-dialog-header">
+                <div>
+                  <h2 id="app-global-debug-dialog-title">全局调试信息</h2>
+                  <p>
+                    当前会话有 {this.state.globalDebugEventCount}{" "}
+                    条调试事件；页面错误和设备环境信息也会一并导出。
+                  </p>
+                </div>
+                <button
+                  aria-label="关闭调试信息"
+                  className="app-global-error-dialog-close"
+                  onClick={() => this.setState({ globalDebugDialogOpen: false })}
+                  type="button"
+                >
+                  ×
+                </button>
+              </header>
+              <p className="app-global-error-build-info">
+                版本 {__APP_VERSION__} · 构建时间 {formatDateTime(__APP_BUILD_TIME__)}
+              </p>
+              <div className="app-global-error-dialog-actions">
+                <button onClick={() => void this.shareDebugInfo()} type="button">
+                  分享调试 JSON
+                </button>
+                <button onClick={() => clearGlobalDebugEvents()} type="button">
+                  清空记录
+                </button>
+              </div>
+              <p aria-live="polite" className="app-global-error-dialog-copy-status">
+                {this.state.copyStatus ||
+                  "电脑会下载 JSON 文件；手机会打开系统分享菜单。记录不会自动上传。"}
+              </p>
+              <details open={copyFailed || this.state.globalDebugEventCount === 0}>
+                <summary>调试 JSON（可手动查看）</summary>
                 <pre>{this.buildDebugInfo()}</pre>
               </details>
             </section>

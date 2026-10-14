@@ -26,6 +26,7 @@ type StaffGameReadyPanelProps = SharedArtwork &
         record: StaffGameSongRecord;
         previewNotation: ReactNode;
         isStarting: boolean;
+        isPreparingMicrophone: boolean;
         onStartSong: () => void;
       }
     | {
@@ -156,7 +157,11 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
           type="button"
         >
           <Play fill="currentColor" size={20} />
-          {props.isStarting ? "正在准备…" : "开始演奏"}
+          {props.isStarting
+            ? props.isPreparingMicrophone
+              ? "正在准备，请稍等…"
+              : "正在准备…"
+            : "开始演奏"}
         </button>
       </section>
     );
@@ -217,7 +222,9 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
         <span aria-hidden="true" className="staff-game-mic-indicator">
           {inputModeIcon}
         </span>
-        <span>{props.inputStatusText}</span>
+        <span aria-live="polite" role="status">
+          {props.inputStatusText}
+        </span>
       </div>
       <button
         className="staff-game-primary"

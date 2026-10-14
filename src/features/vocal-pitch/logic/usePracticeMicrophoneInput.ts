@@ -328,6 +328,7 @@ export function usePracticeMicrophoneInput(
     inputLevel: 0,
     status: "idle",
   });
+  const [isPreparingSwiftF0, setIsPreparingSwiftF0] = useState(false);
   const stateRef = useRef<PracticeMicrophoneStatus>("idle");
   const mountedRef = useRef(false);
   const inputReconnectRequiredRef = useRef(false);
@@ -916,6 +917,19 @@ export function usePracticeMicrophoneInput(
     workerReadyRef.current = true;
   }, []);
 
+  const prepare = useCallback(
+    async (timeoutMs?: number): Promise<void> => {
+      if (preferencesRef.current.algorithm !== "swiftf0" || workerReadyRef.current) return;
+      setIsPreparingSwiftF0(true);
+      try {
+        await ensureWorkerReady(timeoutMs);
+      } finally {
+        if (mountedRef.current) setIsPreparingSwiftF0(false);
+      }
+    },
+    [ensureWorkerReady]
+  );
+
   const postAnalysisFrame = useCallback(
     (
       analysisSamples: Float32Array,
@@ -1259,7 +1273,6 @@ export function usePracticeMicrophoneInput(
           if (context.state !== "running") {
             throw new Error("浏览器未能恢复音频处理，麦克风需要重新连接。");
           }
-
           configuration = resolvePracticeMicrophoneConfiguration(preferencesRef.current);
           thresholds = resolvePracticeMicrophoneThresholds(configuration);
           frameIntervalMs = resolvePracticeMicrophoneFrameIntervalMs(configuration);
@@ -1416,7 +1429,7 @@ export function usePracticeMicrophoneInput(
               recoveryDeadlineAt === null
                 ? undefined
                 : Math.max(1, recoveryDeadlineAt - Date.now());
-            await ensureWorkerReady(workerTimeoutMs);
+            await prepare(workerTimeoutMs);
           } else ensurePitchWorker();
           if (!mountedRef.current || generation !== startGenerationRef.current) return false;
           if (audioContextRef.current?.state !== "running") {
@@ -1544,7 +1557,7 @@ export function usePracticeMicrophoneInput(
     },
     [
       ensurePitchWorker,
-      ensureWorkerReady,
+      prepare,
       fail,
       recordCaptureLifecycleEvent,
       releaseDevices,
@@ -1923,8 +1936,12 @@ export function usePracticeMicrophoneInput(
   useEffect(() => {
     mountedRef.current = true;
     const markInputForReconnect = (): void => {
-      if (stateRef.current !== "listening" && stateRef.current !== "requesting") return;
-      const isBackgrounded = document.visibilityState === "hidden" || !document.hasFocus();
+      const status = stateRef.current;
+      const isListening = status === "listening";
+      const isConnectingWithStream = status === "requesting" && streamRef.current !== null;
+      if (!isListening && !isConnectingWithStream) return;
+      const isBackgrounded =
+        document.visibilityState === "hidden" || (isListening && !document.hasFocus());
       if (!isBackgrounded) return;
       backgroundedAtRef.current ??= Date.now();
       lifecycleRecoveryPendingRef.current = true;
@@ -1937,7 +1954,10 @@ export function usePracticeMicrophoneInput(
         return;
       }
       if (!lifecycleRecoveryPendingRef.current) return;
-      if (stateRef.current !== "listening" && stateRef.current !== "requesting") {
+      const status = stateRef.current;
+      const isListening = status === "listening";
+      const isConnectingWithStream = status === "requesting" && streamRef.current !== null;
+      if (!isListening && !isConnectingWithStream) {
         lifecycleRecoveryPendingRef.current = false;
         lifecycleRecoveryAttemptCountRef.current = 0;
         backgroundedAtRef.current = null;
@@ -1958,7 +1978,7 @@ export function usePracticeMicrophoneInput(
         !audioTrack.muted;
       backgroundedAtRef.current = null;
       if (
-        stateRef.current === "listening" &&
+        isListening &&
         backgroundDurationMs < MICROPHONE_BACKGROUND_RECOVERY_MIN_DURATION_MS &&
         inputLooksAvailable
       ) {
@@ -1967,7 +1987,7 @@ export function usePracticeMicrophoneInput(
         inputReconnectRequiredRef.current = false;
         return;
       }
-      if (stateRef.current === "listening" || stateRef.current === "requesting") {
+      if (isListening || isConnectingWithStream) {
         fail("页面从后台恢复后，麦克风连接已中断，需要重新连接。", "microphone-interrupted");
       }
     };
@@ -2007,11 +2027,13 @@ export function usePracticeMicrophoneInput(
     analyzeCapture,
     copyDiagnosticSummary,
     isListening: state.status === "listening",
+    isPreparingSwiftF0,
     resetCapture,
     saveRecentCapture,
     startCapture,
     stopCapture,
     start,
     stop,
+    prepare,
   };
 }
