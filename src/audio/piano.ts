@@ -5,7 +5,7 @@ import { getPianoVolume } from "./pianoSettings";
 export { setPianoVolume } from "./pianoSettings";
 
 const PIANO_SAMPLE_BASE_URL = `${import.meta.env.BASE_URL}audio/salamander/`;
-const PIANO_SAMPLE_LOAD_TIMEOUT_MS = 30_000;
+const PIANO_SAMPLE_LOAD_TIMEOUT_MS = 15_000;
 const PIANO_SAMPLE_URLS = {
   A0: "A0.mp3",
   C1: "C1.mp3",

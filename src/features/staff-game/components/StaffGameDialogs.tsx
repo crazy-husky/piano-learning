@@ -102,7 +102,7 @@ export function StaffGameDialogs({
       wrongNoteNoticeButtonRef.current?.focus();
     } else if (wrongNoteNoticeWasOpenRef.current) {
       wrongNoteNoticeWasOpenRef.current = false;
-      document.getElementById("staff-game-wrong-note-statistics-toggle")?.focus();
+      document.getElementById("staff-game-weak-note-statistics-toggle")?.focus();
     }
   }, [isWrongNoteNoticeOpen]);
 
@@ -424,14 +424,14 @@ export function StaffGameDialogs({
                         </section>
                         <section className="staff-game-settings-section staff-game-wrong-note-setting">
                           <div>
-                            <h3>统计错音</h3>
-                            <p>记录本局错误输入并显示详情</p>
+                            <h3>展示薄弱音</h3>
+                            <p>在结算页显示薄弱音次数和详情</p>
                           </div>
                           <ToggleSwitch
-                            aria-label="统计错音"
+                            aria-label="展示薄弱音"
                             checked={settingsDraft.wrongNoteStatisticsEnabled}
                             className="staff-game-settings-toggle"
-                            id="staff-game-wrong-note-statistics-toggle"
+                            id="staff-game-weak-note-statistics-toggle"
                             onCheckedChange={() => onToggleWrongNoteStatistics()}
                           />
                         </section>
@@ -489,7 +489,9 @@ export function StaffGameDialogs({
                               type="button"
                             >
                               <strong>系统编排（推荐）</strong>
-                              <small>重点音适度加权，穿插已解锁音符复习。</small>
+                              <small>
+                                以本关重点音为主，穿插旧音复习；近期薄弱音会适度多出现。
+                              </small>
                             </button>
                           </div>
                         </section>
@@ -525,16 +527,16 @@ export function StaffGameDialogs({
               {dialog === "settings" && isWrongNoteNoticeOpen ? (
                 <div className="staff-game-wrong-note-notice-backdrop">
                   <section
-                    aria-labelledby="staff-game-wrong-note-notice-title"
+                    aria-labelledby="staff-game-weak-note-notice-title"
                     aria-modal="true"
                     className="staff-game-wrong-note-notice"
                     ref={wrongNoteNoticeDialogRef}
                     role="alertdialog"
                     tabIndex={-1}
                   >
-                    <h2 id="staff-game-wrong-note-notice-title">错音统计说明</h2>
+                    <h2 id="staff-game-weak-note-notice-title">薄弱音统计说明</h2>
                     <p>
-                      音符识别会受到识别算法、设备和环境等因素影响，统计数据仅供参考，不代表演奏准确性的绝对判断。
+                      按每个目标音的首次输入统计：答错、超时漏音或本局结束时未作答，都会计入薄弱音。麦克风识别受算法、设备和环境影响，统计仅供练习参考。
                     </p>
                     <button
                       className="staff-game-primary"

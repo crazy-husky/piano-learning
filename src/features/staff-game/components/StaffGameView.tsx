@@ -28,6 +28,7 @@ import { StaffGameErrorFlash, StaffGameStatusOverlays } from "./StaffGameStatusO
 import {
   useStaffGameRoundClock,
   type StaffGameLevelRoundMetrics,
+  type StaffGameRoundNoteOutcome,
 } from "../hooks/useStaffGameRoundClock";
 import { useStaffGameScoring } from "../hooks/useStaffGameScoring";
 import { useStaffGameAudio } from "../hooks/useStaffGameAudio";
@@ -79,6 +80,10 @@ import {
   type StaffGameNotePoolScope,
   type StaffGameNoteSchedulingStrategy,
 } from "../logic/staffGameRules";
+import {
+  readStaffGameWeakNoteWeights,
+  updateStaffGameWeakNoteWeights,
+} from "../logic/staffGameWeakNoteHistory";
 import {
   appendStaffGameMicrophoneDebugEvent,
   resetStaffGameMicrophoneDebug,
@@ -142,6 +147,7 @@ const SOLFEGE_NAMES = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"] as const;
 type GameInputMode = "physical" | "virtual" | "midi";
 type GameDisplayMode = "note" | "solfege" | "number" | "none";
 type StaffGameMode = "levels" | "songs";
+type StaffGameRoundPurpose = "level" | "wrong-note-practice";
 type SongSelectionStep = "list" | "detail" | null;
 
 interface StaffGameAudioSettings {
@@ -691,6 +697,12 @@ export function StaffGameView({
   const [summaryWrongAnswerRecords, setSummaryWrongAnswerRecords] = useState<
     StaffGameWrongAnswerRecord[]
   >([]);
+  const [summaryWrongTargetMidis, setSummaryWrongTargetMidis] = useState<number[]>([]);
+  const [summaryWeakNoteOutcomes, setSummaryWeakNoteOutcomes] = useState<
+    StaffGameRoundNoteOutcome[]
+  >([]);
+  const [summaryIsWrongNotePractice, setSummaryIsWrongNotePractice] = useState(false);
+  const [weakNoteWeights, setWeakNoteWeights] = useState(readStaffGameWeakNoteWeights);
   const [songNotesCompleted, setSongNotesCompleted] = useState(0);
   const [songFirstTryHits, setSongFirstTryHits] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -725,6 +737,10 @@ export function StaffGameView({
   const maxComboRef = useRef(0);
   const errorFlashTimeoutRef = useRef<number | null>(null);
   const wrongAnswerRecordsRef = useRef<StaffGameWrongAnswerRecord[]>([]);
+  const summaryWrongTargetMidisRef = useRef<number[]>([]);
+  const weakNoteWeightsRef = useRef(weakNoteWeights);
+  const wrongNotePracticeWeightsRef = useRef<Map<number, number> | null>(null);
+  const roundPurposeRef = useRef<StaffGameRoundPurpose>("level");
   const roundRecordsAtStartRef = useRef({ score: 0, maxCombo: 0 });
   const gameModeRef = useRef<StaffGameMode>(initialMode);
   const selectedSongIdRef = useRef(selectedSongId);
@@ -918,6 +934,7 @@ export function StaffGameView({
   selectedSongIdRef.current = selectedSongId;
   songProgressRef.current = songProgress;
   settingsRef.current = settings;
+  weakNoteWeightsRef.current = weakNoteWeights;
   notePoolScopeRef.current = settings.notePoolScope;
   noteSchedulingStrategyRef.current = settings.noteSchedulingStrategy;
   midiRef.current = midi;
@@ -1255,6 +1272,22 @@ export function StaffGameView({
     saveStaffGameSongProgress(next);
   }, []);
 
+  const recordRoundNoteOutcomes = useCallback((outcomes: StaffGameRoundNoteOutcome[]): void => {
+    const failedTargetMidis = [
+      ...new Set(
+        outcomes
+          .filter((outcome) => outcome.firstInputCorrect !== true)
+          .map((outcome) => outcome.midi)
+      ),
+    ].sort((first, second) => first - second);
+    summaryWrongTargetMidisRef.current = failedTargetMidis;
+    setSummaryWrongTargetMidis(failedTargetMidis);
+    setSummaryWeakNoteOutcomes(outcomes);
+    const nextWeights = updateStaffGameWeakNoteWeights(outcomes);
+    weakNoteWeightsRef.current = nextWeights;
+    setWeakNoteWeights(nextWeights);
+  }, []);
+
   const playComboFeedback = useCallback(
     (nextCombo: number): void => {
       if (nextCombo === COMBO_EXCELLENT_MILESTONE) {
@@ -1281,6 +1314,7 @@ export function StaffGameView({
     errorFlashTimeoutRef,
     flushScorePresentation,
     gameModeRef,
+    roundPurposeRef,
     levelRef,
     maxComboRef,
     microphoneStop: microphone.stop,
@@ -1320,6 +1354,8 @@ export function StaffGameView({
     setSongNotesCompleted,
     setSummaryAccuracy,
     setSummaryWrongAnswerRecords,
+    setSummaryIsWrongNotePractice,
+    onRoundNoteOutcomes: recordRoundNoteOutcomes,
     setTarget,
     setTargetPopped,
     setTargetWrong,
@@ -1498,6 +1534,8 @@ export function StaffGameView({
     noteBagRef,
     notePoolScopeRef,
     noteSchedulingStrategyRef,
+    weakNoteWeightsRef,
+    wrongNotePracticeWeightsRef,
     noteLabel,
     nextTargetTimeoutRef,
     phase,
@@ -1558,6 +1596,12 @@ export function StaffGameView({
     setSummaryScoreCount(0);
     setSummaryComboCount(0);
     setSummaryWrongAnswerRecords([]);
+    setSummaryWrongTargetMidis([]);
+    summaryWrongTargetMidisRef.current = [];
+    setSummaryWeakNoteOutcomes([]);
+    setSummaryIsWrongNotePractice(false);
+    roundPurposeRef.current = "level";
+    wrongNotePracticeWeightsRef.current = null;
     wrongAnswerRecordsRef.current = [];
     clearComboDisplay();
     setMaxCombo(0);
@@ -1597,108 +1641,120 @@ export function StaffGameView({
     return true;
   }, []);
 
-  const beginRound = useCallback(async (): Promise<boolean> => {
-    if (resourceLoadState !== "ready") return false;
-    if (isStartingRef.current) return false;
-    const attemptId = startAttemptRef.current + 1;
-    startAttemptRef.current = attemptId;
-    const isCancelled = (): boolean => attemptId !== startAttemptRef.current;
-    isStartingRef.current = true;
-    setIsStarting(true);
-    setGameError("");
-    try {
-      const inputModeAtStart = settingsRef.current.inputMode;
-      const microphoneStartPromise =
-        inputModeAtStart === "physical"
-          ? startMicrophone({ includeAccidentals: true })
-          : Promise.resolve(false);
-      const audioUnlockPromise = unlockGameAudio().catch(() => undefined);
-      if (inputModeAtStart === "physical") {
-        let started = false;
-        try {
-          const [microphoneStarted] = await Promise.all([
-            microphoneStartPromise,
-            audioUnlockPromise,
-          ]);
-          started = microphoneStarted;
-        } catch (error) {
-          if (isCancelled()) return false;
-          const reason = error instanceof Error ? `（${error.message}）` : "";
-          setGameError(`无法连接麦克风${reason}。请在浏览器的网站权限中允许麦克风，再重新尝试。`);
-          return false;
-        }
-        if (isCancelled()) {
-          stopMicrophone();
-          return false;
-        }
-        if (!started) {
-          const reason = microphoneError ? `（${microphoneError}）` : "";
-          setGameError(`无法连接麦克风${reason}。请在浏览器的网站权限中允许麦克风，再重新尝试。`);
-          return false;
-        }
-      } else {
-        await audioUnlockPromise;
-        if (isCancelled()) return false;
-        if (inputModeAtStart === "midi") {
-          if (!(await connectMidiForRound(isCancelled))) return false;
-          if (isCancelled()) return false;
-          stopMicrophone();
+  const beginRound = useCallback(
+    async (
+      purpose: StaffGameRoundPurpose = "level",
+      practiceWeights?: Map<number, number>
+    ): Promise<boolean> => {
+      if (resourceLoadState !== "ready") return false;
+      if (isStartingRef.current) return false;
+      const attemptId = startAttemptRef.current + 1;
+      startAttemptRef.current = attemptId;
+      const isCancelled = (): boolean => attemptId !== startAttemptRef.current;
+      isStartingRef.current = true;
+      setIsStarting(true);
+      setGameError("");
+      try {
+        const inputModeAtStart = settingsRef.current.inputMode;
+        const microphoneStartPromise =
+          inputModeAtStart === "physical"
+            ? startMicrophone({ includeAccidentals: true })
+            : Promise.resolve(false);
+        const audioUnlockPromise = unlockGameAudio().catch(() => undefined);
+        if (inputModeAtStart === "physical") {
+          let started = false;
+          try {
+            const [microphoneStarted] = await Promise.all([
+              microphoneStartPromise,
+              audioUnlockPromise,
+            ]);
+            started = microphoneStarted;
+          } catch (error) {
+            if (isCancelled()) return false;
+            const reason = error instanceof Error ? `（${error.message}）` : "";
+            setGameError(`无法连接麦克风${reason}。请在浏览器的网站权限中允许麦克风，再重新尝试。`);
+            return false;
+          }
+          if (isCancelled()) {
+            stopMicrophone();
+            return false;
+          }
+          if (!started) {
+            const reason = microphoneError ? `（${microphoneError}）` : "";
+            setGameError(`无法连接麦克风${reason}。请在浏览器的网站权限中允许麦克风，再重新尝试。`);
+            return false;
+          }
         } else {
-          stopMicrophone();
+          await audioUnlockPromise;
+          if (isCancelled()) return false;
+          if (inputModeAtStart === "midi") {
+            if (!(await connectMidiForRound(isCancelled))) return false;
+            if (isCancelled()) return false;
+            stopMicrophone();
+          } else {
+            stopMicrophone();
+          }
+        }
+        if (isCancelled()) return false;
+        const records = progressRef.current;
+        const levelIndex = levelRef.current - 1;
+        if (gameModeRef.current === "songs") {
+          const record = songProgressRef.current[selectedSongIdRef.current];
+          roundRecordsAtStartRef.current = {
+            score: record?.bestScore ?? 0,
+            maxCombo: record?.maxCombo ?? 0,
+          };
+        } else {
+          roundRecordsAtStartRef.current = {
+            score: records.bestScores[levelIndex] ?? 0,
+            maxCombo: records.maxCombos[levelIndex] ?? 0,
+          };
+        }
+        resetRoundState();
+        roundPurposeRef.current = purpose;
+        wrongNotePracticeWeightsRef.current =
+          purpose === "wrong-note-practice" ? (practiceWeights ?? new Map()) : null;
+        startRunSegment();
+        setFeedback(
+          purpose === "wrong-note-practice"
+            ? "薄弱音优先练习，弹对后继续"
+            : gameModeRef.current === "songs"
+              ? "按旋律顺序弹奏；答错可重试，漏音后会继续"
+              : settingsRef.current.inputMode === "virtual"
+                ? "点击琴键，弹出对应音符"
+                : settingsRef.current.inputMode === "midi"
+                  ? "弹奏 MIDI 键盘，弹出对应音符"
+                  : "聆听麦克风，弹出对应音符"
+        );
+        phaseRef.current = "running";
+        setPhase("running");
+        spawnTarget(0);
+        return true;
+      } catch (error) {
+        if (isCancelled()) return false;
+        const reason = error instanceof Error ? `（${error.message}）` : "";
+        setGameError(`游戏准备失败${reason}。请检查设备后重试。`);
+        return false;
+      } finally {
+        if (!isCancelled()) {
+          isStartingRef.current = false;
+          setIsStarting(false);
         }
       }
-      if (isCancelled()) return false;
-      const records = progressRef.current;
-      const levelIndex = levelRef.current - 1;
-      if (gameModeRef.current === "songs") {
-        const record = songProgressRef.current[selectedSongIdRef.current];
-        roundRecordsAtStartRef.current = {
-          score: record?.bestScore ?? 0,
-          maxCombo: record?.maxCombo ?? 0,
-        };
-      } else {
-        roundRecordsAtStartRef.current = {
-          score: records.bestScores[levelIndex] ?? 0,
-          maxCombo: records.maxCombos[levelIndex] ?? 0,
-        };
-      }
-      resetRoundState();
-      startRunSegment();
-      setFeedback(
-        gameModeRef.current === "songs"
-          ? "按旋律顺序弹奏；答错可重试，漏音后会继续"
-          : settingsRef.current.inputMode === "virtual"
-            ? "点击琴键，弹出对应音符"
-            : settingsRef.current.inputMode === "midi"
-              ? "弹奏 MIDI 键盘，弹出对应音符"
-              : "聆听麦克风，弹出对应音符"
-      );
-      phaseRef.current = "running";
-      setPhase("running");
-      spawnTarget(0);
-      return true;
-    } catch (error) {
-      if (isCancelled()) return false;
-      const reason = error instanceof Error ? `（${error.message}）` : "";
-      setGameError(`游戏准备失败${reason}。请检查设备后重试。`);
-      return false;
-    } finally {
-      if (!isCancelled()) {
-        isStartingRef.current = false;
-        setIsStarting(false);
-      }
-    }
-  }, [
-    connectMidiForRound,
-    microphoneError,
-    resetRoundState,
-    resourceLoadState,
-    spawnTarget,
-    startMicrophone,
-    startRunSegment,
-    stopMicrophone,
-    unlockGameAudio,
-  ]);
+    },
+    [
+      connectMidiForRound,
+      microphoneError,
+      resetRoundState,
+      resourceLoadState,
+      roundPurposeRef,
+      spawnTarget,
+      startMicrophone,
+      startRunSegment,
+      stopMicrophone,
+      unlockGameAudio,
+    ]
+  );
 
   const cancelPendingStart = useCallback((): void => {
     if (!isStartingRef.current) return;
@@ -1998,8 +2054,39 @@ export function StaffGameView({
     onExit();
   }, [cancelPendingStart, onExit, onSessionActiveChange, stopMicrophone]);
 
+  const exitWrongNotePractice = useCallback((): void => {
+    if (roundPurposeRef.current !== "wrong-note-practice") return;
+    cancelPendingStart();
+    stopMicrophone();
+    onSessionActiveChange(false);
+    resetRoundState();
+    gameModeRef.current = "levels";
+    setGameMode("levels");
+    setSongSelectionStep(null);
+    setDialog(null);
+    phaseRef.current = "ready";
+    setPhase("ready");
+  }, [cancelPendingStart, onSessionActiveChange, resetRoundState, stopMicrophone]);
+
   const retryLevel = useCallback((): void => {
-    void beginRound();
+    if (roundPurposeRef.current === "wrong-note-practice") {
+      void beginRound(
+        "wrong-note-practice",
+        new Map(wrongNotePracticeWeightsRef.current ?? weakNoteWeightsRef.current)
+      );
+    } else {
+      void beginRound();
+    }
+  }, [beginRound]);
+
+  const startWrongNotePractice = useCallback((): void => {
+    const targetMidis = summaryWrongTargetMidisRef.current;
+    if (targetMidis.length === 0) return;
+    const practiceWeights = new Map(weakNoteWeightsRef.current);
+    for (const midi of targetMidis) {
+      practiceWeights.set(midi, Math.min(10, (practiceWeights.get(midi) ?? 0) + 4));
+    }
+    void beginRound("wrong-note-practice", practiceWeights);
   }, [beginRound]);
 
   const advanceLevel = useCallback(
@@ -2295,7 +2382,8 @@ export function StaffGameView({
     plays: 0,
   };
   const isSongMode = gameMode === "songs";
-  const shouldCelebrateSummary = score > 0 && (isSongMode || earnedStars > 0);
+  const shouldCelebrateSummary =
+    score > 0 && (isSongMode || earnedStars > 0 || summaryIsWrongNotePractice);
   const songProgressPercent =
     selectedSong.noteMidis.length > 0
       ? Math.round((songNotesCompleted * 100) / selectedSong.noteMidis.length)
@@ -2751,7 +2839,14 @@ export function StaffGameView({
           {phase === "summary" && typeof document !== "undefined" ? (
             <StaffGameSummaryDialog
               accuracy={summaryAccuracy}
-              ariaLabel={isSongMode ? `${selectedSong.title} 演奏结算` : `第 ${level} 关结算`}
+              ariaLabel={
+                summaryIsWrongNotePractice
+                  ? "薄弱音加练结算"
+                  : isSongMode
+                    ? `${selectedSong.title} 演奏结算`
+                    : `第 ${level} 关结算`
+              }
+              canPracticeWrongNotes={!isSongMode && summaryWrongTargetMidis.length > 0}
               comboCount={summaryComboCount}
               earnedStars={earnedStars}
               fireworks={
@@ -2762,11 +2857,14 @@ export function StaffGameView({
               gameArtStyle={gameArtStyle}
               gameEffectsEnabled={settings.gameEffectsEnabled}
               isFinalLevel={level >= GAME_LEVEL_COUNT}
+              isWrongNotePractice={summaryIsWrongNotePractice}
               isNewComboRecord={
+                !summaryIsWrongNotePractice &&
                 roundRecordsAtStartRef.current.maxCombo > 0 &&
                 maxCombo > roundRecordsAtStartRef.current.maxCombo
               }
               isNewScoreRecord={
+                !summaryIsWrongNotePractice &&
                 roundRecordsAtStartRef.current.score > 0 &&
                 score > roundRecordsAtStartRef.current.score
               }
@@ -2783,11 +2881,19 @@ export function StaffGameView({
               }
               onAdvanceLevel={() => advanceLevel(level + 1)}
               onPlayNextSong={playNextSong}
+              onPracticeWrongNotes={startWrongNotePractice}
               onReturnToSongList={returnToSongList}
+              onExitWrongNotePractice={exitWrongNotePractice}
               onRetry={retryLevel}
               revealedStars={revealedSummaryStars}
               score={summaryScoreCount}
+              generatedNoteCount={
+                isSongMode
+                  ? selectedSong.noteMidis.length
+                  : roundMetricsRef.current.generatedBubbleCount
+              }
               wrongAnswerRecords={summaryWrongAnswerRecords}
+              weakNoteOutcomes={summaryWeakNoteOutcomes}
               wrongNoteStatisticsEnabled={settings.wrongNoteStatisticsEnabled}
               songTitle={selectedSong.title}
               starImage={starParticleArt}
@@ -3050,6 +3156,7 @@ export function StaffGameView({
         gameEffectsEnabled={settings.gameEffectsEnabled}
         gameError={gameError}
         isMidiInput={settings.inputMode === "midi"}
+        isWrongNotePractice={roundPurposeRef.current === "wrong-note-practice"}
         isStarting={isStarting}
         onDisableEffects={() => {
           const nextSettings = { ...settingsRef.current, gameEffectsEnabled: false };
@@ -3065,6 +3172,7 @@ export function StaffGameView({
           void resumeRound();
         }}
         onResume={() => void resumeRound()}
+        onExitWrongNotePractice={exitWrongNotePractice}
         onRetryInput={() => void (phase === "paused" ? resumeRound() : beginRound())}
         onRetryLevel={retryLevel}
         showLowFpsPrompt={showLowFpsPrompt}

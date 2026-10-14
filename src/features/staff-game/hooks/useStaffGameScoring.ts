@@ -22,7 +22,11 @@ import {
   type StaffGameNotePoolScope,
 } from "../logic/staffGameRules";
 import { appendStaffGameMicrophoneDebugEvent } from "../logic/staffGameMicrophoneDebug";
-import type { StaffGameLevelRoundMetrics, StaffGameTarget } from "./useStaffGameRoundClock";
+import type {
+  StaffGameLevelRoundMetrics,
+  StaffGameRoundNoteOutcome,
+  StaffGameTarget,
+} from "./useStaffGameRoundClock";
 import type { StaffGameSoundName } from "./useStaffGameAudio";
 
 export interface StaffGameComboIndicator {
@@ -43,6 +47,7 @@ export interface StaffGameRushScoreFlight {
 }
 
 export interface StaffGameWrongAnswerRecord {
+  token: number;
   expectedNote: string;
   recognizedNote: string;
 }
@@ -55,7 +60,6 @@ interface StaffGameScoringSettings {
   inputMode: "physical" | "virtual" | "midi";
   difficulty: GameDifficulty;
   notePoolScope: StaffGameNotePoolScope;
-  wrongNoteStatisticsEnabled: boolean;
   audioByMode: Record<"levels" | "songs", StaffGameModeAudioSettings>;
 }
 
@@ -76,6 +80,7 @@ interface StaffGameScoringOptions {
   roundMetricsRef: MutableRefObject<StaffGameLevelRoundMetrics>;
   settingsRef: MutableRefObject<StaffGameScoringSettings>;
   gameModeRef: MutableRefObject<StaffGameMode>;
+  roundPurposeRef: MutableRefObject<"level" | "wrong-note-practice">;
   selectedSongIdRef: MutableRefObject<string>;
   songTargetIndexRef: MutableRefObject<number>;
   songFirstTryHitsRef: MutableRefObject<number>;
@@ -118,6 +123,8 @@ interface StaffGameScoringOptions {
   setEarnedStars: Dispatch<SetStateAction<number>>;
   setSummaryAccuracy: Dispatch<SetStateAction<number>>;
   setSummaryWrongAnswerRecords: Dispatch<SetStateAction<StaffGameWrongAnswerRecord[]>>;
+  setSummaryIsWrongNotePractice: Dispatch<SetStateAction<boolean>>;
+  onRoundNoteOutcomes: (outcomes: StaffGameRoundNoteOutcome[]) => void;
   setFeedback: Dispatch<SetStateAction<string>>;
   setSongNotesCompleted: Dispatch<SetStateAction<number>>;
   setSongFirstTryHits: Dispatch<SetStateAction<number>>;
@@ -144,6 +151,7 @@ export function useStaffGameScoring({
   roundMetricsRef,
   settingsRef,
   gameModeRef,
+  roundPurposeRef,
   selectedSongIdRef,
   songTargetIndexRef,
   songFirstTryHitsRef,
@@ -186,6 +194,8 @@ export function useStaffGameScoring({
   setEarnedStars,
   setSummaryAccuracy,
   setSummaryWrongAnswerRecords,
+  setSummaryIsWrongNotePractice,
+  onRoundNoteOutcomes,
   setFeedback,
   setSongNotesCompleted,
   setSongFirstTryHits,
@@ -211,19 +221,22 @@ export function useStaffGameScoring({
     errorFlashTimeoutRef.current = null;
     setErrorFlashActive(false);
     const isSongMode = gameModeRef.current === "songs";
+    const isWrongNotePractice = !isSongMode && roundPurposeRef.current === "wrong-note-practice";
     const activeSong = STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current);
     const accuracy = activeSong
       ? (songFirstTryHitsRef.current * 100) / activeSong.noteMidis.length
       : 0;
-    const finalStars = isSongMode
-      ? activeSong
-        ? starsForSongAccuracy(songFirstTryHitsRef.current, activeSong.noteMidis.length)
-        : 0
-      : starsForScore(
-          scoreRef.current,
-          gameLevelForNotePoolScope(levelRef.current, settingsRef.current.notePoolScope),
-          settingsRef.current.difficulty
-        );
+    const finalStars = isWrongNotePractice
+      ? 0
+      : isSongMode
+        ? activeSong
+          ? starsForSongAccuracy(songFirstTryHitsRef.current, activeSong.noteMidis.length)
+          : 0
+        : starsForScore(
+            scoreRef.current,
+            gameLevelForNotePoolScope(levelRef.current, settingsRef.current.notePoolScope),
+            settingsRef.current.difficulty
+          );
     if (
       finalStars > 0 &&
       settingsRef.current.audioByMode[gameModeRef.current].soundEffectsEnabled
@@ -233,6 +246,8 @@ export function useStaffGameScoring({
     setEarnedStars(finalStars);
     setSummaryAccuracy(accuracy);
     setSummaryWrongAnswerRecords([...wrongAnswerRecordsRef.current]);
+    setSummaryIsWrongNotePractice(isWrongNotePractice);
+    onRoundNoteOutcomes([...roundMetricsRef.current.firstInputByToken.values()]);
     resetComboDisplay();
     targetRef.current = null;
     setTarget(null);
@@ -245,7 +260,7 @@ export function useStaffGameScoring({
     setPhase("summary");
     setFeedback(isSongMode ? "歌曲演奏完成" : "本局结束 · 可重试或进入下一关");
     if (isSongMode) persistSongResult(finalStars, accuracy);
-    else persistRoundResult(finalStars);
+    else if (!isWrongNotePractice) persistRoundResult(finalStars);
     microphoneStop();
     onSessionActiveChange(false);
   }, [
@@ -253,11 +268,13 @@ export function useStaffGameScoring({
     errorFlashTimeoutRef,
     flushScorePresentation,
     gameModeRef,
+    roundMetricsRef,
     levelRef,
     microphoneStop,
     nextTargetTimeoutRef,
     onSessionActiveChange,
     phaseRef,
+    onRoundNoteOutcomes,
     persistRoundResult,
     persistSongResult,
     playGameSound,
@@ -271,6 +288,7 @@ export function useStaffGameScoring({
     setFeedback,
     setPhase,
     setSummaryAccuracy,
+    setSummaryIsWrongNotePractice,
     setSummaryWrongAnswerRecords,
     setTarget,
     settingsRef,
@@ -278,6 +296,7 @@ export function useStaffGameScoring({
     targetRef,
     waitingForNextTargetRef,
     wrongAnswerRecordsRef,
+    roundPurposeRef,
   ]);
 
   const handleRecognizedAnswer = useCallback(
@@ -315,12 +334,10 @@ export function useStaffGameScoring({
         });
       }
       if (isCorrect && targetPoppedRef.current) return;
-      if (gameModeRef.current === "levels") {
-        const firstInput = roundMetricsRef.current.firstInputByToken.get(currentTarget.token);
-        if (firstInput && firstInput.firstInputCorrect === null) {
-          firstInput.firstInputCorrect = isCorrect;
-          if (isCorrect) roundMetricsRef.current.firstTryCorrectCount += 1;
-        }
+      const firstInput = roundMetricsRef.current.firstInputByToken.get(currentTarget.token);
+      if (firstInput && firstInput.firstInputCorrect === null) {
+        firstInput.firstInputCorrect = isCorrect;
+        if (isCorrect) roundMetricsRef.current.firstTryCorrectCount += 1;
       }
       if (isCorrect) {
         const isSongMode = gameModeRef.current === "songs";
@@ -459,8 +476,9 @@ export function useStaffGameScoring({
 
       if (targetWrong) return;
       const heardPitch = PITCH_NAMES[((midi % 12) + 12) % 12];
-      if (settingsRef.current.wrongNoteStatisticsEnabled) {
+      if (!wrongAnswerRecordsRef.current.some((record) => record.token === currentTarget.token)) {
         wrongAnswerRecordsRef.current.push({
+          token: currentTarget.token,
           expectedNote: noteLabel(currentTarget),
           recognizedNote: `${heardPitch}${Math.floor(midi / 12) - 1}`,
         });

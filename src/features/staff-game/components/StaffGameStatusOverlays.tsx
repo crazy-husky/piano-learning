@@ -9,6 +9,7 @@ interface StaffGameStatusOverlaysProps {
   isStarting: boolean;
   showLowFpsPrompt: boolean;
   showPauseDialog: boolean;
+  isWrongNotePractice: boolean;
   gameEffectsEnabled: boolean;
   touchGameLayout: boolean;
   onDismissInputError: () => void;
@@ -17,6 +18,7 @@ interface StaffGameStatusOverlaysProps {
   onDisableEffects: () => void;
   onResume: () => void;
   onRetryLevel: () => void;
+  onExitWrongNotePractice: () => void;
 }
 
 export function StaffGameErrorFlash({ active }: { active: boolean }) {
@@ -30,6 +32,7 @@ export function StaffGameStatusOverlays({
   isStarting,
   showLowFpsPrompt,
   showPauseDialog,
+  isWrongNotePractice,
   gameEffectsEnabled,
   touchGameLayout,
   onDismissInputError,
@@ -38,6 +41,7 @@ export function StaffGameStatusOverlays({
   onDisableEffects,
   onResume,
   onRetryLevel,
+  onExitWrongNotePractice,
 }: StaffGameStatusOverlaysProps) {
   return (
     <>
@@ -154,6 +158,15 @@ export function StaffGameStatusOverlays({
                     <RotateCcw aria-hidden="true" size={20} />
                     重新开始
                   </button>
+                  {isWrongNotePractice ? (
+                    <button
+                      className="staff-game-secondary"
+                      onClick={onExitWrongNotePractice}
+                      type="button"
+                    >
+                      退出薄弱音模式
+                    </button>
+                  ) : null}
                 </div>
               </section>
             </div>,

@@ -18,6 +18,8 @@ import {
 } from "../logic/staffGameRules";
 import type { StaffGameSoundName } from "./useStaffGameAudio";
 
+const MIN_LEVEL_TARGET_RESPONSE_WINDOW_MS = 2_000;
+
 export interface StaffGameTarget {
   midi: number;
   name: PianoKeyName;
@@ -27,13 +29,21 @@ export interface StaffGameTarget {
   spawnAt: number;
 }
 
+export interface StaffGameRoundNoteOutcome {
+  token: number;
+  midi: number;
+  note: string;
+  firstInputCorrect: boolean | null;
+  missed: boolean;
+}
+
 export interface StaffGameLevelRoundMetrics {
   generatedBubbleCount: number;
   firstTryCorrectCount: number;
   correctBubbleCount: number;
   responseTotalMs: number;
   responseSampleCount: number;
-  firstInputByToken: Map<number, { firstInputCorrect: boolean | null }>;
+  firstInputByToken: Map<number, StaffGameRoundNoteOutcome>;
 }
 
 type StaffGameMode = "levels" | "songs";
@@ -54,6 +64,8 @@ interface StaffGameRoundClockOptions {
   noteBagRef: MutableRefObject<StaffGamePitch[]>;
   notePoolScopeRef: MutableRefObject<StaffGameNotePoolScope>;
   noteSchedulingStrategyRef: MutableRefObject<StaffGameNoteSchedulingStrategy>;
+  weakNoteWeightsRef: MutableRefObject<Map<number, number>>;
+  wrongNotePracticeWeightsRef: MutableRefObject<Map<number, number> | null>;
   recentNoteMidisRef: MutableRefObject<number[]>;
   targetTokenRef: MutableRefObject<number>;
   roundMetricsRef: MutableRefObject<StaffGameLevelRoundMetrics>;
@@ -91,6 +103,8 @@ export function useStaffGameRoundClock({
   noteBagRef,
   notePoolScopeRef,
   noteSchedulingStrategyRef,
+  weakNoteWeightsRef,
+  wrongNotePracticeWeightsRef,
   recentNoteMidisRef,
   targetTokenRef,
   roundMetricsRef,
@@ -116,6 +130,13 @@ export function useStaffGameRoundClock({
   const spawnTarget = useCallback(
     (atGameMs: number): void => {
       if (phaseRef.current !== "running") return;
+      // Do not introduce a new target when the timer cannot leave a fair response window.
+      if (
+        gameModeRef.current === "levels" &&
+        gameDurationMs - atGameMs < MIN_LEVEL_TARGET_RESPONSE_WINDOW_MS
+      ) {
+        return;
+      }
       const drawnNote =
         gameModeRef.current === "songs"
           ? (() => {
@@ -128,7 +149,9 @@ export function useStaffGameRoundClock({
               noteBagRef.current,
               recentNoteMidisRef.current,
               notePoolScopeRef.current,
-              noteSchedulingStrategyRef.current
+              noteSchedulingStrategyRef.current,
+              weakNoteWeightsRef.current,
+              wrongNotePracticeWeightsRef.current ?? undefined
             );
       if (!drawnNote) return;
       targetTokenRef.current += 1;
@@ -138,11 +161,15 @@ export function useStaffGameRoundClock({
         centerX: randomBubbleCenterX(playfieldRef.current),
         spawnAt: atGameMs,
       };
+      roundMetricsRef.current.firstInputByToken.set(next.token, {
+        token: next.token,
+        midi: next.midi,
+        note: noteLabel(next),
+        firstInputCorrect: null,
+        missed: false,
+      });
       if (gameModeRef.current === "levels") {
         roundMetricsRef.current.generatedBubbleCount += 1;
-        roundMetricsRef.current.firstInputByToken.set(next.token, {
-          firstInputCorrect: null,
-        });
         recentNoteMidisRef.current = [...recentNoteMidisRef.current, next.midi].slice(-3);
       }
       targetRef.current = next;
@@ -152,6 +179,7 @@ export function useStaffGameRoundClock({
       setTargetWrong(false);
     },
     [
+      gameDurationMs,
       gameModeRef,
       levelRef,
       noteBagRef,
@@ -159,6 +187,9 @@ export function useStaffGameRoundClock({
       playfieldRef,
       notePoolScopeRef,
       noteSchedulingStrategyRef,
+      noteLabel,
+      weakNoteWeightsRef,
+      wrongNotePracticeWeightsRef,
       recentNoteMidisRef,
       roundMetricsRef,
       selectedSongIdRef,
@@ -196,6 +227,10 @@ export function useStaffGameRoundClock({
       ) {
         const missedTarget = targetRef.current;
         targetRef.current = null;
+        if (missedTarget) {
+          const outcome = roundMetricsRef.current.firstInputByToken.get(missedTarget.token);
+          if (outcome) outcome.missed = true;
+        }
         setTarget(null);
         if (missedTarget) triggerMascotReaction("sad");
         playGameSound(inputMode === "physical" ? "noteMissedUnpitched" : "noteMissed");

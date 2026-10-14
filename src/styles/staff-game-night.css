@@ -447,13 +447,81 @@
   color: var(--staff-game-night-gold);
 }
 
+:root[data-app-theme="dark"]
+  .staff-game-result-stats
+  > div.is-score
+  .staff-game-result-metric-value {
+  color: var(--staff-game-night-gold);
+}
+
 :root[data-app-theme="dark"] .staff-game-result-stats > div.is-wrong-count strong,
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-error {
   color: var(--staff-game-night-coral) !important;
 }
 
+:root[data-app-theme="dark"]
+  .staff-game-result-stats
+  > div.is-wrong-count
+  .staff-game-result-metric-value {
+  color: var(--staff-game-night-coral);
+}
+
 :root[data-app-theme="dark"] .staff-game-summary-actions .staff-game-summary-list-button {
   border-color: #76968d;
+  background: #304a4b;
+  color: var(--staff-game-night-text);
+}
+
+:root[data-app-theme="dark"]
+  .staff-game-summary-backdrop
+  .staff-game-summary-actions
+  .staff-game-wrong-note-practice-button {
+  border-color: #61d39c;
+  background: linear-gradient(180deg, #77dfb0, #3fb982) !important;
+  background-image: linear-gradient(180deg, #77dfb0, #3fb982) !important;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.62),
+    0 3px 0 #267b58;
+  color: #12392c;
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-details {
+  border-color: #64877f;
+  background: linear-gradient(160deg, #2e494b, #20383c);
+  color: var(--staff-game-night-text);
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-details h2,
+:root[data-app-theme="dark"] .staff-game-wrong-answer-conclusion {
+  color: #a9e4d2;
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-details-title-note {
+  color: var(--staff-game-night-muted);
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-conclusion strong {
+  color: var(--staff-game-night-coral);
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-table-wrap {
+  border-color: rgba(137, 181, 167, 0.32);
+  background: rgba(24, 43, 45, 0.9);
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-table th {
+  border-color: rgba(137, 181, 167, 0.22);
+  background: rgba(65, 99, 95, 0.72);
+  color: #c3ebda;
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-table td {
+  border-color: rgba(137, 181, 167, 0.2);
+  color: var(--staff-game-night-text);
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-details-close {
+  border-color: rgba(137, 181, 167, 0.42);
   background: #304a4b;
   color: var(--staff-game-night-text);
 }

@@ -1,7 +1,8 @@
-import { CircleHelp, RotateCcw, SkipForward, X } from "lucide-react";
+import { CircleHelp, RotateCcw, SkipForward, Sparkles, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { StaffGameWrongAnswerRecord } from "../hooks/useStaffGameScoring";
+import type { StaffGameRoundNoteOutcome } from "../hooks/useStaffGameRoundClock";
 
 export interface StaffGameSummaryDialogProps {
   ariaLabel: string;
@@ -18,8 +19,12 @@ export interface StaffGameSummaryDialogProps {
   levelBannerImage: string;
   comboCount: number;
   score: number;
+  generatedNoteCount: number;
   wrongAnswerRecords: StaffGameWrongAnswerRecord[];
+  weakNoteOutcomes: StaffGameRoundNoteOutcome[];
   wrongNoteStatisticsEnabled: boolean;
+  isWrongNotePractice: boolean;
+  canPracticeWrongNotes: boolean;
   accuracy: number;
   isNewComboRecord: boolean;
   isNewScoreRecord: boolean;
@@ -29,6 +34,8 @@ export interface StaffGameSummaryDialogProps {
   onPlayNextSong: () => void;
   onReturnToSongList: () => void;
   onAdvanceLevel: () => void;
+  onExitWrongNotePractice: () => void;
+  onPracticeWrongNotes: () => void;
 }
 
 export function StaffGameSummaryDialog({
@@ -46,8 +53,12 @@ export function StaffGameSummaryDialog({
   levelBannerImage,
   comboCount,
   score,
+  generatedNoteCount,
   wrongAnswerRecords,
+  weakNoteOutcomes,
   wrongNoteStatisticsEnabled,
+  isWrongNotePractice,
+  canPracticeWrongNotes,
   accuracy,
   isNewComboRecord,
   isNewScoreRecord,
@@ -57,25 +68,69 @@ export function StaffGameSummaryDialog({
   onPlayNextSong,
   onReturnToSongList,
   onAdvanceLevel,
+  onExitWrongNotePractice,
+  onPracticeWrongNotes,
 }: StaffGameSummaryDialogProps) {
   const [showWrongAnswerDetails, setShowWrongAnswerDetails] = useState(false);
   const detailsCloseButtonRef = useRef<HTMLButtonElement>(null);
   const detailsDialogRef = useRef<HTMLElement>(null);
   const detailsTriggerRef = useRef<HTMLButtonElement>(null);
   const hasOpenedDetailsRef = useRef(false);
-  const wrongAnswerGroups = Array.from(
-    wrongAnswerRecords
-      .reduce((groups, record) => {
-        const key = `${record.expectedNote}\u0000${record.recognizedNote}`;
-        const current = groups.get(key);
-        groups.set(
-          key,
-          current ? { ...current, count: current.count + 1 } : { ...record, count: 1 }
-        );
-        return groups;
-      }, new Map<string, StaffGameWrongAnswerRecord & { count: number }>())
-      .values()
-  );
+  const weakNoteCount = weakNoteOutcomes.filter(
+    (outcome) => outcome.firstInputCorrect !== true
+  ).length;
+  const firstTryFailurePercentage =
+    generatedNoteCount > 0 ? Math.round((weakNoteCount / generatedNoteCount) * 100) : 0;
+  const wrongResultsByToken = wrongAnswerRecords.reduce((results, record) => {
+    if (!results.has(record.token)) results.set(record.token, record.recognizedNote);
+    return results;
+  }, new Map<number, string>());
+  const weakNotesByPitch = new Map<
+    string,
+    {
+      inputResultCounts: Map<string, number>;
+      reasons: Set<string>;
+      targetTokens: Set<number>;
+    }
+  >();
+
+  weakNoteOutcomes.forEach((outcome) => {
+    if (outcome.firstInputCorrect === true) return;
+    const noteSummary = weakNotesByPitch.get(outcome.note) ?? {
+      inputResultCounts: new Map<string, number>(),
+      reasons: new Set<string>(),
+      targetTokens: new Set<number>(),
+    };
+    noteSummary.targetTokens.add(outcome.token);
+    if (outcome.firstInputCorrect === false) noteSummary.reasons.add("答错");
+    if (outcome.missed) noteSummary.reasons.add("超时漏音");
+    if (outcome.firstInputCorrect === null && !outcome.missed) {
+      noteSummary.reasons.add("结束时未作答");
+    }
+    const inputResult =
+      wrongResultsByToken.get(outcome.token) ??
+      (outcome.firstInputCorrect === null ? "未输入" : undefined);
+    if (inputResult) {
+      noteSummary.inputResultCounts.set(
+        inputResult,
+        (noteSummary.inputResultCounts.get(inputResult) ?? 0) + 1
+      );
+    }
+    weakNotesByPitch.set(outcome.note, noteSummary);
+  });
+
+  const weakNoteDetailsRows = Array.from(weakNotesByPitch, ([note, summary]) => {
+    const inputResults = Array.from(summary.inputResultCounts)
+      .sort((first, second) => second[1] - first[1])
+      .map(([result, count]) => (count > 1 ? `${result} ×${count}` : result));
+    return {
+      key: note,
+      expectedNote: note,
+      inputResults,
+      kind: Array.from(summary.reasons).join("、") || "—",
+      count: summary.targetTokens.size,
+    };
+  });
 
   useEffect(() => {
     if (showWrongAnswerDetails) {
@@ -152,29 +207,33 @@ export function StaffGameSummaryDialog({
         role="dialog"
         style={gameArtStyle}
       >
-        <div
-          aria-label={`${revealedStars} 颗星依次出现，获得 ${earnedStars} 颗星`}
-          className={`staff-game-summary-stars has-star-halo${earnedStars === 0 ? " is-white-star-halo" : ""}${gameEffectsEnabled ? " is-animated" : ""}`}
-          role="img"
-        >
-          {[1, 2, 3].map((star) => (
-            <img
-              alt=""
-              className={`staff-game-summary-star${earnedStars >= star ? " earned" : ""}${revealedStars >= star ? " is-revealed" : ""}`}
-              key={star}
-              src={starImage}
-            />
-          ))}
-        </div>
+        {!isWrongNotePractice ? (
+          <div
+            aria-label={`${revealedStars} 颗星依次出现，获得 ${earnedStars} 颗星`}
+            className={`staff-game-summary-stars has-star-halo${earnedStars === 0 ? " is-white-star-halo" : ""}${gameEffectsEnabled ? " is-animated" : ""}`}
+            role="img"
+          >
+            {[1, 2, 3].map((star) => (
+              <img
+                alt=""
+                className={`staff-game-summary-star${earnedStars >= star ? " earned" : ""}${revealedStars >= star ? " is-revealed" : ""}`}
+                key={star}
+                src={starImage}
+              />
+            ))}
+          </div>
+        ) : null}
         <section className="staff-game-card staff-game-summary-card">
           <div
-            aria-label={isSongMode ? songTitle : `第 ${level} 关`}
+            aria-label={
+              isWrongNotePractice ? "薄弱音加练" : isSongMode ? songTitle : `第 ${level} 关`
+            }
             className="staff-game-summary-level-badge"
             role="img"
           >
             <img alt="" aria-hidden="true" draggable="false" src={levelBannerImage} />
             <strong className={isSongMode ? "is-song-title" : undefined}>
-              {isSongMode ? songTitle : `LEVEL ${level}`}
+              {isWrongNotePractice ? "薄弱音加练" : isSongMode ? songTitle : `LEVEL ${level}`}
             </strong>
           </div>
           <div className="staff-game-summary-content">
@@ -182,51 +241,70 @@ export function StaffGameSummaryDialog({
               {fireworks}
               {mascot}
             </div>
-            {isSongMode || earnedStars > 0 ? (
-              <h2>{isSongMode ? "演奏完成！" : "闯关成功！"}</h2>
+            {isWrongNotePractice || isSongMode || earnedStars > 0 ? (
+              <h2>{isWrongNotePractice ? "加练完成" : isSongMode ? "演奏完成！" : "闯关成功！"}</h2>
             ) : null}
             <div className="staff-game-result-stats">
               {wrongNoteStatisticsEnabled ? (
                 <div className="is-wrong-count">
-                  <span>错音</span>
+                  <span>薄弱音</span>
                   <strong>
-                    <span>{wrongAnswerRecords.length} 次</span>
-                    <button
-                      aria-label="查看错音统计详情"
-                      className="staff-game-wrong-answer-details-trigger"
-                      onClick={() => setShowWrongAnswerDetails(true)}
-                      ref={detailsTriggerRef}
-                      type="button"
-                    >
-                      <CircleHelp aria-hidden="true" size={16} />
-                    </button>
+                    <span className="staff-game-result-metric-value">{weakNoteCount} 次</span>
+                    <span className="staff-game-result-metric-accessory">
+                      <button
+                        aria-label="查看薄弱音统计详情"
+                        className="staff-game-wrong-answer-details-trigger"
+                        onClick={() => setShowWrongAnswerDetails(true)}
+                        ref={detailsTriggerRef}
+                        type="button"
+                      >
+                        <CircleHelp aria-hidden="true" size={16} />
+                      </button>
+                    </span>
                   </strong>
                 </div>
               ) : null}
               <div>
                 <span>最大连击数</span>
                 <strong>
-                  <span className="staff-game-result-value">{comboCount} 次</span>
-                  {isNewComboRecord ? <em>新纪录</em> : null}
+                  <span className="staff-game-result-metric-value">{comboCount} 次</span>
+                  <span className="staff-game-result-metric-accessory">
+                    {isNewComboRecord ? <em>新纪录</em> : null}
+                  </span>
                 </strong>
               </div>
               <div className="is-score">
                 <span>获得的分数</span>
                 <strong>
-                  <span className="staff-game-score-result staff-game-result-value">
-                    {Math.round(score)} 分
+                  <span className="staff-game-result-metric-value">{Math.round(score)} 分</span>
+                  <span className="staff-game-result-metric-accessory">
+                    {isNewScoreRecord ? <em>新纪录</em> : null}
                   </span>
-                  {isNewScoreRecord ? <em>新纪录</em> : null}
                 </strong>
               </div>
               {isSongMode ? (
                 <div>
                   <span>首次准确率</span>
-                  <strong>{Math.round(accuracy)}%</strong>
+                  <strong>
+                    <span className="staff-game-result-metric-value">{Math.round(accuracy)}%</span>
+                    <span className="staff-game-result-metric-accessory" />
+                  </strong>
                 </div>
               ) : null}
             </div>
-            <div className="staff-game-summary-actions">
+            <div
+              className={`staff-game-summary-actions${!isSongMode && canPracticeWrongNotes ? " has-wrong-note-practice" : ""}`}
+            >
+              {!isSongMode && canPracticeWrongNotes ? (
+                <button
+                  className="staff-game-wrong-note-practice-button"
+                  onClick={onPracticeWrongNotes}
+                  type="button"
+                >
+                  <Sparkles aria-hidden="true" size={15} />
+                  薄弱音加练
+                </button>
+              ) : null}
               <button className="staff-game-primary" onClick={onRetry} type="button">
                 <RotateCcw size={16} />
                 {isSongMode ? "再弹一次" : "再试一次"}
@@ -250,12 +328,14 @@ export function StaffGameSummaryDialog({
               ) : (
                 <button
                   className="staff-game-secondary"
-                  disabled={isFinalLevel}
-                  onClick={onAdvanceLevel}
+                  disabled={!isWrongNotePractice && isFinalLevel}
+                  onClick={isWrongNotePractice ? onExitWrongNotePractice : onAdvanceLevel}
                   type="button"
                 >
-                  <SkipForward size={16} />
-                  {isFinalLevel ? "已通关" : "下一级"}
+                  {isWrongNotePractice ? <X size={16} /> : <SkipForward size={16} />}
+                  <span className="staff-game-summary-action-label">
+                    {isWrongNotePractice ? "退出薄弱音模式" : isFinalLevel ? "已通关" : "下一级"}
+                  </span>
                 </button>
               )}
             </div>
@@ -271,7 +351,7 @@ export function StaffGameSummaryDialog({
           }}
         >
           <section
-            aria-labelledby="staff-game-wrong-answer-details-title"
+            aria-labelledby="staff-game-weak-note-details-title"
             aria-modal="true"
             className="staff-game-wrong-answer-details"
             ref={detailsDialogRef}
@@ -279,7 +359,7 @@ export function StaffGameSummaryDialog({
             tabIndex={-1}
           >
             <button
-              aria-label="关闭错音统计详情"
+              aria-label="关闭薄弱音统计详情"
               className="staff-game-wrong-answer-details-close"
               onClick={() => setShowWrongAnswerDetails(false)}
               ref={detailsCloseButtonRef}
@@ -287,38 +367,46 @@ export function StaffGameSummaryDialog({
             >
               <X aria-hidden="true" size={19} />
             </button>
-            <h2 id="staff-game-wrong-answer-details-title">错音统计详情</h2>
+            <h2 id="staff-game-weak-note-details-title">
+              薄弱音统计详情
+              <span className="staff-game-wrong-answer-details-title-note">（仅供参考）</span>
+            </h2>
             <p className="staff-game-wrong-answer-conclusion">
-              {wrongAnswerRecords.length === 0 ? (
-                "本局没有记录到错音。"
-              ) : (
-                <>
-                  本局共记录 <strong>{wrongAnswerRecords.length}</strong> 次错音，涉及{" "}
-                  <strong>{wrongAnswerGroups.length}</strong> 组音符。
-                </>
-              )}
+              本局共出现 <strong>{generatedNoteCount}</strong> 个音符，错答或漏答共计{" "}
+              <strong>{weakNoteCount}</strong> 个，占比{" "}
+              <strong>{firstTryFailurePercentage}%</strong>。
             </p>
             <div className="staff-game-wrong-answer-table-wrap">
               <table className="staff-game-wrong-answer-table">
                 <thead>
                   <tr>
                     <th scope="col">目标音</th>
-                    <th scope="col">识别到的音</th>
+                    <th scope="col">输入结果</th>
+                    <th scope="col">薄弱原因</th>
                     <th scope="col">次数</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {wrongAnswerGroups.length > 0 ? (
-                    wrongAnswerGroups.map((group) => (
-                      <tr key={`${group.expectedNote}-${group.recognizedNote}`}>
-                        <td>{group.expectedNote}</td>
-                        <td>{group.recognizedNote}</td>
-                        <td>{group.count}</td>
+                  {weakNoteDetailsRows.length > 0 ? (
+                    weakNoteDetailsRows.map((row) => (
+                      <tr key={row.key}>
+                        <td>{row.expectedNote}</td>
+                        <td>
+                          {row.inputResults.slice(0, 6).map((result, index) => (
+                            <Fragment key={`${result}-${index}`}>
+                              {index === 3 ? <br /> : index > 0 ? "、" : null}
+                              {result}
+                            </Fragment>
+                          ))}
+                          {row.inputResults.length > 6 ? "、…" : null}
+                        </td>
+                        <td>{row.kind}</td>
+                        <td>{row.count}</td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={3}>没有错误音符记录</td>
+                      <td colSpan={4}>本局没有薄弱音记录</td>
                     </tr>
                   )}
                 </tbody>
