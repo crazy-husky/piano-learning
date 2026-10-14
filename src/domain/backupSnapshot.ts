@@ -7,6 +7,8 @@ import type {
   PracticeSessionRecord,
   ReviewRecord,
   StaffRecallRunRecord,
+  StaffGameWrongNoteArchive,
+  StaffGameWrongNoteArchiveRun,
 } from "./types";
 
 function latestReview(reviews: ReviewRecord[]): ReviewRecord | undefined {
@@ -15,6 +17,14 @@ function latestReview(reviews: ReviewRecord[]): ReviewRecord | undefined {
 
 function latestStaffRecallRun(runs: StaffRecallRunRecord[]): StaffRecallRunRecord | undefined {
   return [...runs].sort((a, b) => b.endedAt.localeCompare(a.endedAt))[0];
+}
+
+function latestWrongNoteArchiveRun(
+  archives: StaffGameWrongNoteArchive[]
+): StaffGameWrongNoteArchiveRun | undefined {
+  return archives
+    .flatMap((archive) => archive.runs)
+    .sort((a, b) => b.endedAt.localeCompare(a.endedAt))[0];
 }
 
 function latestTimestamp(values: Array<string | undefined>): string | undefined {
@@ -36,7 +46,8 @@ export function getBackupDataModifiedAt(
   settings: AppSettings,
   sessions: PracticeSessionRecord[],
   reviews: ReviewRecord[],
-  staffRecallRuns: StaffRecallRunRecord[] = []
+  staffRecallRuns: StaffRecallRunRecord[] = [],
+  wrongNoteArchives: StaffGameWrongNoteArchive[] = []
 ): string {
   return (
     latestTimestamp([
@@ -45,6 +56,9 @@ export function getBackupDataModifiedAt(
       ...sessions.flatMap((session) => [session.endedAt, session.startedAt]),
       ...reviews.flatMap((review) => [review.endedAt, review.answeredAt, review.startedAt]),
       ...staffRecallRuns.flatMap((run) => [run.endedAt, run.startedAt]),
+      ...wrongNoteArchives.flatMap((archive) =>
+        archive.runs.flatMap((run) => [run.endedAt, run.startedAt])
+      ),
     ]) ?? settings.createdAt
   );
 }
@@ -54,12 +68,14 @@ export function buildBackupSnapshot(
   sessions: PracticeSessionRecord[],
   reviews: ReviewRecord[],
   backupAt = new Date().toISOString(),
-  staffRecallRuns: StaffRecallRunRecord[] = []
+  staffRecallRuns: StaffRecallRunRecord[] = [],
+  wrongNoteArchives: StaffGameWrongNoteArchive[] = []
 ): BackupSnapshot {
   const days: Record<string, BackupDayFile> = {};
   const sessionsByDate = new Map<string, PracticeSessionRecord[]>();
   const reviewsByDate = new Map<string, ReviewRecord[]>();
   const staffRecallRunsByDate = new Map<string, StaffRecallRunRecord[]>();
+  const wrongNoteArchivesByDate = new Map<string, StaffGameWrongNoteArchive[]>();
 
   for (const session of sessions) {
     const date = localDateKey(session.startedAt);
@@ -76,10 +92,15 @@ export function buildBackupSnapshot(
     appendByDate(staffRecallRunsByDate, date, run);
   }
 
+  for (const archive of wrongNoteArchives) {
+    appendByDate(wrongNoteArchivesByDate, archive.date || archive.id, archive);
+  }
+
   const dates = new Set([
     ...sessionsByDate.keys(),
     ...reviewsByDate.keys(),
     ...staffRecallRunsByDate.keys(),
+    ...wrongNoteArchivesByDate.keys(),
   ]);
   for (const date of dates) {
     days[date] = {
@@ -88,6 +109,7 @@ export function buildBackupSnapshot(
       sessions: sessionsByDate.get(date) ?? [],
       reviews: reviewsByDate.get(date) ?? [],
       staffRecallRuns: staffRecallRunsByDate.get(date) ?? [],
+      staffGameWrongNoteArchives: wrongNoteArchivesByDate.get(date) ?? [],
     };
   }
 
@@ -99,10 +121,17 @@ export function buildBackupSnapshot(
       createdAt: settings.createdAt,
       firstReviewAt: settings.firstReviewAt,
       settings,
-      dataModifiedAt: getBackupDataModifiedAt(settings, sessions, reviews, staffRecallRuns),
+      dataModifiedAt: getBackupDataModifiedAt(
+        settings,
+        sessions,
+        reviews,
+        staffRecallRuns,
+        wrongNoteArchives
+      ),
       lastBackupAt: backupAt,
       lastReviewId: latestReview(reviews)?.id,
       lastStaffRecallRunId: latestStaffRecallRun(staffRecallRuns)?.id,
+      lastStaffGameWrongNoteArchiveRunId: latestWrongNoteArchiveRun(wrongNoteArchives)?.runId,
       dates: [...dates].sort((a, b) => a.localeCompare(b)),
     },
     days,
@@ -112,6 +141,9 @@ export function buildBackupSnapshot(
 export function getBackupManifestVersion(manifest: BackupSnapshot["manifest"]): string {
   if (manifest.snapshotId) {
     return `snapshot:${manifest.snapshotId}`;
+  }
+  if (manifest.lastStaffGameWrongNoteArchiveRunId !== undefined) {
+    return `legacy:${manifest.dataSetId}:${manifest.lastBackupAt}:${manifest.lastReviewId ?? ""}:${manifest.lastStaffRecallRunId ?? ""}:${manifest.lastStaffGameWrongNoteArchiveRunId}:${manifest.dates.join(",")}`;
   }
   if (manifest.lastStaffRecallRunId === undefined) {
     return `legacy:${manifest.dataSetId}:${manifest.lastBackupAt}:${manifest.lastReviewId ?? ""}:${manifest.dates.join(",")}`;

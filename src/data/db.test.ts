@@ -2,8 +2,19 @@ import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_VOCAL_PITCH_CONFIG, type VocalAudioMaterial } from "../domain/vocalPitch";
 import { makeReview } from "../domain/testFactories";
-import type { PracticeSessionRecordV1, StaffRecallRunRecordV1 } from "../domain/types";
-import { db, makeDefaultSettings, normalizeAppSettings, restoreDefaultConfiguration } from "./db";
+import type {
+  PracticeSessionRecordV1,
+  StaffGameWrongNoteArchiveRun,
+  StaffRecallRunRecordV1,
+} from "../domain/types";
+import {
+  db,
+  clearStaffGameWrongNoteArchives,
+  makeDefaultSettings,
+  normalizeAppSettings,
+  replaceAllData,
+  restoreDefaultConfiguration,
+} from "./db";
 
 describe("makeDefaultSettings", () => {
   it("uses the cold-start practice defaults", () => {
@@ -192,6 +203,103 @@ describe("restoreDefaultConfiguration", () => {
     expect(await db.staffRecallRuns.get("recall-kept")).toBeTruthy();
     expect(await db.vocalAudioMaterials.get("material-kept")).toBeTruthy();
 
+    await Promise.all(db.tables.map((table) => table.clear()));
+  });
+});
+
+describe("wrong note archive backup merge", () => {
+  it("preserves unique runs and prefers the newer same-ID run during backup import", async () => {
+    const run = (runId: string): StaffGameWrongNoteArchiveRun => ({
+      runId,
+      source: "challenge",
+      level: 1,
+      difficulty: "easy",
+      inputMode: "midi",
+      startedAt: "2026-10-15T10:00:00.000Z",
+      endedAt: "2026-10-15T10:01:00.000Z",
+      updatedAt: "2026-10-15T10:01:00.000Z",
+      totalTargets: 1,
+      firstTryCorrect: 0,
+      lowSample: true,
+      notes: {
+        "60": {
+          midi: 60,
+          note: "C4",
+          appear: 1,
+          correct: 0,
+          wrong: 1,
+          missed: 0,
+          confusions: {},
+        },
+      },
+    });
+    const local = run("conflict-run");
+    const newerRemote = {
+      ...run("conflict-run"),
+      updatedAt: "2026-10-15T10:05:00.000Z",
+      totalTargets: 2,
+    };
+    const remote = run("remote-run");
+    await Promise.all(db.tables.map((table) => table.clear()));
+    await db.staffGameWrongNoteArchives.put({
+      id: "2026-10-15",
+      date: "2026-10-15",
+      runs: [local],
+    });
+
+    await replaceAllData(makeDefaultSettings(), [], [], [], undefined, [
+      { id: "2026-10-15", date: "2026-10-15", runs: [remote, newerRemote, local] },
+    ]);
+
+    expect(await db.staffGameWrongNoteArchives.get("2026-10-15")).toEqual({
+      id: "2026-10-15",
+      date: "2026-10-15",
+      runs: [newerRemote, remote],
+    });
+    await Promise.all(db.tables.map((table) => table.clear()));
+  });
+
+  it("clears only wrong note archives", async () => {
+    await Promise.all(db.tables.map((table) => table.clear()));
+    const session: PracticeSessionRecordV1 = {
+      id: "session-preserved",
+      schemaVersion: 1,
+      mode: "fixed-duration",
+      enabledGroupIds: ["G3-F4"],
+      startedAt: "2026-10-15T10:00:00.000Z",
+      completedCount: 0,
+      interruptedCount: 0,
+    };
+    const run: StaffGameWrongNoteArchiveRun = {
+      runId: "archive-cleared",
+      source: "challenge",
+      level: 1,
+      difficulty: "easy",
+      inputMode: "midi",
+      startedAt: "2026-10-15T10:00:00.000Z",
+      endedAt: "2026-10-15T10:01:00.000Z",
+      reviewRange: null,
+      totalTargets: 1,
+      firstTryCorrect: 0,
+      lowSample: false,
+      notes: {},
+    };
+    const review = makeReview({ id: "review-preserved", targetNoteId: "C4" });
+    await db.settings.put(makeDefaultSettings());
+    await db.practiceSessions.put(session);
+    await db.reviews.put(review);
+    await db.staffGameWrongNoteArchives.put({
+      id: "2026-10-15",
+      date: "2026-10-15",
+      runs: [run],
+    });
+
+    await clearStaffGameWrongNoteArchives();
+
+    expect(await db.staffGameWrongNoteArchives.count()).toBe(0);
+    expect(await db.settings.get("default")).toBeTruthy();
+    expect(await db.practiceSessions.get(session.id)).toEqual(session);
+    expect(await db.reviews.get(review.id)).toEqual(review);
     await Promise.all(db.tables.map((table) => table.clear()));
   });
 });

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildBackupSnapshot, getBackupManifestVersion } from "./backupSnapshot";
 import { makeReview } from "./testFactories";
-import type { AppSettings, PracticeSessionRecord, StaffRecallRunRecord } from "./types";
+import type {
+  AppSettings,
+  PracticeSessionRecord,
+  StaffGameWrongNoteArchive,
+  StaffRecallRunRecord,
+} from "./types";
 
 const settings: AppSettings = {
   id: "default",
@@ -89,6 +94,42 @@ describe("backup snapshot", () => {
     expect(snapshot.manifest.lastStaffRecallRunId).toBe("recall-1");
     expect(snapshot.manifest.dataModifiedAt).toBe(staffRecallRun.endedAt);
     expect(snapshot.days["2026-07-05"].staffRecallRuns).toEqual([staffRecallRun]);
+  });
+
+  it("includes wrong note archives in their local-day backup file and manifest", () => {
+    const archive: StaffGameWrongNoteArchive = {
+      id: "2026-10-15",
+      date: "2026-10-15",
+      runs: [
+        {
+          runId: "wrong-note-run-1",
+          source: "challenge",
+          level: 3,
+          difficulty: "normal",
+          inputMode: "microphone",
+          startedAt: "2026-10-15T10:00:00.000+08:00",
+          endedAt: "2026-10-15T10:01:00.000+08:00",
+          updatedAt: "2026-10-15T10:01:00.000+08:00",
+          totalTargets: 5,
+          firstTryCorrect: 2,
+          lowSample: true,
+          notes: {},
+        },
+      ],
+    };
+    const snapshot = buildBackupSnapshot(
+      settings,
+      [],
+      [],
+      "2026-10-15T12:00:00.000+08:00",
+      [],
+      [archive]
+    );
+
+    expect(snapshot.manifest.dates).toEqual(["2026-10-15"]);
+    expect(snapshot.manifest.lastStaffGameWrongNoteArchiveRunId).toBe("wrong-note-run-1");
+    expect(snapshot.days["2026-10-15"].staffGameWrongNoteArchives).toEqual([archive]);
+    expect(snapshot.manifest.dataModifiedAt).toBe(archive.runs[0]!.endedAt);
   });
 
   it("keeps the legacy manifest version stable when no staff-recall field exists", () => {

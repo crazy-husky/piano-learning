@@ -195,6 +195,47 @@ export interface StaffRecallRunRecordV2 extends StaffRecallRunRecordBase {
 
 export type StaffRecallRunRecord = StaffRecallRunRecordV1 | StaffRecallRunRecordV2;
 
+export type StaffGameWrongNoteArchiveSource = "challenge" | "review" | "drill";
+
+export interface StaffGameWrongNoteNoteStats {
+  midi: number;
+  note: string;
+  appear: number;
+  correct: number;
+  wrong: number;
+  missed: number;
+  confusions: Record<string, number>;
+  /** Sum of positive reaction times for correctly completed bubbles. */
+  totalResponseMs?: number;
+  /** Number of positive reaction-time samples; optional for legacy archives. */
+  responseSampleCount?: number;
+}
+
+export interface StaffGameWrongNoteArchiveRun {
+  runId: string;
+  source: StaffGameWrongNoteArchiveSource;
+  level: number | null;
+  difficulty: string;
+  inputMode: string;
+  startedAt: string;
+  endedAt: string;
+  /** Missing on archives created before updatedAt was introduced. */
+  updatedAt?: string;
+  /** Review pool range; null for drills and challenges, missing on legacy runs. */
+  reviewRange?: 3 | 7 | 15 | 30 | "all" | null;
+  totalTargets: number;
+  firstTryCorrect: number;
+  lowSample: boolean;
+  notes: Record<string, StaffGameWrongNoteNoteStats>;
+}
+
+/** One daily archive row. Its id and date are the local YYYY-MM-DD key. */
+export interface StaffGameWrongNoteArchive {
+  id: string;
+  date: string;
+  runs: StaffGameWrongNoteArchiveRun[];
+}
+
 interface AppSettingsBase {
   id: "default";
   dataSetId: string;
@@ -303,6 +344,7 @@ export interface BackupManifest {
   lastBackupAt: string;
   lastReviewId?: string;
   lastStaffRecallRunId?: string;
+  lastStaffGameWrongNoteArchiveRunId?: string;
   dayFileDigests?: Record<string, string>;
   learningDataDigest?: string;
   vocalAudioLibraryDigest?: string;
@@ -315,6 +357,7 @@ export interface BackupDayFile {
   sessions: PracticeSessionRecord[];
   reviews: ReviewRecord[];
   staffRecallRuns?: StaffRecallRunRecord[];
+  staffGameWrongNoteArchives?: StaffGameWrongNoteArchive[];
 }
 
 export interface BackupSnapshot {

@@ -21,9 +21,13 @@ import type {
   PracticeSessionRecord,
   ReviewRecord,
   StaffRecallRunRecord,
+  StaffGameWrongNoteArchive,
+  StaffGameWrongNoteArchiveRun,
   StoredAppSettings,
   StaffNotationMode,
 } from "../domain/types";
+import { localDateKey } from "../domain/stats";
+import { mergeStaffGameWrongNoteArchives } from "../domain/staffGameWrongNoteArchives";
 import type { VocalAudioMaterial } from "../domain/vocalPitch";
 
 export class AppDatabase extends Dexie {
@@ -33,6 +37,7 @@ export class AppDatabase extends Dexie {
   staffRecallRuns!: Table<StaffRecallRunRecord, string>;
   backupStates!: Table<BackupState, string>;
   vocalAudioMaterials!: Table<VocalAudioMaterial, string>;
+  staffGameWrongNoteArchives!: Table<StaffGameWrongNoteArchive, string>;
 
   constructor() {
     super("anki-note");
@@ -56,6 +61,15 @@ export class AppDatabase extends Dexie {
       staffRecallRuns: "id, answerSetKey, endedAt",
       backupStates: "id",
       vocalAudioMaterials: "id, createdAt, updatedAt, name",
+    });
+    this.version(4).stores({
+      settings: "id",
+      practiceSessions: "id, startedAt, mode, endReason",
+      reviews: "id, sessionId, targetNoteId, groupId, startedAt, answeredCorrectly, interrupted",
+      staffRecallRuns: "id, answerSetKey, endedAt",
+      backupStates: "id",
+      vocalAudioMaterials: "id, createdAt, updatedAt, name",
+      staffGameWrongNoteArchives: "id, date",
     });
   }
 }
@@ -257,15 +271,19 @@ export async function replaceAllData(
   sessions: PracticeSessionRecord[],
   reviews: ReviewRecord[],
   staffRecallRuns: StaffRecallRunRecord[] = [],
-  vocalAudioMaterials?: VocalAudioMaterial[]
+  vocalAudioMaterials?: VocalAudioMaterial[],
+  staffGameWrongNoteArchives: StaffGameWrongNoteArchive[] = []
 ): Promise<void> {
   await db.transaction(
     "rw",
-    db.settings,
-    db.practiceSessions,
-    db.reviews,
-    db.staffRecallRuns,
-    db.vocalAudioMaterials,
+    [
+      db.settings,
+      db.practiceSessions,
+      db.reviews,
+      db.staffRecallRuns,
+      db.vocalAudioMaterials,
+      db.staffGameWrongNoteArchives,
+    ],
     async () => {
       await db.settings.clear();
       await db.practiceSessions.clear();
@@ -275,6 +293,13 @@ export async function replaceAllData(
       await db.practiceSessions.bulkPut(sessions);
       await db.reviews.bulkPut(reviews);
       await db.staffRecallRuns.bulkPut(staffRecallRuns);
+      const existingWrongNoteArchives = await db.staffGameWrongNoteArchives.toArray();
+      const mergedWrongNoteArchives = mergeStaffGameWrongNoteArchives(
+        existingWrongNoteArchives,
+        staffGameWrongNoteArchives
+      );
+      await db.staffGameWrongNoteArchives.clear();
+      await db.staffGameWrongNoteArchives.bulkPut(mergedWrongNoteArchives);
       if (vocalAudioMaterials) {
         await db.vocalAudioMaterials.clear();
         await db.vocalAudioMaterials.bulkPut(vocalAudioMaterials);
@@ -289,14 +314,18 @@ export async function applyBackupDataChanges(
     sessions: { deletes: string[]; puts: PracticeSessionRecord[] };
     reviews: { deletes: string[]; puts: ReviewRecord[] };
     staffRecallRuns: { deletes: string[]; puts: StaffRecallRunRecord[] };
+    staffGameWrongNoteArchives?: StaffGameWrongNoteArchive[];
   }
 ): Promise<void> {
   await db.transaction(
     "rw",
-    db.settings,
-    db.practiceSessions,
-    db.reviews,
-    db.staffRecallRuns,
+    [
+      db.settings,
+      db.practiceSessions,
+      db.reviews,
+      db.staffRecallRuns,
+      db.staffGameWrongNoteArchives,
+    ],
     async () => {
       await db.settings.put(settings);
       await db.practiceSessions.bulkDelete(changes.sessions.deletes);
@@ -305,6 +334,12 @@ export async function applyBackupDataChanges(
       await db.practiceSessions.bulkPut(changes.sessions.puts);
       await db.reviews.bulkPut(changes.reviews.puts);
       await db.staffRecallRuns.bulkPut(changes.staffRecallRuns.puts);
+      if (changes.staffGameWrongNoteArchives?.length) {
+        const existing = await db.staffGameWrongNoteArchives.toArray();
+        await db.staffGameWrongNoteArchives.bulkPut(
+          mergeStaffGameWrongNoteArchives(existing, changes.staffGameWrongNoteArchives)
+        );
+      }
     }
   );
 }
@@ -314,14 +349,34 @@ export async function loadAllData(): Promise<{
   sessions: PracticeSessionRecord[];
   reviews: ReviewRecord[];
   staffRecallRuns: StaffRecallRunRecord[];
+  staffGameWrongNoteArchives: StaffGameWrongNoteArchive[];
 }> {
   const settings = await ensureSettings();
-  const [sessions, reviews, staffRecallRuns] = await Promise.all([
+  const [sessions, reviews, staffRecallRuns, staffGameWrongNoteArchives] = await Promise.all([
     db.practiceSessions.orderBy("startedAt").toArray(),
     db.reviews.orderBy("startedAt").toArray(),
     db.staffRecallRuns.orderBy("endedAt").toArray(),
+    db.staffGameWrongNoteArchives.orderBy("date").toArray(),
   ]);
-  return { settings, sessions, reviews, staffRecallRuns };
+  return { settings, sessions, reviews, staffRecallRuns, staffGameWrongNoteArchives };
+}
+
+export async function archiveStaffGameWrongNoteRun(
+  run: StaffGameWrongNoteArchiveRun
+): Promise<StaffGameWrongNoteArchive> {
+  const date = localDateKey(run.endedAt);
+  return db.transaction("rw", db.staffGameWrongNoteArchives, async () => {
+    const current = await db.staffGameWrongNoteArchives.get(date);
+    const next = mergeStaffGameWrongNoteArchives(current ? [current] : [], [
+      { id: date, date, runs: [run] },
+    ])[0]!;
+    await db.staffGameWrongNoteArchives.put(next);
+    return next;
+  });
+}
+
+export async function clearStaffGameWrongNoteArchives(): Promise<void> {
+  await db.staffGameWrongNoteArchives.clear();
 }
 
 export async function loadPracticeHistory(): Promise<{
