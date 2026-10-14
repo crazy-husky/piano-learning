@@ -108,7 +108,10 @@ async function fetchSharedMedia(request) {
     // CacheStorage is best-effort; continue with the normal network request.
   }
 
-  const response = await fetch(request);
+  // A sample-bank cache-version bump must not repopulate CacheStorage from a stale HTTP cache entry.
+  const response = isPianoSampleAssetUrl(new URL(request.url))
+    ? await fetch(request, { cache: "reload" })
+    : await fetch(request);
   if (isReusableMediaResponse(response)) {
     try {
       sharedCache ??= await caches.open(SHARED_MEDIA_CACHE_NAME);
