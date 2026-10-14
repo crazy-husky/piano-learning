@@ -1039,8 +1039,8 @@
   }
 
   .staff-game-levels-dialog .staff-game-level-picker-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 5px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 4px;
   }
 
   .staff-game-levels-dialog .staff-game-level-choice {
@@ -1050,12 +1050,29 @@
 
 @media (max-width: 390px) {
   .staff-game-levels-dialog .staff-game-level-picker-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 3px;
   }
 
   .staff-game-levels-dialog .staff-game-level-choice {
-    min-height: 41px;
+    min-height: 39px;
+    border-radius: 8px;
+    padding: 3px 1px;
+  }
+
+  .staff-game-levels-dialog .staff-game-level-choice strong {
+    font-size: 11px;
+  }
+
+  .staff-game-levels-dialog .staff-game-level-choice span {
+    font-size: 8px;
+    line-height: 1;
+  }
+
+  .staff-game-levels-dialog .staff-game-level-choice small {
+    right: -2px;
+    font-size: 7px;
+    padding: 2px 3px;
   }
 }
 

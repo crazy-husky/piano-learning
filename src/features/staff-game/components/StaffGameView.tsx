@@ -1888,20 +1888,29 @@ export function StaffGameView({
   ]);
 
   useEffect(() => {
-    if (phase !== "running") return undefined;
-    const pauseWhenHidden = (): void => {
-      if (document.hidden) pauseRound();
+    if (phase !== "running" && phase !== "paused") return undefined;
+    const handleVisibilityChange = (): void => {
+      if (document.hidden) {
+        if (phaseRef.current === "running") pauseRound();
+        return;
+      }
+      // Browsers may suspend Web Audio while this page is in the background.
+      // Try to resume it on return; resumeRound retries synchronously from the
+      // user's gesture if the browser still requires one.
+      void unlockGameAudio().catch(() => undefined);
     };
-    const pauseWhenWindowLosesFocus = (): void => pauseRound();
-    document.addEventListener("visibilitychange", pauseWhenHidden);
+    const pauseWhenWindowLosesFocus = (): void => {
+      if (phaseRef.current === "running") pauseRound();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("blur", pauseWhenWindowLosesFocus);
     window.addEventListener("pagehide", pauseWhenWindowLosesFocus);
     return () => {
-      document.removeEventListener("visibilitychange", pauseWhenHidden);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("blur", pauseWhenWindowLosesFocus);
       window.removeEventListener("pagehide", pauseWhenWindowLosesFocus);
     };
-  }, [pauseRound, phase]);
+  }, [pauseRound, phase, unlockGameAudio]);
 
   const resumeRound = useCallback(async (): Promise<void> => {
     if (isStartingRef.current || phaseRef.current !== "paused") return;
@@ -1912,6 +1921,9 @@ export function StaffGameView({
     setIsStarting(true);
     setGameError("");
     try {
+      // Resume the Web Audio context in the click/key gesture, before input
+      // reconnection awaits can outlive the browser's activation window.
+      void unlockGameAudio().catch(() => undefined);
       if (settingsRef.current.inputMode === "physical") {
         let started = false;
         try {
@@ -1976,6 +1988,7 @@ export function StaffGameView({
     startMicrophone,
     startRunSegment,
     stopMicrophone,
+    unlockGameAudio,
   ]);
 
   const exitGame = useCallback((): void => {

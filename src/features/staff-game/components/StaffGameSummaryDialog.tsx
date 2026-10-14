@@ -206,14 +206,16 @@ export function StaffGameSummaryDialog({
               <div>
                 <span>最大连击数</span>
                 <strong>
-                  <span>{comboCount} 次</span>
+                  <span className="staff-game-result-value">{comboCount} 次</span>
                   {isNewComboRecord ? <em>新纪录</em> : null}
                 </strong>
               </div>
               <div className="is-score">
                 <span>获得的分数</span>
                 <strong>
-                  <span className="staff-game-score-result">{Math.round(score)} 分</span>
+                  <span className="staff-game-score-result staff-game-result-value">
+                    {Math.round(score)} 分
+                  </span>
                   {isNewScoreRecord ? <em>新纪录</em> : null}
                 </strong>
               </div>

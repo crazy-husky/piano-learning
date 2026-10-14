@@ -218,13 +218,14 @@ export function App(): JSX.Element {
   }, []);
 
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
-  const [isGameNavExpanded, setIsGameNavExpanded] = useState(() =>
-    isStaffGameRoutePath(route.path)
+  const [expandedNavigationMenu, setExpandedNavigationMenu] = useState<string | null>(() =>
+    isStaffGameRoutePath(route.path) ? "game" : null
   );
+  const isGameNavExpanded = expandedNavigationMenu === "game";
   const routeRef = useRef(route);
   routeRef.current = route;
   useEffect(() => {
-    if (isStaffGameRoutePath(route.path)) setIsGameNavExpanded(true);
+    setExpandedNavigationMenu(isStaffGameRoutePath(route.path) ? "game" : null);
   }, [route.path]);
   const staffGameSelectionReturnPathRef = useRef<AppRoutePath>("/");
   const staffGameSelectionRoutePushedRef = useRef(false);
@@ -1036,7 +1037,18 @@ export function App(): JSX.Element {
         theme={isNightMode ? "dark" : "light"}
       />
       <div className={shellClassName}>
-        <nav aria-label="主导航" className="app-nav">
+        <nav
+          aria-label="主导航"
+          className="app-nav"
+          onClickCapture={(event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            const isSecondaryMenuInteraction = target.closest(
+              "[data-nav-submenu-toggle], [data-nav-submenu-content]"
+            );
+            if (!isSecondaryMenuInteraction) setExpandedNavigationMenu(null);
+          }}
+        >
           <button
             aria-label="首页"
             aria-current={view === "home" ? "page" : undefined}
@@ -1070,7 +1082,12 @@ export function App(): JSX.Element {
               aria-expanded={isGameNavExpanded}
               aria-controls={isGameNavExpanded ? "app-nav-game-submenu" : undefined}
               className={`app-nav-game-toggle${isStaffGameRoutePath(route.path) ? " active" : ""}`}
-              onClick={() => setIsGameNavExpanded((expanded) => !expanded)}
+              data-nav-submenu-toggle="game"
+              onClick={() =>
+                setExpandedNavigationMenu((expandedMenu) =>
+                  expandedMenu === "game" ? null : "game"
+                )
+              }
               type="button"
             >
               <Gamepad2 aria-hidden="true" size={18} />
@@ -1078,7 +1095,11 @@ export function App(): JSX.Element {
               <ChevronDown aria-hidden="true" className="app-nav-game-chevron" size={13} />
             </button>
             {isGameNavExpanded ? (
-              <div className="app-nav-game-submenu" id="app-nav-game-submenu">
+              <div
+                className="app-nav-game-submenu"
+                data-nav-submenu-content="game"
+                id="app-nav-game-submenu"
+              >
                 <button
                   aria-current={route.path === "/practice/game" ? "page" : undefined}
                   className={route.path === "/practice/game" ? "active" : ""}

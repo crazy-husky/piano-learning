@@ -67,6 +67,33 @@ const NOTES_PER_ROW = 12;
 const WRONG_FEEDBACK_DURATION_MS = 2000;
 const WRONG_INPUT_LOCK_MS = 80;
 
+function songPracticePageIndexForProgress(index: number, targetCount: number): number {
+  if (targetCount <= 0) return 0;
+  return Math.floor(Math.min(Math.max(index, 0), targetCount - 1) / NOTES_PER_PAGE);
+}
+
+function rememberSongPracticePageProgress(
+  progressByPage: Map<number, number>,
+  pageIndex: number,
+  nextIndex: number,
+  targetCount: number
+): void {
+  progressByPage.set(pageIndex, nextIndex);
+  if (nextIndex >= targetCount) return;
+  const nextPageIndex = songPracticePageIndexForProgress(nextIndex, targetCount);
+  if (!progressByPage.has(nextPageIndex)) progressByPage.set(nextPageIndex, nextIndex);
+}
+
+function resetSongPracticePageProgress(
+  progressByPage: Map<number, number>,
+  index: number,
+  targetCount: number
+): void {
+  progressByPage.clear();
+  const pageIndex = songPracticePageIndexForProgress(index, targetCount);
+  progressByPage.set(pageIndex, index);
+}
+
 interface SongPracticeMicrophone {
   error: string | null;
   inputLevel: number;
@@ -230,6 +257,13 @@ export function SongPracticeView({
   const activeInputModeRef = useRef<SongPracticeInputMode>(initialInputMode);
   const activeHandModeRef = useRef<SongPracticeHandMode>(initialHandMode);
   const currentIndexRef = useRef(0);
+  // Keep each score page's last successful-answer cursor when the learner browses elsewhere.
+  const pageProgressRef = useRef(new Map<number, number>([[0, 0]]));
+  const pendingCorrectAdvanceRef = useRef<{
+    pageIndex: number;
+    nextIndex: number;
+    targetCount: number;
+  } | null>(null);
   const midiConnectionRef = useRef(midi.isConnected);
   const midiConnectionLiveRef = useRef(midi.isConnected);
   midiConnectionLiveRef.current = midi.isConnected;
@@ -284,6 +318,34 @@ export function SongPracticeView({
     restartPendingRef.current = false;
     recordSongPracticeSessionStarted(selection.songId, selection.keyVersion);
   }, [selection.keyVersion, selection.songId]);
+  const completeProgressSession = useCallback((): void => {
+    if (sessionCompletedRef.current || sessionStartedAtRef.current === null) return;
+    sessionCompletedRef.current = true;
+    recordSongPracticeSessionCompleted(
+      selection.songId,
+      selection.keyVersion,
+      Date.now() - sessionStartedAtRef.current
+    );
+  }, [selection.keyVersion, selection.songId]);
+  const commitPendingCorrectAdvance = useCallback((): void => {
+    const pendingAdvance = pendingCorrectAdvanceRef.current;
+    if (!pendingAdvance) return;
+    pendingCorrectAdvanceRef.current = null;
+    if (feedbackTimerRef.current !== undefined) {
+      window.clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = undefined;
+    }
+    rememberSongPracticePageProgress(
+      pageProgressRef.current,
+      pendingAdvance.pageIndex,
+      pendingAdvance.nextIndex,
+      pendingAdvance.targetCount
+    );
+    currentIndexRef.current = pendingAdvance.nextIndex;
+    setCurrentIndex(pendingAdvance.nextIndex);
+    answerLockedRef.current = false;
+    if (pendingAdvance.nextIndex >= pendingAdvance.targetCount) completeProgressSession();
+  }, [completeProgressSession]);
   const sourceArrangement = useMemo(
     () => resolveSongPracticeArrangement(selection.score, activeHandMode),
     [activeHandMode, selection.score]
@@ -389,6 +451,8 @@ export function SongPracticeView({
         : sourceArrangement,
     [activeHandMode, simplifiesForSingleNoteInput, sourceArrangement]
   );
+  const arrangementTargetCountRef = useRef(arrangement.targets.length);
+  arrangementTargetCountRef.current = arrangement.targets.length;
   const targetNotes = useMemo(() => arrangement.notes.map(resolveTargetNote), [arrangement.notes]);
   const targetNoteGroups = useMemo(
     () => arrangement.targets.map((target) => target.notes.map(resolveTargetNote)),
@@ -540,6 +604,7 @@ export function SongPracticeView({
     const transitionToken = ++inputTransitionTokenRef.current;
     const previousInputMode = activeInputModeRef.current;
 
+    commitPendingCorrectAdvance();
     inputTransitionRef.current = true;
     setIsInputSwitching(true);
     answerLockedRef.current = false;
@@ -572,6 +637,12 @@ export function SongPracticeView({
         nextMidiArrangement,
         selection.score.meter.quarterBeatsPerMeasure
       );
+      currentIndexRef.current = nextIndex;
+      resetSongPracticePageProgress(
+        pageProgressRef.current,
+        nextIndex,
+        nextMidiArrangement.targets.length
+      );
       setCurrentIndex(nextIndex);
       if (nextIndex < nextMidiArrangement.targets.length) setHasStarted(true);
       activeInputModeRef.current = "midi";
@@ -602,6 +673,12 @@ export function SongPracticeView({
       currentIndexRef.current,
       nextArrangement,
       selection.score.meter.quarterBeatsPerMeasure
+    );
+    currentIndexRef.current = nextIndex;
+    resetSongPracticePageProgress(
+      pageProgressRef.current,
+      nextIndex,
+      nextArrangement.targets.length
     );
     setCurrentIndex(nextIndex);
     setActiveHandMode(nextHandMode);
@@ -650,6 +727,7 @@ export function SongPracticeView({
     cancelRowPlayback,
     beginProgressSession,
     arrangement,
+    commitPendingCorrectAdvance,
     hasStarted,
     midi.isConnected,
     midi.selectedInput?.name,
@@ -666,14 +744,8 @@ export function SongPracticeView({
   }, [beginProgressSession]);
 
   useEffect(() => {
-    if (!isFinished || sessionCompletedRef.current || sessionStartedAtRef.current === null) return;
-    sessionCompletedRef.current = true;
-    recordSongPracticeSessionCompleted(
-      selection.songId,
-      selection.keyVersion,
-      Date.now() - sessionStartedAtRef.current
-    );
-  }, [isFinished, selection.keyVersion, selection.songId]);
+    if (isFinished) completeProgressSession();
+  }, [completeProgressSession, isFinished]);
 
   const clearFeedbackTimer = useCallback((): void => {
     if (feedbackTimerRef.current !== undefined) {
@@ -695,9 +767,26 @@ export function SongPracticeView({
       recordSongPracticeAttempt(selection.songId, selection.keyVersion, activeHandMode, correct);
       if (correct) {
         clearFeedbackTimer();
+        const completedIndex = currentIndexRef.current;
+        const targetCount = arrangementTargetCountRef.current;
+        pendingCorrectAdvanceRef.current = {
+          pageIndex: songPracticePageIndexForProgress(completedIndex, targetCount),
+          nextIndex: completedIndex + 1,
+          targetCount,
+        };
         setFeedback({ noteName, octave, type: "correct" });
         feedbackTimerRef.current = window.setTimeout(() => {
-          setCurrentIndex((index) => index + 1);
+          const pendingAdvance = pendingCorrectAdvanceRef.current;
+          if (!pendingAdvance) return;
+          pendingCorrectAdvanceRef.current = null;
+          rememberSongPracticePageProgress(
+            pageProgressRef.current,
+            pendingAdvance.pageIndex,
+            pendingAdvance.nextIndex,
+            pendingAdvance.targetCount
+          );
+          currentIndexRef.current = pendingAdvance.nextIndex;
+          setCurrentIndex(pendingAdvance.nextIndex);
           answerLockedRef.current = false;
           feedbackTimerRef.current = undefined;
           setFeedback(null);
@@ -953,7 +1042,14 @@ export function SongPracticeView({
     async (targetPageIndex: number): Promise<void> => {
       if (isInputSwitching) return;
       const nextPageIndex = Math.max(0, Math.min(totalPages - 1, targetPageIndex));
-      const nextStartIndex = pageStarts[nextPageIndex] ?? 0;
+      commitPendingCorrectAdvance();
+      const pageStartIndex = pageStarts[nextPageIndex] ?? 0;
+      const pageEndIndex = pageStarts[nextPageIndex + 1] ?? arrangement.targets.length;
+      const savedPageProgress = pageProgressRef.current.get(nextPageIndex);
+      const nextStartIndex =
+        savedPageProgress !== undefined && savedPageProgress < pageEndIndex
+          ? Math.max(pageStartIndex, savedPageProgress)
+          : pageStartIndex;
       if (activeInputMode === "microphone" && !microphoneIsListening) {
         const microphoneStartError = await startMicrophoneAndGetError(
           microphoneStart,
@@ -970,11 +1066,14 @@ export function SongPracticeView({
       answerLockedRef.current = false;
       heldMidiNumbersRef.current.clear();
       setFeedback(null);
+      currentIndexRef.current = nextStartIndex;
       setCurrentIndex(nextStartIndex);
     },
     [
       activeInputMode,
+      arrangement.targets.length,
       clearFeedbackTimer,
+      commitPendingCorrectAdvance,
       isInputSwitching,
       microphoneError,
       microphoneIsListening,
@@ -1016,8 +1115,11 @@ export function SongPracticeView({
     playbackRowRef.current = null;
     ignoreMicrophoneUntilRef.current = Date.now() + 400;
     clearFeedbackTimer();
+    pendingCorrectAdvanceRef.current = null;
     answerLockedRef.current = false;
     heldMidiNumbersRef.current.clear();
+    currentIndexRef.current = 0;
+    resetSongPracticePageProgress(pageProgressRef.current, 0, arrangement.targets.length);
     setCurrentIndex(0);
     setFeedback(null);
     setHasStarted(false);
@@ -1041,6 +1143,7 @@ export function SongPracticeView({
 
   const changeHandMode = (nextMode: SongPracticeHandMode): void => {
     if (nextMode === activeHandMode || isInputSwitching || inputTransitionRef.current) return;
+    commitPendingCorrectAdvance();
     if (nextMode === "both" && !midi.isConnected) {
       toast.error("混弹需要连接 MIDI 键盘。当前手型和进度已保留。", { duration: 3500 });
       return;
@@ -1053,7 +1156,7 @@ export function SongPracticeView({
         : simplifySongPracticeArrangement(nextSourceArrangement, nextMode);
     const nextIndex = mapArrangementIndex(
       arrangement,
-      currentIndex,
+      currentIndexRef.current,
       nextArrangement,
       selection.score.meter.quarterBeatsPerMeasure
     );
@@ -1062,9 +1165,16 @@ export function SongPracticeView({
     playbackRowRef.current = null;
     ignoreMicrophoneUntilRef.current = Date.now() + 400;
     clearFeedbackTimer();
+    pendingCorrectAdvanceRef.current = null;
     answerLockedRef.current = false;
     heldMidiNumbersRef.current.clear();
     setFeedback(null);
+    currentIndexRef.current = nextIndex;
+    resetSongPracticePageProgress(
+      pageProgressRef.current,
+      nextIndex,
+      nextArrangement.targets.length
+    );
     setCurrentIndex(nextIndex);
     setActiveHandMode(nextMode);
     activeHandModeRef.current = nextMode;
