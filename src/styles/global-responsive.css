@@ -196,6 +196,11 @@
     padding: 12px;
   }
 
+  .study-shell,
+  .settings-shell {
+    padding-bottom: calc(60px + max(14px, env(safe-area-inset-bottom)));
+  }
+
   .study-controls {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
