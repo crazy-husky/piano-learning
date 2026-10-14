@@ -1,0 +1,234 @@
+import { CircleHelp, RotateCcw, X } from "lucide-react";
+import type { RefObject } from "react";
+import type { StaffGameWrongNoteComparison } from "../../../domain/staffGameWrongNoteArchives";
+import type { StaffGameWrongNoteRunPerformance } from "../logic/staffGameWrongNoteArchive";
+
+interface StaffGameReviewSummaryContentProps {
+  performance: StaffGameWrongNoteRunPerformance | null;
+  comparison: StaffGameWrongNoteComparison | null;
+  wrongNoteStatisticsEnabled: boolean;
+  archiveStatus: "idle" | "manual" | "saving" | "saved" | "error";
+  archiveDateLabel: string;
+  onRetryArchive: () => void;
+  onRetry: () => void;
+  onExit: () => void;
+  onShowWeakNoteDetails: () => void;
+  detailsTriggerRef: RefObject<HTMLButtonElement>;
+}
+
+function formatRateChange(change: number): string {
+  const arrow = change > 0 ? "↑" : change < 0 ? "↓" : "→";
+  const sign = change > 0 ? "+" : "";
+  return `${arrow} ${sign}${change} 个百分点`;
+}
+
+function formatWeakNoteChange(change: number): string {
+  const arrow = change > 0 ? "↑" : change < 0 ? "↓" : "→";
+  const sign = change > 0 ? "+" : "";
+  return `${arrow} ${sign}${change} 次`;
+}
+
+function formatReactionChange(change: number): string {
+  const arrow = change > 0 ? "↑" : change < 0 ? "↓" : "→";
+  const sign = change > 0 ? "+" : "";
+  return `${arrow} ${sign}${change.toFixed(1)}s`;
+}
+
+function changeTone(change: number, lowerIsBetter = false): string {
+  if (change === 0) return "is-neutral";
+  return (lowerIsBetter ? change < 0 : change > 0) ? "is-positive" : "is-negative";
+}
+
+export function StaffGameReviewSummaryContent({
+  performance,
+  comparison,
+  wrongNoteStatisticsEnabled,
+  archiveStatus,
+  archiveDateLabel,
+  onRetryArchive,
+  onRetry,
+  onExit,
+  onShowWeakNoteDetails,
+  detailsTriggerRef,
+}: StaffGameReviewSummaryContentProps) {
+  const rateChange = comparison
+    ? Math.round(comparison.currentFirstTryAccuracyPercent) -
+      Math.round(comparison.previousFirstTryAccuracyPercent)
+    : null;
+  const weakNoteChange = comparison
+    ? comparison.currentWeakNoteCount - comparison.previousWeakNoteCount
+    : null;
+  const reactionChangeSeconds =
+    comparison?.currentAverageResponseMs !== null &&
+    comparison?.currentAverageResponseMs !== undefined &&
+    comparison.previousAverageResponseMs !== null
+      ? Math.round(
+          (comparison.currentAverageResponseMs - comparison.previousAverageResponseMs) / 100
+        ) / 10
+      : null;
+  const previousDate = comparison ? new Date(comparison.previousRun.endedAt) : null;
+  const previousDateLabel =
+    previousDate && !Number.isNaN(previousDate.getTime())
+      ? `${previousDate.getMonth() + 1}月${previousDate.getDate()}日`
+      : "";
+  const previousSourceLabel = comparison
+    ? comparison.previousRun.source === "drill"
+      ? "薄弱音加练"
+      : comparison.previousRun.source === "challenge"
+        ? "闯关"
+        : "错题复习"
+    : "";
+
+  return (
+    <div className="staff-game-review-summary">
+      <h2>复习完成</h2>
+
+      <section aria-labelledby="staff-game-review-current-title">
+        <h3 id="staff-game-review-current-title">本次表现</h3>
+        <div className="staff-game-review-current-metrics">
+          <div className="staff-game-review-current-metric">
+            <span>首次答对率</span>
+            <strong>
+              {performance?.firstTryAccuracyPercent === null || !performance
+                ? "—"
+                : `${Math.round(performance.firstTryAccuracyPercent)}%`}
+            </strong>
+          </div>
+          <div className="staff-game-review-current-metric">
+            <span>平均反应时长</span>
+            <strong>
+              {performance?.averageResponseMs === null || !performance
+                ? "暂无样本"
+                : `${(performance.averageResponseMs / 1_000).toFixed(1)}s`}
+            </strong>
+          </div>
+          {wrongNoteStatisticsEnabled ? (
+            <div className="staff-game-review-current-metric">
+              <span className="staff-game-review-current-label-with-help">
+                薄弱音次数
+                <button
+                  aria-label="查看薄弱音统计详情"
+                  className="staff-game-wrong-answer-details-trigger"
+                  onClick={onShowWeakNoteDetails}
+                  ref={detailsTriggerRef}
+                  type="button"
+                >
+                  <CircleHelp aria-hidden="true" size={16} />
+                </button>
+              </span>
+              <strong>{performance?.weakNoteCount ?? 0} 次</strong>
+            </div>
+          ) : null}
+        </div>
+        {performance && performance.targetCount < 10 ? (
+          <p className="staff-game-review-summary-note">
+            本局共出现 {performance.targetCount} 个目标音，样本较少，建议再练一轮看趋势
+          </p>
+        ) : null}
+        {performance?.weakNoteCount === 0 ? (
+          <p className="staff-game-review-summary-note is-mastery">全对！这组音已经掌握</p>
+        ) : null}
+      </section>
+
+      <section
+        aria-labelledby="staff-game-review-comparison-title"
+        className="staff-game-review-summary-comparison"
+      >
+        <h3 id="staff-game-review-comparison-title">对比上次</h3>
+        {comparison ? (
+          <>
+            <p className="staff-game-review-summary-common-notes">
+              按共同音符对比 · {comparison.commonNoteMidis.length} 个
+            </p>
+            <div className="staff-game-review-comparison-metrics">
+              <div className="staff-game-review-comparison-metric">
+                <div className="staff-game-review-comparison-primary-line">
+                  <h4>答对率</h4>
+                  <strong>{Math.round(comparison.currentFirstTryAccuracyPercent)}%</strong>
+                  <span
+                    className={`staff-game-review-comparison-change ${changeTone(rateChange ?? 0)}`}
+                  >
+                    {formatRateChange(rateChange ?? 0)}
+                  </span>
+                </div>
+                <p className="staff-game-review-comparison-previous-line">
+                  上次 {Math.round(comparison.previousFirstTryAccuracyPercent)}%
+                  {previousDateLabel ? ` · ${previousDateLabel}` : ""}
+                  {previousSourceLabel ? ` · ${previousSourceLabel}` : ""}
+                </p>
+              </div>
+
+              {comparison.currentAverageResponseMs !== null &&
+              comparison.previousAverageResponseMs !== null ? (
+                <div className="staff-game-review-comparison-metric">
+                  <div className="staff-game-review-comparison-primary-line">
+                    <h4>反应时长</h4>
+                    <strong>{(comparison.currentAverageResponseMs / 1_000).toFixed(1)}s</strong>
+                    <span
+                      className={`staff-game-review-comparison-change ${changeTone(reactionChangeSeconds ?? 0, true)}`}
+                    >
+                      {formatReactionChange(reactionChangeSeconds ?? 0)}
+                    </span>
+                  </div>
+                  <p className="staff-game-review-comparison-previous-line">
+                    上次 {(comparison.previousAverageResponseMs / 1_000).toFixed(1)}s
+                  </p>
+                </div>
+              ) : null}
+
+              {wrongNoteStatisticsEnabled ? (
+                <div className="staff-game-review-comparison-metric">
+                  <div className="staff-game-review-comparison-primary-line">
+                    <h4>薄弱音</h4>
+                    <strong>{comparison.currentWeakNoteCount} 次</strong>
+                    <span
+                      className={`staff-game-review-comparison-change ${changeTone(weakNoteChange ?? 0, true)}`}
+                    >
+                      {formatWeakNoteChange(weakNoteChange ?? 0)}
+                    </span>
+                  </div>
+                  <p className="staff-game-review-comparison-previous-line">
+                    上次 {comparison.previousWeakNoteCount} 次
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <p className="staff-game-review-summary-note">本次作为基线，下次可对比</p>
+        )}
+      </section>
+
+      {archiveStatus !== "idle" && archiveStatus !== "manual" ? (
+        <div
+          aria-live="polite"
+          className={`staff-game-wrong-note-archive-status is-${archiveStatus}`}
+        >
+          {archiveStatus === "saving" ? (
+            <span>正在保存到错题集…</span>
+          ) : archiveStatus === "error" ? (
+            <>
+              <span>错题集保存失败</span>
+              <button onClick={onRetryArchive} type="button">
+                重试
+              </button>
+            </>
+          ) : (
+            <span>✓ 已自动归档{archiveDateLabel ? ` · ${archiveDateLabel}` : ""}</span>
+          )}
+        </div>
+      ) : null}
+
+      <div className="staff-game-review-summary-actions">
+        <button className="staff-game-primary" onClick={onRetry} type="button">
+          <RotateCcw aria-hidden="true" size={16} />
+          再练一轮
+        </button>
+        <button className="staff-game-secondary" onClick={onExit} type="button">
+          <X aria-hidden="true" size={16} />
+          退出复习
+        </button>
+      </div>
+    </div>
+  );
+}

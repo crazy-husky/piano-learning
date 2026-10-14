@@ -1397,6 +1397,163 @@ body.rush-mode .staff-game-scene::before {
   margin-bottom: 12px;
 }
 
+.staff-game-ready-card.is-wrong-note-review {
+  max-height: min(86vh, 760px);
+  overflow-y: auto;
+}
+
+.staff-game-ready-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 auto 5px;
+  border: 1px solid rgba(43, 110, 128, 0.24);
+  border-radius: 999px;
+  background: rgba(215, 240, 238, 0.82);
+  padding: 4px;
+}
+
+.staff-game-ready-mode-switch button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #45666c;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 12px;
+}
+
+.staff-game-ready-mode-switch button.is-active {
+  background: #176f8b;
+  color: #fff;
+}
+
+.staff-game-review-picker {
+  display: grid;
+  width: 100%;
+  gap: 9px;
+  margin: 0 0 12px;
+  text-align: left;
+}
+
+.staff-game-review-range-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.staff-game-review-range {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #45666c;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.staff-game-review-range select {
+  flex: 0 0 auto;
+  min-height: 34px;
+  border: 1px solid rgba(43, 110, 128, 0.25);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #315b6e;
+  font: inherit;
+  padding: 4px 9px;
+}
+
+.staff-game-archive-manage {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #176f8b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 8px 4px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.staff-game-archive-manage:hover {
+  color: #0c526b;
+}
+
+.staff-game-archive-manage:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.staff-game-review-preview {
+  border-radius: 12px;
+  background: rgba(227, 245, 243, 0.92);
+  color: #315b6e;
+  padding: 9px 11px;
+}
+
+.staff-game-review-preview > strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #176f8b;
+  font-size: 12px;
+}
+
+.staff-game-review-preview ol {
+  display: grid;
+  max-height: 112px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 12px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.staff-game-review-preview li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.staff-game-review-preview li small {
+  color: #648087;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.staff-game-review-preview p,
+.staff-game-review-picker > p {
+  margin: 3px 0 0;
+  color: #54747a;
+  font-size: 11px;
+}
+
+.staff-game-hud.is-wrong-note-review {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.staff-game-hud.is-wrong-note-review .staff-game-score-group {
+  width: min(100%, 280px);
+  max-width: 280px;
+  grid-column: 1;
+  justify-self: center;
+  padding-top: 0;
+}
+
 .staff-game-card h1,
 .staff-game-card h2 {
   margin: 8px 0;
@@ -1541,8 +1698,12 @@ body.rush-mode .staff-game-scene::before {
 
 .staff-game-primary:disabled,
 .staff-game-secondary:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.7;
+}
+
+.staff-game-primary.is-loading:disabled {
+  cursor: wait;
 }
 
 .staff-game-mic-status {

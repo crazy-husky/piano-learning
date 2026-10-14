@@ -1,10 +1,16 @@
 import { CircleHelp, RotateCcw, SkipForward, Sparkles, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { StaffGameWrongNoteComparison } from "../../../domain/staffGameWrongNoteArchives";
 import type { StaffGameWrongAnswerRecord } from "../hooks/useStaffGameScoring";
 import type { StaffGameRoundNoteOutcome } from "../hooks/useStaffGameRoundClock";
+import type { StaffGameWrongNoteRunPerformance } from "../logic/staffGameWrongNoteArchive";
+import { StaffGameReviewSummaryContent } from "./StaffGameReviewSummaryContent";
+
+export type StaffGameSummaryMode = "challenge" | "song" | "drill" | "review";
 
 export interface StaffGameSummaryDialogProps {
+  mode: StaffGameSummaryMode;
   ariaLabel: string;
   gameArtStyle: CSSProperties;
   isSongMode: boolean;
@@ -24,6 +30,12 @@ export interface StaffGameSummaryDialogProps {
   weakNoteOutcomes: StaffGameRoundNoteOutcome[];
   wrongNoteStatisticsEnabled: boolean;
   isWrongNotePractice: boolean;
+  isWrongNoteReview: boolean;
+  wrongNoteArchiveStatus: "idle" | "manual" | "saving" | "saved" | "error";
+  wrongNoteArchiveMode: "automatic" | "manual" | null;
+  wrongNoteArchiveDate: string | null;
+  wrongNoteComparison: StaffGameWrongNoteComparison | null;
+  reviewPerformance: StaffGameWrongNoteRunPerformance | null;
   canPracticeWrongNotes: boolean;
   accuracy: number;
   isNewComboRecord: boolean;
@@ -36,9 +48,12 @@ export interface StaffGameSummaryDialogProps {
   onAdvanceLevel: () => void;
   onExitWrongNotePractice: () => void;
   onPracticeWrongNotes: () => void;
+  onArchiveWrongNotes: () => void;
+  onRetryArchive: () => void;
 }
 
 export function StaffGameSummaryDialog({
+  mode,
   ariaLabel,
   gameArtStyle,
   isSongMode,
@@ -58,6 +73,12 @@ export function StaffGameSummaryDialog({
   weakNoteOutcomes,
   wrongNoteStatisticsEnabled,
   isWrongNotePractice,
+  isWrongNoteReview,
+  wrongNoteArchiveStatus,
+  wrongNoteArchiveMode,
+  wrongNoteArchiveDate,
+  wrongNoteComparison,
+  reviewPerformance,
   canPracticeWrongNotes,
   accuracy,
   isNewComboRecord,
@@ -70,6 +91,8 @@ export function StaffGameSummaryDialog({
   onAdvanceLevel,
   onExitWrongNotePractice,
   onPracticeWrongNotes,
+  onArchiveWrongNotes,
+  onRetryArchive,
 }: StaffGameSummaryDialogProps) {
   const [showWrongAnswerDetails, setShowWrongAnswerDetails] = useState(false);
   const detailsCloseButtonRef = useRef<HTMLButtonElement>(null);
@@ -81,6 +104,42 @@ export function StaffGameSummaryDialog({
   ).length;
   const firstTryFailurePercentage =
     generatedNoteCount > 0 ? Math.round((weakNoteCount / generatedNoteCount) * 100) : 0;
+  const archiveDateLabel = wrongNoteArchiveDate
+    ? (() => {
+        const [, month, day] = wrongNoteArchiveDate.split("-");
+        return `${Number(month)}月${Number(day)}日`;
+      })()
+    : "";
+  const previousDateLabel = wrongNoteComparison
+    ? (() => {
+        const date = new Date(wrongNoteComparison.previousRun.endedAt);
+        return Number.isNaN(date.getTime()) ? "" : `${date.getMonth() + 1}月${date.getDate()}日`;
+      })()
+    : "";
+  const previousSourceLabel = wrongNoteComparison
+    ? wrongNoteComparison.previousRun.source === "drill"
+      ? "薄弱音加练"
+      : wrongNoteComparison.previousRun.source === "challenge"
+        ? "闯关"
+        : "错题复习"
+    : "";
+  const rateChange = wrongNoteComparison
+    ? Math.round(wrongNoteComparison.currentFirstTryAccuracyPercent) -
+      Math.round(wrongNoteComparison.previousFirstTryAccuracyPercent)
+    : null;
+  const weakNoteChange = wrongNoteComparison
+    ? wrongNoteComparison.currentWeakNoteCount - wrongNoteComparison.previousWeakNoteCount
+    : null;
+  const reactionChangeSeconds =
+    wrongNoteComparison?.currentAverageResponseMs !== null &&
+    wrongNoteComparison?.currentAverageResponseMs !== undefined &&
+    wrongNoteComparison.previousAverageResponseMs !== null
+      ? Math.round(
+          (wrongNoteComparison.currentAverageResponseMs -
+            wrongNoteComparison.previousAverageResponseMs) /
+            100
+        ) / 10
+      : null;
   const wrongResultsByToken = wrongAnswerRecords.reduce((results, record) => {
     if (!results.has(record.token)) results.set(record.token, record.recognizedNote);
     return results;
@@ -199,11 +258,11 @@ export function StaffGameSummaryDialog({
         aria-hidden={showWrongAnswerDetails}
         aria-label={ariaLabel}
         aria-modal={!showWrongAnswerDetails}
-        className={`staff-game-summary-backdrop${gameEffectsEnabled ? "" : " effects-disabled"}`}
+        className={`staff-game-summary-backdrop${isWrongNotePractice || isWrongNoteReview ? " has-review-comparison" : ""}${gameEffectsEnabled ? "" : " effects-disabled"}`}
         role="dialog"
         style={gameArtStyle}
       >
-        {!isWrongNotePractice ? (
+        {!isWrongNotePractice && !isWrongNoteReview ? (
           <div
             aria-label={`${revealedStars} 颗星依次出现，获得 ${earnedStars} 颗星`}
             className={`staff-game-summary-stars has-star-halo${earnedStars === 0 ? " is-white-star-halo" : ""}${gameEffectsEnabled ? " is-animated" : ""}`}
@@ -222,120 +281,317 @@ export function StaffGameSummaryDialog({
         <section className="staff-game-card staff-game-summary-card">
           <div
             aria-label={
-              isWrongNotePractice ? "薄弱音加练" : isSongMode ? songTitle : `第 ${level} 关`
+              isWrongNoteReview
+                ? "错题复习"
+                : isWrongNotePractice
+                  ? "薄弱音加练"
+                  : isSongMode
+                    ? songTitle
+                    : `第 ${level} 关`
             }
             className="staff-game-summary-level-badge"
             role="img"
           >
             <img alt="" aria-hidden="true" draggable="false" src={levelBannerImage} />
             <strong className={isSongMode ? "is-song-title" : undefined}>
-              {isWrongNotePractice ? "薄弱音加练" : isSongMode ? songTitle : `LEVEL ${level}`}
+              {isWrongNoteReview
+                ? "错题复习"
+                : isWrongNotePractice
+                  ? "薄弱音加练"
+                  : isSongMode
+                    ? songTitle
+                    : `LEVEL ${level}`}
             </strong>
           </div>
-          <div className="staff-game-summary-content">
+          <div className={`staff-game-summary-content${mode === "review" ? " is-review" : ""}`}>
             <div aria-hidden="true" className="staff-game-summary-celebration">
               {fireworks}
               {mascot}
             </div>
-            {isWrongNotePractice || isSongMode || earnedStars > 0 ? (
-              <h2>{isWrongNotePractice ? "加练完成" : isSongMode ? "演奏完成！" : "闯关成功！"}</h2>
-            ) : null}
-            <div className="staff-game-result-stats">
-              {wrongNoteStatisticsEnabled ? (
-                <div className="is-wrong-count">
-                  <span>薄弱音</span>
-                  <strong>
-                    <span className="staff-game-result-metric-value">{weakNoteCount} 次</span>
-                    <span className="staff-game-result-metric-accessory">
-                      <button
-                        aria-label="查看薄弱音统计详情"
-                        className="staff-game-wrong-answer-details-trigger"
-                        onClick={() => setShowWrongAnswerDetails(true)}
-                        ref={detailsTriggerRef}
-                        type="button"
-                      >
-                        <CircleHelp aria-hidden="true" size={16} />
+            {mode === "review" ? (
+              <StaffGameReviewSummaryContent
+                archiveDateLabel={archiveDateLabel}
+                archiveStatus={wrongNoteArchiveStatus}
+                comparison={wrongNoteComparison}
+                detailsTriggerRef={detailsTriggerRef}
+                onExit={onExitWrongNotePractice}
+                onRetry={onRetry}
+                onRetryArchive={onRetryArchive}
+                onShowWeakNoteDetails={() => setShowWrongAnswerDetails(true)}
+                performance={reviewPerformance}
+                wrongNoteStatisticsEnabled={wrongNoteStatisticsEnabled}
+              />
+            ) : (
+              <>
+                {isWrongNotePractice || isWrongNoteReview || isSongMode || earnedStars > 0 ? (
+                  <h2>
+                    {isWrongNoteReview
+                      ? "复习完成"
+                      : isWrongNotePractice
+                        ? "加练完成"
+                        : isSongMode
+                          ? "演奏完成！"
+                          : "闯关成功！"}
+                  </h2>
+                ) : null}
+                <div className="staff-game-result-stats">
+                  {wrongNoteStatisticsEnabled ? (
+                    <div className="is-wrong-count">
+                      <span>薄弱音</span>
+                      <strong>
+                        <span className="staff-game-result-metric-value">{weakNoteCount} 次</span>
+                        <span className="staff-game-result-metric-accessory">
+                          <button
+                            aria-label="查看薄弱音统计详情"
+                            className="staff-game-wrong-answer-details-trigger"
+                            onClick={() => setShowWrongAnswerDetails(true)}
+                            ref={detailsTriggerRef}
+                            type="button"
+                          >
+                            <CircleHelp aria-hidden="true" size={16} />
+                          </button>
+                        </span>
+                      </strong>
+                    </div>
+                  ) : null}
+                  <div>
+                    <span>最大连击数</span>
+                    <strong>
+                      <span className="staff-game-result-metric-value">{comboCount} 次</span>
+                      <span className="staff-game-result-metric-accessory">
+                        {isNewComboRecord ? <em>新纪录</em> : null}
+                      </span>
+                    </strong>
+                  </div>
+                  <div className="is-score">
+                    <span>获得的分数</span>
+                    <strong>
+                      <span className="staff-game-result-metric-value">{Math.round(score)} 分</span>
+                      <span className="staff-game-result-metric-accessory">
+                        {isNewScoreRecord ? <em>新纪录</em> : null}
+                      </span>
+                    </strong>
+                  </div>
+                  {isSongMode ? (
+                    <div>
+                      <span>首次准确率</span>
+                      <strong>
+                        <span className="staff-game-result-metric-value">
+                          {Math.round(accuracy)}%
+                        </span>
+                        <span className="staff-game-result-metric-accessory" />
+                      </strong>
+                    </div>
+                  ) : null}
+                </div>
+                {wrongNoteArchiveStatus !== "idle" && wrongNoteArchiveMode ? (
+                  <div
+                    className={`staff-game-wrong-note-archive-status is-${wrongNoteArchiveStatus}`}
+                  >
+                    {wrongNoteArchiveStatus === "saving" ? (
+                      <span>正在保存到错题集…</span>
+                    ) : wrongNoteArchiveStatus === "error" ? (
+                      <>
+                        <span>错题集保存失败</span>
+                        <button onClick={onRetryArchive} type="button">
+                          重试
+                        </button>
+                      </>
+                    ) : wrongNoteArchiveStatus === "manual" ? (
+                      <button onClick={onArchiveWrongNotes} type="button">
+                        加入错题集
                       </button>
-                    </span>
-                  </strong>
-                </div>
-              ) : null}
-              <div>
-                <span>最大连击数</span>
-                <strong>
-                  <span className="staff-game-result-metric-value">{comboCount} 次</span>
-                  <span className="staff-game-result-metric-accessory">
-                    {isNewComboRecord ? <em>新纪录</em> : null}
-                  </span>
-                </strong>
-              </div>
-              <div className="is-score">
-                <span>获得的分数</span>
-                <strong>
-                  <span className="staff-game-result-metric-value">{Math.round(score)} 分</span>
-                  <span className="staff-game-result-metric-accessory">
-                    {isNewScoreRecord ? <em>新纪录</em> : null}
-                  </span>
-                </strong>
-              </div>
-              {isSongMode ? (
-                <div>
-                  <span>首次准确率</span>
-                  <strong>
-                    <span className="staff-game-result-metric-value">{Math.round(accuracy)}%</span>
-                    <span className="staff-game-result-metric-accessory" />
-                  </strong>
-                </div>
-              ) : null}
-            </div>
-            <div
-              className={`staff-game-summary-actions${!isSongMode && canPracticeWrongNotes ? " has-wrong-note-practice" : ""}`}
-            >
-              {!isSongMode && canPracticeWrongNotes ? (
-                <button
-                  className="staff-game-wrong-note-practice-button"
-                  onClick={onPracticeWrongNotes}
-                  type="button"
+                    ) : (
+                      <span>
+                        ✓ {wrongNoteArchiveMode === "automatic" ? "已自动归档" : "已加入错题集"}
+                        {archiveDateLabel ? ` · ${archiveDateLabel}` : ""}
+                      </span>
+                    )}
+                  </div>
+                ) : null}
+                <div
+                  className={`staff-game-summary-actions${!isSongMode && !isWrongNoteReview && canPracticeWrongNotes ? " has-wrong-note-practice" : ""}`}
                 >
-                  <Sparkles aria-hidden="true" size={15} />
-                  薄弱音加练
-                </button>
-              ) : null}
-              <button className="staff-game-primary" onClick={onRetry} type="button">
-                <RotateCcw size={16} />
-                {isSongMode ? "再弹一次" : "再试一次"}
-              </button>
-              {isSongMode ? (
-                <>
-                  <button className="staff-game-secondary" onClick={onPlayNextSong} type="button">
-                    <SkipForward size={16} />
-                    {hasNextSong ? "下一首" : "回到歌曲列表"}
-                  </button>
-                  {hasNextSong ? (
+                  {!isSongMode && !isWrongNoteReview && canPracticeWrongNotes ? (
                     <button
-                      className="staff-game-summary-list-button"
-                      onClick={onReturnToSongList}
+                      className="staff-game-wrong-note-practice-button"
+                      onClick={onPracticeWrongNotes}
                       type="button"
                     >
-                      歌曲列表
+                      <Sparkles aria-hidden="true" size={15} />
+                      薄弱音加练
                     </button>
                   ) : null}
-                </>
-              ) : (
-                <button
-                  className="staff-game-secondary"
-                  disabled={!isWrongNotePractice && isFinalLevel}
-                  onClick={isWrongNotePractice ? onExitWrongNotePractice : onAdvanceLevel}
-                  type="button"
-                >
-                  {isWrongNotePractice ? <X size={16} /> : <SkipForward size={16} />}
-                  <span className="staff-game-summary-action-label">
-                    {isWrongNotePractice ? "退出加练" : isFinalLevel ? "已通关" : "下一级"}
-                  </span>
-                </button>
-              )}
-            </div>
+                  <button className="staff-game-primary" onClick={onRetry} type="button">
+                    <RotateCcw size={16} />
+                    {isWrongNoteReview ? "再练一轮" : isSongMode ? "再弹一次" : "再试一次"}
+                  </button>
+                  {isSongMode ? (
+                    <>
+                      <button
+                        className="staff-game-secondary"
+                        onClick={onPlayNextSong}
+                        type="button"
+                      >
+                        <SkipForward size={16} />
+                        {hasNextSong ? "下一首" : "回到歌曲列表"}
+                      </button>
+                      {hasNextSong ? (
+                        <button
+                          className="staff-game-summary-list-button"
+                          onClick={onReturnToSongList}
+                          type="button"
+                        >
+                          歌曲列表
+                        </button>
+                      ) : null}
+                    </>
+                  ) : (
+                    <button
+                      className="staff-game-secondary"
+                      disabled={!isWrongNotePractice && !isWrongNoteReview && isFinalLevel}
+                      onClick={
+                        isWrongNotePractice || isWrongNoteReview
+                          ? onExitWrongNotePractice
+                          : onAdvanceLevel
+                      }
+                      type="button"
+                    >
+                      {isWrongNotePractice || isWrongNoteReview ? (
+                        <X size={16} />
+                      ) : (
+                        <SkipForward size={16} />
+                      )}
+                      <span className="staff-game-summary-action-label">
+                        {isWrongNoteReview
+                          ? "退出复习"
+                          : isWrongNotePractice
+                            ? "退出加练"
+                            : isFinalLevel
+                              ? "已通关"
+                              : "下一级"}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
+          {isWrongNotePractice ? (
+            <section
+              aria-label={isWrongNoteReview ? "错题复习结果对比" : "薄弱音加练结果对比"}
+              className="staff-game-review-comparison"
+            >
+              <h3>{isWrongNoteReview ? "错题复习结果" : "薄弱音加练结果"}</h3>
+              {weakNoteCount === 0 ? (
+                <p className="staff-game-review-comparison-message is-mastery">
+                  全对！这组音已经掌握
+                </p>
+              ) : null}
+              {generatedNoteCount < 10 ? (
+                <p className="staff-game-review-comparison-message">
+                  本局生成 {generatedNoteCount} 个目标音，样本较少，建议再练一轮看趋势
+                </p>
+              ) : null}
+              {wrongNoteComparison ? (
+                <div className="staff-game-review-comparison-metrics">
+                  <div className="staff-game-review-comparison-metric">
+                    <h4>首次答对率</h4>
+                    <div className="staff-game-review-comparison-line is-current">
+                      <span>本次</span>
+                      <strong>
+                        {Math.round(wrongNoteComparison.currentFirstTryAccuracyPercent)}%
+                      </strong>
+                      <span
+                        className={`staff-game-review-comparison-change ${
+                          rateChange === null || rateChange === 0
+                            ? "is-neutral"
+                            : rateChange > 0
+                              ? "is-positive"
+                              : "is-negative"
+                        }`}
+                      >
+                        {`${rateChange !== null && rateChange > 0 ? "↑" : rateChange !== null && rateChange < 0 ? "↓" : "→"} ${rateChange !== null && rateChange > 0 ? "+" : ""}${rateChange ?? 0} 个百分点`}
+                      </span>
+                    </div>
+                    <div className="staff-game-review-comparison-line is-previous">
+                      <span>上次</span>
+                      <strong>
+                        {Math.round(wrongNoteComparison.previousFirstTryAccuracyPercent)}%
+                      </strong>
+                      <span>
+                        {previousDateLabel}
+                        {previousSourceLabel ? ` · ${previousSourceLabel}` : ""}
+                      </span>
+                    </div>
+                  </div>
+                  {wrongNoteStatisticsEnabled ? (
+                    <div className="staff-game-review-comparison-metric">
+                      <h4>薄弱音次数</h4>
+                      <div className="staff-game-review-comparison-line is-current">
+                        <span>本次</span>
+                        <strong>{wrongNoteComparison.currentWeakNoteCount} 次</strong>
+                        <span
+                          className={`staff-game-review-comparison-change ${
+                            weakNoteChange === null || weakNoteChange === 0
+                              ? "is-neutral"
+                              : weakNoteChange < 0
+                                ? "is-positive"
+                                : "is-negative"
+                          }`}
+                        >
+                          {`${weakNoteChange !== null && weakNoteChange > 0 ? "↑" : weakNoteChange !== null && weakNoteChange < 0 ? "↓" : "→"} ${weakNoteChange !== null && weakNoteChange > 0 ? "+" : ""}${weakNoteChange ?? 0} 次`}
+                        </span>
+                      </div>
+                      <div className="staff-game-review-comparison-line is-previous">
+                        <span>上次</span>
+                        <strong>{wrongNoteComparison.previousWeakNoteCount} 次</strong>
+                        <span>
+                          {previousDateLabel}
+                          {previousSourceLabel ? ` · ${previousSourceLabel}` : ""}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+                  {wrongNoteComparison.currentAverageResponseMs !== null &&
+                  wrongNoteComparison.previousAverageResponseMs !== null ? (
+                    <div className="staff-game-review-comparison-metric">
+                      <h4>平均反应</h4>
+                      <div className="staff-game-review-comparison-line is-current">
+                        <span>本次</span>
+                        <strong>
+                          {(wrongNoteComparison.currentAverageResponseMs / 1_000).toFixed(1)}s
+                        </strong>
+                        <span
+                          className={`staff-game-review-comparison-change ${
+                            reactionChangeSeconds === null || reactionChangeSeconds === 0
+                              ? "is-neutral"
+                              : reactionChangeSeconds < 0
+                                ? "is-positive"
+                                : "is-negative"
+                          }`}
+                        >
+                          {`${reactionChangeSeconds !== null && reactionChangeSeconds > 0 ? "↑" : reactionChangeSeconds !== null && reactionChangeSeconds < 0 ? "↓" : "→"} ${reactionChangeSeconds !== null && reactionChangeSeconds > 0 ? "+" : ""}${(reactionChangeSeconds ?? 0).toFixed(1)}s`}
+                        </span>
+                      </div>
+                      <div className="staff-game-review-comparison-line is-previous">
+                        <span>上次</span>
+                        <strong>
+                          {(wrongNoteComparison.previousAverageResponseMs / 1_000).toFixed(1)}s
+                        </strong>
+                        <span>
+                          {previousDateLabel}
+                          {previousSourceLabel ? ` · ${previousSourceLabel}` : ""}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="staff-game-review-comparison-message">本次作为基线，下次可对比</p>
+              )}
+            </section>
+          ) : null}
         </section>
       </div>
       {showWrongAnswerDetails ? (

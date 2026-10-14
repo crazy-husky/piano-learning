@@ -11,6 +11,9 @@ export interface StaffGamePitch {
 }
 
 export const GAME_LEVEL_COUNT = 60;
+export const WRONG_NOTE_REVIEW_BAG_SIZE = 20;
+export const WRONG_NOTE_REVIEW_DURATION_FACTOR = 0.6;
+export const WRONG_NOTE_REVIEW_DURATION_ROUNDING_STEP_MS = 15_000;
 export const BUBBLE_FADE_IN_MS = 200;
 export const SONG_STAR_THRESHOLDS = [60, 80, 95] as const;
 export const RUSH_MODE_COMBO_THRESHOLD = 5;
@@ -20,6 +23,11 @@ export const COMBO_INDICATOR_FADE_DURATION_MS = 280;
 export const RUSH_FALL_SPEED_MULTIPLIER = 0.92;
 export const ERROR_FLASH_DURATION_MS = 1_500;
 export const NOTE_NAMES: NoteName[] = ["C", "D", "E", "F", "G", "A", "B"];
+
+export function staffGameReactionMs(correctAtMs: number, spawnAtMs: number): number {
+  return correctAtMs - spawnAtMs - BUBBLE_FADE_IN_MS;
+}
+
 export const PITCH_NAMES: PianoKeyName[] = [
   "C",
   "C#",
@@ -87,6 +95,17 @@ export function gameDurationMsForLevel(level: number): number {
   if (level <= 6) return 60_000;
   if (level <= 9) return 120_000;
   return 140_000;
+}
+
+export function wrongNoteReviewDurationMs(
+  bubbleDurationMs: number,
+  bagSize = WRONG_NOTE_REVIEW_BAG_SIZE
+): number {
+  const rawDurationMs = bagSize * bubbleDurationMs * WRONG_NOTE_REVIEW_DURATION_FACTOR;
+  return (
+    Math.round(rawDurationMs / WRONG_NOTE_REVIEW_DURATION_ROUNDING_STEP_MS) *
+    WRONG_NOTE_REVIEW_DURATION_ROUNDING_STEP_MS
+  );
 }
 
 export const GAME_DIFFICULTIES: Array<{
@@ -343,6 +362,70 @@ export function shuffledWrongNotePracticeBag(
     regularRemaining -= selected.length;
   }
   return shuffledItems(bag);
+}
+
+export function shuffledWrongNoteReviewBag(
+  unlockedLevel: number,
+  weakNoteWeights: ReadonlyMap<number, number>,
+  bagSize = WRONG_NOTE_REVIEW_BAG_SIZE
+): StaffGamePitch[] {
+  const unlockedNotes = GAME_NOTE_PROGRESSION.slice(0, unlockedLevel);
+  const weakNotes = unlockedNotes
+    .filter((note) => (weakNoteWeights.get(note.midi) ?? 0) > 0)
+    .sort(
+      (left, right) =>
+        (weakNoteWeights.get(right.midi) ?? 0) - (weakNoteWeights.get(left.midi) ?? 0) ||
+        left.midi - right.midi
+    );
+  if (weakNotes.length === 0 || unlockedNotes.length === 0) return [];
+
+  // Coverage takes precedence over the one-third target. If more weak notes than
+  // slots exist, retain only the highest-weight notes and include each once.
+  const selectedWeakNotes = weakNotes.slice(0, bagSize);
+  const bag = selectedWeakNotes.map((note) => ({ ...note }));
+  if (weakNotes.length > bagSize) return shuffledItems(bag);
+
+  const targetWeakCount = Math.max(Math.round(bagSize / 3), selectedWeakNotes.length);
+  const regularNotes = unlockedNotes.filter(
+    (note) => !weakNoteWeights.has(note.midi) || (weakNoteWeights.get(note.midi) ?? 0) <= 0
+  );
+  const hasRegularNotes = regularNotes.length > 0;
+  const weakCount = hasRegularNotes ? targetWeakCount : bagSize;
+  bag.push(...weightedNoteDraws(selectedWeakNotes, weakCount - bag.length, weakNoteWeights));
+
+  const regularCount = bagSize - weakCount;
+  if (hasRegularNotes) {
+    let remaining = regularCount;
+    while (remaining > 0) {
+      const cycle = shuffledItems(regularNotes);
+      const selected = cycle.slice(0, remaining);
+      bag.push(...selected.map((note) => ({ ...note })));
+      remaining -= selected.length;
+    }
+  } else if (bag.length < bagSize) {
+    bag.push(...weightedNoteDraws(selectedWeakNotes, bagSize - bag.length, weakNoteWeights));
+  }
+
+  return shuffledItems(bag);
+}
+
+export function drawNextWrongNoteReviewNote(
+  noteBag: StaffGamePitch[],
+  recentNoteMidis: number[],
+  unlockedLevel: number,
+  weakNoteWeights: ReadonlyMap<number, number>
+): StaffGamePitch | null {
+  if (noteBag.length === 0) {
+    noteBag.push(...shuffledWrongNoteReviewBag(unlockedLevel, weakNoteWeights));
+  }
+  if (noteBag.length === 0) return null;
+  const eligibleIndices = noteBag.flatMap((note, index) =>
+    canFollowRecentNotes(note.midi, recentNoteMidis) ? [index] : []
+  );
+  const chosenIndex = eligibleIndices.length
+    ? eligibleIndices[Math.floor(Math.random() * eligibleIndices.length)]!
+    : noteBag.length - 1;
+  return noteBag.splice(chosenIndex, 1)[0] ?? null;
 }
 
 export function drawNextNote(

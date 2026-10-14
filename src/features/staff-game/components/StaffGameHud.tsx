@@ -4,6 +4,7 @@ import type { Ref } from "react";
 export interface StaffGameHudProps {
   songSelectionHeaderTitle: string | null;
   isSongMode: boolean;
+  isWrongNoteReview: boolean;
   rushModeActive: boolean;
   historyLabel: string;
   historyStars: number;
@@ -24,6 +25,7 @@ export interface StaffGameHudProps {
 export function StaffGameHud({
   songSelectionHeaderTitle,
   isSongMode,
+  isWrongNoteReview,
   rushModeActive,
   historyLabel,
   historyStars,
@@ -55,62 +57,66 @@ export function StaffGameHud({
 
   return (
     <header
-      className={`staff-game-hud${isSongMode ? " is-song-mode" : ""}${rushModeActive ? " is-rush-mode" : ""}`}
+      className={`staff-game-hud${isSongMode ? " is-song-mode" : ""}${rushModeActive ? " is-rush-mode" : ""}${isWrongNoteReview ? " is-wrong-note-review" : ""}`}
     >
-      <div aria-hidden={rushModeActive} className="staff-game-hud-card staff-game-display-card">
-        <span>{historyLabel}</span>
-        <strong aria-label={`${historyStars} 颗星`} className="staff-game-history-stars">
-          {[1, 2, 3].map((star) => (
-            <img
-              alt=""
-              className={historyStars >= star ? "earned" : ""}
-              key={star}
-              src={starImage}
+      {!isWrongNoteReview ? (
+        <div aria-hidden={rushModeActive} className="staff-game-hud-card staff-game-display-card">
+          <span>{historyLabel}</span>
+          <strong aria-label={`${historyStars} 颗星`} className="staff-game-history-stars">
+            {[1, 2, 3].map((star) => (
+              <img
+                alt=""
+                className={historyStars >= star ? "earned" : ""}
+                key={star}
+                src={starImage}
+              />
+            ))}
+          </strong>
+        </div>
+      ) : null}
+      {!isWrongNoteReview ? (
+        <div
+          aria-hidden={rushModeActive}
+          aria-label={medalLabel}
+          className={`staff-game-level-medal${isSongMode ? " is-song-progress" : ""}`}
+        >
+          <svg aria-hidden="true" className="staff-game-level-progress" viewBox="0 0 120 120">
+            <path
+              className="staff-game-level-progress-track"
+              d="M 26.06 26.06 A 48 48 0 1 0 93.94 26.06"
+              pathLength="1000"
             />
-          ))}
-        </strong>
-      </div>
-      <div
-        aria-hidden={rushModeActive}
-        aria-label={medalLabel}
-        className={`staff-game-level-medal${isSongMode ? " is-song-progress" : ""}`}
-      >
-        <svg aria-hidden="true" className="staff-game-level-progress" viewBox="0 0 120 120">
-          <path
-            className="staff-game-level-progress-track"
-            d="M 26.06 26.06 A 48 48 0 1 0 93.94 26.06"
-            pathLength="1000"
-          />
-          <path
-            className="staff-game-level-progress-fill"
-            d="M 26.06 26.06 A 48 48 0 1 0 93.94 26.06"
-            pathLength="1000"
-            strokeDashoffset={1000 * (1 - activeProgress)}
-          />
-          {!isSongMode
-            ? [
-                { x: 15, y: 93.94 },
-                { x: 105, y: 93.94 },
-                { x: 93.94, y: 26.06 },
-              ].map((position, index) => (
-                <text
-                  className={`staff-game-level-progress-star${currentRoundStars > index ? " earned" : ""}`}
-                  dominantBaseline="central"
-                  key={index}
-                  textAnchor="middle"
-                  x={position.x}
-                  y={position.y}
-                >
-                  ★
-                </text>
-              ))
-            : null}
-        </svg>
-        <span>{progressLabel}</span>
-        <strong className={isSongMode ? "staff-game-song-progress-value" : undefined}>
-          {progressValue}
-        </strong>
-      </div>
+            <path
+              className="staff-game-level-progress-fill"
+              d="M 26.06 26.06 A 48 48 0 1 0 93.94 26.06"
+              pathLength="1000"
+              strokeDashoffset={1000 * (1 - activeProgress)}
+            />
+            {!isSongMode
+              ? [
+                  { x: 15, y: 93.94 },
+                  { x: 105, y: 93.94 },
+                  { x: 93.94, y: 26.06 },
+                ].map((position, index) => (
+                  <text
+                    className={`staff-game-level-progress-star${currentRoundStars > index ? " earned" : ""}`}
+                    dominantBaseline="central"
+                    key={index}
+                    textAnchor="middle"
+                    x={position.x}
+                    y={position.y}
+                  >
+                    ★
+                  </text>
+                ))
+              : null}
+          </svg>
+          <span>{progressLabel}</span>
+          <strong className={isSongMode ? "staff-game-song-progress-value" : undefined}>
+            {progressValue}
+          </strong>
+        </div>
+      ) : null}
       <div className="staff-game-score-group">
         <div className="staff-game-hud-card staff-game-score-card">
           <span>{scoreLabel}</span>
@@ -123,7 +129,7 @@ export function StaffGameHud({
           </strong>
           <small>{scoreDetail}</small>
         </div>
-        {showLevelJump ? (
+        {showLevelJump && !isWrongNoteReview ? (
           <button
             aria-label="选择关卡跳级"
             className="staff-game-jump-button"

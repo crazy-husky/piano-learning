@@ -30,8 +30,12 @@ interface StaffGameDialogsProps {
   isStarting: boolean;
   isSettingsDialogShaking: boolean;
   isWrongNoteNoticeOpen: boolean;
+  isUnsavedSettingsPromptOpen: boolean;
   onSettingsDialogAnimationEnd: AnimationEventHandler<HTMLElement>;
   onCloseWrongNoteNotice: () => void;
+  onCancelUnsavedSettingsPrompt: () => void;
+  onDiscardUnsavedSettings: () => void;
+  isWrongNoteReview: boolean;
   isSongMode: boolean;
   closeGameDialog: () => void;
   bestStars: number[];
@@ -54,6 +58,7 @@ interface StaffGameDialogsProps {
   onNotePoolScopeChange: (scope: StaffGameNotePoolScope) => void;
   onNoteSchedulingStrategyChange: (strategy: StaffGameNoteSchedulingStrategy) => void;
   onToggleWrongNoteStatistics: () => void;
+  onToggleAutoArchiveWrongNotes: () => void;
   applyGameSettings: () => void;
 }
 
@@ -65,8 +70,12 @@ export function StaffGameDialogs({
   isStarting,
   isSettingsDialogShaking,
   isWrongNoteNoticeOpen,
+  isUnsavedSettingsPromptOpen,
   onSettingsDialogAnimationEnd,
   onCloseWrongNoteNotice,
+  onCancelUnsavedSettingsPrompt,
+  onDiscardUnsavedSettings,
+  isWrongNoteReview,
   isSongMode,
   closeGameDialog,
   bestStars,
@@ -89,12 +98,17 @@ export function StaffGameDialogs({
   onNotePoolScopeChange,
   onNoteSchedulingStrategyChange,
   onToggleWrongNoteStatistics,
+  onToggleAutoArchiveWrongNotes,
   applyGameSettings,
 }: StaffGameDialogsProps) {
   const wrongNoteNoticeButtonRef = useRef<HTMLButtonElement>(null);
   const wrongNoteNoticeDialogRef = useRef<HTMLElement>(null);
   const staffGameDialogRef = useRef<HTMLElement>(null);
   const wrongNoteNoticeWasOpenRef = useRef(false);
+  const unsavedSettingsDialogRef = useRef<HTMLElement>(null);
+  const unsavedSettingsSaveButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const unsavedSettingsPromptWasOpenRef = useRef(false);
 
   useEffect(() => {
     if (isWrongNoteNoticeOpen) {
@@ -107,7 +121,17 @@ export function StaffGameDialogs({
   }, [isWrongNoteNoticeOpen]);
 
   useEffect(() => {
-    if (!isWrongNoteNoticeOpen) return undefined;
+    if (isUnsavedSettingsPromptOpen) {
+      unsavedSettingsPromptWasOpenRef.current = true;
+      unsavedSettingsSaveButtonRef.current?.focus();
+    } else if (unsavedSettingsPromptWasOpenRef.current) {
+      unsavedSettingsPromptWasOpenRef.current = false;
+      settingsCloseButtonRef.current?.focus();
+    }
+  }, [isUnsavedSettingsPromptOpen]);
+
+  useEffect(() => {
+    if (!isWrongNoteNoticeOpen && !isUnsavedSettingsPromptOpen) return undefined;
     const backgroundDialog = staffGameDialogRef.current;
     if (!backgroundDialog) return undefined;
 
@@ -116,7 +140,7 @@ export function StaffGameDialogs({
     return () => {
       backgroundDialog.inert = wasInert;
     };
-  }, [isWrongNoteNoticeOpen]);
+  }, [isUnsavedSettingsPromptOpen, isWrongNoteNoticeOpen]);
 
   useEffect(() => {
     if (!isWrongNoteNoticeOpen) return undefined;
@@ -159,6 +183,50 @@ export function StaffGameDialogs({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isWrongNoteNoticeOpen, onCloseWrongNoteNotice]);
 
+  useEffect(() => {
+    if (!isUnsavedSettingsPromptOpen) return undefined;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onCancelUnsavedSettingsPrompt();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const dialog = unsavedSettingsDialogRef.current;
+      if (!dialog) return;
+      const focusableElements = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      event.stopPropagation();
+      if (!firstElement || !lastElement) {
+        event.preventDefault();
+        dialog.focus();
+      } else if (!dialog.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? lastElement : firstElement).focus();
+      } else if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isUnsavedSettingsPromptOpen, onCancelUnsavedSettingsPrompt]);
+
+  const isNestedSettingsPromptOpen =
+    dialog === "settings" && (isWrongNoteNoticeOpen || isUnsavedSettingsPromptOpen);
+
   return (
     <>
       {dialog && typeof document !== "undefined"
@@ -167,15 +235,20 @@ export function StaffGameDialogs({
               className="staff-game-dialog-backdrop"
               role="presentation"
               onClick={(event) => {
-                if (!isStarting && !isWrongNoteNoticeOpen && event.target === event.currentTarget)
+                if (
+                  !isStarting &&
+                  !isWrongNoteNoticeOpen &&
+                  !isUnsavedSettingsPromptOpen &&
+                  event.target === event.currentTarget
+                )
                   closeGameDialog();
               }}
               style={gameArtStyle}
             >
               <section
-                aria-hidden={dialog === "settings" && isWrongNoteNoticeOpen}
+                aria-hidden={isNestedSettingsPromptOpen}
                 aria-labelledby="staff-game-dialog-title"
-                aria-modal={!(dialog === "settings" && isWrongNoteNoticeOpen)}
+                aria-modal={!isNestedSettingsPromptOpen}
                 className={`staff-game-dialog staff-game-${dialog}-dialog${dialog === "settings" && isSettingsDialogShaking ? " is-wobbling" : ""}`}
                 onAnimationEnd={onSettingsDialogAnimationEnd}
                 ref={staffGameDialogRef}
@@ -199,8 +272,33 @@ export function StaffGameDialogs({
                       <img alt="" aria-hidden="true" draggable="false" src={helpTitleArt} />
                     </h2>
                     <div className="staff-game-help-copy">
-                      <h3>{isSongMode ? "歌曲模式说明" : "闯关模式说明"}</h3>
-                      {isSongMode ? (
+                      <h3>
+                        {isWrongNoteReview
+                          ? "错题复习说明"
+                          : isSongMode
+                            ? "歌曲模式说明"
+                            : "闯关模式说明"}
+                      </h3>
+                      {isWrongNoteReview ? (
+                        <>
+                          <p>
+                            从错题归档里挑出薄弱音，集中练习。可选择近 3 天、近 7
+                            天、半个月、一个月或全部时间范围，系统按权重优先安排最需要复习的音符。
+                          </p>
+                          <p>
+                            每局约 1/3 是错题音，其余约 2/3
+                            是其他已解锁音作为缓冲，让练习节奏有起伏。难度沿用当前设置，复习时长会根据难度自动计算。
+                          </p>
+                          <p>
+                            观察气泡里的五线谱音符，用麦克风（实体乐器）、MIDI
+                            键盘或虚拟琴键作答。虚拟琴键可点击；电脑端也可用 A、S、D、F、G、H、J
+                            弹奏 C4 到 B4，W、E、T、Y、U 对应五个黑键。
+                          </p>
+                          <p>
+                            答对可得分并增加连击。复习结果会自动归档，供下次查看对比；结算页可选择「再练一轮」或「退出复习」。
+                          </p>
+                        </>
+                      ) : isSongMode ? (
                         <>
                           <p>
                             选择歌曲后，气泡会按旋律顺序出现。答错可重试当前音符；气泡飘走后会记为漏音并继续下一音。全曲完成后，按首次作答准确率评星：达到
@@ -330,6 +428,7 @@ export function StaffGameDialogs({
                       aria-label="关闭弹窗"
                       className="staff-game-dialog-close"
                       onClick={closeGameDialog}
+                      ref={settingsCloseButtonRef}
                       type="button"
                     >
                       <X size={23} />
@@ -436,6 +535,19 @@ export function StaffGameDialogs({
                           />
                         </section>
                       </div>
+                      <section className="staff-game-settings-section staff-game-wrong-note-setting">
+                        <div>
+                          <h3>错题自动归档</h3>
+                          <p>控制闯关中的错音和漏音是否自动归档；复习和加练始终自动归档</p>
+                        </div>
+                        <ToggleSwitch
+                          aria-label="错题自动归档"
+                          checked={settingsDraft.autoArchiveWrongNotesEnabled}
+                          className="staff-game-settings-toggle"
+                          id="staff-game-auto-archive-wrong-notes-toggle"
+                          onCheckedChange={() => onToggleAutoArchiveWrongNotes()}
+                        />
+                      </section>
                       {!isSongMode ? (
                         <section className="staff-game-settings-section staff-game-settings-row staff-game-note-pool-setting">
                           <div>
@@ -524,6 +636,46 @@ export function StaffGameDialogs({
                   </>
                 )}
               </section>
+              {dialog === "settings" && isUnsavedSettingsPromptOpen ? (
+                <div className="staff-game-unsaved-settings-backdrop">
+                  <section
+                    aria-describedby="staff-game-unsaved-settings-description"
+                    aria-labelledby="staff-game-unsaved-settings-title"
+                    aria-modal="true"
+                    className="staff-game-unsaved-settings-dialog"
+                    ref={unsavedSettingsDialogRef}
+                    role="alertdialog"
+                    tabIndex={-1}
+                  >
+                    <h2 id="staff-game-unsaved-settings-title">有未保存的更改</h2>
+                    <p id="staff-game-unsaved-settings-description">要保存这些设置吗？</p>
+                    <div className="staff-game-unsaved-settings-actions">
+                      <button
+                        className="staff-game-secondary"
+                        onClick={onCancelUnsavedSettingsPrompt}
+                        type="button"
+                      >
+                        继续编辑
+                      </button>
+                      <button
+                        className="staff-game-secondary"
+                        onClick={onDiscardUnsavedSettings}
+                        type="button"
+                      >
+                        不保存并关闭
+                      </button>
+                      <button
+                        className="staff-game-primary"
+                        onClick={applyGameSettings}
+                        ref={unsavedSettingsSaveButtonRef}
+                        type="button"
+                      >
+                        保存并关闭
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              ) : null}
               {dialog === "settings" && isWrongNoteNoticeOpen ? (
                 <div className="staff-game-wrong-note-notice-backdrop">
                   <section

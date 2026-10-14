@@ -12,6 +12,7 @@ export interface StaffGameSettingsDraft {
   displayMode: GameDisplayMode;
   gameEffectsEnabled: boolean;
   wrongNoteStatisticsEnabled: boolean;
+  autoArchiveWrongNotesEnabled: boolean;
   notePoolScope: StaffGameNotePoolScope;
   noteSchedulingStrategy: StaffGameNoteSchedulingStrategy;
 }

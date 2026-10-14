@@ -10,6 +10,7 @@ import type { PianoKeyName } from "../../../domain/types";
 import { STAFF_GAME_SONGS } from "../data/staffGameSongs";
 import {
   drawNextNote,
+  drawNextWrongNoteReviewNote,
   gameNoteFromMidi,
   randomBubbleCenterX,
   type StaffGameNotePoolScope,
@@ -35,6 +36,8 @@ export interface StaffGameRoundNoteOutcome {
   note: string;
   firstInputCorrect: boolean | null;
   missed: boolean;
+  /** Positive milliseconds from the end of the bubble fade-in to the accepted hit. */
+  responseMs?: number;
 }
 
 export interface StaffGameLevelRoundMetrics {
@@ -49,6 +52,7 @@ export interface StaffGameLevelRoundMetrics {
 type StaffGameMode = "levels" | "songs";
 type StaffGamePhase = "ready" | "running" | "paused" | "summary";
 type StaffGameInputMode = "physical" | "virtual" | "midi";
+type StaffGameRoundPurpose = "level" | "wrong-note-practice" | "wrong-note-review";
 
 interface StaffGameRoundClockOptions {
   phase: StaffGamePhase;
@@ -58,6 +62,7 @@ interface StaffGameRoundClockOptions {
   levelRef: MutableRefObject<number>;
   phaseRef: MutableRefObject<StaffGamePhase>;
   gameModeRef: MutableRefObject<StaffGameMode>;
+  roundPurposeRef: MutableRefObject<StaffGameRoundPurpose>;
   selectedSongIdRef: MutableRefObject<string>;
   songTargetIndexRef: MutableRefObject<number>;
   songWrongTargetTokenRef: MutableRefObject<number | null>;
@@ -66,6 +71,8 @@ interface StaffGameRoundClockOptions {
   noteSchedulingStrategyRef: MutableRefObject<StaffGameNoteSchedulingStrategy>;
   weakNoteWeightsRef: MutableRefObject<Map<number, number>>;
   wrongNotePracticeWeightsRef: MutableRefObject<Map<number, number> | null>;
+  wrongNoteReviewWeightsRef: MutableRefObject<Map<number, number> | null>;
+  unlockedLevelRef: MutableRefObject<number>;
   recentNoteMidisRef: MutableRefObject<number[]>;
   targetTokenRef: MutableRefObject<number>;
   roundMetricsRef: MutableRefObject<StaffGameLevelRoundMetrics>;
@@ -97,6 +104,7 @@ export function useStaffGameRoundClock({
   levelRef,
   phaseRef,
   gameModeRef,
+  roundPurposeRef,
   selectedSongIdRef,
   songTargetIndexRef,
   songWrongTargetTokenRef,
@@ -105,6 +113,8 @@ export function useStaffGameRoundClock({
   noteSchedulingStrategyRef,
   weakNoteWeightsRef,
   wrongNotePracticeWeightsRef,
+  wrongNoteReviewWeightsRef,
+  unlockedLevelRef,
   recentNoteMidisRef,
   targetTokenRef,
   roundMetricsRef,
@@ -144,15 +154,24 @@ export function useStaffGameRoundClock({
               const midi = song?.noteMidis[songTargetIndexRef.current];
               return midi === undefined ? null : gameNoteFromMidi(midi);
             })()
-          : drawNextNote(
-              levelRef.current,
-              noteBagRef.current,
-              recentNoteMidisRef.current,
-              notePoolScopeRef.current,
-              noteSchedulingStrategyRef.current,
-              weakNoteWeightsRef.current,
-              wrongNotePracticeWeightsRef.current ?? undefined
-            );
+          : roundPurposeRef.current === "wrong-note-review"
+            ? wrongNoteReviewWeightsRef.current
+              ? drawNextWrongNoteReviewNote(
+                  noteBagRef.current,
+                  recentNoteMidisRef.current,
+                  unlockedLevelRef.current,
+                  wrongNoteReviewWeightsRef.current
+                )
+              : null
+            : drawNextNote(
+                levelRef.current,
+                noteBagRef.current,
+                recentNoteMidisRef.current,
+                notePoolScopeRef.current,
+                noteSchedulingStrategyRef.current,
+                weakNoteWeightsRef.current,
+                wrongNotePracticeWeightsRef.current ?? undefined
+              );
       if (!drawnNote) return;
       targetTokenRef.current += 1;
       const next = {
@@ -181,6 +200,7 @@ export function useStaffGameRoundClock({
     [
       gameDurationMs,
       gameModeRef,
+      roundPurposeRef,
       levelRef,
       noteBagRef,
       phaseRef,
@@ -190,6 +210,8 @@ export function useStaffGameRoundClock({
       noteLabel,
       weakNoteWeightsRef,
       wrongNotePracticeWeightsRef,
+      wrongNoteReviewWeightsRef,
+      unlockedLevelRef,
       recentNoteMidisRef,
       roundMetricsRef,
       selectedSongIdRef,
