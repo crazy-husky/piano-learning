@@ -1,7 +1,13 @@
 const APP_BUILD_ID = __APP_BUILD_ID__;
 const APP_ASSET_FILES = __APP_ASSET_FILES__;
+const APP_SHARED_MEDIA_FILES = __APP_SHARED_MEDIA_FILES__;
 const APP_CACHE_PREFIX = "anki-note-app-";
 const CACHE_NAME = `${APP_CACHE_PREFIX}${APP_BUILD_ID}`;
+const SHARED_MEDIA_CACHE_NAME = "anki-note-shared-media-v1";
+// Bump this only when the files in public/audio/salamander change.
+const PIANO_SAMPLE_CACHE_VERSION = "salamander-v1";
+// Existing app caches do not record a sample-bank version, so migrate their samples only while v1 is current.
+const LEGACY_PIANO_SAMPLE_MIGRATION_VERSION = "salamander-v1";
 const PRELOAD_MAX_ATTEMPTS = 4;
 const PRELOAD_RETRY_DELAYS_MS = [300, 900, 1800];
 const RUNTIME_ASSET_MAX_ATTEMPTS = 4;
@@ -9,6 +15,9 @@ const scopeUrl = new URL(self.registration.scope);
 const indexUrl = new URL("index.html", scopeUrl).toString();
 const APP_SHELL = ["", "index.html", "manifest.webmanifest", "icons/icon.svg?v=2"].map((path) =>
   new URL(path, scopeUrl).toString()
+);
+const APP_SHARED_MEDIA_PATHS = new Set(
+  APP_SHARED_MEDIA_FILES.map((file) => new URL(file, scopeUrl).pathname)
 );
 
 function isCacheableAssetUrl(url) {
@@ -24,6 +33,91 @@ function getBuildCacheKey(requestOrUrl) {
   const url = new URL(requestOrUrl instanceof Request ? requestOrUrl.url : requestOrUrl);
   url.searchParams.set("__app_build", APP_BUILD_ID);
   return new Request(url.toString());
+}
+
+function isPianoSampleAssetUrl(url) {
+  if (url.origin !== self.location.origin || !url.pathname.startsWith(scopeUrl.pathname)) {
+    return false;
+  }
+  const relativePath = url.pathname.slice(scopeUrl.pathname.length).toLowerCase();
+  return relativePath.startsWith("audio/salamander/") && relativePath.endsWith(".mp3");
+}
+
+function isSharedMediaRequest(request) {
+  if (request.method !== "GET") return false;
+  const url = new URL(request.url);
+  return (
+    url.origin === self.location.origin &&
+    (APP_SHARED_MEDIA_PATHS.has(url.pathname) || isPianoSampleAssetUrl(url))
+  );
+}
+
+function getSharedMediaCacheKey(requestOrUrl) {
+  const url = new URL(requestOrUrl instanceof Request ? requestOrUrl.url : requestOrUrl);
+  url.searchParams.delete("__app_build");
+  url.searchParams.delete("__media_version");
+  if (isPianoSampleAssetUrl(url)) {
+    url.searchParams.set("__media_version", PIANO_SAMPLE_CACHE_VERSION);
+  }
+  return new Request(url.toString());
+}
+
+function isReusableMediaResponse(response) {
+  return response.ok && response.type === "basic" && !isHtmlFallbackResponse(response);
+}
+
+async function findPreviouslyCachedMedia(request) {
+  const url = new URL(request.url);
+  // Vite's emitted media URLs contain a content hash, so an identical pathname is immutable.
+  // Legacy sample entries are safe to migrate only until the sample bank version changes.
+  const isLegacySampleVersion =
+    isPianoSampleAssetUrl(url) &&
+    PIANO_SAMPLE_CACHE_VERSION === LEGACY_PIANO_SAMPLE_MIGRATION_VERSION;
+  if (!APP_SHARED_MEDIA_PATHS.has(url.pathname) && !isLegacySampleVersion) return undefined;
+
+  try {
+    const cacheNames = await caches.keys();
+    for (const cacheName of cacheNames) {
+      if (!cacheName.startsWith(APP_CACHE_PREFIX)) continue;
+      const previousCache = await caches.open(cacheName);
+      const response = await previousCache.match(request, { ignoreSearch: true });
+      if (response && isReusableMediaResponse(response)) return response;
+    }
+  } catch {
+    // A legacy cache lookup is only an optimization; fetch the media if it cannot be read.
+  }
+
+  return undefined;
+}
+
+async function fetchSharedMedia(request) {
+  const cacheKey = getSharedMediaCacheKey(request);
+  let sharedCache;
+
+  try {
+    sharedCache = await caches.open(SHARED_MEDIA_CACHE_NAME);
+    const cached = await sharedCache.match(cacheKey);
+    if (cached) return cached;
+
+    const previousBuildResponse = await findPreviouslyCachedMedia(request);
+    if (previousBuildResponse) {
+      await sharedCache.put(cacheKey, previousBuildResponse.clone()).catch(() => undefined);
+      return previousBuildResponse;
+    }
+  } catch {
+    // CacheStorage is best-effort; continue with the normal network request.
+  }
+
+  const response = await fetch(request);
+  if (isReusableMediaResponse(response)) {
+    try {
+      sharedCache ??= await caches.open(SHARED_MEDIA_CACHE_NAME);
+      await sharedCache.put(cacheKey, response.clone());
+    } catch {
+      // Keep the network response usable if storage is unavailable or full.
+    }
+  }
+  return response;
 }
 
 function describeFailure(value) {
@@ -339,6 +433,11 @@ async function fetchRuntimeAssetWithRetries(request, clientId) {
 
 self.addEventListener("fetch", (event) => {
   if (!canHandle(event.request)) {
+    return;
+  }
+
+  if (isSharedMediaRequest(event.request)) {
+    event.respondWith(fetchSharedMedia(event.request));
     return;
   }
 

@@ -69,6 +69,7 @@ import {
 import { useMidiInput } from "../midi/useMidiInput";
 import { ENHANCED_PITCH_MODEL_CACHE } from "../features/vocal-pitch/logic/enhancedPitchModels";
 import { useAppUpdateNotice } from "./useAppUpdateNotice";
+import { useNightModeSuggestion } from "./useNightModeSuggestion";
 import {
   getBackupReminderState,
   loadFreshAppData,
@@ -247,6 +248,12 @@ export function App(): JSX.Element {
   );
   const [appearanceTimestamp, setAppearanceTimestamp] = useState(() => Date.now());
   const isNightMode = resolveNightMode(pageAppearancePreferences, new Date(appearanceTimestamp));
+  useNightModeSuggestion({
+    appearanceTimestamp,
+    pageAppearancePreferences,
+    setAppearanceTimestamp,
+    setPageAppearancePreferences,
+  });
   useEffect(() => {
     // A background tab can otherwise reuse an old auto-mode setting when it becomes visible again.
     const synchronizeAppearancePreferences = (event: StorageEvent): void => {

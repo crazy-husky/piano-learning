@@ -536,7 +536,7 @@ export function StaffGameDialogs({
                   >
                     <h2 id="staff-game-weak-note-notice-title">薄弱音统计说明</h2>
                     <p>
-                      按每个目标音的首次输入统计：答错、超时漏音或本局结束时未作答，都会计入薄弱音。麦克风识别受算法、设备和环境影响，统计仅供练习参考。
+                      按每个目标音的首次输入统计：错音或漏音都会计入薄弱音；超时或本局结束时未输入，均记为漏音。麦克风识别受算法、设备和环境影响，统计仅供练习参考。
                     </p>
                     <button
                       className="staff-game-primary"

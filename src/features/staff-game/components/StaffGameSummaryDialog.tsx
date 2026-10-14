@@ -102,14 +102,10 @@ export function StaffGameSummaryDialog({
       targetTokens: new Set<number>(),
     };
     noteSummary.targetTokens.add(outcome.token);
-    if (outcome.firstInputCorrect === false) noteSummary.reasons.add("答错");
-    if (outcome.missed) noteSummary.reasons.add("超时漏音");
-    if (outcome.firstInputCorrect === null && !outcome.missed) {
-      noteSummary.reasons.add("结束时未作答");
-    }
-    const inputResult =
-      wrongResultsByToken.get(outcome.token) ??
-      (outcome.firstInputCorrect === null ? "未输入" : undefined);
+    const wrongResult = wrongResultsByToken.get(outcome.token);
+    if (outcome.firstInputCorrect === false || wrongResult) noteSummary.reasons.add("错音");
+    if (outcome.firstInputCorrect === null) noteSummary.reasons.add("漏音");
+    const inputResult = wrongResult ?? (outcome.firstInputCorrect === null ? "未输入" : undefined);
     if (inputResult) {
       noteSummary.inputResultCounts.set(
         inputResult,
@@ -334,7 +330,7 @@ export function StaffGameSummaryDialog({
                 >
                   {isWrongNotePractice ? <X size={16} /> : <SkipForward size={16} />}
                   <span className="staff-game-summary-action-label">
-                    {isWrongNotePractice ? "退出薄弱音模式" : isFinalLevel ? "已通关" : "下一级"}
+                    {isWrongNotePractice ? "退出加练" : isFinalLevel ? "已通关" : "下一级"}
                   </span>
                 </button>
               )}

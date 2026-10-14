@@ -164,7 +164,7 @@ export function StaffGameStatusOverlays({
                       onClick={onExitWrongNotePractice}
                       type="button"
                     >
-                      退出薄弱音模式
+                      退出加练
                     </button>
                   ) : null}
                 </div>

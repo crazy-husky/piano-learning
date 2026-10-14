@@ -13,13 +13,19 @@ const tailscaleAllowedHosts = process.env.TAILSCALE_HOSTNAME
 const buildTime = new Date().toISOString();
 const buildId = `${process.env.GITHUB_SHA || "local"}-${buildTime}`;
 const buildVersion = packageJson.version;
+const sharedMediaAssetPattern =
+  /\.(?:avif|gif|jpe?g|png|svg|webp|woff2?|ttf|otf|mp3|ogg|wav|m4a|aac)$/i;
 let appCodeAssetFiles: string[] = [];
+let appSharedMediaFiles: string[] = [];
 
 const appBuildVersionPlugin: Plugin = {
   name: "app-build-version",
   apply: "build" as const,
   generateBundle(_options, bundle) {
     appCodeAssetFiles = Object.keys(bundle).filter((fileName) => /\.(?:js|css)$/.test(fileName));
+    appSharedMediaFiles = Object.keys(bundle).filter((fileName) =>
+      sharedMediaAssetPattern.test(fileName)
+    );
 
     this.emitFile({
       type: "asset",
@@ -35,7 +41,8 @@ const appBuildVersionPlugin: Plugin = {
     );
     const serviceWorker = serviceWorkerTemplate
       .replace(/__APP_BUILD_ID__/g, JSON.stringify(buildId))
-      .replace("__APP_ASSET_FILES__", JSON.stringify(appCodeAssetFiles));
+      .replace("__APP_ASSET_FILES__", JSON.stringify(appCodeAssetFiles))
+      .replace("__APP_SHARED_MEDIA_FILES__", JSON.stringify(appSharedMediaFiles));
 
     writeFileSync(resolve(outputDirectory, "service-worker.js"), serviceWorker);
   },
