@@ -24,6 +24,7 @@ import {
 interface StaffGameWrongNoteStudyDialogProps {
   archives: readonly StaffGameWrongNoteArchive[];
   range: StaffGameWrongNoteRange;
+  onChangeRange: (range: StaffGameWrongNoteRange) => void;
   onClose: () => void;
 }
 
@@ -174,10 +175,11 @@ function StaffGameWrongNoteKeyboardMap({
 export function StaffGameWrongNoteStudyDialog({
   archives,
   range,
+  onChangeRange,
   onClose,
 }: StaffGameWrongNoteStudyDialogProps): JSX.Element | null {
   const [activeTab, setActiveTab] = useState<StudyTab>("browse");
-  const [selectedRange, setSelectedRange] = useState(range);
+  const selectedRange = range;
   const [progress, setProgress] = useState(createStaffGameWrongNoteSelfTestProgress);
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -197,7 +199,6 @@ export function StaffGameWrongNoteStudyDialog({
   const closeDialog = useCallback(() => onClose(), [onClose]);
 
   useEffect(() => {
-    setSelectedRange(range);
     setProgress(createStaffGameWrongNoteSelfTestProgress());
     setActiveBrowseMidi(null);
   }, [range]);
@@ -259,7 +260,7 @@ export function StaffGameWrongNoteStudyDialog({
   };
 
   const changeRange = (nextRange: StaffGameWrongNoteRange): void => {
-    setSelectedRange(nextRange);
+    onChangeRange(nextRange);
     setProgress(createStaffGameWrongNoteSelfTestProgress());
     setActiveBrowseMidi(null);
   };

@@ -6,6 +6,7 @@ import {
   filterLegacyStaffGameDrillArchives,
   filterStaffGameWrongNoteArchivesByRange,
   filterStaffGameWrongNoteArchivesWithErrors,
+  getStaffGameWrongNotePriorityPreview,
   mergeStaffGameWrongNoteArchives,
 } from "./staffGameWrongNoteArchives";
 import type {
@@ -158,6 +159,20 @@ describe("staff game wrong note archives", () => {
     expect(weights.has(64)).toBe(false);
   });
 
+  it("decays each note from its last error time and falls back to the run time for old rows", () => {
+    const recentArchive: StaffGameWrongNoteArchive = archive("2026-10-15", "recent-error", 60, 2);
+    recentArchive.runs[0]!.notes["60"]!.lastErrorAt = "2026-10-01T10:01:00.000Z";
+    const legacyArchive = archive("2026-10-15", "legacy-run", 60, 2);
+
+    const weights = calculateStaffGameWrongNoteWeights(
+      [recentArchive, legacyArchive],
+      "all",
+      new Date(2026, 9, 15, 12)
+    );
+
+    expect(weights.get(60)).toBeCloseTo(2 * 0.5 ** (14 / 7) + 2);
+  });
+
   it("shares local-calendar range filtering and sorts real error counts by pitch", () => {
     const rows = [
       archive("2026-10-15", "today", 64, 1, 2),
@@ -175,6 +190,24 @@ describe("staff game wrong note archives", () => {
     expect(calculateStaffGameWrongNoteErrorCounts(rows, 3, today)).toEqual([
       { midi: 64, errorCount: 4 },
       { midi: 60, errorCount: 3 },
+    ]);
+  });
+
+  it("sorts the wait-page preview by review weights and filters locked notes", () => {
+    expect(
+      getStaffGameWrongNotePriorityPreview(
+        new Map([
+          [67, 4.1],
+          [64, 4.1],
+          [60, 2.2],
+          [62, 9],
+        ]),
+        new Set([60, 64, 67]),
+        2
+      )
+    ).toEqual([
+      { midi: 64, weight: 4.1 },
+      { midi: 67, weight: 4.1 },
     ]);
   });
 

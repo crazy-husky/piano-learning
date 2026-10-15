@@ -22,11 +22,13 @@ describe("summarizeStaffGameWrongNoteOutcomes", () => {
           note: "C4",
           firstInputCorrect: false,
           missed: false,
+          errorAt: 8_000,
           responseMs: 0,
         },
-        { token: 3, midi: 62, note: "D4", firstInputCorrect: null, missed: true },
+        { token: 3, midi: 62, note: "D4", firstInputCorrect: null, missed: true, errorAt: 9_000 },
       ],
-      [{ token: 2, recognizedNote: "D4" }]
+      [{ token: 2, recognizedNote: "D4" }],
+      "1970-01-01T00:00:20.000Z"
     );
 
     expect(result.firstTryCorrect).toBe(1);
@@ -34,6 +36,7 @@ describe("summarizeStaffGameWrongNoteOutcomes", () => {
       appear: 2,
       correct: 1,
       wrong: 1,
+      lastErrorAt: "1970-01-01T00:00:08.000Z",
       totalResponseMs: 350,
       responseSampleCount: 1,
       confusions: { D4: 1 },
@@ -41,6 +44,7 @@ describe("summarizeStaffGameWrongNoteOutcomes", () => {
     expect(result.notes["62"]).toMatchObject({
       appear: 1,
       missed: 1,
+      lastErrorAt: "1970-01-01T00:00:09.000Z",
       totalResponseMs: 0,
       responseSampleCount: 0,
     });

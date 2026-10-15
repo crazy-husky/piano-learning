@@ -205,6 +205,8 @@ export interface StaffGameWrongNoteNoteStats {
   wrong: number;
   missed: number;
   confusions: Record<string, number>;
+  /** Latest wrong-input or missed-bubble time for this note in this run. */
+  lastErrorAt?: string;
   /** Sum of positive reaction times for correctly completed bubbles. */
   totalResponseMs?: number;
   /** Number of positive reaction-time samples; optional for legacy archives. */

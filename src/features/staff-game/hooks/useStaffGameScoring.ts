@@ -343,6 +343,7 @@ export function useStaffGameScoring({
       }
       if (isCorrect && targetPoppedRef.current) return;
       const firstInput = roundMetricsRef.current.firstInputByToken.get(currentTarget.token);
+      if (firstInput && !isCorrect) firstInput.errorAt = Date.now();
       if (firstInput && firstInput.firstInputCorrect === null) {
         firstInput.firstInputCorrect = isCorrect;
         if (isCorrect) roundMetricsRef.current.firstTryCorrectCount += 1;

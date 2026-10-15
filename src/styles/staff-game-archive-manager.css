@@ -66,7 +66,6 @@
 .staff-game-archive-manager-toolbar {
   min-height: 48px;
   justify-content: flex-start;
-  border-bottom: 1px solid var(--border);
   padding-block: 6px 9px;
 }
 
@@ -156,6 +155,8 @@
 }
 
 .staff-game-archive-manager-table {
+  border: 1px solid var(--border);
+  border-radius: 12px;
   display: flex;
   min-height: 0;
   flex: 1 1 auto;
@@ -183,7 +184,7 @@
 
 .staff-game-archive-manager-table-row {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) minmax(72px, auto);
+  grid-template-columns: 88px minmax(88px, 0.82fr) minmax(100px, 1fr) minmax(110px, 0.88fr);
   min-height: 48px;
   align-items: center;
   gap: 8px;
@@ -217,13 +218,17 @@
 }
 
 .staff-game-archive-manager-table-head .staff-game-archive-manager-table-selection {
-  display: flex;
-  width: auto;
+  display: grid;
+  width: 100%;
+  grid-template-columns: 34px auto;
   align-items: center;
-  justify-content: flex-start;
   gap: 5px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.staff-game-archive-manager-table-head .staff-game-archive-manager-table-selection input {
+  justify-self: center;
 }
 
 .staff-game-archive-manager-table-selection input {
@@ -233,31 +238,29 @@
   accent-color: var(--accent-strong);
 }
 
-.staff-game-archive-manager-table-record {
-  display: flex;
+.staff-game-archive-manager-table-date,
+.staff-game-archive-manager-table-source {
   min-width: 0;
-  align-items: baseline;
-  gap: 14px;
   color: var(--text);
   font-size: 14px;
+  white-space: nowrap;
 }
 
-.staff-game-archive-manager-table-record strong {
-  flex: 0 0 auto;
+.staff-game-archive-manager-table-date {
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
-.staff-game-archive-manager-table-record > span {
+.staff-game-archive-manager-table-source {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .staff-game-archive-manager-table-count {
   color: var(--muted);
   font-size: 12px;
   font-weight: 750;
-  text-align: right;
+  text-align: left;
   white-space: nowrap;
 }
 
@@ -275,7 +278,6 @@
   min-height: 48px;
   justify-content: flex-end;
   gap: 8px;
-  border-top: 1px solid var(--border-strong);
   background: var(--panel-surface-strong);
   padding-top: 8px;
 }
@@ -582,15 +584,20 @@
   }
 
   .staff-game-archive-manager-table-row {
-    grid-template-columns: 62px minmax(0, 1fr) minmax(60px, auto);
+    grid-template-columns: 62px minmax(52px, 0.8fr) minmax(56px, 1fr) minmax(58px, 0.9fr);
     min-height: 44px;
-    gap: 5px;
-    padding-inline: 4px;
+    gap: 4px;
+    padding-inline: 2px;
   }
 
-  .staff-game-archive-manager-table-record {
-    gap: 7px;
-    font-size: 13px;
+  .staff-game-archive-manager-table-head .staff-game-archive-manager-table-selection {
+    gap: 0;
+    white-space: nowrap;
+  }
+
+  .staff-game-archive-manager-table-date,
+  .staff-game-archive-manager-table-source {
+    font-size: 12px;
   }
 
   .staff-game-archive-manager-table-count {

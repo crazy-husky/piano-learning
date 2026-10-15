@@ -273,8 +273,8 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
                 {props.reviewNotes.map((note) => (
                   <li key={note.label}>
                     <span>{note.label}</span>
-                    <small aria-label={`错误 ${note.errorCount} 次，包含漏音`}>
-                      错误 {note.errorCount} 次
+                    <small aria-label={`错漏 ${note.errorCount} 次`}>
+                      错漏 {note.errorCount} 次
                     </small>
                   </li>
                 ))}

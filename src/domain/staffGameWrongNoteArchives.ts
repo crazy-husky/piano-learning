@@ -34,6 +34,19 @@ function archiveAgeDays(archiveDate: string, today: Date): number {
   );
 }
 
+function noteLastErrorDate(
+  lastErrorAt: string | undefined,
+  runEndedAt: string,
+  archiveDate: string
+): string {
+  for (const timestamp of [lastErrorAt, runEndedAt]) {
+    if (!timestamp) continue;
+    const time = Date.parse(timestamp);
+    if (Number.isFinite(time)) return localDateKey(new Date(time));
+  }
+  return archiveDate;
+}
+
 /** Select daily archive rows using the same local-calendar-day boundary as review weighting. */
 export function filterStaffGameWrongNoteArchivesByRange(
   archives: readonly StaffGameWrongNoteArchive[],
@@ -122,16 +135,33 @@ export function calculateStaffGameWrongNoteWeights(
 ): Map<number, number> {
   const weights = new Map<number, number>();
   for (const archive of filterStaffGameWrongNoteArchivesByRange(archives, range, today)) {
-    const ageDays = archiveAgeDays(archive.date, today);
-    const decay = 0.5 ** (ageDays / 7);
     for (const run of archive.runs) {
       for (const note of Object.values(run.notes)) {
         const errors = note.wrong + note.missed;
-        if (errors > 0) weights.set(note.midi, (weights.get(note.midi) ?? 0) + errors * decay);
+        if (errors <= 0) continue;
+        const errorDate = noteLastErrorDate(note.lastErrorAt, run.endedAt, archive.date);
+        const ageDays = archiveAgeDays(errorDate, today);
+        const decay = 0.5 ** (ageDays / 7);
+        weights.set(note.midi, (weights.get(note.midi) ?? 0) + errors * decay);
       }
     }
   }
   return weights;
+}
+
+export function getStaffGameWrongNotePriorityPreview(
+  weights: ReadonlyMap<number, number>,
+  eligibleMidis: ReadonlySet<number>,
+  limit = 5
+): Array<{ midi: number; weight: number }> {
+  return [...weights.entries()]
+    .filter(([midi, weight]) => eligibleMidis.has(midi) && weight > 0)
+    .sort(
+      ([leftMidi, leftWeight], [rightMidi, rightWeight]) =>
+        rightWeight - leftWeight || leftMidi - rightMidi
+    )
+    .slice(0, Math.max(0, limit))
+    .map(([midi, weight]) => ({ midi, weight }));
 }
 
 function commonNoteMidis(

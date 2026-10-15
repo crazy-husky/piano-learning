@@ -142,6 +142,10 @@ export function SettingsView({
   const [busy, setBusy] = useState(false);
   const [isRestoringConfiguration, setIsRestoringConfiguration] = useState(false);
   const [globalDebugEnabled, setGlobalDebugEnabledState] = useState(isGlobalDebugEnabled);
+  const isAppUpdateBusy =
+    appUpdateStatus === "checking" ||
+    appUpdateStatus === "preparing" ||
+    appUpdateStatus === "reloading";
 
   useEffect(() => {
     const syncGlobalDebugEnabled = (event?: Event): void => {
@@ -878,18 +882,16 @@ export function SettingsView({
               版本 {__APP_VERSION__} · 构建时间 {formatDateTime(__APP_BUILD_TIME__)}
             </span>
           </div>
-          <button
-            disabled={appUpdateStatus === "checking" || appUpdateStatus === "reloading"}
-            onClick={onCheckForUpdates}
-            type="button"
-          >
+          <button disabled={isAppUpdateBusy} onClick={onCheckForUpdates} type="button">
             {appUpdateStatus === "checking"
               ? "正在检查…"
-              : appUpdateStatus === "reloading"
-                ? "正在刷新…"
-                : appUpdateStatus === "up-to-date" || hasUpdateAvailable
-                  ? "重新检查"
-                  : "检查更新"}
+              : appUpdateStatus === "preparing"
+                ? "正在准备…"
+                : appUpdateStatus === "reloading"
+                  ? "正在刷新…"
+                  : appUpdateStatus === "up-to-date" || hasUpdateAvailable
+                    ? "重新检查"
+                    : "检查更新"}
           </button>
         </div>
         {appUpdateMessage ? (
@@ -904,7 +906,7 @@ export function SettingsView({
           <div className="action-row">
             <button
               className="primary"
-              disabled={appUpdateStatus === "checking" || appUpdateStatus === "reloading"}
+              disabled={isAppUpdateBusy}
               onClick={onApplyUpdate}
               type="button"
             >

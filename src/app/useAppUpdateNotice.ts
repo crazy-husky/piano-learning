@@ -619,7 +619,7 @@ export function useAppUpdateNotice(): AppUpdateController {
 
     preparingBuildIdRef.current = buildId;
     setStatus("preparing");
-    setMessage("");
+    setMessage("发现新版本，正在后台准备…");
 
     void stageServiceWorkerUpdate(buildId)
       .then((result): void => {
@@ -713,7 +713,7 @@ export function useAppUpdateNotice(): AppUpdateController {
 
       if (preparingBuildIdRef.current === buildId) {
         setStatus("preparing");
-        setMessage("");
+        setMessage("发现新版本，正在后台准备…");
         return;
       }
 
@@ -787,7 +787,7 @@ export function useAppUpdateNotice(): AppUpdateController {
       toast.success("更新完成", {
         id: UPDATE_RESULT_NOTICE_ID,
         description: "新版已成功启用。",
-        duration: 7_000,
+        duration: 3_000,
       });
       return;
     }

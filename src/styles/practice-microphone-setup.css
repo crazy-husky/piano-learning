@@ -692,7 +692,8 @@
   background: var(--modal-overlay);
   inset: 0;
   position: fixed;
-  z-index: 1000;
+  /* Shared confirmations must stay above feature dialogs. */
+  z-index: 31000;
 }
 
 .ui-confirm-content {
@@ -712,7 +713,7 @@
   top: 50%;
   transform: translate(-50%, -50%);
   width: min(480px, calc(100vw - 32px));
-  z-index: 1001;
+  z-index: 31001;
 }
 
 .ui-confirm-title {

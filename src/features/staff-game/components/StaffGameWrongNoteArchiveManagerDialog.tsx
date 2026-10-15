@@ -296,11 +296,14 @@ export function StaffGameWrongNoteArchiveManagerDialog({
                     />
                     <span aria-hidden="true">全选</span>
                   </div>
-                  <div className="staff-game-archive-manager-table-record" role="columnheader">
-                    归档记录
+                  <div className="staff-game-archive-manager-table-date" role="columnheader">
+                    日期
+                  </div>
+                  <div className="staff-game-archive-manager-table-source" role="columnheader">
+                    来源
                   </div>
                   <div className="staff-game-archive-manager-table-count" role="columnheader">
-                    错漏
+                    错漏次数
                   </div>
                 </div>
               </div>
@@ -329,9 +332,11 @@ export function StaffGameWrongNoteArchiveManagerDialog({
                             type="checkbox"
                           />
                         </span>
-                        <span className="staff-game-archive-manager-table-record" role="cell">
-                          <strong>{formatArchiveDate(archiveDate)}</strong>
-                          <span>{source}</span>
+                        <strong className="staff-game-archive-manager-table-date" role="cell">
+                          {formatArchiveDate(archiveDate)}
+                        </strong>
+                        <span className="staff-game-archive-manager-table-source" role="cell">
+                          {source}
                         </span>
                         <span className="staff-game-archive-manager-table-count" role="cell">
                           {errorCount} 次

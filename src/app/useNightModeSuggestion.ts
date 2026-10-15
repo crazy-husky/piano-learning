@@ -118,7 +118,7 @@ export function useNightModeSuggestion({
           toast.dismiss(NIGHT_MODE_SUGGESTION_TOAST_ID);
           toast.success("自动夜间模式已开启", {
             description: `每天 ${formatHour(preferences.startHour)}–${formatHour(preferences.endHour)} 自动切换；可在“设置 → 页面设置”调整时段。`,
-            duration: 6_000,
+            duration: 3_000,
           });
         },
       },

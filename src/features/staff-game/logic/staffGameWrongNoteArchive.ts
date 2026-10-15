@@ -34,7 +34,8 @@ export function summarizeStaffGameWrongNoteRunPerformance(
 
 export function summarizeStaffGameWrongNoteOutcomes(
   outcomes: readonly StaffGameRoundNoteOutcome[],
-  wrongAnswerRecords: readonly WrongAnswerForArchive[]
+  wrongAnswerRecords: readonly WrongAnswerForArchive[],
+  fallbackErrorAt = new Date().toISOString()
 ): Pick<StaffGameWrongNoteArchiveRun, "notes" | "firstTryCorrect"> {
   const wrongByToken = new Map<number, string>();
   for (const record of wrongAnswerRecords) {
@@ -66,6 +67,17 @@ export function summarizeStaffGameWrongNoteOutcomes(
       if (confusion) note.confusions[confusion] = (note.confusions[confusion] ?? 0) + 1;
     } else {
       note.missed += 1;
+    }
+    if (outcome.firstInputCorrect !== true) {
+      const errorAt = Number.isFinite(outcome.errorAt)
+        ? outcome.errorAt!
+        : Date.parse(fallbackErrorAt);
+      if (Number.isFinite(errorAt)) {
+        const currentErrorAt = Date.parse(note.lastErrorAt ?? "");
+        note.lastErrorAt = new Date(
+          Number.isFinite(currentErrorAt) ? Math.max(currentErrorAt, errorAt) : errorAt
+        ).toISOString();
+      }
     }
     if (outcome.responseMs !== undefined && outcome.responseMs > 0) {
       note.totalResponseMs = (note.totalResponseMs ?? 0) + outcome.responseMs;

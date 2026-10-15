@@ -36,6 +36,8 @@ export interface StaffGameRoundNoteOutcome {
   note: string;
   firstInputCorrect: boolean | null;
   missed: boolean;
+  /** Wall-clock time of the most recent wrong input or bubble expiry. */
+  errorAt?: number;
   /** Positive milliseconds from the end of the bubble fade-in to the accepted hit. */
   responseMs?: number;
 }
@@ -247,7 +249,10 @@ export function useStaffGameRoundClock({
         targetRef.current = null;
         if (missedTarget) {
           const outcome = roundMetricsRef.current.firstInputByToken.get(missedTarget.token);
-          if (outcome) outcome.missed = true;
+          if (outcome) {
+            outcome.missed = true;
+            outcome.errorAt = Date.now();
+          }
         }
         setTarget(null);
         if (missedTarget) triggerMascotReaction("sad");

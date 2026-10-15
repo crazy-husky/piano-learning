@@ -23,6 +23,7 @@ import {
   calculateStaffGameWrongNoteWeights,
   compareStaffGameWrongNoteRun,
   getStaffGameWrongNoteArchiveDateCount,
+  getStaffGameWrongNotePriorityPreview,
   getStaffGameWrongNoteRunErrorCount,
   mergeStaffGameWrongNoteArchives,
   type StaffGameWrongNoteComparison,
@@ -776,6 +777,11 @@ export function StaffGameView({
   const [weakNoteWeights, setWeakNoteWeights] = useState(readStaffGameWeakNoteWeights);
   const [wrongNoteArchives, setWrongNoteArchives] = useState<StaffGameWrongNoteArchive[]>([]);
   const [wrongNoteReviewRange, setWrongNoteReviewRange] = useState<StaffGameWrongNoteRange>(7);
+  const [wrongNoteArchiveManagerRange, setWrongNoteArchiveManagerRange] =
+    useState<StaffGameWrongNoteRange>(7);
+  const [wrongNoteStudyRange, setWrongNoteStudyRange] = useState<StaffGameWrongNoteRange | null>(
+    null
+  );
   const [isWrongNoteStudyDialogOpen, setIsWrongNoteStudyDialogOpen] = useState(false);
   const [isWrongNoteArchiveManagerOpen, setIsWrongNoteArchiveManagerOpen] = useState(false);
   const [readyWrongNoteMode, setReadyWrongNoteMode] = useState<"level" | "review">("level");
@@ -880,13 +886,24 @@ export function StaffGameView({
       ),
     [unlockedReviewMidiSet, wrongNoteArchives, wrongNoteReviewRange]
   );
+  const wrongNoteReviewErrorCounts = useMemo(
+    () =>
+      new Map(
+        calculateStaffGameWrongNoteErrorCounts(wrongNoteArchives, wrongNoteReviewRange).map(
+          ({ midi, errorCount }) => [midi, errorCount] as const
+        )
+      ),
+    [wrongNoteArchives, wrongNoteReviewRange]
+  );
   const wrongNoteReviewPreviewNotes = useMemo(
     () =>
-      calculateStaffGameWrongNoteErrorCounts(wrongNoteArchives, wrongNoteReviewRange)
-        .filter(({ midi }) => unlockedReviewMidiSet.has(midi))
-        .slice(0, 5)
-        .map(({ midi, errorCount }) => ({ ...gameNoteFromMidi(midi), errorCount })),
-    [unlockedReviewMidiSet, wrongNoteArchives, wrongNoteReviewRange]
+      getStaffGameWrongNotePriorityPreview(wrongNoteReviewWeights, unlockedReviewMidiSet).map(
+        ({ midi }) => ({
+          ...gameNoteFromMidi(midi),
+          errorCount: wrongNoteReviewErrorCounts.get(midi) ?? 0,
+        })
+      ),
+    [unlockedReviewMidiSet, wrongNoteReviewErrorCounts, wrongNoteReviewWeights]
   );
   const wrongNoteArchiveDateCount = useMemo(
     () => getStaffGameWrongNoteArchiveDateCount(wrongNoteArchives),
@@ -1501,12 +1518,13 @@ export function StaffGameView({
       ) {
         return;
       }
-      const { notes, firstTryCorrect } = summarizeStaffGameWrongNoteOutcomes(
-        outcomes,
-        wrongAnswerRecords
-      );
       const source = roundPurpose === "level" ? "challenge" : "review";
       const endedAt = new Date().toISOString();
+      const { notes, firstTryCorrect } = summarizeStaffGameWrongNoteOutcomes(
+        outcomes,
+        wrongAnswerRecords,
+        endedAt
+      );
       const run: StaffGameWrongNoteArchiveRun = {
         runId: createUuid(),
         source,
@@ -2375,16 +2393,18 @@ export function StaffGameView({
   }, [beginRound, wrongNoteReviewRange, wrongNoteReviewWeights]);
 
   const openWrongNoteStudyDialog = useCallback((): void => {
+    setWrongNoteStudyRange((current) => current ?? wrongNoteReviewRange);
     setIsWrongNoteStudyDialogOpen(true);
-  }, []);
+  }, [wrongNoteReviewRange]);
 
   const closeWrongNoteStudyDialog = useCallback((): void => {
     setIsWrongNoteStudyDialogOpen(false);
   }, []);
 
   const openWrongNoteArchiveManager = useCallback((): void => {
+    setWrongNoteArchiveManagerRange(wrongNoteReviewRange);
     setIsWrongNoteArchiveManagerOpen(true);
-  }, []);
+  }, [wrongNoteReviewRange]);
 
   const closeWrongNoteArchiveManager = useCallback((): void => {
     setIsWrongNoteArchiveManagerOpen(false);
@@ -3192,10 +3212,10 @@ export function StaffGameView({
           isWrongNoteArchiveManagerOpen ? (
             <StaffGameWrongNoteArchiveManagerDialog
               archives={wrongNoteArchives}
-              onChangeRange={setWrongNoteReviewRange}
+              onChangeRange={setWrongNoteArchiveManagerRange}
               onClose={closeWrongNoteArchiveManager}
               onDeleteRuns={(runIds) => void deleteSelectedWrongNoteArchiveRuns(runIds)}
-              range={wrongNoteReviewRange}
+              range={wrongNoteArchiveManagerRange}
             />
           ) : null}
 
@@ -3205,8 +3225,9 @@ export function StaffGameView({
           isWrongNoteStudyDialogOpen ? (
             <StaffGameWrongNoteStudyDialog
               archives={wrongNoteArchives}
+              onChangeRange={setWrongNoteStudyRange}
               onClose={closeWrongNoteStudyDialog}
-              range={wrongNoteReviewRange}
+              range={wrongNoteStudyRange ?? wrongNoteReviewRange}
             />
           ) : null}
 
