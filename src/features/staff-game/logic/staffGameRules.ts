@@ -23,6 +23,13 @@ export const COMBO_INDICATOR_FADE_DURATION_MS = 280;
 export const RUSH_FALL_SPEED_MULTIPLIER = 0.92;
 export const ERROR_FLASH_DURATION_MS = 1_500;
 export const NOTE_NAMES: NoteName[] = ["C", "D", "E", "F", "G", "A", "B"];
+const SOLFEGE_NAMES = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"] as const;
+
+export function staffGameSolfegeLabel(pitch: PianoKeyName): string {
+  const noteIndex = NOTE_NAMES.indexOf(pitch[0] as NoteName);
+  const isSharp = pitch.includes("#");
+  return `${SOLFEGE_NAMES[noteIndex]}${isSharp ? "♯" : ""}`;
+}
 
 export function staffGameReactionMs(correctAtMs: number, spawnAtMs: number): number {
   return correctAtMs - spawnAtMs - BUBBLE_FADE_IN_MS;

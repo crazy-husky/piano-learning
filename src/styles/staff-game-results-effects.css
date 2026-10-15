@@ -1752,7 +1752,7 @@ body.rush-mode .staff-game-rush-vignette {
 
 .staff-game-unsaved-settings-dialog {
   box-sizing: border-box;
-  width: min(460px, 100%);
+  width: min(300px, 100%);
   border: 2px solid #73cfdf;
   border-radius: 16px;
   background: linear-gradient(160deg, #fff, #e8f8fa);
@@ -1763,7 +1763,7 @@ body.rush-mode .staff-game-rush-vignette {
 
 .staff-game-unsaved-settings-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 8px;
@@ -1779,10 +1779,10 @@ body.rush-mode .staff-game-rush-vignette {
 .staff-game-unsaved-settings-close {
   box-sizing: border-box;
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   aspect-ratio: 1;
-  flex: 0 0 40px;
+  flex: 0 0 32px;
   place-items: center;
   padding: 0;
   border: 1px solid currentColor;
@@ -1790,6 +1790,14 @@ body.rush-mode .staff-game-rush-vignette {
   background: rgba(255, 255, 255, 0.72);
   color: inherit;
   cursor: pointer;
+}
+
+@media (max-width: 820px) {
+  .staff-game-unsaved-settings-close {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
 }
 
 .staff-game-unsaved-settings-dialog p {
@@ -1807,8 +1815,8 @@ body.rush-mode .staff-game-rush-vignette {
 
 .staff-game-unsaved-settings-actions button {
   box-sizing: border-box;
-  width: min(150px, calc((100% - 8px) / 2));
-  flex: 0 1 150px;
+  width: min(108px, calc((100% - 8px) / 2));
+  flex: 0 1 108px;
   min-width: 0;
   min-height: 40px;
   padding-inline: 8px;

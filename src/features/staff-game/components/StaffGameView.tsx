@@ -104,6 +104,7 @@ import {
   gameLevelForNotePoolScope,
   gameDifficultyPreset,
   gameNoteFromMidi,
+  staffGameSolfegeLabel,
   starScoreThreshold,
   starsForScore,
   wrongNoteReviewDurationMs,
@@ -177,7 +178,6 @@ const GAME_SETTINGS_KEY = "anki-note.staffGameSettings.v1";
 const LOW_FPS_PROMPT_SESSION_KEY = "anki-note.staffGameLowFpsPrompted.v1";
 let lowFpsPromptShownThisPage = false;
 const BURST_STAR_COUNT = 14;
-const SOLFEGE_NAMES = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"] as const;
 type GameInputMode = "physical" | "virtual" | "midi";
 type GameDisplayMode = "note" | "solfege" | "number" | "none";
 type StaffGameMode = "levels" | "songs";
@@ -588,7 +588,7 @@ function virtualKeyLabel(pitch: PianoKeyName, mode: GameDisplayMode): string {
   if (mode === "none") return "";
   const noteIndex = NOTE_NAMES.indexOf(pitch[0] as NoteName);
   const isSharp = pitch.includes("#");
-  if (mode === "solfege") return `${SOLFEGE_NAMES[noteIndex]}${isSharp ? "♯" : ""}`;
+  if (mode === "solfege") return staffGameSolfegeLabel(pitch);
   if (mode === "number") return `${noteIndex + 1}${isSharp ? "♯" : ""}`;
   return pitch;
 }

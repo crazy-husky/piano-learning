@@ -1,4 +1,4 @@
-import { ArrowUp, Check, ChevronLeft, ChevronRight, Volume2, X } from "lucide-react";
+import { ArrowUp, ChevronLeft, ChevronRight, Volume2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -17,9 +17,10 @@ import {
   getStaffGameWrongNoteStudyItems,
   isStaffGameWrongNoteSelfTestComplete,
   navigateStaffGameWrongNoteSelfTest,
-  rateStaffGameWrongNoteSelfTestItem,
   revealStaffGameWrongNoteSelfTestAnswer,
+  submitStaffGameWrongNoteSelfTestAnswer,
 } from "../logic/staffGameWrongNoteStudy";
+import { staffGameSolfegeLabel } from "../logic/staffGameRules";
 
 interface StaffGameWrongNoteStudyDialogProps {
   archives: readonly StaffGameWrongNoteArchive[];
@@ -39,6 +40,7 @@ const BLACK_KEYS: ReadonlyArray<{ name: PianoKeyName; position: number }> = [
   { name: "G#", position: 5 },
   { name: "A#", position: 6 },
 ];
+const SELF_TEST_KEYBOARD_OCTAVE = 4;
 
 function targetNoteForKeyboardKey(
   key: PianoKeyName,
@@ -56,6 +58,11 @@ function targetNoteForKeyboardKey(
 
 function playKeyboardNote(note: TargetNote): void {
   void playTargetNote(note).catch(() => toast.error("钢琴音暂时无法播放，请稍后重试"));
+}
+
+function solfegeLabelForTarget(target: TargetNote): string {
+  const pitch = `${target.noteName}${target.accidental === "sharp" ? "#" : ""}` as PianoKeyName;
+  return staffGameSolfegeLabel(pitch);
 }
 
 function StaffGameWrongNoteKeyboardMap({
@@ -186,6 +193,7 @@ export function StaffGameWrongNoteStudyDialog({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const browseItemRefs = useRef(new Map<number, HTMLLIElement>());
   const [activeBrowseMidi, setActiveBrowseMidi] = useState<number | null>(null);
+  const [incorrectAnswerMidi, setIncorrectAnswerMidi] = useState<number | null>(null);
   const items = useMemo(
     () => getStaffGameWrongNoteStudyItems(archives, selectedRange),
     [archives, selectedRange]
@@ -201,6 +209,7 @@ export function StaffGameWrongNoteStudyDialog({
   useEffect(() => {
     setProgress(createStaffGameWrongNoteSelfTestProgress());
     setActiveBrowseMidi(null);
+    setIncorrectAnswerMidi(null);
   }, [range]);
 
   useEffect(() => {
@@ -256,17 +265,28 @@ export function StaffGameWrongNoteStudyDialog({
   };
 
   const revealAnswer = (): void => {
-    setProgress((current) => revealStaffGameWrongNoteSelfTestAnswer(current, items.length));
+    if (!currentItem) return;
+    setProgress((current) =>
+      revealStaffGameWrongNoteSelfTestAnswer(current, items.length, currentItem.midi)
+    );
+    setIncorrectAnswerMidi(null);
   };
 
   const changeRange = (nextRange: StaffGameWrongNoteRange): void => {
     onChangeRange(nextRange);
     setProgress(createStaffGameWrongNoteSelfTestProgress());
     setActiveBrowseMidi(null);
+    setIncorrectAnswerMidi(null);
   };
 
-  const rateCurrent = (remembered: boolean): void => {
-    setProgress((current) => rateStaffGameWrongNoteSelfTestItem(current, items, remembered));
+  const answerSelfTest = (pitch: PianoKeyName): void => {
+    if (!currentItem) return;
+    const answerNote = targetNoteForKeyboardKey(pitch, SELF_TEST_KEYBOARD_OCTAVE);
+    if (answerNote) playKeyboardNote(answerNote);
+
+    const result = submitStaffGameWrongNoteSelfTestAnswer(progress, items, pitch);
+    setProgress(result.progress);
+    setIncorrectAnswerMidi(result.isCorrect ? null : currentItem.midi);
   };
 
   const scrollToBrowseItem = (midi: number): void => {
@@ -399,7 +419,12 @@ export function StaffGameWrongNoteStudyDialog({
                 >
                   <div className="staff-game-wrong-note-study-item-header">
                     <strong>{item.label}</strong>
-                    <span>错漏 {item.errorCount} 次</span>
+                    <span className="staff-game-wrong-note-study-solfege">
+                      {solfegeLabelForTarget(item.target)}
+                    </span>
+                    <span className="staff-game-wrong-note-study-error-count">
+                      错漏 {item.errorCount} 次
+                    </span>
                     <button
                       aria-label={`播放 ${item.label}`}
                       className="staff-game-wrong-note-study-play"
@@ -460,27 +485,33 @@ export function StaffGameWrongNoteStudyDialog({
                   aria-label="上一个音"
                   className="staff-game-wrong-note-self-test-nav-button"
                   disabled={progress.index === 0}
-                  onClick={() =>
+                  onClick={() => {
+                    setIncorrectAnswerMidi(null);
                     setProgress((current) =>
                       navigateStaffGameWrongNoteSelfTest(current, items.length, "previous")
-                    )
-                  }
+                    );
+                  }}
                   type="button"
                 >
                   <ChevronLeft aria-hidden="true" size={19} />
                 </button>
-                <p className="staff-game-wrong-note-self-test-count">
+                <p
+                  aria-atomic="true"
+                  aria-live="polite"
+                  className="staff-game-wrong-note-self-test-count"
+                >
                   第 {progress.index + 1} / {items.length} 个
                 </p>
                 <button
                   aria-label="下一个音"
                   className="staff-game-wrong-note-self-test-nav-button"
                   disabled={progress.index >= items.length - 1}
-                  onClick={() =>
+                  onClick={() => {
+                    setIncorrectAnswerMidi(null);
                     setProgress((current) =>
                       navigateStaffGameWrongNoteSelfTest(current, items.length, "next")
-                    )
-                  }
+                    );
+                  }}
                   type="button"
                 >
                   <ChevronRight aria-hidden="true" size={19} />
@@ -503,24 +534,13 @@ export function StaffGameWrongNoteStudyDialog({
                   />
                 </div>
                 <div className="staff-game-wrong-note-self-test-details">
-                  {!progress.isAnswerRevealed ? (
-                    <button
-                      className="staff-game-wrong-note-study-action is-primary"
-                      onClick={revealAnswer}
-                      type="button"
-                    >
-                      查看答案
-                    </button>
-                  ) : (
-                    <StaffGameWrongNoteKeyboardMap
-                      label={currentItem.label}
-                      target={currentItem.target}
-                    />
-                  )}
                   {progress.isAnswerRevealed ? (
                     <div className="staff-game-wrong-note-self-test-answer-row">
                       <div className="staff-game-wrong-note-self-test-answer">
                         <strong>{currentItem.label}</strong>
+                        <span className="staff-game-wrong-note-study-solfege">
+                          {solfegeLabelForTarget(currentItem.target)}
+                        </span>
                         <button
                           aria-label={`播放 ${currentItem.label}`}
                           className="staff-game-wrong-note-study-play"
@@ -541,26 +561,54 @@ export function StaffGameWrongNoteStudyDialog({
                         隐藏答案
                       </button>
                     </div>
-                  ) : null}
-                  <div className="staff-game-wrong-note-self-test-rating">
+                  ) : (
                     <button
-                      className="staff-game-wrong-note-study-action is-known"
-                      disabled={!progress.isAnswerRevealed}
-                      onClick={() => rateCurrent(true)}
+                      className="staff-game-wrong-note-study-action is-primary"
+                      onClick={revealAnswer}
                       type="button"
                     >
-                      <Check aria-hidden="true" size={18} />
-                      记住了
+                      查看答案
                     </button>
-                    <button
-                      className="staff-game-wrong-note-study-action is-unknown"
-                      disabled={!progress.isAnswerRevealed}
-                      onClick={() => rateCurrent(false)}
-                      type="button"
-                    >
-                      <X aria-hidden="true" size={18} />
-                      没记住
-                    </button>
+                  )}
+                  <p
+                    aria-live="polite"
+                    className={`staff-game-wrong-note-self-test-instruction${incorrectAnswerMidi === currentItem.midi ? " is-incorrect" : ""}`}
+                    role="status"
+                  >
+                    {incorrectAnswerMidi === currentItem.midi
+                      ? "这个音不对，再试一次。"
+                      : "根据左侧谱面点击对应琴键，音高不限八度；答对后自动进入下一题。"}
+                  </p>
+                  <div
+                    aria-label="万能虚拟钢琴，点击音名作答，不限八度"
+                    className="staff-game-wrong-note-self-test-keyboard"
+                    role="group"
+                  >
+                    <div className="staff-game-wrong-note-self-test-keybed">
+                      <div className="staff-game-wrong-note-self-test-white-keys">
+                        {WHITE_KEYS.map((key) => (
+                          <button
+                            aria-label={`弹奏 ${key}，不限八度`}
+                            className="staff-game-wrong-note-self-test-white-key"
+                            key={key}
+                            onClick={() => answerSelfTest(key)}
+                            type="button"
+                          >
+                            {key}
+                          </button>
+                        ))}
+                      </div>
+                      {BLACK_KEYS.map(({ name, position }) => (
+                        <button
+                          aria-label={`弹奏 ${name.replace("#", "♯")}，不限八度`}
+                          className="staff-game-wrong-note-self-test-black-key"
+                          key={name}
+                          onClick={() => answerSelfTest(name)}
+                          style={{ left: `${(position / 7) * 100}%` }}
+                          type="button"
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

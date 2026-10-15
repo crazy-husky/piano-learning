@@ -1406,11 +1406,11 @@ body.rush-mode .staff-game-scene::before {
 }
 
 .staff-game-ready-card > .staff-game-primary.staff-game-ready-start {
-  width: min(100%, 280px);
-  min-height: clamp(50px, 7vh, 64px);
+  width: min(100%, 240px);
+  min-height: clamp(46px, 6.4vh, 58px);
   flex: 0 0 auto;
   margin: clamp(12px, 2.4vh, 22px) auto clamp(14px, 2.8vh, 24px);
-  font-size: clamp(17px, 2.2vw, 21px);
+  font-size: clamp(16px, 2vw, 19px);
 }
 
 .staff-game-ready-actions {
@@ -1480,9 +1480,11 @@ body.rush-mode .staff-game-scene::before {
 
 .staff-game-review-range-row {
   display: flex;
+  width: min(calc(100% - 32px), 820px);
   min-width: 0;
   align-items: center;
   gap: 10px;
+  margin-inline: auto;
 }
 
 .staff-game-review-range {
@@ -1533,9 +1535,12 @@ body.rush-mode .staff-game-scene::before {
 }
 
 .staff-game-review-preview {
+  box-sizing: border-box;
+  width: min(calc(100% - 32px), 820px);
   border-radius: 12px;
   background: rgba(227, 245, 243, 0.92);
   color: #315b6e;
+  margin-inline: auto;
   padding: 9px 11px;
 }
 
@@ -2775,9 +2780,13 @@ body.rush-mode .staff-game-scene::before {
   }
 
   .app-shell-practice-page .staff-game-review-range-row {
-    width: min(calc(100% - 24px), 360px);
+    width: min(calc(100% - 32px), 328px);
     gap: 6px;
     margin-inline: auto;
+  }
+
+  .app-shell-practice-page .staff-game-review-preview {
+    width: min(calc(100% - 32px), 328px);
   }
 
   .app-shell-practice-page .staff-game-review-range {

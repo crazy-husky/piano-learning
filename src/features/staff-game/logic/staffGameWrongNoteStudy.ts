@@ -6,10 +6,11 @@ import {
 import type {
   Octave,
   NoteName,
+  PianoKeyName,
   StaffGameWrongNoteArchive,
   TargetNote,
 } from "../../../domain/types";
-import { gameNoteFromMidi } from "./staffGameRules";
+import { gameNoteFromMidi, PITCH_NAMES } from "./staffGameRules";
 
 export interface StaffGameWrongNoteStudyItem {
   midi: number;
@@ -21,6 +22,7 @@ export interface StaffGameWrongNoteStudyItem {
 export interface StaffGameWrongNoteSelfTestProgress {
   index: number;
   isAnswerRevealed: boolean;
+  completedMidis: number[];
   rememberedMidis: number[];
   forgottenMidis: number[];
 }
@@ -55,15 +57,75 @@ export function getStaffGameWrongNoteStudyItems(
 }
 
 export function createStaffGameWrongNoteSelfTestProgress(): StaffGameWrongNoteSelfTestProgress {
-  return { index: 0, isAnswerRevealed: false, rememberedMidis: [], forgottenMidis: [] };
+  return {
+    index: 0,
+    isAnswerRevealed: false,
+    completedMidis: [],
+    rememberedMidis: [],
+    forgottenMidis: [],
+  };
 }
 
 export function revealStaffGameWrongNoteSelfTestAnswer(
   progress: StaffGameWrongNoteSelfTestProgress,
-  itemCount: number
+  itemCount: number,
+  currentMidi?: number
 ): StaffGameWrongNoteSelfTestProgress {
   if (progress.index >= itemCount || progress.isAnswerRevealed) return progress;
-  return { ...progress, isAnswerRevealed: true };
+  if (currentMidi === undefined) return { ...progress, isAnswerRevealed: true };
+
+  return {
+    ...progress,
+    isAnswerRevealed: true,
+    rememberedMidis: progress.rememberedMidis.filter((midi) => midi !== currentMidi),
+    forgottenMidis: [...new Set([...progress.forgottenMidis, currentMidi])],
+  };
+}
+
+export function submitStaffGameWrongNoteSelfTestAnswer(
+  progress: StaffGameWrongNoteSelfTestProgress,
+  items: readonly StaffGameWrongNoteStudyItem[],
+  pitch: PianoKeyName
+): { progress: StaffGameWrongNoteSelfTestProgress; isCorrect: boolean } {
+  const current = items[progress.index];
+  if (!current) return { progress, isCorrect: false };
+
+  const isCorrect = current.midi % 12 === PITCH_NAMES.indexOf(pitch);
+  if (!isCorrect) {
+    return {
+      isCorrect: false,
+      progress: {
+        ...progress,
+        rememberedMidis: progress.rememberedMidis.filter((midi) => midi !== current.midi),
+        forgottenMidis: [...new Set([...progress.forgottenMidis, current.midi])],
+      },
+    };
+  }
+
+  const wasForgotten = progress.forgottenMidis.includes(current.midi);
+  const rememberedMidis = wasForgotten
+    ? progress.rememberedMidis.filter((midi) => midi !== current.midi)
+    : [...new Set([...progress.rememberedMidis, current.midi])];
+  const completedMidis = [...new Set([...progress.completedMidis, current.midi])];
+  let nextIndex = items.length;
+  for (let offset = 1; offset <= items.length; offset += 1) {
+    const candidateIndex = (progress.index + offset) % items.length;
+    if (!completedMidis.includes(items[candidateIndex].midi)) {
+      nextIndex = candidateIndex;
+      break;
+    }
+  }
+
+  return {
+    isCorrect: true,
+    progress: {
+      index: nextIndex,
+      isAnswerRevealed: false,
+      completedMidis,
+      rememberedMidis,
+      forgottenMidis: progress.forgottenMidis,
+    },
+  };
 }
 
 export function navigateStaffGameWrongNoteSelfTest(
@@ -90,11 +152,11 @@ export function rateStaffGameWrongNoteSelfTestItem(
   if (remembered) rememberedMidis.push(current.midi);
   else forgottenMidis.push(current.midi);
 
-  const ratedMidis = new Set([...rememberedMidis, ...forgottenMidis]);
+  const completedMidis = [...new Set([...progress.completedMidis, current.midi])];
   let nextIndex = items.length;
   for (let offset = 1; offset <= items.length; offset += 1) {
     const candidateIndex = (progress.index + offset) % items.length;
-    if (!ratedMidis.has(items[candidateIndex].midi)) {
+    if (!completedMidis.includes(items[candidateIndex].midi)) {
       nextIndex = candidateIndex;
       break;
     }
@@ -103,6 +165,7 @@ export function rateStaffGameWrongNoteSelfTestItem(
   return {
     index: nextIndex,
     isAnswerRevealed: false,
+    completedMidis,
     rememberedMidis,
     forgottenMidis,
   };
