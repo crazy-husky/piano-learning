@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateStaffGameWrongNoteNoteDiagnostics,
   calculateStaffGameWrongNoteErrorCounts,
   calculateStaffGameWrongNoteWeights,
   compareStaffGameWrongNoteRun,
@@ -190,6 +191,131 @@ describe("staff game wrong note archives", () => {
     expect(calculateStaffGameWrongNoteErrorCounts(rows, 3, today)).toEqual([
       { midi: 64, errorCount: 4 },
       { midi: 60, errorCount: 3 },
+    ]);
+  });
+
+  it("diagnoses all saved note runs in range, including trend-only and all-correct runs", () => {
+    const first: StaffGameWrongNoteArchiveRun = {
+      ...run("first", "challenge", "2026-10-15T10:00:00.000Z", {
+        "62": noteStats(62, {
+          appear: 3,
+          correct: 1,
+          wrong: 2,
+          confusions: { E4: 2, F4: 1, G4: 1 },
+          totalResponseMs: 1000,
+          responseSampleCount: 1,
+        }),
+      }),
+      responseTimeBasis: "first-correct",
+    };
+    const second: StaffGameWrongNoteArchiveRun = {
+      ...run(
+        "second",
+        "review",
+        "2026-10-10T10:00:00.000Z",
+        {
+          "62": noteStats(62, {
+            appear: 2,
+            correct: 2,
+            totalResponseMs: 3000,
+            responseSampleCount: 2,
+          }),
+        },
+        { reviewRange: 7 }
+      ),
+      responseTimeBasis: "first-correct",
+      trendOnly: true,
+    };
+    const result = calculateStaffGameWrongNoteNoteDiagnostics(
+      archives(first, second),
+      "all",
+      new Date(2026, 9, 15, 12)
+    );
+
+    expect(result).toEqual([
+      {
+        midi: 62,
+        appearanceCount: 5,
+        runCount: 2,
+        correctCount: 3,
+        errorCount: 2,
+        accuracyPercent: 60,
+        errorRatePercent: 40,
+        averageResponseMs: 4000 / 3,
+        confusions: [
+          { note: "E4", count: 2 },
+          { note: "F4", count: 1 },
+        ],
+      },
+    ]);
+    expect(
+      calculateStaffGameWrongNoteNoteDiagnostics(
+        archives(first, second),
+        3,
+        new Date(2026, 9, 15, 12)
+      )
+    ).toEqual([
+      expect.objectContaining({
+        midi: 62,
+        appearanceCount: 3,
+        runCount: 1,
+        accuracyPercent: (1 / 3) * 100,
+        errorRatePercent: (2 / 3) * 100,
+      }),
+    ]);
+  });
+
+  it("returns no accuracy, error-rate, or response samples when their denominators are empty", () => {
+    const noSamples = run("no-samples", "challenge", "2026-10-15T10:00:00.000Z", {
+      "60": noteStats(60, {
+        appear: 0,
+        correct: 0,
+        wrong: 1,
+        totalResponseMs: 0,
+        responseSampleCount: 0,
+      }),
+    });
+    const result = calculateStaffGameWrongNoteNoteDiagnostics(
+      archives(noSamples),
+      "all",
+      new Date(2026, 9, 15, 12)
+    );
+
+    expect(result[0]).toMatchObject({
+      midi: 60,
+      appearanceCount: 0,
+      runCount: 1,
+      accuracyPercent: null,
+      errorRatePercent: null,
+      averageResponseMs: null,
+    });
+  });
+
+  it("sorts single-note diagnostics by error rate from highest to lowest", () => {
+    const result = calculateStaffGameWrongNoteNoteDiagnostics(
+      archives(
+        run("strong", "challenge", "2026-10-15T10:00:00.000Z", {
+          "60": noteStats(60, { appear: 4, correct: 4 }),
+        }),
+        run("weak", "challenge", "2026-10-15T10:01:00.000Z", {
+          "62": noteStats(62, { appear: 4, correct: 1, wrong: 3 }),
+        }),
+        run("middle", "challenge", "2026-10-15T10:02:00.000Z", {
+          "64": noteStats(64, { appear: 4, correct: 2, wrong: 2 }),
+        }),
+        run("no-denominator", "challenge", "2026-10-15T10:03:00.000Z", {
+          "65": noteStats(65, { appear: 0, correct: 0, wrong: 1 }),
+        })
+      ),
+      "all",
+      new Date(2026, 9, 15, 12)
+    );
+
+    expect(result.map(({ midi, errorRatePercent }) => [midi, errorRatePercent])).toEqual([
+      [62, 75],
+      [64, 50],
+      [60, 0],
+      [65, null],
     ]);
   });
 
@@ -524,6 +650,8 @@ describe("staff game wrong note archives", () => {
       },
       { difficulty: "normal", reviewRange: 7 }
     );
+    current.responseTimeBasis = "first-correct";
+    previous.responseTimeBasis = "first-correct";
 
     expect(compareStaffGameWrongNoteRun(archives(previous), current)).toMatchObject({
       commonNoteMidis: [60],

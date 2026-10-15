@@ -4,6 +4,7 @@ import type { StaffGameWrongNoteComparison } from "../../../domain/staffGameWron
 import type { StaffGameWrongNoteRunPerformance } from "../logic/staffGameWrongNoteArchive";
 
 interface StaffGameReviewSummaryContentProps {
+  archiveMode: "automatic" | "manual" | "trend" | null;
   performance: StaffGameWrongNoteRunPerformance | null;
   comparison: StaffGameWrongNoteComparison | null;
   wrongNoteStatisticsEnabled: boolean;
@@ -22,12 +23,6 @@ function formatRateChange(change: number): string {
   return `${arrow} ${sign}${change} 个百分点`;
 }
 
-function formatWeakNoteChange(change: number): string {
-  const arrow = change > 0 ? "↑" : change < 0 ? "↓" : "→";
-  const sign = change > 0 ? "+" : "";
-  return `${arrow} ${sign}${change} 次`;
-}
-
 function formatReactionChange(change: number): string {
   const arrow = change > 0 ? "↑" : change < 0 ? "↓" : "→";
   const sign = change > 0 ? "+" : "";
@@ -40,6 +35,7 @@ function changeTone(change: number, lowerIsBetter = false): string {
 }
 
 export function StaffGameReviewSummaryContent({
+  archiveMode,
   performance,
   comparison,
   wrongNoteStatisticsEnabled,
@@ -54,9 +50,6 @@ export function StaffGameReviewSummaryContent({
   const rateChange = comparison
     ? Math.round(comparison.currentFirstTryAccuracyPercent) -
       Math.round(comparison.previousFirstTryAccuracyPercent)
-    : null;
-  const weakNoteChange = comparison
-    ? comparison.currentWeakNoteCount - comparison.previousWeakNoteCount
     : null;
   const reactionChangeSeconds =
     comparison?.currentAverageResponseMs !== null &&
@@ -85,7 +78,7 @@ export function StaffGameReviewSummaryContent({
         <h3 id="staff-game-review-current-title">本次表现</h3>
         <div className="staff-game-review-current-metrics">
           <div className="staff-game-review-current-metric">
-            <span>首次答对率</span>
+            <span>准确率（第一次就按对）</span>
             <strong>
               {performance?.firstTryAccuracyPercent === null || !performance
                 ? "—"
@@ -93,7 +86,7 @@ export function StaffGameReviewSummaryContent({
             </strong>
           </div>
           <div className="staff-game-review-current-metric">
-            <span>平均反应时长</span>
+            <span>首次答对平均用时</span>
             <strong>
               {performance?.averageResponseMs === null || !performance
                 ? "暂无样本"
@@ -103,7 +96,7 @@ export function StaffGameReviewSummaryContent({
           {wrongNoteStatisticsEnabled ? (
             <div className="staff-game-review-current-metric">
               <span className="staff-game-review-current-label-with-help">
-                薄弱音次数
+                错漏目标 / 总目标
                 <button
                   aria-label="查看薄弱音统计详情"
                   className="staff-game-wrong-answer-details-trigger"
@@ -114,10 +107,15 @@ export function StaffGameReviewSummaryContent({
                   <CircleHelp aria-hidden="true" size={16} />
                 </button>
               </span>
-              <strong>{performance?.weakNoteCount ?? 0} 次</strong>
+              <strong>
+                {performance?.weakNoteCount ?? 0} / {performance?.targetCount ?? 0}
+              </strong>
             </div>
           ) : null}
         </div>
+        <p className="staff-game-review-summary-note">
+          首次答对平均用时只统计第一次输入就答对的目标；第一次答错后补答正确不计入。
+        </p>
         {performance && performance.targetCount < 10 ? (
           <p className="staff-game-review-summary-note">
             本局共出现 {performance.targetCount} 个目标音，样本较少，建议再练一轮看趋势
@@ -142,7 +140,7 @@ export function StaffGameReviewSummaryContent({
               <div className="staff-game-review-comparison-metrics">
                 <div className="staff-game-review-comparison-metric">
                   <div className="staff-game-review-comparison-primary-line">
-                    <h4>答对率</h4>
+                    <h4>准确率（第一次就按对）</h4>
                     <strong>{Math.round(comparison.currentFirstTryAccuracyPercent)}%</strong>
                     <span
                       className={`staff-game-review-comparison-change ${changeTone(rateChange ?? 0)}`}
@@ -155,13 +153,20 @@ export function StaffGameReviewSummaryContent({
                     {previousDateLabel ? ` · ${previousDateLabel}` : ""}
                     {previousSourceLabel ? ` · ${previousSourceLabel}` : ""}
                   </p>
+                  {wrongNoteStatisticsEnabled ? (
+                    <p className="staff-game-review-comparison-previous-line">
+                      共同音符错漏：本次 {comparison.currentWeakNoteCount}/
+                      {comparison.currentCommonTargetCount} · 上次{" "}
+                      {comparison.previousWeakNoteCount}/{comparison.previousCommonTargetCount}
+                    </p>
+                  ) : null}
                 </div>
 
                 {comparison.currentAverageResponseMs !== null &&
                 comparison.previousAverageResponseMs !== null ? (
                   <div className="staff-game-review-comparison-metric">
                     <div className="staff-game-review-comparison-primary-line">
-                      <h4>反应时长</h4>
+                      <h4>首次答对平均用时</h4>
                       <strong>{(comparison.currentAverageResponseMs / 1_000).toFixed(1)}s</strong>
                       <span
                         className={`staff-game-review-comparison-change ${changeTone(reactionChangeSeconds ?? 0, true)}`}
@@ -171,23 +176,6 @@ export function StaffGameReviewSummaryContent({
                     </div>
                     <p className="staff-game-review-comparison-previous-line">
                       上次 {(comparison.previousAverageResponseMs / 1_000).toFixed(1)}s
-                    </p>
-                  </div>
-                ) : null}
-
-                {wrongNoteStatisticsEnabled ? (
-                  <div className="staff-game-review-comparison-metric">
-                    <div className="staff-game-review-comparison-primary-line">
-                      <h4>薄弱音</h4>
-                      <strong>{comparison.currentWeakNoteCount} 次</strong>
-                      <span
-                        className={`staff-game-review-comparison-change ${changeTone(weakNoteChange ?? 0, true)}`}
-                      >
-                        {formatWeakNoteChange(weakNoteChange ?? 0)}
-                      </span>
-                    </div>
-                    <p className="staff-game-review-comparison-previous-line">
-                      上次 {comparison.previousWeakNoteCount} 次
                     </p>
                   </div>
                 ) : null}
@@ -205,14 +193,16 @@ export function StaffGameReviewSummaryContent({
           className={`staff-game-wrong-note-archive-status is-${archiveStatus}`}
         >
           {archiveStatus === "saving" ? (
-            <span>正在保存到错题集…</span>
+            <span>{archiveMode === "trend" ? "正在保存本局趋势…" : "正在保存到错题集…"}</span>
           ) : archiveStatus === "error" ? (
             <>
-              <span>错题集保存失败</span>
+              <span>{archiveMode === "trend" ? "本局趋势保存失败" : "错题集保存失败"}</span>
               <button onClick={onRetryArchive} type="button">
                 重试
               </button>
             </>
+          ) : archiveMode === "trend" ? (
+            <span>✓ 已记录本局趋势</span>
           ) : (
             <span>✓ 已自动归档{archiveDateLabel ? ` · ${archiveDateLabel}` : ""}</span>
           )}

@@ -207,9 +207,9 @@ export interface StaffGameWrongNoteNoteStats {
   confusions: Record<string, number>;
   /** Latest wrong-input or missed-bubble time for this note in this run. */
   lastErrorAt?: string;
-  /** Sum of positive reaction times for correctly completed bubbles. */
+  /** Sum of positive reaction times for first-input-correct targets in marked runs. */
   totalResponseMs?: number;
-  /** Number of positive reaction-time samples; optional for legacy archives. */
+  /** Number of positive first-input-correct reaction samples; optional for legacy archives. */
   responseSampleCount?: number;
 }
 
@@ -229,6 +229,10 @@ export interface StaffGameWrongNoteArchiveRun {
   notePoolScope?: "current-group" | "all-history" | "all-history-current-clef" | null;
   /** Review uses its dedicated weighted bag; missing on legacy runs. */
   noteSchedulingStrategy?: "random" | "system" | "review-weighted";
+  /** Performance-only rows are excluded from wrong-note study, comparison, and management. */
+  trendOnly?: boolean;
+  /** Response samples are valid only for targets answered correctly on the first input. */
+  responseTimeBasis?: "first-correct";
   totalTargets: number;
   firstTryCorrect: number;
   lowSample: boolean;

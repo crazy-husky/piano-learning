@@ -79,7 +79,11 @@ export function summarizeStaffGameWrongNoteOutcomes(
         ).toISOString();
       }
     }
-    if (outcome.responseMs !== undefined && outcome.responseMs > 0) {
+    if (
+      outcome.firstInputCorrect === true &&
+      outcome.responseMs !== undefined &&
+      outcome.responseMs > 0
+    ) {
       note.totalResponseMs = (note.totalResponseMs ?? 0) + outcome.responseMs;
       note.responseSampleCount = (note.responseSampleCount ?? 0) + 1;
     }

@@ -38,7 +38,7 @@ export interface StaffGameRoundNoteOutcome {
   missed: boolean;
   /** Wall-clock time of the most recent wrong input or bubble expiry. */
   errorAt?: number;
-  /** Positive milliseconds from the end of the bubble fade-in to the accepted hit. */
+  /** Positive milliseconds from fade-in completion to the first input, when that input is correct. */
   responseMs?: number;
 }
 

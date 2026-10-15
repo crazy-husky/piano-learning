@@ -1,7 +1,7 @@
+// ⚠️ [整局趋势]。详见 docs/product-decisions.md
 import type { StaffGameWrongNoteArchive, StaffGameWrongNoteArchiveRun } from "./types";
 import {
-  filterStaffGameWrongNoteArchivesByRange,
-  getStaffGameWrongNoteRunErrorCount,
+  filterStaffGameWrongNoteArchivesByCalendarRange,
   hasCompleteStaffGameWrongNoteComparisonData,
   type StaffGameWrongNoteRange,
 } from "./staffGameWrongNoteArchives";
@@ -26,17 +26,17 @@ export interface StaffGameWrongNoteTrendGroup {
 }
 
 export interface StaffGameWrongNoteTrendPoint {
-  runId: string;
-  archiveDate: string;
-  endedAt: string;
+  date: string;
+  endedAt: string | null;
+  runCount: number;
   firstTryAccuracyPercent: number | null;
-  errorRatePercent: number | null;
   errorCount: number;
   targetCount: number;
   averageResponseMs: number | null;
 }
 
-const MAX_TREND_RUNS = 8;
+export type StaffGameWrongNoteTrendDisplayMode = "run" | "day";
+
 const NOTE_POOL_SCOPES = new Set(["current-group", "all-history", "all-history-current-clef"]);
 const CHALLENGE_SCHEDULING_STRATEGIES = new Set(["random", "system"]);
 
@@ -56,32 +56,29 @@ export function countStaffGameWrongNoteTrendRunsMissingSettings(
   range: StaffGameWrongNoteRange,
   today = new Date()
 ): number {
-  return filterStaffGameWrongNoteArchivesByRange(archives, range, today).reduce(
+  return filterStaffGameWrongNoteArchivesByCalendarRange(archives, range, today).reduce(
     (total, archive) =>
       total +
       archive.runs.filter(
-        (run) =>
-          getStaffGameWrongNoteRunErrorCount(run) > 0 &&
-          hasCompleteStaffGameWrongNoteComparisonData(run) &&
-          !hasCompleteTrendSettings(run)
+        (run) => hasCompleteStaffGameWrongNoteComparisonData(run) && !hasCompleteTrendSettings(run)
       ).length,
     0
   );
 }
 
-/** Build comparable cohorts from complete, non-zero-error archived runs. */
+/** Build comparable cohorts from complete performance records, including all-correct runs. */
 export function buildStaffGameWrongNoteTrendGroups(
   archives: readonly StaffGameWrongNoteArchive[],
   range: StaffGameWrongNoteRange,
   today = new Date()
 ): StaffGameWrongNoteTrendGroup[] {
   const groups = new Map<string, StaffGameWrongNoteTrendGroup>();
-  for (const archive of filterStaffGameWrongNoteArchivesByRange(archives, range, today)) {
+  for (const archive of filterStaffGameWrongNoteArchivesByCalendarRange(archives, range, today)) {
     for (const run of archive.runs) {
       if (
-        getStaffGameWrongNoteRunErrorCount(run) === 0 ||
         !hasCompleteStaffGameWrongNoteComparisonData(run) ||
-        !hasCompleteTrendSettings(run)
+        !hasCompleteTrendSettings(run) ||
+        run.totalTargets <= 0
       ) {
         continue;
       }
@@ -123,62 +120,120 @@ export function buildStaffGameWrongNoteTrendGroups(
     });
 }
 
-/**
- * Keep only notes that appeared in every plotted run, so the line compares the
- * same notes over time instead of changing meaning as the review pool changes.
- */
-export function buildStaffGameWrongNoteTrendPoints(
-  group: StaffGameWrongNoteTrendGroup,
-  limit = MAX_TREND_RUNS
-): { commonNoteMidis: number[]; points: StaffGameWrongNoteTrendPoint[] } {
-  const runs = group.runs.slice(-Math.max(1, limit));
-  if (runs.length === 0) return { commonNoteMidis: [], points: [] };
+/** Aggregate each comparable cohort by local archive date using pooled target counts. */
+export function buildStaffGameWrongNoteTrendPoints(group: StaffGameWrongNoteTrendGroup): {
+  displayMode: StaffGameWrongNoteTrendDisplayMode;
+  runCount: number;
+  groupAccuracyPercent: number | null;
+  groupAverageResponseMs: number | null;
+  points: StaffGameWrongNoteTrendPoint[];
+} {
+  const byDate = new Map<
+    string,
+    {
+      runCount: number;
+      correctCount: number;
+      targetCount: number;
+      errorCount: number;
+      responseTotalMs: number;
+      responseSampleCount: number;
+    }
+  >();
+  let groupCorrectCount = 0;
+  let groupTargetCount = 0;
+  let groupResponseTotalMs = 0;
+  let groupResponseSampleCount = 0;
+  let runCount = 0;
+  const runPoints: StaffGameWrongNoteTrendPoint[] = [];
 
-  const firstRun = runs[0]?.run;
-  if (!firstRun) return { commonNoteMidis: [], points: [] };
-
-  const commonNoteMidis = Object.keys(firstRun.notes)
-    .map(Number)
-    .filter((midi) =>
-      runs.every(({ run }) => {
-        const note = run.notes[String(midi)];
-        return note !== undefined && note.appear > 0;
-      })
-    )
-    .sort((left, right) => left - right);
-
-  if (commonNoteMidis.length === 0) return { commonNoteMidis, points: [] };
-
-  const points = runs.map(({ archiveDate, run }) => {
-    let appear = 0;
-    let correct = 0;
-    let errorCount = 0;
+  for (const { archiveDate, run } of group.runs) {
+    if (run.totalTargets <= 0) continue;
+    runCount += 1;
+    groupCorrectCount += run.firstTryCorrect;
+    groupTargetCount += run.totalTargets;
     let responseTotalMs = 0;
     let responseSampleCount = 0;
-
-    for (const midi of commonNoteMidis) {
-      const note = run.notes[String(midi)];
-      if (!note) continue;
-      appear += note.appear;
-      correct += note.correct;
-      errorCount += note.wrong + note.missed;
-      if ((note.responseSampleCount ?? 0) > 0) {
-        responseTotalMs += note.totalResponseMs ?? 0;
-        responseSampleCount += note.responseSampleCount ?? 0;
-      }
-    }
-
-    return {
-      runId: run.runId,
-      archiveDate,
-      endedAt: run.endedAt,
-      firstTryAccuracyPercent: appear > 0 ? (correct / appear) * 100 : null,
-      errorRatePercent: appear > 0 ? (errorCount / appear) * 100 : null,
-      errorCount,
-      targetCount: appear,
-      averageResponseMs: responseSampleCount > 0 ? responseTotalMs / responseSampleCount : null,
+    const daily = byDate.get(archiveDate) ?? {
+      runCount: 0,
+      correctCount: 0,
+      targetCount: 0,
+      errorCount: 0,
+      responseTotalMs: 0,
+      responseSampleCount: 0,
     };
-  });
+    daily.runCount += 1;
+    daily.correctCount += run.firstTryCorrect;
+    daily.targetCount += run.totalTargets;
+    daily.errorCount += Object.values(run.notes).reduce(
+      (total, note) => total + Math.max(0, note.wrong) + Math.max(0, note.missed),
+      0
+    );
+    for (const note of Object.values(run.notes)) {
+      const noteResponseTotalMs = Math.max(0, note.totalResponseMs ?? 0);
+      const noteResponseSampleCount = Math.max(0, note.responseSampleCount ?? 0);
+      responseTotalMs += noteResponseTotalMs;
+      responseSampleCount += noteResponseSampleCount;
+    }
+    daily.responseTotalMs += responseTotalMs;
+    daily.responseSampleCount += responseSampleCount;
+    groupResponseTotalMs += responseTotalMs;
+    groupResponseSampleCount += responseSampleCount;
+    runPoints.push({
+      date: archiveDate,
+      endedAt: run.endedAt,
+      runCount: 1,
+      firstTryAccuracyPercent: (run.firstTryCorrect / run.totalTargets) * 100,
+      errorCount: Object.values(run.notes).reduce(
+        (total, note) => total + Math.max(0, note.wrong) + Math.max(0, note.missed),
+        0
+      ),
+      targetCount: run.totalTargets,
+      averageResponseMs: responseSampleCount > 0 ? responseTotalMs / responseSampleCount : null,
+    });
+    byDate.set(archiveDate, daily);
+  }
 
-  return { commonNoteMidis, points };
+  const dailyPoints = [...byDate.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, daily]) => ({
+      date,
+      endedAt: null,
+      runCount: daily.runCount,
+      firstTryAccuracyPercent:
+        daily.targetCount > 0 ? (daily.correctCount / daily.targetCount) * 100 : null,
+      errorCount: daily.errorCount,
+      targetCount: daily.targetCount,
+      averageResponseMs:
+        daily.responseSampleCount > 0 ? daily.responseTotalMs / daily.responseSampleCount : null,
+    }));
+  const displayMode: StaffGameWrongNoteTrendDisplayMode = byDate.size === 1 ? "run" : "day";
+
+  return {
+    displayMode,
+    runCount,
+    groupAccuracyPercent:
+      groupTargetCount > 0 ? (groupCorrectCount / groupTargetCount) * 100 : null,
+    groupAverageResponseMs:
+      groupResponseSampleCount > 0 ? groupResponseTotalMs / groupResponseSampleCount : null,
+    points: displayMode === "run" ? runPoints : dailyPoints,
+  };
+}
+
+/** Three-consecutive-point simple moving average; missing metric values break a segment. */
+export function calculateStaffGameWrongNoteTrendMovingAverage(
+  values: readonly (number | null)[],
+  windowSize = 3
+): Array<{ index: number; value: number }> {
+  const window = Math.max(1, Math.floor(windowSize));
+  const result: Array<{ index: number; value: number }> = [];
+  for (let endIndex = window - 1; endIndex < values.length; endIndex += 1) {
+    const windowValues = values.slice(endIndex - window + 1, endIndex + 1);
+    const numericValues = windowValues.filter((value): value is number => value !== null);
+    if (numericValues.length !== window) continue;
+    result.push({
+      index: endIndex,
+      value: numericValues.reduce((total, value) => total + value, 0) / window,
+    });
+  }
+  return result;
 }

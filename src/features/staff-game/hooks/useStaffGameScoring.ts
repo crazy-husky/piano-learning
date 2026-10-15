@@ -372,7 +372,7 @@ export function useStaffGameScoring({
           if (reactionMs > 0) {
             metrics.responseTotalMs += reactionMs;
             metrics.responseSampleCount += 1;
-            if (firstInput) firstInput.responseMs = reactionMs;
+            if (firstInput?.firstInputCorrect === true) firstInput.responseMs = reactionMs;
           }
         }
         triggerMascotReaction("cheer");

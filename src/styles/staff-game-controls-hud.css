@@ -1161,6 +1161,36 @@
     justify-content: center;
   }
 
+  .staff-game-ready-card.is-wrong-note-review {
+    width: min(492px, calc(100% - 10px));
+    max-height: min(calc(86vh + 20px), 780px);
+    padding-bottom: calc(clamp(18px, 2.8vh, 28px) + 20px);
+  }
+
+  .staff-game-ready-card.is-wrong-note-review::before {
+    inset-block: 0;
+  }
+
+  .staff-game-ready-mode-switch {
+    gap: 1px;
+    padding: 2px;
+  }
+
+  .staff-game-ready-mode-switch button {
+    min-height: 24px;
+    padding: 2px 6px;
+    font-size: 12px;
+  }
+
+  .staff-game-review-range-row,
+  .staff-game-review-preview {
+    width: min(calc(100% - 64px), 820px);
+  }
+
+  .staff-game-review-preview {
+    padding-inline: 14px;
+  }
+
   .staff-game-ready-card > .staff-game-primary {
     position: relative;
     z-index: 1;

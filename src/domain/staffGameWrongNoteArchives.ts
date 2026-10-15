@@ -5,6 +5,8 @@ export type StaffGameWrongNoteRange = 3 | 7 | 15 | 30 | "all";
 export interface StaffGameWrongNoteComparison {
   previousRun: StaffGameWrongNoteArchiveRun;
   commonNoteMidis: number[];
+  currentCommonTargetCount: number;
+  previousCommonTargetCount: number;
   currentFirstTryAccuracyPercent: number;
   previousFirstTryAccuracyPercent: number;
   currentWeakNoteCount: number;
@@ -47,15 +49,27 @@ function noteLastErrorDate(
   return archiveDate;
 }
 
-/** Select daily archive rows using the same local-calendar-day boundary as review weighting. */
+/** Apply the shared local-calendar-day boundary without filtering by run contents. */
+export function filterStaffGameWrongNoteArchivesByCalendarRange(
+  archives: readonly StaffGameWrongNoteArchive[],
+  range: StaffGameWrongNoteRange,
+  today = new Date()
+): StaffGameWrongNoteArchive[] {
+  if (range === "all") return [...archives];
+  return archives.filter((archive) => archiveAgeDays(archive.date, today) < range);
+}
+
+/** Select error archives using the same date boundary as review weighting. */
 export function filterStaffGameWrongNoteArchivesByRange(
   archives: readonly StaffGameWrongNoteArchive[],
   range: StaffGameWrongNoteRange,
   today = new Date()
 ): StaffGameWrongNoteArchive[] {
-  const archivesWithErrors = filterStaffGameWrongNoteArchivesWithErrors(archives);
-  if (range === "all") return archivesWithErrors;
-  return archivesWithErrors.filter((archive) => archiveAgeDays(archive.date, today) < range);
+  return filterStaffGameWrongNoteArchivesByCalendarRange(
+    filterStaffGameWrongNoteArchivesWithErrors(archives),
+    range,
+    today
+  );
 }
 
 /** Count wrong and missed answers in one run. */
@@ -63,12 +77,14 @@ export function getStaffGameWrongNoteRunErrorCount(run: StaffGameWrongNoteArchiv
   return Object.values(run.notes).reduce((total, note) => total + note.wrong + note.missed, 0);
 }
 
-/** Hide legacy all-correct runs from every archive read and aggregate path. */
+/** Keep performance-only rows and all-correct runs out of weak-note workflows. */
 export function filterStaffGameWrongNoteArchivesWithErrors(
   archives: readonly StaffGameWrongNoteArchive[]
 ): StaffGameWrongNoteArchive[] {
   return archives.flatMap((archive) => {
-    const runs = archive.runs.filter((run) => getStaffGameWrongNoteRunErrorCount(run) > 0);
+    const runs = archive.runs.filter(
+      (run) => run.trendOnly !== true && getStaffGameWrongNoteRunErrorCount(run) > 0
+    );
     return runs.length > 0 ? [{ ...archive, runs }] : [];
   });
 }
@@ -99,6 +115,106 @@ export function calculateStaffGameWrongNoteErrorCounts(
     .sort((left, right) => right.errorCount - left.errorCount || left.midi - right.midi);
 }
 
+export interface StaffGameWrongNoteNoteDiagnostic {
+  midi: number;
+  appearanceCount: number;
+  runCount: number;
+  correctCount: number;
+  errorCount: number;
+  accuracyPercent: number | null;
+  errorRatePercent: number | null;
+  averageResponseMs: number | null;
+  confusions: Array<{ note: string; count: number }>;
+}
+
+/** Summarize each played note from every saved performance row in the selected date range. */
+export function calculateStaffGameWrongNoteNoteDiagnostics(
+  archives: readonly StaffGameWrongNoteArchive[],
+  range: StaffGameWrongNoteRange,
+  today = new Date()
+): StaffGameWrongNoteNoteDiagnostic[] {
+  const aggregates = new Map<
+    number,
+    {
+      appearanceCount: number;
+      runCount: number;
+      correctCount: number;
+      errorCount: number;
+      responseTotalMs: number;
+      responseSampleCount: number;
+      confusions: Map<string, number>;
+    }
+  >();
+
+  for (const archive of filterStaffGameWrongNoteArchivesByCalendarRange(archives, range, today)) {
+    for (const run of archive.runs) {
+      for (const note of Object.values(run.notes)) {
+        if (note.appear <= 0 && note.wrong + note.missed <= 0) continue;
+        const aggregate = aggregates.get(note.midi) ?? {
+          appearanceCount: 0,
+          runCount: 0,
+          correctCount: 0,
+          errorCount: 0,
+          responseTotalMs: 0,
+          responseSampleCount: 0,
+          confusions: new Map<string, number>(),
+        };
+        aggregate.appearanceCount += Math.max(0, note.appear);
+        aggregate.runCount += 1;
+        aggregate.correctCount += Math.max(0, note.correct);
+        aggregate.errorCount += Math.max(0, note.wrong) + Math.max(0, note.missed);
+        if (run.responseTimeBasis === "first-correct") {
+          aggregate.responseTotalMs += Math.max(0, note.totalResponseMs ?? 0);
+          aggregate.responseSampleCount += Math.max(0, note.responseSampleCount ?? 0);
+        }
+        for (const [confusedNote, count] of Object.entries(note.confusions ?? {})) {
+          if (count > 0) {
+            aggregate.confusions.set(
+              confusedNote,
+              (aggregate.confusions.get(confusedNote) ?? 0) + count
+            );
+          }
+        }
+        aggregates.set(note.midi, aggregate);
+      }
+    }
+  }
+
+  return [...aggregates.entries()]
+    .map(([midi, aggregate]) => ({
+      midi,
+      appearanceCount: aggregate.appearanceCount,
+      runCount: aggregate.runCount,
+      correctCount: aggregate.correctCount,
+      errorCount: aggregate.errorCount,
+      accuracyPercent:
+        aggregate.appearanceCount > 0
+          ? (aggregate.correctCount / aggregate.appearanceCount) * 100
+          : null,
+      errorRatePercent:
+        aggregate.appearanceCount > 0
+          ? (aggregate.errorCount / aggregate.appearanceCount) * 100
+          : null,
+      averageResponseMs:
+        aggregate.responseSampleCount > 0
+          ? aggregate.responseTotalMs / aggregate.responseSampleCount
+          : null,
+      confusions: [...aggregate.confusions.entries()]
+        .map(([note, count]) => ({ note, count }))
+        .sort((left, right) => right.count - left.count || left.note.localeCompare(right.note))
+        .slice(0, 2),
+    }))
+    .sort((left, right) => {
+      if (left.errorRatePercent === null && right.errorRatePercent !== null) return 1;
+      if (right.errorRatePercent === null && left.errorRatePercent !== null) return -1;
+      return (
+        (right.errorRatePercent ?? 0) - (left.errorRatePercent ?? 0) ||
+        right.errorCount - left.errorCount ||
+        left.midi - right.midi
+      );
+    });
+}
+
 /** Remove legacy staff-game drill runs while retaining every other archive source. */
 export function filterLegacyStaffGameDrillArchives(
   archives: readonly StaffGameWrongNoteArchive[]
@@ -119,7 +235,8 @@ export function mergeStaffGameWrongNoteArchives(
     const runs = new Map<string, StaffGameWrongNoteArchiveRun>();
     for (const run of [...(current?.runs ?? []), ...archive.runs]) {
       const existing = runs.get(run.runId);
-      if (!existing || runUpdatedAtMs(run) > runUpdatedAtMs(existing)) {
+      const promotesTrendOnlyRun = existing?.trendOnly === true && run.trendOnly !== true;
+      if (!existing || promotesTrendOnlyRun || runUpdatedAtMs(run) > runUpdatedAtMs(existing)) {
         runs.set(run.runId, run);
       }
     }
@@ -236,20 +353,21 @@ function latestMatchingRun(
 function summarizeNotes(
   run: StaffGameWrongNoteArchiveRun,
   midis: readonly number[]
-): { accuracyPercent: number; weakNoteCount: number } {
+): { accuracyPercent: number; errorCount: number; targetCount: number } {
   let appear = 0;
   let correct = 0;
-  let weakNoteCount = 0;
+  let errorCount = 0;
   for (const midi of midis) {
     const note = run.notes[String(midi)];
     if (!note) continue;
     appear += note.appear;
     correct += note.correct;
-    weakNoteCount += note.wrong + note.missed;
+    errorCount += note.wrong + note.missed;
   }
   return {
     accuracyPercent: appear > 0 ? (correct / appear) * 100 : 0,
-    weakNoteCount,
+    errorCount,
+    targetCount: appear,
   };
 }
 
@@ -258,6 +376,13 @@ function averageResponseMsForSharedSamples(
   previousRun: StaffGameWrongNoteArchiveRun,
   commonMidis: readonly number[]
 ): [number | null, number | null] {
+  if (
+    currentRun.responseTimeBasis !== "first-correct" ||
+    previousRun.responseTimeBasis !== "first-correct"
+  ) {
+    return [null, null];
+  }
+
   let currentTotalMs = 0;
   let previousTotalMs = 0;
   let currentSampleCount = 0;
@@ -333,10 +458,12 @@ export function compareStaffGameWrongNoteRun(
   return {
     previousRun,
     commonNoteMidis: midis,
+    currentCommonTargetCount: currentSummary.targetCount,
+    previousCommonTargetCount: previousSummary.targetCount,
     currentFirstTryAccuracyPercent: currentSummary.accuracyPercent,
     previousFirstTryAccuracyPercent: previousSummary.accuracyPercent,
-    currentWeakNoteCount: currentSummary.weakNoteCount,
-    previousWeakNoteCount: previousSummary.weakNoteCount,
+    currentWeakNoteCount: currentSummary.errorCount,
+    previousWeakNoteCount: previousSummary.errorCount,
     currentAverageResponseMs,
     previousAverageResponseMs,
   };

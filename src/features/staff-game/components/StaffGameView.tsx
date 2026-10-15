@@ -1,3 +1,4 @@
+// ⚠️ [归档规则]。详见 docs/product-decisions.md
 import { Volume2 } from "lucide-react";
 import "vexflow/bravura";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ import type {
 } from "../../../domain/types";
 import { createUuid } from "../../../domain/id";
 import {
+  calculateStaffGameWrongNoteNoteDiagnostics,
   calculateStaffGameWrongNoteErrorCounts,
   calculateStaffGameWrongNoteWeights,
   compareStaffGameWrongNoteRun,
@@ -125,6 +127,40 @@ import {
 } from "../logic/staffGameMicrophoneDebug";
 import type { GameDifficulty } from "../logic/staffGameRules";
 
+function nextWrongNoteRunUpdatedAt(run: StaffGameWrongNoteArchiveRun): string {
+  const previous = Date.parse(run.updatedAt ?? run.endedAt);
+  const timestamp = Math.max(Date.now(), Number.isFinite(previous) ? previous + 1 : 0);
+  return new Date(timestamp).toISOString();
+}
+
+function makeTrendOnlyWrongNoteRun(
+  run: StaffGameWrongNoteArchiveRun
+): StaffGameWrongNoteArchiveRun {
+  const notes = Object.fromEntries(
+    Object.entries(run.notes).map(([key, note]) => [
+      key,
+      {
+        midi: note.midi,
+        note: note.note,
+        appear: note.appear,
+        correct: note.correct,
+        wrong: 0,
+        missed: 0,
+        confusions: {},
+        totalResponseMs: note.totalResponseMs ?? 0,
+        responseSampleCount: note.responseSampleCount ?? 0,
+      },
+    ])
+  );
+
+  return {
+    ...run,
+    updatedAt: nextWrongNoteRunUpdatedAt(run),
+    trendOnly: true,
+    notes,
+  };
+}
+
 const {
   gameBackgroundDesktop,
   gameBackgroundMobile,
@@ -183,7 +219,7 @@ type GameDisplayMode = "note" | "solfege" | "number" | "none";
 type StaffGameMode = "levels" | "songs";
 type StaffGameRoundPurpose = "level" | "wrong-note-review";
 type WrongNoteArchiveStatus = "idle" | "manual" | "saving" | "saved" | "error";
-type WrongNoteArchiveMode = "automatic" | "manual" | null;
+type WrongNoteArchiveMode = "automatic" | "manual" | "trend" | null;
 type SongSelectionStep = "list" | "detail" | null;
 
 interface StaffGameAudioSettings {
@@ -895,15 +931,30 @@ export function StaffGameView({
       ),
     [wrongNoteArchives, wrongNoteReviewRange]
   );
+  const wrongNoteReviewAccuracies = useMemo(
+    () =>
+      new Map(
+        calculateStaffGameWrongNoteNoteDiagnostics(wrongNoteArchives, wrongNoteReviewRange).map(
+          ({ midi, accuracyPercent }) => [midi, accuracyPercent] as const
+        )
+      ),
+    [wrongNoteArchives, wrongNoteReviewRange]
+  );
   const wrongNoteReviewPreviewNotes = useMemo(
     () =>
       getStaffGameWrongNotePriorityPreview(wrongNoteReviewWeights, unlockedReviewMidiSet).map(
         ({ midi }) => ({
           ...gameNoteFromMidi(midi),
           errorCount: wrongNoteReviewErrorCounts.get(midi) ?? 0,
+          accuracyPercent: wrongNoteReviewAccuracies.get(midi) ?? null,
         })
       ),
-    [unlockedReviewMidiSet, wrongNoteReviewErrorCounts, wrongNoteReviewWeights]
+    [
+      unlockedReviewMidiSet,
+      wrongNoteReviewAccuracies,
+      wrongNoteReviewErrorCounts,
+      wrongNoteReviewWeights,
+    ]
   );
   const wrongNoteArchiveDateCount = useMemo(
     () => getStaffGameWrongNoteArchiveDateCount(wrongNoteArchives),
@@ -1467,36 +1518,46 @@ export function StaffGameView({
     saveStaffGameSongProgress(next);
   }, []);
 
-  const archiveWrongNoteRun = useCallback(async (runId: string | null = null): Promise<void> => {
-    const run = [...pendingWrongNoteArchiveRunsRef.current]
-      .reverse()
-      .find((item) => runId === null || item.runId === runId);
-    if (!run) return;
-    if (summaryArchiveRunIdRef.current === run.runId) setWrongNoteArchiveStatus("saving");
-    try {
-      const savedArchive = await archiveStaffGameWrongNoteRun(run);
-      pendingWrongNoteArchiveRunsRef.current = pendingWrongNoteArchiveRunsRef.current.filter(
-        (item) => item.runId !== run.runId
-      );
-      setWrongNoteArchives((current) => mergeStaffGameWrongNoteArchives(current, [savedArchive]));
-      if (summaryArchiveRunIdRef.current === run.runId) setWrongNoteArchiveStatus("saved");
-    } catch {
-      if (summaryArchiveRunIdRef.current === run.runId) setWrongNoteArchiveStatus("error");
-    }
-  }, []);
+  const archiveWrongNoteRun = useCallback(
+    async (
+      runId: string | null = null,
+      mode: "full" | "trend" = "full",
+      keepTrendRunPendingForManualArchive = false
+    ): Promise<void> => {
+      const run = [...pendingWrongNoteArchiveRunsRef.current]
+        .reverse()
+        .find((item) => runId === null || item.runId === runId);
+      if (!run) return;
+      const shouldUpdateArchiveStatus =
+        summaryArchiveRunIdRef.current === run.runId &&
+        (mode === "full" || (mode === "trend" && !keepTrendRunPendingForManualArchive));
+      const runToSave =
+        mode === "trend"
+          ? makeTrendOnlyWrongNoteRun(run)
+          : { ...run, updatedAt: nextWrongNoteRunUpdatedAt(run), trendOnly: false };
+      if (shouldUpdateArchiveStatus) setWrongNoteArchiveStatus("saving");
+      try {
+        const savedArchive = await archiveStaffGameWrongNoteRun(runToSave);
+        if (mode === "full" || !keepTrendRunPendingForManualArchive) {
+          pendingWrongNoteArchiveRunsRef.current = pendingWrongNoteArchiveRunsRef.current.filter(
+            (item) => item.runId !== run.runId
+          );
+        }
+        setWrongNoteArchives((current) => mergeStaffGameWrongNoteArchives(current, [savedArchive]));
+        if (shouldUpdateArchiveStatus) setWrongNoteArchiveStatus("saved");
+      } catch {
+        if (shouldUpdateArchiveStatus) setWrongNoteArchiveStatus("error");
+        else if (mode === "trend") toast.error("本局趋势数据保存失败，未能保留这次表现。");
+      }
+    },
+    []
+  );
 
   const recordRoundNoteOutcomes = useCallback(
     (
       outcomes: StaffGameRoundNoteOutcome[],
       wrongAnswerRecords: StaffGameWrongAnswerRecord[]
     ): void => {
-      const failedTargetMidis = [
-        ...new Set(
-          outcomes
-            .filter((outcome) => outcome.firstInputCorrect !== true)
-            .map((outcome) => outcome.midi)
-        ),
-      ].sort((first, second) => first - second);
       setSummaryWeakNoteOutcomes(outcomes);
       setSummaryArchiveRunId(null);
       setSummaryArchiveRun(null);
@@ -1512,12 +1573,7 @@ export function StaffGameView({
       }
 
       const roundPurpose = roundPurposeRef.current;
-      if (
-        gameModeRef.current === "songs" ||
-        (roundPurpose === "level" && failedTargetMidis.length === 0)
-      ) {
-        return;
-      }
+      if (gameModeRef.current === "songs") return;
       const source = roundPurpose === "level" ? "challenge" : "review";
       const endedAt = new Date().toISOString();
       const { notes, firstTryCorrect } = summarizeStaffGameWrongNoteOutcomes(
@@ -1540,20 +1596,32 @@ export function StaffGameView({
         totalTargets: outcomes.length,
         firstTryCorrect,
         lowSample: source !== "challenge" && outcomes.length < 10,
+        responseTimeBasis: "first-correct",
         notes,
       };
       if (source === "review") setSummaryArchiveRun(run);
-      if (getStaffGameWrongNoteRunErrorCount(run) === 0) return;
-
       pendingWrongNoteArchiveRunsRef.current.push(run);
+      const hasErrors = getStaffGameWrongNoteRunErrorCount(run) > 0;
+      const shouldAutoArchive =
+        source !== "challenge" || settingsRef.current.autoArchiveWrongNotesEnabled;
+      if (!hasErrors) {
+        summaryArchiveRunIdRef.current = run.runId;
+        setSummaryArchiveRunId(run.runId);
+        setSummaryArchiveMode("trend");
+        setWrongNoteArchiveStatus("saving");
+        void archiveWrongNoteRun(run.runId, "trend");
+        return;
+      }
+
       setSummaryArchiveRunId(run.runId);
       setSummaryArchiveRun(run);
       summaryArchiveRunIdRef.current = run.runId;
       setSummaryArchiveDate(localDateKey(run.endedAt));
-      if (source !== "challenge" || settingsRef.current.autoArchiveWrongNotesEnabled) {
+      if (shouldAutoArchive) {
         setSummaryArchiveMode("automatic");
         void archiveWrongNoteRun(run.runId);
       } else {
+        void archiveWrongNoteRun(run.runId, "trend", true);
         setSummaryArchiveMode("manual");
         setWrongNoteArchiveStatus("manual");
       }
@@ -3198,6 +3266,7 @@ export function StaffGameView({
               reviewNotes={wrongNoteReviewPreviewNotes.map((note) => ({
                 label: `${note.name}${note.octave}`,
                 errorCount: note.errorCount,
+                accuracyPercent: note.accuracyPercent,
               }))}
               reviewRange={wrongNoteReviewRange}
               wrongNoteArchiveDateCount={wrongNoteArchiveDateCount}
@@ -3285,7 +3354,12 @@ export function StaffGameView({
               onExitWrongNoteReview={exitWrongNoteReview}
               onCloseChallengeSummary={closeChallengeSummary}
               onArchiveWrongNotes={() => void archiveWrongNoteRun(summaryArchiveRunId)}
-              onRetryArchive={() => void archiveWrongNoteRun(summaryArchiveRunId)}
+              onRetryArchive={() =>
+                void archiveWrongNoteRun(
+                  summaryArchiveRunId,
+                  summaryArchiveMode === "trend" ? "trend" : "full"
+                )
+              }
               onRetry={retryLevel}
               revealedStars={revealedSummaryStars}
               score={summaryScoreCount}

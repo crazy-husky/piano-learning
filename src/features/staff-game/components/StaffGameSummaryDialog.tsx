@@ -31,7 +31,7 @@ export interface StaffGameSummaryDialogProps {
   wrongNoteStatisticsEnabled: boolean;
   isWrongNoteReview: boolean;
   wrongNoteArchiveStatus: "idle" | "manual" | "saving" | "saved" | "error";
-  wrongNoteArchiveMode: "automatic" | "manual" | null;
+  wrongNoteArchiveMode: "automatic" | "manual" | "trend" | null;
   wrongNoteArchiveDate: string | null;
   wrongNoteComparison: StaffGameWrongNoteComparison | null;
   reviewPerformance: StaffGameWrongNoteRunPerformance | null;
@@ -272,6 +272,7 @@ export function StaffGameSummaryDialog({
             </div>
             {mode === "review" ? (
               <StaffGameReviewSummaryContent
+                archiveMode={wrongNoteArchiveMode}
                 archiveDateLabel={archiveDateLabel}
                 archiveStatus={wrongNoteArchiveStatus}
                 comparison={wrongNoteComparison}
@@ -293,9 +294,11 @@ export function StaffGameSummaryDialog({
                 <div className="staff-game-result-stats">
                   {wrongNoteStatisticsEnabled ? (
                     <div className="is-wrong-count">
-                      <span>薄弱音</span>
+                      <span>错漏目标 / 总目标</span>
                       <strong>
-                        <span className="staff-game-result-metric-value">{weakNoteCount} 次</span>
+                        <span className="staff-game-result-metric-value">
+                          {weakNoteCount} / {generatedNoteCount}
+                        </span>
                         <span className="staff-game-result-metric-accessory">
                           <button
                             aria-label="查看薄弱音统计详情"
@@ -330,7 +333,7 @@ export function StaffGameSummaryDialog({
                   </div>
                   {isSongMode ? (
                     <div>
-                      <span>首次准确率</span>
+                      <span>准确率（第一次就按对）</span>
                       <strong>
                         <span className="staff-game-result-metric-value">
                           {Math.round(accuracy)}%
@@ -345,10 +348,16 @@ export function StaffGameSummaryDialog({
                     className={`staff-game-wrong-note-archive-status is-${wrongNoteArchiveStatus}`}
                   >
                     {wrongNoteArchiveStatus === "saving" ? (
-                      <span>正在保存到错题集…</span>
+                      <span>
+                        {wrongNoteArchiveMode === "trend"
+                          ? "正在保存本局趋势…"
+                          : "正在保存到错题集…"}
+                      </span>
                     ) : wrongNoteArchiveStatus === "error" ? (
                       <>
-                        <span>错题集保存失败</span>
+                        <span>
+                          {wrongNoteArchiveMode === "trend" ? "本局趋势保存失败" : "错题集保存失败"}
+                        </span>
                         <button onClick={onRetryArchive} type="button">
                           重试
                         </button>
@@ -359,7 +368,12 @@ export function StaffGameSummaryDialog({
                       </button>
                     ) : (
                       <span>
-                        ✓ {wrongNoteArchiveMode === "automatic" ? "已自动归档" : "已加入错题集"}
+                        ✓
+                        {wrongNoteArchiveMode === "trend"
+                          ? "已记录本局趋势"
+                          : wrongNoteArchiveMode === "automatic"
+                            ? "已自动归档"
+                            : "已加入错题集"}
                         {archiveDateLabel ? ` · ${archiveDateLabel}` : ""}
                       </span>
                     )}
@@ -480,7 +494,9 @@ export function StaffGameSummaryDialog({
               </table>
             </div>
             <div className="staff-game-wrong-answer-details-actions">
-              {wrongNoteArchiveMode && wrongNoteArchiveStatus !== "saved" ? (
+              {wrongNoteArchiveMode &&
+              wrongNoteArchiveMode !== "trend" &&
+              wrongNoteArchiveStatus !== "saved" ? (
                 <button
                   className="staff-game-wrong-answer-details-archive"
                   disabled={wrongNoteArchiveStatus === "saving"}

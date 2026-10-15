@@ -1,3 +1,4 @@
+// ⚠️ [错题袋覆盖]。详见 docs/product-decisions.md
 import type { NoteName, PianoKeyName } from "../../../domain/types";
 
 export type GameDifficulty = "muggle" | "easy" | "normal" | "hard" | "nightmare";

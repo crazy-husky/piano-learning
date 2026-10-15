@@ -301,7 +301,7 @@ export function StaffGameDialogs({
                       ) : isSongMode ? (
                         <>
                           <p>
-                            选择歌曲后，气泡会按旋律顺序出现。答错可重试当前音符；气泡飘走后会记为漏音并继续下一音。全曲完成后，按首次作答准确率评星：达到
+                            选择歌曲后，气泡会按旋律顺序出现。答错可重试当前音符；气泡飘走后会记为漏音并继续下一音。全曲完成后，按准确率（第一次就按对）评星：达到
                             60%、80%、95% 分别获得 1、2、3 星。
                           </p>
                           <p>
@@ -309,7 +309,7 @@ export function StaffGameDialogs({
                             A、S、D、F、G、H、J 弹奏 C4 到 B4。
                           </p>
                           <p>
-                            答对可得分并增加连击；难度会影响基础分、气泡下落速度和连击时限，连击另有加分。歌曲成绩会记录最佳分、准确率、星级和最高连击。
+                            答对可得分并增加连击；难度会影响基础分、气泡下落速度和连击时限，连击另有加分。歌曲成绩会记录最佳分、准确率（第一次就按对）、星级和最高连击。
                           </p>
                         </>
                       ) : (
@@ -524,7 +524,7 @@ export function StaffGameDialogs({
                         <section className="staff-game-settings-section staff-game-wrong-note-setting">
                           <div>
                             <h3>展示薄弱音</h3>
-                            <p>在结算页显示薄弱音次数和详情</p>
+                            <p>在结算页显示错漏目标数和逐音详情</p>
                           </div>
                           <ToggleSwitch
                             aria-label="展示薄弱音"

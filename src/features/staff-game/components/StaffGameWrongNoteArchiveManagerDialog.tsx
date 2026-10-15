@@ -13,7 +13,16 @@ import {
   getStaffGameWrongNoteRunErrorCount,
   type StaffGameWrongNoteRange,
 } from "../../../domain/staffGameWrongNoteArchives";
+import { StaffGameWrongNoteNoteDiagnosticPanel } from "./StaffGameWrongNoteNoteDiagnosticPanel";
 import { StaffGameWrongNoteTrendPanel } from "./StaffGameWrongNoteTrendPanel";
+
+const DIFFICULTY_LABELS: Record<string, string> = {
+  muggle: "麻瓜",
+  easy: "简单",
+  normal: "普通",
+  hard: "困难",
+  nightmare: "噩梦",
+};
 
 interface StaffGameWrongNoteArchiveManagerDialogProps {
   archives: readonly StaffGameWrongNoteArchive[];
@@ -23,9 +32,12 @@ interface StaffGameWrongNoteArchiveManagerDialogProps {
   onDeleteRuns: (runIds: string[]) => void;
 }
 
-function formatArchiveDate(date: string): string {
-  const [, month = "", day = ""] = date.split("-");
-  return `${Number(month)}月${Number(day)}日`;
+function formatArchiveDateTime(date: string, endedAt: string): string {
+  const endedTimestamp = Date.parse(endedAt);
+  const endedDate = Number.isFinite(endedTimestamp)
+    ? new Date(endedTimestamp)
+    : new Date(`${date}T00:00:00`);
+  return `${endedDate.getMonth() + 1}月${endedDate.getDate()}日${endedDate.getHours()}时`;
 }
 
 export function StaffGameWrongNoteArchiveManagerDialog({
@@ -35,7 +47,7 @@ export function StaffGameWrongNoteArchiveManagerDialog({
   onClose,
   onDeleteRuns,
 }: StaffGameWrongNoteArchiveManagerDialogProps): JSX.Element | null {
-  const [activeTab, setActiveTab] = useState<"trend" | "manage">("trend");
+  const [activeTab, setActiveTab] = useState<"trend" | "note" | "manage">("trend");
   const [selectedRunIds, setSelectedRunIds] = useState<Set<string>>(() => new Set());
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -81,7 +93,10 @@ export function StaffGameWrongNoteArchiveManagerDialog({
   const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
-    const nextTab = activeTab === "trend" ? "manage" : "trend";
+    const tabs = ["trend", "note", "manage"] as const;
+    const currentIndex = tabs.indexOf(activeTab);
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    const nextTab = tabs[(currentIndex + direction + tabs.length) % tabs.length]!;
     setActiveTab(nextTab);
     window.requestAnimationFrame(() => {
       document.getElementById(`staff-game-archive-tab-${nextTab}`)?.focus();
@@ -201,7 +216,7 @@ export function StaffGameWrongNoteArchiveManagerDialog({
         </header>
 
         <div
-          aria-label="错题趋势与管理"
+          aria-label="错题趋势、单音诊断与管理"
           className="staff-game-archive-manager-tabs"
           onKeyDown={handleTabKeyDown}
           role="tablist"
@@ -218,6 +233,18 @@ export function StaffGameWrongNoteArchiveManagerDialog({
             type="button"
           >
             趋势
+          </button>
+          <button
+            aria-controls="staff-game-archive-panel-note"
+            aria-selected={activeTab === "note"}
+            className={activeTab === "note" ? "is-active" : ""}
+            id="staff-game-archive-tab-note"
+            onClick={() => setActiveTab("note")}
+            role="tab"
+            tabIndex={activeTab === "note" ? 0 : -1}
+            type="button"
+          >
+            单音
           </button>
           <button
             aria-controls="staff-game-archive-panel-manage"
@@ -242,6 +269,20 @@ export function StaffGameWrongNoteArchiveManagerDialog({
             tabIndex={0}
           >
             <StaffGameWrongNoteTrendPanel
+              archives={archives}
+              onChangeRange={onChangeRange}
+              range={range}
+            />
+          </div>
+        ) : activeTab === "note" ? (
+          <div
+            aria-labelledby="staff-game-archive-tab-note"
+            className="staff-game-archive-manager-note-panel"
+            id="staff-game-archive-panel-note"
+            role="tabpanel"
+            tabIndex={0}
+          >
+            <StaffGameWrongNoteNoteDiagnosticPanel
               archives={archives}
               onChangeRange={onChangeRange}
               range={range}
@@ -294,13 +335,15 @@ export function StaffGameWrongNoteArchiveManagerDialog({
                       ref={selectAllCheckboxRef}
                       type="checkbox"
                     />
-                    <span aria-hidden="true">全选</span>
                   </div>
                   <div className="staff-game-archive-manager-table-date" role="columnheader">
-                    日期
+                    时间
                   </div>
                   <div className="staff-game-archive-manager-table-source" role="columnheader">
                     来源
+                  </div>
+                  <div className="staff-game-archive-manager-table-difficulty" role="columnheader">
+                    难度
                   </div>
                   <div className="staff-game-archive-manager-table-count" role="columnheader">
                     错漏次数
@@ -312,6 +355,7 @@ export function StaffGameWrongNoteArchiveManagerDialog({
                   visibleRuns.map(({ archiveDate, run }) => {
                     const errorCount = getStaffGameWrongNoteRunErrorCount(run);
                     const source = run.source === "review" ? "错题复习" : `第${run.level ?? "—"}关`;
+                    const runTime = formatArchiveDateTime(archiveDate, run.endedAt);
                     const isSelected = selectedRunIds.has(run.runId);
                     return (
                       <div
@@ -325,7 +369,7 @@ export function StaffGameWrongNoteArchiveManagerDialog({
                       >
                         <span className="staff-game-archive-manager-table-selection" role="cell">
                           <input
-                            aria-label={`${formatArchiveDate(archiveDate)} · ${source} · 错漏 ${errorCount} 次`}
+                            aria-label={`${runTime} · ${source} · 错漏 ${errorCount} 次`}
                             checked={isSelected}
                             onClick={(event) => event.stopPropagation()}
                             onChange={() => toggleRun(run.runId)}
@@ -333,10 +377,13 @@ export function StaffGameWrongNoteArchiveManagerDialog({
                           />
                         </span>
                         <strong className="staff-game-archive-manager-table-date" role="cell">
-                          {formatArchiveDate(archiveDate)}
+                          {runTime}
                         </strong>
                         <span className="staff-game-archive-manager-table-source" role="cell">
                           {source}
+                        </span>
+                        <span className="staff-game-archive-manager-table-difficulty" role="cell">
+                          {DIFFICULTY_LABELS[run.difficulty] ?? "—"}
                         </span>
                         <span className="staff-game-archive-manager-table-count" role="cell">
                           {errorCount} 次

@@ -37,7 +37,7 @@ type StaffGameReadyPanelProps = SharedArtwork &
         bestStars: number;
         maxCombo: number;
         reviewRange: StaffGameWrongNoteRange;
-        reviewNotes: Array<{ label: string; errorCount: number }>;
+        reviewNotes: Array<{ label: string; errorCount: number; accuracyPercent: number | null }>;
         wrongNoteArchiveDateCount: number;
         inputMode: "virtual" | "physical" | "midi";
         inputStatusText: string;
@@ -153,12 +153,12 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             ))}
           </strong>
           <small>
-            {Math.round(record.bestScore)} 分 · 首次准确率 {Math.round(record.bestAccuracy)}% ·
-            最高连击 {record.maxCombo}
+            {Math.round(record.bestScore)} 分 · 准确率（第一次就按对）{" "}
+            {Math.round(record.bestAccuracy)}% · 最高连击 {record.maxCombo}
           </small>
         </div>
         <p className="staff-game-song-howto">
-          泡泡按旋律顺序出现，答错可重试；漏音后继续下一音。完成歌曲后按首次作答准确率评星。
+          泡泡按旋律顺序出现，答错可重试；漏音后继续下一音。完成歌曲后按准确率（第一次就按对）评星。
         </p>
         <button
           className="staff-game-primary"
@@ -273,8 +273,11 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
                 {props.reviewNotes.map((note) => (
                   <li key={note.label}>
                     <span>{note.label}</span>
-                    <small aria-label={`错漏 ${note.errorCount} 次`}>
-                      错漏 {note.errorCount} 次
+                    <small
+                      aria-label={`错漏 ${note.errorCount} 次 · 准确率 ${note.accuracyPercent === null ? "暂无数据" : `${Math.round(note.accuracyPercent)}%`}`}
+                    >
+                      错漏 {note.errorCount} 次 · 准确率{" "}
+                      {note.accuracyPercent === null ? "—" : `${Math.round(note.accuracyPercent)}%`}
                     </small>
                   </li>
                 ))}

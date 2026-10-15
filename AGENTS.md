@@ -1,5 +1,10 @@
 # AGENTS.md
 
+## 审核与修改前必读
+
+- 在审核代码、报告问题或提出修改建议前，先阅读 `docs/product-decisions.md`。
+- 该文档记录已确认的产品设计决策；实现与直觉不同，不应直接当成 bug。先核对决策及其适用范围，再判断是否需要报告。
+
 ## Development And Verification
 
 - On Windows, run `pnpm` commands with the Windows-side Node.js and pnpm installation. From WSL, use Windows PowerShell and the Windows path to this repository; do not use WSL-side `pnpm`, `npm`, or `node_modules`.
