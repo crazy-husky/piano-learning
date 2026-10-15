@@ -33,6 +33,133 @@ import {
 } from "../domain/staffGameWrongNoteArchives";
 import type { VocalAudioMaterial } from "../domain/vocalPitch";
 
+const PENDING_STAFF_GAME_ARCHIVES_KEY = "anki-note.pendingArchive";
+const STAFF_GAME_ARCHIVE_MUTATION_LOCK_NAME = "anki-note.staff-game-archive-mutations";
+let staffGameArchiveMutationQueue: Promise<void> = Promise.resolve();
+
+function withStaffGameArchiveMutationLock<T>(operation: () => Promise<T>): Promise<T> {
+  const serializeInThisPage = (): Promise<T> => {
+    const result = staffGameArchiveMutationQueue.then(operation, operation);
+    staffGameArchiveMutationQueue = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
+  };
+
+  if (typeof navigator !== "undefined" && navigator.locks) {
+    return navigator.locks
+      .request<Promise<T>>(STAFF_GAME_ARCHIVE_MUTATION_LOCK_NAME, serializeInThisPage)
+      .then((result) => result);
+  }
+  return serializeInThisPage();
+}
+
+function isPendingStaffGameArchiveRun(value: unknown): value is StaffGameWrongNoteArchiveRun {
+  if (!value || typeof value !== "object") return false;
+  const run = value as Partial<StaffGameWrongNoteArchiveRun>;
+  return (
+    typeof run.runId === "string" &&
+    (run.source === "challenge" || run.source === "review") &&
+    typeof run.endedAt === "string" &&
+    Number.isFinite(Date.parse(run.endedAt)) &&
+    Number.isFinite(run.totalTargets) &&
+    !!run.notes &&
+    typeof run.notes === "object" &&
+    !Array.isArray(run.notes)
+  );
+}
+
+function writePendingStaffGameArchiveRuns(runs: readonly StaffGameWrongNoteArchiveRun[]): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (runs.length === 0) window.localStorage.removeItem(PENDING_STAFF_GAME_ARCHIVES_KEY);
+    else window.localStorage.setItem(PENDING_STAFF_GAME_ARCHIVES_KEY, JSON.stringify(runs));
+    return true;
+  } catch {
+    // Archive saving must remain usable when browser storage is unavailable.
+    return false;
+  }
+}
+
+function readPendingStaffGameArchiveRuns(): StaffGameWrongNoteArchiveRun[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PENDING_STAFF_GAME_ARCHIVES_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isPendingStaffGameArchiveRun) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function updatePendingStaffGameArchiveRuns<T>(
+  update: (pendingRuns: StaffGameWrongNoteArchiveRun[]) => {
+    nextRuns: readonly StaffGameWrongNoteArchiveRun[];
+    result: T;
+  }
+): Promise<{ result: T; persisted: boolean }> {
+  return db.transaction("rw", db.staffGameWrongNoteArchives, async () => {
+    // Overlapping readwrite transactions on this store serialize queue updates across tabs.
+    await db.staffGameWrongNoteArchives.count();
+    const { nextRuns, result } = update(readPendingStaffGameArchiveRuns());
+    return { result, persisted: writePendingStaffGameArchiveRuns(nextRuns) };
+  });
+}
+
+function removePendingStaffGameArchiveRunFromQueue(
+  pendingRuns: StaffGameWrongNoteArchiveRun[],
+  run: StaffGameWrongNoteArchiveRun
+): StaffGameWrongNoteArchiveRun[] {
+  return pendingRuns.filter((pending) => {
+    if (pending.runId !== run.runId) return true;
+    if (pending.trendOnly !== true && run.trendOnly === true) return true;
+    const pendingUpdatedAt = Date.parse(pending.updatedAt ?? pending.endedAt);
+    const savedUpdatedAt = Date.parse(run.updatedAt ?? run.endedAt);
+    return Number.isFinite(pendingUpdatedAt) && Number.isFinite(savedUpdatedAt)
+      ? savedUpdatedAt < pendingUpdatedAt
+      : pending.updatedAt !== run.updatedAt;
+  });
+}
+
+export async function enqueuePendingStaffGameWrongNoteArchiveRun(
+  run: StaffGameWrongNoteArchiveRun
+): Promise<boolean> {
+  try {
+    const { persisted } = await withStaffGameArchiveMutationLock(() =>
+      updatePendingStaffGameArchiveRuns((pendingRuns) => {
+        const existing = pendingRuns.find((pending) => pending.runId === run.runId);
+        const shouldKeepFullArchive =
+          existing !== undefined && existing.trendOnly !== true && run.trendOnly === true;
+        const nextRun = shouldKeepFullArchive ? existing : run;
+        return {
+          nextRuns: [...pendingRuns.filter((pending) => pending.runId !== run.runId), nextRun],
+          result: undefined,
+        };
+      })
+    );
+    return persisted;
+  } catch {
+    return false;
+  }
+}
+
+export async function removePendingStaffGameWrongNoteArchiveRun(
+  run: StaffGameWrongNoteArchiveRun
+): Promise<void> {
+  try {
+    await withStaffGameArchiveMutationLock(() =>
+      updatePendingStaffGameArchiveRuns((pendingRuns) => ({
+        nextRuns: removePendingStaffGameArchiveRunFromQueue(pendingRuns, run),
+        result: undefined,
+      }))
+    );
+  } catch {
+    // Keep the pending item for a later idempotent retry if queue coordination fails.
+  }
+}
+
 export class AppDatabase extends Dexie {
   settings!: Table<StoredAppSettings, string>;
   practiceSessions!: Table<PracticeSessionRecord, string>;
@@ -391,6 +518,12 @@ export async function loadAllData(): Promise<{
 export async function archiveStaffGameWrongNoteRun(
   run: StaffGameWrongNoteArchiveRun
 ): Promise<StaffGameWrongNoteArchive> {
+  return withStaffGameArchiveMutationLock(() => writeStaffGameWrongNoteRun(run));
+}
+
+async function writeStaffGameWrongNoteRun(
+  run: StaffGameWrongNoteArchiveRun
+): Promise<StaffGameWrongNoteArchive> {
   const date = localDateKey(run.endedAt);
   return db.transaction("rw", db.staffGameWrongNoteArchives, async () => {
     const current = await db.staffGameWrongNoteArchives.get(date);
@@ -402,8 +535,84 @@ export async function archiveStaffGameWrongNoteRun(
   });
 }
 
+async function writePendingStaffGameWrongNoteRunIfQueued(
+  runId: string
+): Promise<{ archive: StaffGameWrongNoteArchive; run: StaffGameWrongNoteArchiveRun } | null> {
+  return db.transaction("rw", db.staffGameWrongNoteArchives, async () => {
+    await db.staffGameWrongNoteArchives.count();
+    const run = readPendingStaffGameArchiveRuns().find((pending) => pending.runId === runId);
+    if (!run) return null;
+    const date = localDateKey(run.endedAt);
+    const current = await db.staffGameWrongNoteArchives.get(date);
+    const next = mergeStaffGameWrongNoteArchives(current ? [current] : [], [
+      { id: date, date, runs: [run] },
+    ])[0]!;
+    await db.staffGameWrongNoteArchives.put(next);
+    return { archive: next, run };
+  });
+}
+
+async function restorePendingStaffGameArchiveRuns(
+  runs: readonly StaffGameWrongNoteArchiveRun[]
+): Promise<void> {
+  if (runs.length === 0) return;
+  try {
+    await updatePendingStaffGameArchiveRuns((currentRuns) => {
+      const currentRunIds = new Set(currentRuns.map((run) => run.runId));
+      return {
+        nextRuns: [...currentRuns, ...runs.filter((run) => !currentRunIds.has(run.runId))],
+        result: undefined,
+      };
+    });
+  } catch {
+    // Preserve the original archive operation error if queue restoration also fails.
+  }
+}
+
+export async function retryPendingStaffGameWrongNoteArchives(): Promise<
+  StaffGameWrongNoteArchive[]
+> {
+  const savedArchives: StaffGameWrongNoteArchive[] = [];
+  const pendingRunIds = readPendingStaffGameArchiveRuns().map((run) => run.runId);
+  for (const runId of pendingRunIds) {
+    const savedArchive = await withStaffGameArchiveMutationLock(async () => {
+      const run = readPendingStaffGameArchiveRuns().find((pending) => pending.runId === runId);
+      if (!run) return null;
+      try {
+        const result = await writePendingStaffGameWrongNoteRunIfQueued(runId);
+        if (!result) return null;
+        await updatePendingStaffGameArchiveRuns((pendingRuns) => ({
+          nextRuns: removePendingStaffGameArchiveRunFromQueue(pendingRuns, result.run),
+          result: undefined,
+        }));
+        return result.archive;
+      } catch {
+        // Keep failed runs in local storage for the next game-page visit.
+        return null;
+      }
+    });
+    if (savedArchive) savedArchives.push(savedArchive);
+  }
+  return savedArchives;
+}
+
 export async function clearStaffGameWrongNoteArchives(): Promise<void> {
-  await db.staffGameWrongNoteArchives.clear();
+  await withStaffGameArchiveMutationLock(async () => {
+    let pendingRuns: StaffGameWrongNoteArchiveRun[] = [];
+    try {
+      await db.transaction("rw", db.staffGameWrongNoteArchives, async () => {
+        await db.staffGameWrongNoteArchives.count();
+        pendingRuns = readPendingStaffGameArchiveRuns();
+        if (pendingRuns.length > 0 && !writePendingStaffGameArchiveRuns([])) {
+          throw new Error("Could not clear pending wrong note archives");
+        }
+        await db.staffGameWrongNoteArchives.clear();
+      });
+    } catch (error) {
+      await restorePendingStaffGameArchiveRuns(pendingRuns);
+      throw error;
+    }
+  });
 }
 
 export async function deleteStaffGameWrongNoteArchiveRuns(
@@ -412,18 +621,37 @@ export async function deleteStaffGameWrongNoteArchiveRuns(
   const idsToDelete = new Set(runIds);
   if (idsToDelete.size === 0) return db.staffGameWrongNoteArchives.orderBy("date").toArray();
 
-  return db.transaction("rw", db.staffGameWrongNoteArchives, async () => {
-    const archives = await db.staffGameWrongNoteArchives.toArray();
-    for (const archive of archives) {
-      const runs = archive.runs.filter((run) => !idsToDelete.has(run.runId));
-      if (runs.length === archive.runs.length) continue;
-      if (runs.length === 0) {
-        await db.staffGameWrongNoteArchives.delete(archive.id);
-      } else {
-        await db.staffGameWrongNoteArchives.put({ ...archive, runs });
-      }
+  return withStaffGameArchiveMutationLock(async () => {
+    let pendingRunsToDelete: StaffGameWrongNoteArchiveRun[] = [];
+    try {
+      return await db.transaction("rw", db.staffGameWrongNoteArchives, async () => {
+        await db.staffGameWrongNoteArchives.count();
+        const pendingRuns = readPendingStaffGameArchiveRuns();
+        pendingRunsToDelete = pendingRuns.filter((run) => idsToDelete.has(run.runId));
+        if (
+          pendingRunsToDelete.length > 0 &&
+          !writePendingStaffGameArchiveRuns(
+            pendingRuns.filter((run) => !idsToDelete.has(run.runId))
+          )
+        ) {
+          throw new Error("Could not remove pending wrong note archives");
+        }
+        const archives = await db.staffGameWrongNoteArchives.toArray();
+        for (const archive of archives) {
+          const runs = archive.runs.filter((run) => !idsToDelete.has(run.runId));
+          if (runs.length === archive.runs.length) continue;
+          if (runs.length === 0) {
+            await db.staffGameWrongNoteArchives.delete(archive.id);
+          } else {
+            await db.staffGameWrongNoteArchives.put({ ...archive, runs });
+          }
+        }
+        return db.staffGameWrongNoteArchives.orderBy("date").toArray();
+      });
+    } catch (error) {
+      await restorePendingStaffGameArchiveRuns(pendingRunsToDelete);
+      throw error;
     }
-    return db.staffGameWrongNoteArchives.orderBy("date").toArray();
   });
 }
 

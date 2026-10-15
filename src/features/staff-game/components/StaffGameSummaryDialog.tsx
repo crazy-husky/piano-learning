@@ -31,6 +31,7 @@ export interface StaffGameSummaryDialogProps {
   wrongNoteStatisticsEnabled: boolean;
   isWrongNoteReview: boolean;
   wrongNoteArchiveStatus: "idle" | "manual" | "saving" | "saved" | "error";
+  wrongNoteArchiveRetryQueued: boolean;
   wrongNoteArchiveMode: "automatic" | "manual" | "trend" | null;
   wrongNoteArchiveDate: string | null;
   wrongNoteComparison: StaffGameWrongNoteComparison | null;
@@ -72,6 +73,7 @@ export function StaffGameSummaryDialog({
   wrongNoteStatisticsEnabled,
   isWrongNoteReview,
   wrongNoteArchiveStatus,
+  wrongNoteArchiveRetryQueued,
   wrongNoteArchiveMode,
   wrongNoteArchiveDate,
   wrongNoteComparison,
@@ -274,6 +276,7 @@ export function StaffGameSummaryDialog({
               <StaffGameReviewSummaryContent
                 archiveMode={wrongNoteArchiveMode}
                 archiveDateLabel={archiveDateLabel}
+                archiveRetryQueued={wrongNoteArchiveRetryQueued}
                 archiveStatus={wrongNoteArchiveStatus}
                 comparison={wrongNoteComparison}
                 detailsTriggerRef={detailsTriggerRef}
@@ -356,7 +359,13 @@ export function StaffGameSummaryDialog({
                     ) : wrongNoteArchiveStatus === "error" ? (
                       <>
                         <span>
-                          {wrongNoteArchiveMode === "trend" ? "本局趋势保存失败" : "错题集保存失败"}
+                          {wrongNoteArchiveRetryQueued
+                            ? wrongNoteArchiveMode === "trend"
+                              ? "本局趋势保存失败，已暂存并会在下次进入游戏页时自动重试"
+                              : "错题集保存失败，已暂存并会在下次进入游戏页时自动重试"
+                            : wrongNoteArchiveMode === "trend"
+                              ? "本局趋势保存和本地暂存均失败，请点击重试"
+                              : "错题集保存和本地暂存均失败，请点击重试"}
                         </span>
                         <button onClick={onRetryArchive} type="button">
                           重试

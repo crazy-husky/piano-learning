@@ -36,6 +36,9 @@ import {
   archiveStaffGameWrongNoteRun,
   deleteStaffGameWrongNoteArchiveRuns,
   db,
+  enqueuePendingStaffGameWrongNoteArchiveRun,
+  removePendingStaffGameWrongNoteArchiveRun,
+  retryPendingStaffGameWrongNoteArchives,
 } from "../../../data/db";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
 import type { MidiInputController } from "../../../midi/useMidiInput";
@@ -823,6 +826,7 @@ export function StaffGameView({
   const [readyWrongNoteMode, setReadyWrongNoteMode] = useState<"level" | "review">("level");
   const [wrongNoteArchiveStatus, setWrongNoteArchiveStatus] =
     useState<WrongNoteArchiveStatus>("idle");
+  const [wrongNoteArchiveRetryQueued, setWrongNoteArchiveRetryQueued] = useState(false);
   const [summaryArchiveRunId, setSummaryArchiveRunId] = useState<string | null>(null);
   const [summaryArchiveRun, setSummaryArchiveRun] = useState<StaffGameWrongNoteArchiveRun | null>(
     null
@@ -1007,6 +1011,18 @@ export function StaffGameView({
         if (active) setWrongNoteArchives(archives);
       })
       .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void retryPendingStaffGameWrongNoteArchives().then((archives) => {
+      if (active && archives.length > 0) {
+        setWrongNoteArchives((current) => mergeStaffGameWrongNoteArchives(current, archives));
+      }
+    });
     return () => {
       active = false;
     };
@@ -1535,7 +1551,10 @@ export function StaffGameView({
         mode === "trend"
           ? makeTrendOnlyWrongNoteRun(run)
           : { ...run, updatedAt: nextWrongNoteRunUpdatedAt(run), trendOnly: false };
-      if (shouldUpdateArchiveStatus) setWrongNoteArchiveStatus("saving");
+      if (shouldUpdateArchiveStatus) {
+        setWrongNoteArchiveStatus("saving");
+        setWrongNoteArchiveRetryQueued(false);
+      }
       try {
         const savedArchive = await archiveStaffGameWrongNoteRun(runToSave);
         if (mode === "full" || !keepTrendRunPendingForManualArchive) {
@@ -1544,10 +1563,23 @@ export function StaffGameView({
           );
         }
         setWrongNoteArchives((current) => mergeStaffGameWrongNoteArchives(current, [savedArchive]));
-        if (shouldUpdateArchiveStatus) setWrongNoteArchiveStatus("saved");
+        await removePendingStaffGameWrongNoteArchiveRun(runToSave);
+        if (shouldUpdateArchiveStatus) {
+          setWrongNoteArchiveStatus("saved");
+          setWrongNoteArchiveRetryQueued(false);
+        }
       } catch {
-        if (shouldUpdateArchiveStatus) setWrongNoteArchiveStatus("error");
-        else if (mode === "trend") toast.error("本局趋势数据保存失败，未能保留这次表现。");
+        const retryQueued = await enqueuePendingStaffGameWrongNoteArchiveRun(runToSave);
+        if (shouldUpdateArchiveStatus) {
+          setWrongNoteArchiveRetryQueued(retryQueued);
+          setWrongNoteArchiveStatus("error");
+        } else if (mode === "trend") {
+          toast.error(
+            retryQueued
+              ? "本局趋势数据保存失败，已暂存并会在下次进入游戏页时自动重试。"
+              : "本局趋势数据和本地暂存都失败了；如需保留错漏记录，请在结算页点“加入错题集”重试。"
+          );
+        }
       }
     },
     []
@@ -1565,6 +1597,7 @@ export function StaffGameView({
       setSummaryArchiveDate(null);
       setSummaryArchiveMode(null);
       setWrongNoteArchiveStatus("idle");
+      setWrongNoteArchiveRetryQueued(false);
 
       if (roundPurposeRef.current !== "wrong-note-review") {
         const nextWeights = updateStaffGameWeakNoteWeights(outcomes);
@@ -1609,6 +1642,7 @@ export function StaffGameView({
         setSummaryArchiveRunId(run.runId);
         setSummaryArchiveMode("trend");
         setWrongNoteArchiveStatus("saving");
+        setWrongNoteArchiveRetryQueued(false);
         void archiveWrongNoteRun(run.runId, "trend");
         return;
       }
@@ -1624,6 +1658,7 @@ export function StaffGameView({
         void archiveWrongNoteRun(run.runId, "trend", true);
         setSummaryArchiveMode("manual");
         setWrongNoteArchiveStatus("manual");
+        setWrongNoteArchiveRetryQueued(false);
       }
     },
     [archiveWrongNoteRun, gameModeRef, levelRef, roundPurposeRef, settingsRef]
@@ -1954,6 +1989,7 @@ export function StaffGameView({
     setSummaryArchiveDate(null);
     setSummaryArchiveMode(null);
     setWrongNoteArchiveStatus("idle");
+    setWrongNoteArchiveRetryQueued(false);
     roundPurposeRef.current = "level";
     wrongNoteReviewWeightsRef.current = null;
     roundNotePoolScopeRef.current = null;
@@ -3327,6 +3363,7 @@ export function StaffGameView({
               wrongNoteArchiveDate={summaryArchiveDate}
               wrongNoteArchiveMode={summaryArchiveMode}
               wrongNoteArchiveStatus={wrongNoteArchiveStatus}
+              wrongNoteArchiveRetryQueued={wrongNoteArchiveRetryQueued}
               isNewComboRecord={
                 !summaryIsWrongNoteReview &&
                 roundRecordsAtStartRef.current.maxCombo > 0 &&

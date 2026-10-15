@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_VOCAL_PITCH_CONFIG, type VocalAudioMaterial } from "../domain/vocalPitch";
 import { makeReview } from "../domain/testFactories";
 import type {
@@ -14,11 +14,27 @@ import {
   db,
   clearStaffGameWrongNoteArchives,
   deleteStaffGameWrongNoteArchiveRuns,
+  enqueuePendingStaffGameWrongNoteArchiveRun,
   makeDefaultSettings,
   normalizeAppSettings,
+  retryPendingStaffGameWrongNoteArchives,
   replaceAllData,
   restoreDefaultConfiguration,
 } from "./db";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+function makeMemoryLocalStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+  };
+}
 
 describe("makeDefaultSettings", () => {
   it("uses the cold-start practice defaults", () => {
@@ -428,5 +444,217 @@ describe("wrong note archive backup merge", () => {
     ]);
     expect(await db.staffGameWrongNoteArchives.get("2026-10-14")).toBeUndefined();
     await Promise.all(db.tables.map((table) => table.clear()));
+  });
+});
+
+describe("pending wrong note archive retry", () => {
+  const storageKey = "anki-note.pendingArchive";
+  const makeRun = (runId: string): StaffGameWrongNoteArchiveRun => ({
+    runId,
+    source: "challenge",
+    level: 3,
+    difficulty: "normal",
+    inputMode: "virtual",
+    startedAt: "2026-10-16T10:00:00.000Z",
+    endedAt: "2026-10-16T10:01:00.000Z",
+    updatedAt: "2026-10-16T10:01:00.000Z",
+    reviewRange: null,
+    totalTargets: 1,
+    firstTryCorrect: 0,
+    lowSample: false,
+    notes: {},
+  });
+
+  it("retries a saved pending run once and clears it by run ID", async () => {
+    const localStorage = makeMemoryLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    await db.staffGameWrongNoteArchives.clear();
+    await enqueuePendingStaffGameWrongNoteArchiveRun(makeRun("retry-once"));
+
+    const saved = await retryPendingStaffGameWrongNoteArchives();
+    const retriedAgain = await retryPendingStaffGameWrongNoteArchives();
+
+    expect(saved).toHaveLength(1);
+    expect(retriedAgain).toEqual([]);
+    expect(localStorage.getItem(storageKey)).toBeNull();
+    expect(await db.staffGameWrongNoteArchives.get("2026-10-16")).toMatchObject({
+      runs: [{ runId: "retry-once" }],
+    });
+    await db.staffGameWrongNoteArchives.clear();
+  });
+
+  it("keeps a pending run when the database retry fails", async () => {
+    const localStorage = makeMemoryLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    await db.staffGameWrongNoteArchives.clear();
+    const run = makeRun("retry-after-failure");
+    await enqueuePendingStaffGameWrongNoteArchiveRun(run);
+    const getSpy = vi
+      .spyOn(db.staffGameWrongNoteArchives, "get")
+      .mockRejectedValueOnce(new Error("database unavailable"));
+
+    await retryPendingStaffGameWrongNoteArchives();
+
+    expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([run]);
+    getSpy.mockRestore();
+
+    const saved = await retryPendingStaffGameWrongNoteArchives();
+
+    expect(saved).toHaveLength(1);
+    expect(localStorage.getItem(storageKey)).toBeNull();
+    await db.staffGameWrongNoteArchives.clear();
+  });
+
+  it("deduplicates by run ID and does not downgrade a full archive to trend-only", async () => {
+    const localStorage = makeMemoryLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    const fullRun = { ...makeRun("same-run"), trendOnly: false };
+    const trendRun = { ...makeRun("same-run"), trendOnly: true };
+
+    await enqueuePendingStaffGameWrongNoteArchiveRun(fullRun);
+    await enqueuePendingStaffGameWrongNoteArchiveRun(trendRun);
+
+    expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([fullRun]);
+  });
+
+  it("uses the origin-wide Web Lock for queue writes, retry, and deletion", async () => {
+    const localStorage = makeMemoryLocalStorage();
+    const requestedLocks: string[] = [];
+    const requestLock = vi.fn(async (name: string, callback: () => Promise<unknown>) => {
+      requestedLocks.push(name);
+      return callback();
+    });
+    vi.stubGlobal("window", { localStorage });
+    vi.stubGlobal("navigator", { locks: { request: requestLock } });
+    await db.staffGameWrongNoteArchives.clear();
+    const run = makeRun("web-lock-run");
+    await enqueuePendingStaffGameWrongNoteArchiveRun(run);
+
+    await retryPendingStaffGameWrongNoteArchives();
+    await deleteStaffGameWrongNoteArchiveRuns([run.runId]);
+
+    expect(requestedLocks).toEqual([
+      "anki-note.staff-game-archive-mutations",
+      "anki-note.staff-game-archive-mutations",
+      "anki-note.staff-game-archive-mutations",
+    ]);
+    await db.staffGameWrongNoteArchives.clear();
+  });
+
+  it("skips a snapshotted retry removed by another tab before its write transaction", async () => {
+    const localStorage = makeMemoryLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    vi.stubGlobal("navigator", {});
+    await db.staffGameWrongNoteArchives.clear();
+    const run = makeRun("removed-in-another-tab");
+    await enqueuePendingStaffGameWrongNoteArchiveRun(run);
+    const otherTabDatabase = new AppDatabase(db.name);
+    await otherTabDatabase.open();
+
+    let unblockRetry!: () => void;
+    let notifyRetryStarted!: () => void;
+    const retryStarted = new Promise<void>((resolve) => {
+      notifyRetryStarted = resolve;
+    });
+    const retryGate = new Promise<void>((resolve) => {
+      unblockRetry = resolve;
+    });
+    const otherTabDeletePromise = otherTabDatabase.transaction(
+      "rw",
+      otherTabDatabase.staffGameWrongNoteArchives,
+      async () => {
+        await otherTabDatabase.staffGameWrongNoteArchives.count();
+        notifyRetryStarted();
+        await retryGate;
+        localStorage.removeItem(storageKey);
+        await otherTabDatabase.staffGameWrongNoteArchives.clear();
+      }
+    );
+
+    const retryPromise = retryPendingStaffGameWrongNoteArchives();
+    await retryStarted;
+    unblockRetry();
+    await otherTabDeletePromise;
+
+    expect(await retryPromise).toEqual([]);
+    expect(await db.staffGameWrongNoteArchives.count()).toBe(0);
+    otherTabDatabase.close();
+  });
+
+  it("does not restore a queued run deleted while a retry is saving another run", async () => {
+    const localStorage = makeMemoryLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    await db.staffGameWrongNoteArchives.clear();
+    const keepRun = makeRun("retry-keep");
+    const deleteRun = makeRun("retry-delete");
+    await enqueuePendingStaffGameWrongNoteArchiveRun(keepRun);
+    await enqueuePendingStaffGameWrongNoteArchiveRun(deleteRun);
+
+    let unblockFirstWrite!: () => void;
+    let notifyFirstWriteStarted!: () => void;
+    const firstWriteStarted = new Promise<void>((resolve) => {
+      notifyFirstWriteStarted = resolve;
+    });
+    const firstWriteGate = new Promise<void>((resolve) => {
+      unblockFirstWrite = resolve;
+    });
+    const originalTransaction = db.transaction.bind(db) as (...args: unknown[]) => Promise<unknown>;
+    let shouldPause = true;
+    vi.spyOn(db, "transaction").mockImplementation((async (...args: unknown[]) => {
+      if (shouldPause) {
+        shouldPause = false;
+        notifyFirstWriteStarted();
+        await firstWriteGate;
+      }
+      return originalTransaction(...args);
+    }) as typeof db.transaction);
+
+    const retryPromise = retryPendingStaffGameWrongNoteArchives();
+    await firstWriteStarted;
+    const deletePromise = deleteStaffGameWrongNoteArchiveRuns([deleteRun.runId]);
+    unblockFirstWrite();
+
+    const [retried, remaining] = await Promise.all([retryPromise, deletePromise]);
+
+    expect(retried).toHaveLength(1);
+    expect(retried[0]?.runs.map((run) => run.runId)).toEqual([keepRun.runId]);
+    expect(remaining[0]?.runs.map((run) => run.runId)).toEqual([keepRun.runId]);
+    expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([]);
+    vi.restoreAllMocks();
+    await db.staffGameWrongNoteArchives.clear();
+  });
+
+  it("serializes queue read-modify-write through IndexedDB when Web Locks are unavailable", async () => {
+    const localStorage = makeMemoryLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    vi.stubGlobal("navigator", {});
+    const transactionSpy = vi.spyOn(db, "transaction");
+    const run = makeRun("idb-coordinated-queue");
+
+    await enqueuePendingStaffGameWrongNoteArchiveRun(run);
+    await deleteStaffGameWrongNoteArchiveRuns([run.runId]);
+
+    expect(transactionSpy).toHaveBeenCalledWith(
+      "rw",
+      db.staffGameWrongNoteArchives,
+      expect.any(Function)
+    );
+    expect(localStorage.getItem(storageKey)).toBeNull();
+  });
+
+  it("reports when browser storage cannot persist a pending run", async () => {
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: () => null,
+        setItem: () => {
+          throw new Error("storage unavailable");
+        },
+        removeItem: () => undefined,
+      },
+    });
+
+    await expect(
+      enqueuePendingStaffGameWrongNoteArchiveRun(makeRun("storage-fails"))
+    ).resolves.toBe(false);
   });
 });

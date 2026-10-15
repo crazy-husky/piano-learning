@@ -9,6 +9,7 @@ interface StaffGameReviewSummaryContentProps {
   comparison: StaffGameWrongNoteComparison | null;
   wrongNoteStatisticsEnabled: boolean;
   archiveStatus: "idle" | "manual" | "saving" | "saved" | "error";
+  archiveRetryQueued: boolean;
   archiveDateLabel: string;
   onRetryArchive: () => void;
   onRetry: () => void;
@@ -40,6 +41,7 @@ export function StaffGameReviewSummaryContent({
   comparison,
   wrongNoteStatisticsEnabled,
   archiveStatus,
+  archiveRetryQueued,
   archiveDateLabel,
   onRetryArchive,
   onRetry,
@@ -196,7 +198,15 @@ export function StaffGameReviewSummaryContent({
             <span>{archiveMode === "trend" ? "正在保存本局趋势…" : "正在保存到错题集…"}</span>
           ) : archiveStatus === "error" ? (
             <>
-              <span>{archiveMode === "trend" ? "本局趋势保存失败" : "错题集保存失败"}</span>
+              <span>
+                {archiveRetryQueued
+                  ? archiveMode === "trend"
+                    ? "本局趋势保存失败，已暂存并会在下次进入游戏页时自动重试"
+                    : "错题集保存失败，已暂存并会在下次进入游戏页时自动重试"
+                  : archiveMode === "trend"
+                    ? "本局趋势保存和本地暂存均失败，请点击重试"
+                    : "错题集保存和本地暂存均失败，请点击重试"}
+              </span>
               <button onClick={onRetryArchive} type="button">
                 重试
               </button>
