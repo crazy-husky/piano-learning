@@ -235,6 +235,11 @@ main {
   gap: 8px;
 }
 
+.backup-reminder-actions button,
+.backup-domain-apply {
+  min-height: var(--control-height);
+}
+
 .backup-domain-resolver {
   width: min(620px, 100%);
   display: grid;
@@ -614,6 +619,7 @@ main {
 }
 
 .study-mode-options button {
+  min-height: var(--control-height-compact);
   min-width: 96px;
 }
 

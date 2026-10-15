@@ -1,3 +1,9 @@
+.practice-setup-shell
+  input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.practice-setup-shell select {
+  min-height: var(--control-height);
+}
+
 .practice-microphone-capture {
   align-items: center;
   display: flex;
@@ -9,6 +15,7 @@
 
 .practice-microphone-capture button {
   flex: 0 0 auto;
+  min-height: var(--control-height);
 }
 
 .practice-microphone-capture .practice-microphone-analysis-trigger {
@@ -73,6 +80,7 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text);
+  min-height: 36px;
   min-width: 0;
   padding: 6px 8px;
   width: min(100%, 360px);
@@ -502,6 +510,7 @@
 
 .practice-microphone-debug-fields input,
 .practice-microphone-debug-fields select {
+  min-height: var(--control-height);
   min-width: 0;
   width: 100%;
 }
@@ -770,6 +779,7 @@
 }
 
 .settings-reset-panel .danger-action {
+  min-height: var(--control-height);
   border-color: var(--danger);
   color: var(--danger);
   flex: 0 0 auto;
@@ -962,6 +972,10 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.action-row > button {
+  min-height: var(--control-height);
 }
 
 .display-options {

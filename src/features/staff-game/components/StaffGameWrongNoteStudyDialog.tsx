@@ -135,12 +135,15 @@ function StaffGameWrongNoteKeyboardMap({
               >
                 <span className="staff-game-wrong-note-register-white-keys">
                   {WHITE_KEYS.map((key) => (
-                    <i key={`${octaveGroup.label}-${key}`} />
+                    <i
+                      className={isSelected && selectedKey === key ? "is-current-note" : undefined}
+                      key={`${octaveGroup.label}-${key}`}
+                    />
                   ))}
                 </span>
                 {BLACK_KEYS.map(({ name, position }) => (
                   <i
-                    className="staff-game-wrong-note-register-black-key"
+                    className={`staff-game-wrong-note-register-black-key${isSelected && selectedKey === name ? " is-current-note" : ""}`}
                     key={`${octaveGroup.label}-${name}`}
                     style={{ left: `${(position / 7) * 100}%` }}
                   />

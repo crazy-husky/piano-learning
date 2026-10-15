@@ -647,22 +647,25 @@ export function StaffGameDialogs({
                     role="alertdialog"
                     tabIndex={-1}
                   >
-                    <h2 id="staff-game-unsaved-settings-title">有未保存的更改</h2>
-                    <p id="staff-game-unsaved-settings-description">要保存这些设置吗？</p>
-                    <div className="staff-game-unsaved-settings-actions">
+                    <div className="staff-game-unsaved-settings-header">
+                      <h2 id="staff-game-unsaved-settings-title">有未保存的更改</h2>
                       <button
-                        className="staff-game-secondary"
+                        aria-label="关闭提示并返回设置"
+                        className="staff-game-unsaved-settings-close"
                         onClick={onCancelUnsavedSettingsPrompt}
                         type="button"
                       >
-                        继续编辑
+                        <X size={20} />
                       </button>
+                    </div>
+                    <p id="staff-game-unsaved-settings-description">要保存这些设置吗？</p>
+                    <div className="staff-game-unsaved-settings-actions">
                       <button
                         className="staff-game-secondary"
                         onClick={onDiscardUnsavedSettings}
                         type="button"
                       >
-                        不保存并关闭
+                        不保存
                       </button>
                       <button
                         className="staff-game-primary"
@@ -670,7 +673,7 @@ export function StaffGameDialogs({
                         ref={unsavedSettingsSaveButtonRef}
                         type="button"
                       >
-                        保存并关闭
+                        保存
                       </button>
                     </div>
                   </section>

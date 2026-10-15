@@ -10,6 +10,7 @@
 
 .practice-kind-tabs button {
   min-width: 118px;
+  min-height: var(--control-height);
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -260,6 +261,10 @@
   gap: 18px;
   padding-top: 6px;
   border-top: 1px solid var(--line);
+}
+
+.song-selection-footer > button {
+  min-height: var(--control-height);
 }
 
 .song-practice-shell {

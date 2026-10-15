@@ -1736,11 +1736,35 @@ body.rush-mode .staff-game-rush-vignette {
   padding: 20px;
 }
 
+.staff-game-unsaved-settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
 .staff-game-unsaved-settings-dialog h2 {
-  margin: 0 0 8px;
+  margin: 0;
   color: #197e9e;
   font-size: 19px;
   line-height: 1.3;
+}
+
+.staff-game-unsaved-settings-close {
+  box-sizing: border-box;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  aspect-ratio: 1;
+  flex: 0 0 40px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.72);
+  color: inherit;
+  cursor: pointer;
 }
 
 .staff-game-unsaved-settings-dialog p {
@@ -1751,20 +1775,19 @@ body.rush-mode .staff-game-rush-vignette {
 }
 
 .staff-game-unsaved-settings-actions {
-  display: grid;
-  grid-template-columns: 1fr 1.25fr;
+  display: flex;
+  justify-content: flex-end;
   gap: 8px;
 }
 
 .staff-game-unsaved-settings-actions button {
   box-sizing: border-box;
+  width: min(150px, calc((100% - 8px) / 2));
+  flex: 0 1 150px;
   min-width: 0;
-  min-height: 44px;
-  padding-inline: 10px;
-}
-
-.staff-game-unsaved-settings-actions .staff-game-primary {
-  grid-column: 1 / -1;
+  min-height: 40px;
+  padding-inline: 8px;
+  font-size: 14px;
 }
 
 .staff-game-unsaved-settings-dialog button:focus-visible {
@@ -1999,11 +2022,10 @@ body.rush-mode .staff-game-rush-vignette {
 
 .staff-game-wrong-answer-details-trigger {
   display: grid;
-  width: 24px;
-  height: 24px;
-  min-width: 0;
-  min-height: 0;
-  flex: 0 0 24px;
+  box-sizing: border-box;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
   place-items: center;
   border: 0;
   border-radius: 0;
@@ -2113,11 +2135,11 @@ body.rush-mode .staff-game-rush-vignette {
   position: absolute;
   top: 13px;
   right: 13px;
+  box-sizing: border-box;
   display: grid;
-  width: 30px;
-  height: 30px;
-  min-width: 0;
-  min-height: 0;
+  width: 40px;
+  height: 40px;
+  aspect-ratio: 1;
   place-items: center;
   border: 1px solid rgba(52, 146, 179, 0.32);
   border-radius: 50%;

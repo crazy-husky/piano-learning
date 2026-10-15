@@ -203,7 +203,6 @@ a,
 }
 
 button {
-  min-height: var(--control-height);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
@@ -260,7 +259,6 @@ select:focus-visible {
 
 input,
 select {
-  min-height: var(--control-height);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
@@ -315,6 +313,10 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.history-load-error .primary {
+  min-height: var(--control-height);
+}
+
 .debug-maintenance {
   width: min(1100px, calc(100vw - 48px));
   margin: 32px auto;
@@ -327,6 +329,10 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.debug-maintenance-actions button {
+  min-height: var(--control-height);
 }
 
 .debug-maintenance textarea {

@@ -205,6 +205,10 @@
   padding: 20px 24px;
 }
 
+.app-module-load-retry-card button {
+  min-height: var(--control-height);
+}
+
 .app-module-load-retry-card p {
   margin: 0;
   color: var(--text);
@@ -238,6 +242,10 @@
 .app-error-debug-actions {
   display: flex;
   gap: 8px;
+}
+
+.app-error-debug-actions button {
+  min-height: 42px;
 }
 
 .app-error-debug-toolbar h1 {
@@ -531,9 +539,7 @@
 }
 
 .app-global-error-badge-close {
-  width: 28px;
-  min-width: 28px !important;
-  min-height: 28px !important;
+  width: 32px;
   border-radius: 50% !important;
   font-size: 20px !important;
   line-height: 1 !important;
@@ -619,9 +625,11 @@
 }
 
 .app-global-error-dialog-close {
-  flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  box-sizing: border-box;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  aspect-ratio: 1;
   border: 0;
   border-radius: 50%;
   background: transparent;
@@ -2756,6 +2764,30 @@ body.rush-mode .staff-game-scene::before {
     padding: 38px 18px 16px;
   }
 
+  .app-shell-practice-page .staff-game-ready-actions {
+    width: min(calc(100% - 20px), 328px);
+    gap: 8px;
+  }
+
+  .app-shell-practice-page .staff-game-review-range-row {
+    width: min(calc(100% - 24px), 360px);
+    gap: 6px;
+    margin-inline: auto;
+  }
+
+  .app-shell-practice-page .staff-game-review-range {
+    gap: 6px;
+  }
+
+  .app-shell-practice-page .staff-game-review-range select {
+    max-width: 112px;
+    padding-inline: 7px;
+  }
+
+  .app-shell-practice-page .staff-game-archive-manage {
+    padding-inline: 2px;
+  }
+
   .staff-game-preview-bubble {
     width: 106px;
     margin-bottom: 8px;
@@ -3367,6 +3399,7 @@ body.rush-mode .staff-game-scene::before {
 
 .vocal-device-control select {
   flex: 1 1 auto;
+  min-height: 34px;
 }
 
 .vocal-device-control .icon-button {
@@ -3507,6 +3540,10 @@ body.rush-mode .staff-game-scene::before {
   gap: 8px;
   justify-content: flex-end;
   margin-top: 6px;
+}
+
+.vocal-dialog-actions button {
+  min-height: var(--control-height);
 }
 
 @media (max-width: 1050px) {

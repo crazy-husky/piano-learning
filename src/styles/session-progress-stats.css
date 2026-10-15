@@ -1040,6 +1040,17 @@
   margin-top: 18px;
 }
 
+.settings-shell select,
+.settings-shell
+  input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+  min-height: var(--control-height);
+}
+
+.settings-shell .keyboard-settings-panel .setting-row > button,
+.settings-shell .app-version-panel .setting-row > button {
+  min-height: var(--control-height);
+}
+
 .app-version-panel {
   margin-top: 18px;
 }

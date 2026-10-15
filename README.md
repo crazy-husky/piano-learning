@@ -138,12 +138,11 @@ GITHUB_PAGES=true GITHUB_REPOSITORY=crazy-husky/piano-learning pnpm run build
 
 ```bash
 export PRIVATE_DEPLOY_ENV="$HOME/.config/captcha-recognition/deploy.env"
-export PIANO_PUBLIC_URL="https://gohusky.cn/piano-learning/"
 bash scripts/deploy/deploy_piano_learning.sh --check
 bash scripts/deploy/deploy_piano_learning.sh --deploy
 ```
 
-如果私有配置文件放在其他位置，修改 `PRIVATE_DEPLOY_ENV`。部署脚本会检查产物路径和新旧状态，按 SHA-256 仅传输发生变化的静态文件；发布后会核对 HTTPS 响应，验证失败时尝试恢复旧版本。它不会上传项目源码，也不会触发 Git 提交或推送。部署脚本被 `.gitignore` 排除，新的克隆需要由维护者单独准备该本地工具。
+公开站点 URL 默认是 `https://gohusky.cn/piano-learning/`；如需部署到其他域名，可设置 `PIANO_PUBLIC_URL` 覆盖。私有配置文件放在其他位置时，修改 `PRIVATE_DEPLOY_ENV`。部署脚本会检查产物路径和新旧状态，按 SHA-256 仅传输发生变化的静态文件；发布后会核对 HTTPS 响应，验证失败时尝试恢复旧版本。它不会上传项目源码，也不会触发 Git 提交或推送。部署脚本被 `.gitignore` 排除，新的克隆需要由维护者单独准备该本地工具。
 
 ### 临时 HTTPS 预览
 
