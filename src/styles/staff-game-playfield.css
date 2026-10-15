@@ -1397,6 +1397,29 @@ body.rush-mode .staff-game-scene::before {
   margin-bottom: 12px;
 }
 
+.staff-game-ready-actions {
+  display: flex;
+  width: min(100%, 360px);
+  align-items: stretch;
+  justify-content: center;
+  gap: 12px;
+  margin: 12px auto;
+}
+
+.staff-game-ready-actions > button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 46px;
+  margin: 0;
+  padding-inline: 10px;
+  font-size: clamp(14px, 1.8vw, 17px);
+  white-space: nowrap;
+}
+
+.staff-game-ready-actions > .staff-game-primary {
+  min-height: 46px;
+}
+
 .staff-game-ready-card.is-wrong-note-review {
   max-height: min(86vh, 760px);
   overflow-y: auto;

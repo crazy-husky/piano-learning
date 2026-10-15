@@ -23,6 +23,47 @@ function utcCalendarDay(dateKey: string): number {
   return Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1);
 }
 
+function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function archiveAgeDays(archiveDate: string, today: Date): number {
+  return Math.max(
+    0,
+    Math.round((utcCalendarDay(localDateKey(today)) - utcCalendarDay(archiveDate)) / 86_400_000)
+  );
+}
+
+/** Select daily archive rows using the same local-calendar-day boundary as review weighting. */
+export function filterStaffGameWrongNoteArchivesByRange(
+  archives: readonly StaffGameWrongNoteArchive[],
+  range: StaffGameWrongNoteRange,
+  today = new Date()
+): StaffGameWrongNoteArchive[] {
+  if (range === "all") return [...archives];
+  return archives.filter((archive) => archiveAgeDays(archive.date, today) < range);
+}
+
+/** Aggregate real wrong + missed counts for study browsing, without time-decay weighting. */
+export function calculateStaffGameWrongNoteErrorCounts(
+  archives: readonly StaffGameWrongNoteArchive[],
+  range: StaffGameWrongNoteRange,
+  today = new Date()
+): Array<{ midi: number; errorCount: number }> {
+  const counts = new Map<number, number>();
+  for (const archive of filterStaffGameWrongNoteArchivesByRange(archives, range, today)) {
+    for (const run of archive.runs) {
+      for (const note of Object.values(run.notes)) {
+        const errors = note.wrong + note.missed;
+        if (errors > 0) counts.set(note.midi, (counts.get(note.midi) ?? 0) + errors);
+      }
+    }
+  }
+  return [...counts.entries()]
+    .map(([midi, errorCount]) => ({ midi, errorCount }))
+    .sort((left, right) => right.errorCount - left.errorCount || left.midi - right.midi);
+}
+
 export function mergeStaffGameWrongNoteArchives(
   ...archiveSets: Array<readonly StaffGameWrongNoteArchive[]>
 ): StaffGameWrongNoteArchive[] {
@@ -47,12 +88,9 @@ export function calculateStaffGameWrongNoteWeights(
   range: StaffGameWrongNoteRange,
   today = new Date()
 ): Map<number, number> {
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const todayDay = utcCalendarDay(todayKey);
   const weights = new Map<number, number>();
-  for (const archive of archives) {
-    const ageDays = Math.max(0, Math.round((todayDay - utcCalendarDay(archive.date)) / 86_400_000));
-    if (range !== "all" && ageDays >= range) continue;
+  for (const archive of filterStaffGameWrongNoteArchivesByRange(archives, range, today)) {
+    const ageDays = archiveAgeDays(archive.date, today);
     const decay = 0.5 ** (ageDays / 7);
     for (const run of archive.runs) {
       for (const note of Object.values(run.notes)) {

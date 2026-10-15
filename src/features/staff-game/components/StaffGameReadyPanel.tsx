@@ -1,4 +1,4 @@
-import { Keyboard, Mic, Music2, Play, Sparkles } from "lucide-react";
+import { BookOpen, Keyboard, Mic, Music2, Play, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import type {
   StaffGameSong,
@@ -37,7 +37,7 @@ type StaffGameReadyPanelProps = SharedArtwork &
         bestStars: number;
         maxCombo: number;
         reviewRange: StaffGameWrongNoteRange;
-        reviewNotes: Array<{ label: string; weight: number }>;
+        reviewNotes: Array<{ label: string; errorCount: number }>;
         wrongNoteArchiveDateCount: number;
         inputMode: "virtual" | "physical" | "midi";
         inputStatusText: string;
@@ -46,6 +46,7 @@ type StaffGameReadyPanelProps = SharedArtwork &
         onSelectReadyMode: (mode: "level" | "review") => void;
         onChangeReviewRange: (range: StaffGameWrongNoteRange) => void;
         onClearWrongNoteArchives: () => Promise<void>;
+        onOpenWrongNoteStudy: () => void;
         onStartReview: () => void;
         onStartLevel: () => void;
       }
@@ -263,7 +264,9 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
                 {props.reviewNotes.map((note) => (
                   <li key={note.label}>
                     <span>{note.label}</span>
-                    <small>权重 {note.weight.toFixed(1)}</small>
+                    <small aria-label={`错误 ${note.errorCount} 次，包含漏音`}>
+                      错误 {note.errorCount} 次
+                    </small>
                   </li>
                 ))}
               </ol>
@@ -275,7 +278,6 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
               </p>
             )}
           </div>
-          <p>错题音会优先出现，并穿插其他已解锁音。</p>
         </div>
       ) : (
         <div className="staff-game-level-detail">
@@ -312,17 +314,38 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
           {props.inputStatusText}
         </span>
       </div>
-      <button
-        className={`staff-game-primary${props.isStarting ? " is-loading" : ""}`}
-        disabled={
-          props.isStarting || (props.readyMode === "review" && props.reviewNotes.length === 0)
-        }
-        onClick={props.readyMode === "review" ? props.onStartReview : props.onStartLevel}
-        type="button"
-      >
-        <Play fill="currentColor" size={20} />
-        {props.isStarting ? "正在准备…" : props.readyMode === "review" ? "开始复习" : "开始闯关"}
-      </button>
+      {props.readyMode === "review" ? (
+        <div className="staff-game-ready-actions">
+          <button
+            className="staff-game-secondary"
+            disabled={props.isStarting}
+            onClick={props.onOpenWrongNoteStudy}
+            type="button"
+          >
+            <BookOpen aria-hidden="true" size={19} />
+            先看一遍
+          </button>
+          <button
+            className={`staff-game-primary${props.isStarting ? " is-loading" : ""}`}
+            disabled={props.isStarting || props.reviewNotes.length === 0}
+            onClick={props.onStartReview}
+            type="button"
+          >
+            <Play fill="currentColor" size={20} />
+            {props.isStarting ? "正在准备…" : "开始测试"}
+          </button>
+        </div>
+      ) : (
+        <button
+          className={`staff-game-primary${props.isStarting ? " is-loading" : ""}`}
+          disabled={props.isStarting}
+          onClick={props.onStartLevel}
+          type="button"
+        >
+          <Play fill="currentColor" size={20} />
+          {props.isStarting ? "正在准备…" : "开始闯关"}
+        </button>
+      )}
     </div>
   );
 }

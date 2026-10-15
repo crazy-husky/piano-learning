@@ -19,6 +19,7 @@ import type {
 } from "../../../domain/types";
 import { createUuid } from "../../../domain/id";
 import {
+  calculateStaffGameWrongNoteErrorCounts,
   calculateStaffGameWrongNoteWeights,
   compareStaffGameWrongNoteRun,
   getStaffGameWrongNoteArchiveRunCount,
@@ -65,6 +66,7 @@ import type { StaffGameDialogKind as GameDialog } from "./StaffGameDialogs";
 import { StaffGameHud } from "./StaffGameHud";
 import { StaffGameReadyPanel } from "./StaffGameReadyPanel";
 import { StaffGameSummaryDialog } from "./StaffGameSummaryDialog";
+import { StaffGameWrongNoteStudyDialog } from "./StaffGameWrongNoteStudyDialog";
 import {
   StaffGameMascot,
   StaffGameParticles,
@@ -773,6 +775,7 @@ export function StaffGameView({
   const [weakNoteWeights, setWeakNoteWeights] = useState(readStaffGameWeakNoteWeights);
   const [wrongNoteArchives, setWrongNoteArchives] = useState<StaffGameWrongNoteArchive[]>([]);
   const [wrongNoteReviewRange, setWrongNoteReviewRange] = useState<StaffGameWrongNoteRange>(7);
+  const [isWrongNoteStudyDialogOpen, setIsWrongNoteStudyDialogOpen] = useState(false);
   const [readyWrongNoteMode, setReadyWrongNoteMode] = useState<"level" | "review">("level");
   const [wrongNoteArchiveStatus, setWrongNoteArchiveStatus] =
     useState<WrongNoteArchiveStatus>("idle");
@@ -874,13 +877,13 @@ export function StaffGameView({
       ),
     [unlockedReviewMidiSet, wrongNoteArchives, wrongNoteReviewRange]
   );
-  const wrongNoteReviewNotes = useMemo(
+  const wrongNoteReviewPreviewNotes = useMemo(
     () =>
-      [...wrongNoteReviewWeights.entries()]
-        .sort((left, right) => right[1] - left[1] || left[0] - right[0])
-        .slice(0, 10)
-        .map(([midi, weight]) => ({ ...gameNoteFromMidi(midi), weight })),
-    [wrongNoteReviewWeights]
+      calculateStaffGameWrongNoteErrorCounts(wrongNoteArchives, wrongNoteReviewRange)
+        .filter(({ midi }) => unlockedReviewMidiSet.has(midi))
+        .slice(0, 5)
+        .map(({ midi, errorCount }) => ({ ...gameNoteFromMidi(midi), errorCount })),
+    [unlockedReviewMidiSet, wrongNoteArchives, wrongNoteReviewRange]
   );
   const wrongNoteArchiveDateCount = useMemo(
     () =>
@@ -2378,6 +2381,14 @@ export function StaffGameView({
     void beginRound("wrong-note-review", new Map(wrongNoteReviewWeights));
   }, [beginRound, wrongNoteReviewRange, wrongNoteReviewWeights]);
 
+  const openWrongNoteStudyDialog = useCallback((): void => {
+    setIsWrongNoteStudyDialogOpen(true);
+  }, []);
+
+  const closeWrongNoteStudyDialog = useCallback((): void => {
+    setIsWrongNoteStudyDialogOpen(false);
+  }, []);
+
   const startWrongNotePractice = useCallback((): void => {
     const targetMidis = summaryWrongTargetMidisRef.current;
     if (targetMidis.length === 0) return;
@@ -3169,18 +3180,30 @@ export function StaffGameView({
               maxCombo={progress.maxCombos[level - 1]}
               onChangeReviewRange={setWrongNoteReviewRange}
               onClearWrongNoteArchives={clearWrongNoteArchiveHistory}
+              onOpenWrongNoteStudy={openWrongNoteStudyDialog}
               onStartLevel={() => void beginRound()}
               onStartReview={startWrongNoteReview}
               onSelectReadyMode={setReadyWrongNoteMode}
               readyMode={readyWrongNoteMode}
-              reviewNotes={wrongNoteReviewNotes.map((note) => ({
+              reviewNotes={wrongNoteReviewPreviewNotes.map((note) => ({
                 label: `${note.name}${note.octave}`,
-                weight: note.weight,
+                errorCount: note.errorCount,
               }))}
               reviewRange={wrongNoteReviewRange}
               wrongNoteArchiveDateCount={wrongNoteArchiveDateCount}
               starImage={starParticleArt}
               variant="level"
+            />
+          ) : null}
+
+          {phase === "ready" &&
+          songSelectionStep === null &&
+          gameMode === "levels" &&
+          isWrongNoteStudyDialogOpen ? (
+            <StaffGameWrongNoteStudyDialog
+              archives={wrongNoteArchives}
+              onClose={closeWrongNoteStudyDialog}
+              range={wrongNoteReviewRange}
             />
           ) : null}
 

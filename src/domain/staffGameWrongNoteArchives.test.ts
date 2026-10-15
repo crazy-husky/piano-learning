@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateStaffGameWrongNoteErrorCounts,
   calculateStaffGameWrongNoteWeights,
   compareStaffGameWrongNoteRun,
+  filterStaffGameWrongNoteArchivesByRange,
   mergeStaffGameWrongNoteArchives,
 } from "./staffGameWrongNoteArchives";
 import type {
@@ -139,6 +141,26 @@ describe("staff game wrong note archives", () => {
 
     expect(weights.get(60)).toBeCloseTo(3 + 2 * 0.5 ** (1 / 7));
     expect(weights.has(64)).toBe(false);
+  });
+
+  it("shares local-calendar range filtering and sorts real error counts by pitch", () => {
+    const rows = [
+      archive("2026-10-15", "today", 64, 1, 2),
+      archive("2026-10-14", "yesterday", 60, 2, 1),
+      archive("2026-10-13", "two-days-ago", 64, 1),
+      archive("2026-10-12", "outside-range", 67, 9),
+    ];
+    const today = new Date(2026, 9, 15, 12);
+
+    expect(filterStaffGameWrongNoteArchivesByRange(rows, 3, today).map((row) => row.date)).toEqual([
+      "2026-10-15",
+      "2026-10-14",
+      "2026-10-13",
+    ]);
+    expect(calculateStaffGameWrongNoteErrorCounts(rows, 3, today)).toEqual([
+      { midi: 64, errorCount: 4 },
+      { midi: 60, errorCount: 3 },
+    ]);
   });
 
   it("prioritizes the latest same-range and same-difficulty review run", () => {

@@ -75,7 +75,7 @@
 
 .staff-game-summary-backdrop.has-review-comparison {
   align-items: center;
-  justify-content: flex-start;
+  justify-content: safe center;
   overflow-x: hidden;
   overflow-y: auto;
   padding-top: max(26px, env(safe-area-inset-top));
