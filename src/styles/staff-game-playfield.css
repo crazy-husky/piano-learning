@@ -1405,6 +1405,14 @@ body.rush-mode .staff-game-scene::before {
   margin-bottom: 12px;
 }
 
+.staff-game-ready-card > .staff-game-primary.staff-game-ready-start {
+  width: min(100%, 280px);
+  min-height: clamp(50px, 7vh, 64px);
+  flex: 0 0 auto;
+  margin: clamp(12px, 2.4vh, 22px) auto clamp(14px, 2.8vh, 24px);
+  font-size: clamp(17px, 2.2vw, 21px);
+}
+
 .staff-game-ready-actions {
   display: flex;
   width: min(100%, 360px);
@@ -2675,15 +2683,6 @@ body.rush-mode .staff-game-scene::before {
   }
 }
 
-@keyframes staff-game-shake {
-  25% {
-    transform: translateX(-7px);
-  }
-  75% {
-    transform: translateX(7px);
-  }
-}
-
 @keyframes staff-game-star-pop {
   0% {
     opacity: 0;
@@ -2762,6 +2761,12 @@ body.rush-mode .staff-game-scene::before {
 
   .staff-game-ready-card {
     padding: 38px 18px 16px;
+  }
+
+  .app-shell-practice-page
+    .staff-game-shell.is-ready
+    .staff-game-ready-card:not(.is-wrong-note-review) {
+    transform: translateY(-20px);
   }
 
   .app-shell-practice-page .staff-game-ready-actions {

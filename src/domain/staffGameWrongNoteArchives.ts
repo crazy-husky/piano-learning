@@ -40,8 +40,30 @@ export function filterStaffGameWrongNoteArchivesByRange(
   range: StaffGameWrongNoteRange,
   today = new Date()
 ): StaffGameWrongNoteArchive[] {
-  if (range === "all") return [...archives];
-  return archives.filter((archive) => archiveAgeDays(archive.date, today) < range);
+  const archivesWithErrors = filterStaffGameWrongNoteArchivesWithErrors(archives);
+  if (range === "all") return archivesWithErrors;
+  return archivesWithErrors.filter((archive) => archiveAgeDays(archive.date, today) < range);
+}
+
+/** Count wrong and missed answers in one run. */
+export function getStaffGameWrongNoteRunErrorCount(run: StaffGameWrongNoteArchiveRun): number {
+  return Object.values(run.notes).reduce((total, note) => total + note.wrong + note.missed, 0);
+}
+
+/** Hide legacy all-correct runs from every archive read and aggregate path. */
+export function filterStaffGameWrongNoteArchivesWithErrors(
+  archives: readonly StaffGameWrongNoteArchive[]
+): StaffGameWrongNoteArchive[] {
+  return archives.flatMap((archive) => {
+    const runs = archive.runs.filter((run) => getStaffGameWrongNoteRunErrorCount(run) > 0);
+    return runs.length > 0 ? [{ ...archive, runs }] : [];
+  });
+}
+
+export function getStaffGameWrongNoteArchiveDateCount(
+  archives: readonly StaffGameWrongNoteArchive[]
+): number {
+  return filterStaffGameWrongNoteArchivesWithErrors(archives).length;
 }
 
 /** Aggregate real wrong + missed counts for study browsing, without time-decay weighting. */
@@ -64,11 +86,21 @@ export function calculateStaffGameWrongNoteErrorCounts(
     .sort((left, right) => right.errorCount - left.errorCount || left.midi - right.midi);
 }
 
+/** Remove legacy staff-game drill runs while retaining every other archive source. */
+export function filterLegacyStaffGameDrillArchives(
+  archives: readonly StaffGameWrongNoteArchive[]
+): StaffGameWrongNoteArchive[] {
+  return archives.flatMap((archive) => {
+    const runs = archive.runs.filter((run) => (run.source as string) !== "drill");
+    return runs.length > 0 ? [{ ...archive, runs }] : [];
+  });
+}
+
 export function mergeStaffGameWrongNoteArchives(
   ...archiveSets: Array<readonly StaffGameWrongNoteArchive[]>
 ): StaffGameWrongNoteArchive[] {
   const byDate = new Map<string, StaffGameWrongNoteArchive>();
-  for (const archive of archiveSets.flat()) {
+  for (const archive of filterLegacyStaffGameDrillArchives(archiveSets.flat())) {
     const date = archive.date || archive.id;
     const current = byDate.get(date);
     const runs = new Map<string, StaffGameWrongNoteArchiveRun>();
@@ -118,14 +150,16 @@ function commonNoteMidis(
     .sort((first, second) => first - second);
 }
 
-const STAFF_GAME_WRONG_NOTE_SOURCES = new Set(["challenge", "review", "drill"]);
+const STAFF_GAME_WRONG_NOTE_SOURCES = new Set(["challenge", "review"]);
 const STAFF_GAME_WRONG_NOTE_REVIEW_RANGES = new Set([3, 7, 15, 30, "all"]);
 
 function hasOwnProperty(value: object, key: PropertyKey): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-function hasCompleteComparisonFields(run: StaffGameWrongNoteArchiveRun): boolean {
+export function hasCompleteStaffGameWrongNoteComparisonData(
+  run: StaffGameWrongNoteArchiveRun
+): boolean {
   if (!STAFF_GAME_WRONG_NOTE_SOURCES.has(run.source)) return false;
   if (!hasOwnProperty(run, "reviewRange")) return false;
   if (
@@ -162,7 +196,7 @@ function latestMatchingRun(
     .filter(
       (run) =>
         run.runId !== currentRun.runId &&
-        hasCompleteComparisonFields(run) &&
+        hasCompleteStaffGameWrongNoteComparisonData(run) &&
         predicate(run) &&
         commonNoteMidis(currentRun, run).length > 0
     )
@@ -218,16 +252,18 @@ function averageResponseMsForSharedSamples(
 
 /**
  * Selects a comparable prior run according to the current activity's history line.
- * Review: same range+same difficulty, same range, any practice, then challenge.
- * Drill: drill history only. Challenge runs are not shown a comparison section.
+ * Review: same range+same difficulty, same range, any review, then challenge.
+ * Challenge runs are not shown a comparison section.
  */
 export function compareStaffGameWrongNoteRun(
   archives: readonly StaffGameWrongNoteArchive[],
   currentRun: StaffGameWrongNoteArchiveRun
 ): StaffGameWrongNoteComparison | null {
-  if (!hasCompleteComparisonFields(currentRun)) return null;
+  if (!hasCompleteStaffGameWrongNoteComparisonData(currentRun)) return null;
 
-  const runs = archives.flatMap((archive) => archive.runs);
+  const runs = filterStaffGameWrongNoteArchivesWithErrors(archives).flatMap(
+    (archive) => archive.runs
+  );
   let previousRun: StaffGameWrongNoteArchiveRun | undefined;
 
   if (currentRun.source === "review") {
@@ -247,14 +283,8 @@ export function compareStaffGameWrongNoteRun(
         currentRun
       );
     }
-    previousRun ??= latestMatchingRun(
-      runs,
-      (run) => run.source === "review" || run.source === "drill",
-      currentRun
-    );
+    previousRun ??= latestMatchingRun(runs, (run) => run.source === "review", currentRun);
     previousRun ??= latestMatchingRun(runs, (run) => run.source === "challenge", currentRun);
-  } else if (currentRun.source === "drill") {
-    previousRun = latestMatchingRun(runs, (run) => run.source === "drill", currentRun);
   } else {
     return null;
   }

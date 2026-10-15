@@ -460,6 +460,16 @@
   color: var(--staff-game-night-text);
 }
 
+:root[data-app-theme="dark"] .staff-game-summary-close {
+  border-color: rgba(125, 210, 189, 0.48);
+  background: rgba(32, 58, 63, 0.94);
+  color: var(--staff-game-night-text);
+}
+
+:root[data-app-theme="dark"] .staff-game-summary-close:hover {
+  background: #335d60;
+}
+
 :root[data-app-theme="dark"] .staff-game-review-comparison {
   border-top-color: rgba(125, 210, 189, 0.5);
   background: transparent;
@@ -601,19 +611,6 @@
   color: var(--staff-game-night-text);
 }
 
-:root[data-app-theme="dark"]
-  .staff-game-summary-backdrop
-  .staff-game-summary-actions
-  .staff-game-wrong-note-practice-button {
-  border-color: #61d39c;
-  background: linear-gradient(180deg, #77dfb0, #3fb982) !important;
-  background-image: linear-gradient(180deg, #77dfb0, #3fb982) !important;
-  box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.62),
-    0 3px 0 #267b58;
-  color: #12392c;
-}
-
 :root[data-app-theme="dark"] .staff-game-wrong-answer-details {
   border-color: #64877f;
   background: linear-gradient(160deg, #2e494b, #20383c);
@@ -647,6 +644,23 @@
 :root[data-app-theme="dark"] .staff-game-wrong-answer-table td {
   border-color: rgba(137, 181, 167, 0.2);
   color: var(--staff-game-night-text);
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-details-actions {
+  border-top-color: rgba(137, 181, 167, 0.28);
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-details-actions > button {
+  border-color: rgba(137, 181, 167, 0.42);
+  color: var(--staff-game-night-text);
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-details-archive {
+  background: #356a57;
+}
+
+:root[data-app-theme="dark"] .staff-game-wrong-answer-details-dismiss {
+  background: #304a4b;
 }
 
 :root[data-app-theme="dark"] .staff-game-wrong-answer-details-close {

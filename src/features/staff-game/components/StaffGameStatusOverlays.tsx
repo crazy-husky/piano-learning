@@ -18,7 +18,7 @@ interface StaffGameStatusOverlaysProps {
   onDisableEffects: () => void;
   onResume: () => void;
   onRetryLevel: () => void;
-  onExitWrongNotePractice: () => void;
+  onExitWrongNoteReview: () => void;
 }
 
 export function StaffGameErrorFlash({ active }: { active: boolean }) {
@@ -41,7 +41,7 @@ export function StaffGameStatusOverlays({
   onDisableEffects,
   onResume,
   onRetryLevel,
-  onExitWrongNotePractice,
+  onExitWrongNoteReview,
 }: StaffGameStatusOverlaysProps) {
   return (
     <>
@@ -161,7 +161,7 @@ export function StaffGameStatusOverlays({
                   {wrongNoteExitLabel ? (
                     <button
                       className="staff-game-secondary"
-                      onClick={onExitWrongNotePractice}
+                      onClick={onExitWrongNoteReview}
                       type="button"
                     >
                       {wrongNoteExitLabel}

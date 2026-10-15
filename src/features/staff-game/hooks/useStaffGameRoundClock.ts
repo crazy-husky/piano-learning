@@ -52,7 +52,7 @@ export interface StaffGameLevelRoundMetrics {
 type StaffGameMode = "levels" | "songs";
 type StaffGamePhase = "ready" | "running" | "paused" | "summary";
 type StaffGameInputMode = "physical" | "virtual" | "midi";
-type StaffGameRoundPurpose = "level" | "wrong-note-practice" | "wrong-note-review";
+type StaffGameRoundPurpose = "level" | "wrong-note-review";
 
 interface StaffGameRoundClockOptions {
   phase: StaffGamePhase;
@@ -70,7 +70,6 @@ interface StaffGameRoundClockOptions {
   notePoolScopeRef: MutableRefObject<StaffGameNotePoolScope>;
   noteSchedulingStrategyRef: MutableRefObject<StaffGameNoteSchedulingStrategy>;
   weakNoteWeightsRef: MutableRefObject<Map<number, number>>;
-  wrongNotePracticeWeightsRef: MutableRefObject<Map<number, number> | null>;
   wrongNoteReviewWeightsRef: MutableRefObject<Map<number, number> | null>;
   unlockedLevelRef: MutableRefObject<number>;
   recentNoteMidisRef: MutableRefObject<number[]>;
@@ -112,7 +111,6 @@ export function useStaffGameRoundClock({
   notePoolScopeRef,
   noteSchedulingStrategyRef,
   weakNoteWeightsRef,
-  wrongNotePracticeWeightsRef,
   wrongNoteReviewWeightsRef,
   unlockedLevelRef,
   recentNoteMidisRef,
@@ -169,8 +167,7 @@ export function useStaffGameRoundClock({
                 recentNoteMidisRef.current,
                 notePoolScopeRef.current,
                 noteSchedulingStrategyRef.current,
-                weakNoteWeightsRef.current,
-                wrongNotePracticeWeightsRef.current ?? undefined
+                weakNoteWeightsRef.current
               );
       if (!drawnNote) return;
       targetTokenRef.current += 1;
@@ -209,7 +206,6 @@ export function useStaffGameRoundClock({
       noteSchedulingStrategyRef,
       noteLabel,
       weakNoteWeightsRef,
-      wrongNotePracticeWeightsRef,
       wrongNoteReviewWeightsRef,
       unlockedLevelRef,
       recentNoteMidisRef,

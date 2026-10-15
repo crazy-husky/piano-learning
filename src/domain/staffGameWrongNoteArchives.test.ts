@@ -3,7 +3,9 @@ import {
   calculateStaffGameWrongNoteErrorCounts,
   calculateStaffGameWrongNoteWeights,
   compareStaffGameWrongNoteRun,
+  filterLegacyStaffGameDrillArchives,
   filterStaffGameWrongNoteArchivesByRange,
+  filterStaffGameWrongNoteArchivesWithErrors,
   mergeStaffGameWrongNoteArchives,
 } from "./staffGameWrongNoteArchives";
 import type {
@@ -96,6 +98,19 @@ function archives(...runs: StaffGameWrongNoteArchiveRun[]): StaffGameWrongNoteAr
   return [...byDate].map(([date, items]) => ({ id: date, date, runs: items }));
 }
 
+function withOneWrongAnswer(runRecord: StaffGameWrongNoteArchiveRun): StaffGameWrongNoteArchiveRun {
+  const firstNoteEntry = Object.entries(runRecord.notes)[0];
+  if (!firstNoteEntry) return runRecord;
+  const [key, note] = firstNoteEntry;
+  return {
+    ...runRecord,
+    notes: {
+      ...runRecord.notes,
+      [key]: { ...note, appear: note.appear + 1, wrong: note.wrong + 1 },
+    },
+  };
+}
+
 describe("staff game wrong note archives", () => {
   it("deduplicates runs by runId while merging dates", () => {
     const first = archive("2026-10-15", "run-a", 60, 1);
@@ -163,6 +178,30 @@ describe("staff game wrong note archives", () => {
     ]);
   });
 
+  it("filters all-correct legacy runs from archive reads and aggregates", () => {
+    const errorRun = archive("2026-10-15", "with-errors", 64, 2, 1).runs[0]!;
+    const allCorrectRun = run("all-correct", "challenge", "2026-10-15T11:00:00.000Z", {
+      "60": noteStats(60),
+    });
+    const allCorrectOnly = run(
+      "all-correct-only",
+      "review",
+      "2026-10-14T11:00:00.000Z",
+      {
+        "62": noteStats(62),
+      },
+      { reviewRange: 7 }
+    );
+    const source = archives(errorRun, allCorrectRun, allCorrectOnly);
+
+    expect(filterStaffGameWrongNoteArchivesWithErrors(source)).toEqual([
+      { ...source[0]!, runs: [errorRun] },
+    ]);
+    expect(calculateStaffGameWrongNoteErrorCounts(source, "all")).toEqual([
+      { midi: 64, errorCount: 3 },
+    ]);
+  });
+
   it("prioritizes the latest same-range and same-difficulty review run", () => {
     const current = run(
       "current",
@@ -171,37 +210,47 @@ describe("staff game wrong note archives", () => {
       { "60": noteStats(60) },
       { difficulty: "hard", reviewRange: 7 }
     );
-    const olderBestMatch = run(
-      "same-range-same-difficulty-old",
-      "review",
-      "2026-10-10T12:00:00.000Z",
-      { "60": noteStats(60) },
-      { difficulty: "hard", reviewRange: 7 }
+    const olderBestMatch = withOneWrongAnswer(
+      run(
+        "same-range-same-difficulty-old",
+        "review",
+        "2026-10-10T12:00:00.000Z",
+        { "60": noteStats(60) },
+        { difficulty: "hard", reviewRange: 7 }
+      )
     );
-    const newerBestMatch = run(
-      "same-range-same-difficulty-new",
-      "review",
-      "2026-10-12T12:00:00.000Z",
-      { "60": noteStats(60) },
-      { difficulty: "hard", reviewRange: 7 }
+    const newerBestMatch = withOneWrongAnswer(
+      run(
+        "same-range-same-difficulty-new",
+        "review",
+        "2026-10-12T12:00:00.000Z",
+        { "60": noteStats(60) },
+        { difficulty: "hard", reviewRange: 7 }
+      )
     );
-    const moreRecentDifferentDifficulty = run(
-      "different-difficulty",
-      "review",
-      "2026-10-14T12:00:00.000Z",
-      { "60": noteStats(60) },
-      { difficulty: "easy", reviewRange: 7 }
+    const moreRecentDifferentDifficulty = withOneWrongAnswer(
+      run(
+        "different-difficulty",
+        "review",
+        "2026-10-14T12:00:00.000Z",
+        { "60": noteStats(60) },
+        { difficulty: "easy", reviewRange: 7 }
+      )
     );
-    const moreRecentOtherRange = run(
-      "other-range",
-      "review",
-      "2026-10-14T18:00:00.000Z",
-      { "60": noteStats(60) },
-      { difficulty: "hard", reviewRange: 30 }
+    const moreRecentOtherRange = withOneWrongAnswer(
+      run(
+        "other-range",
+        "review",
+        "2026-10-14T18:00:00.000Z",
+        { "60": noteStats(60) },
+        { difficulty: "hard", reviewRange: 30 }
+      )
     );
-    const recentChallenge = run("challenge", "challenge", "2026-10-14T23:00:00.000Z", {
-      "60": noteStats(60),
-    });
+    const recentChallenge = withOneWrongAnswer(
+      run("challenge", "challenge", "2026-10-14T23:00:00.000Z", {
+        "60": noteStats(60),
+      })
+    );
 
     expect(
       compareStaffGameWrongNoteRun(
@@ -225,52 +274,112 @@ describe("staff game wrong note archives", () => {
       { "60": noteStats(60) },
       { difficulty: "hard", reviewRange: 7 }
     );
-    const differentDifficulty = run(
-      "same-range-other-difficulty",
-      "review",
-      "2026-10-12T12:00:00.000Z",
-      { "60": noteStats(60) },
-      { difficulty: "easy", reviewRange: 7 }
+    const differentDifficulty = withOneWrongAnswer(
+      run(
+        "same-range-other-difficulty",
+        "review",
+        "2026-10-12T12:00:00.000Z",
+        { "60": noteStats(60) },
+        { difficulty: "easy", reviewRange: 7 }
+      )
     );
-    const anotherReview = run(
-      "other-range-review",
-      "review",
-      "2026-10-14T12:00:00.000Z",
-      { "60": noteStats(60) },
-      { difficulty: "easy", reviewRange: 30 }
+    const anotherReview = withOneWrongAnswer(
+      run(
+        "other-range-review",
+        "review",
+        "2026-10-14T12:00:00.000Z",
+        { "60": noteStats(60) },
+        { difficulty: "easy", reviewRange: 30 }
+      )
     );
-    const drill = run("drill", "drill", "2026-10-14T18:00:00.000Z", { "60": noteStats(60) });
-    const challenge = run("challenge", "challenge", "2026-10-14T23:00:00.000Z", {
-      "60": noteStats(60),
-    });
+    const legacyDrill = {
+      ...run("legacy-drill", "challenge", "2026-10-14T18:00:00.000Z", {
+        "60": noteStats(60),
+      }),
+      source: "drill",
+    } as unknown as StaffGameWrongNoteArchiveRun;
+    const challenge = withOneWrongAnswer(
+      run("challenge", "challenge", "2026-10-14T23:00:00.000Z", {
+        "60": noteStats(60),
+      })
+    );
 
     expect(
       compareStaffGameWrongNoteRun(archives(differentDifficulty), current)?.previousRun.runId
     ).toBe("same-range-other-difficulty");
     expect(
-      compareStaffGameWrongNoteRun(archives(anotherReview, drill, challenge), current)?.previousRun
-        .runId
-    ).toBe("drill");
+      compareStaffGameWrongNoteRun(archives(anotherReview, legacyDrill, challenge), current)
+        ?.previousRun.runId
+    ).toBe("other-range-review");
     expect(compareStaffGameWrongNoteRun(archives(challenge), current)?.previousRun.runId).toBe(
       "challenge"
     );
   });
 
-  it("keeps drill comparisons on the drill history line", () => {
-    const current = run("current-drill", "drill", "2026-10-15T12:00:00.000Z", {
-      "60": noteStats(60),
-    });
-    const challenge = run("challenge", "challenge", "2026-10-14T23:00:00.000Z", {
-      "60": noteStats(60),
-    });
-    const olderDrill = run("older-drill", "drill", "2026-10-10T12:00:00.000Z", {
-      "60": noteStats(60),
-    });
+  it("compares an all-correct in-memory review run without making it a stored baseline", () => {
+    const current = run(
+      "current-all-correct",
+      "review",
+      "2026-10-15T12:00:00.000Z",
+      { "60": noteStats(60) },
+      { difficulty: "normal", reviewRange: 7 }
+    );
+    const legacyAllCorrect = run(
+      "legacy-all-correct",
+      "review",
+      "2026-10-14T12:00:00.000Z",
+      { "60": noteStats(60) },
+      { difficulty: "normal", reviewRange: 7 }
+    );
+    const previousWithErrors = withOneWrongAnswer(
+      run(
+        "previous-with-errors",
+        "review",
+        "2026-10-13T12:00:00.000Z",
+        { "60": noteStats(60) },
+        { difficulty: "normal", reviewRange: 7 }
+      )
+    );
 
-    expect(compareStaffGameWrongNoteRun(archives(challenge), current)).toBeNull();
     expect(
-      compareStaffGameWrongNoteRun(archives(challenge, olderDrill), current)?.previousRun.runId
-    ).toBe("older-drill");
+      compareStaffGameWrongNoteRun(archives(legacyAllCorrect, previousWithErrors), current)
+    ).toMatchObject({
+      previousRun: { runId: "previous-with-errors" },
+      currentFirstTryAccuracyPercent: 100,
+      previousFirstTryAccuracyPercent: 50,
+    });
+    expect(compareStaffGameWrongNoteRun(archives(legacyAllCorrect), current)).toBeNull();
+  });
+
+  it("filters historical drill runs while preserving other archive runs", () => {
+    const challenge = run("challenge", "challenge", "2026-10-15T10:00:00.000Z", {
+      "60": noteStats(60),
+    });
+    const review = run(
+      "review",
+      "review",
+      "2026-10-15T11:00:00.000Z",
+      { "60": noteStats(60) },
+      { reviewRange: 7 }
+    );
+    const legacyDrill = {
+      ...challenge,
+      runId: "legacy-drill",
+      source: "drill",
+    } as unknown as StaffGameWrongNoteArchiveRun;
+    const legacyOnlyArchive = {
+      id: "2026-10-14",
+      date: "2026-10-14",
+      runs: [legacyDrill],
+    } as unknown as StaffGameWrongNoteArchive;
+
+    expect(
+      filterLegacyStaffGameDrillArchives([
+        legacyOnlyArchive,
+        archives(challenge, legacyDrill, review)[0]!,
+      ])
+    ).toEqual([{ ...archives(challenge, legacyDrill, review)[0]!, runs: [challenge, review] }]);
+    expect(filterLegacyStaffGameDrillArchives([legacyOnlyArchive])).toEqual([]);
   });
 
   it("skips historical runs missing any required comparison field", () => {
@@ -281,12 +390,14 @@ describe("staff game wrong note archives", () => {
       { "60": noteStats(60) },
       { reviewRange: 7 }
     );
-    const completeCandidate = run(
-      "candidate",
-      "review",
-      "2026-10-14T12:00:00.000Z",
-      { "60": noteStats(60) },
-      { reviewRange: 7 }
+    const completeCandidate = withOneWrongAnswer(
+      run(
+        "candidate",
+        "review",
+        "2026-10-14T12:00:00.000Z",
+        { "60": noteStats(60) },
+        { reviewRange: 7 }
+      )
     );
     const { reviewRange: _reviewRange, ...missingReviewRange } = completeCandidate;
     const { totalResponseMs: _totalResponseMs, ...missingTotalResponseMs } = noteStats(60);
@@ -318,12 +429,14 @@ describe("staff game wrong note archives", () => {
   });
 
   it("does not create a comparison when the current run lacks required fields", () => {
-    const completePrevious = run(
-      "previous",
-      "review",
-      "2026-10-14T12:00:00.000Z",
-      { "60": noteStats(60) },
-      { reviewRange: 7 }
+    const completePrevious = withOneWrongAnswer(
+      run(
+        "previous",
+        "review",
+        "2026-10-14T12:00:00.000Z",
+        { "60": noteStats(60) },
+        { reviewRange: 7 }
+      )
     );
     const currentWithoutRange = run(
       "current",
@@ -398,12 +511,14 @@ describe("staff game wrong note archives", () => {
       { "60": noteStats(60, { responseSampleCount: 1, totalResponseMs: 800 }) },
       { difficulty: "normal", reviewRange: 7 }
     );
-    const previous = run(
-      "previous",
-      "review",
-      "2026-10-13T12:00:00.000Z",
-      { "60": noteStats(60) },
-      { difficulty: "normal", reviewRange: 7 }
+    const previous = withOneWrongAnswer(
+      run(
+        "previous",
+        "review",
+        "2026-10-13T12:00:00.000Z",
+        { "60": noteStats(60) },
+        { difficulty: "normal", reviewRange: 7 }
+      )
     );
 
     expect(compareStaffGameWrongNoteRun(archives(previous), current)).toMatchObject({

@@ -72,11 +72,9 @@ export function StaffGameReviewSummaryContent({
       ? `${previousDate.getMonth() + 1}月${previousDate.getDate()}日`
       : "";
   const previousSourceLabel = comparison
-    ? comparison.previousRun.source === "drill"
-      ? "薄弱音加练"
-      : comparison.previousRun.source === "challenge"
-        ? "闯关"
-        : "错题复习"
+    ? comparison.previousRun.source === "challenge"
+      ? "闯关"
+      : "错题复习"
     : "";
 
   return (
@@ -130,74 +128,76 @@ export function StaffGameReviewSummaryContent({
         ) : null}
       </section>
 
-      <section
-        aria-labelledby="staff-game-review-comparison-title"
-        className="staff-game-review-summary-comparison"
-      >
-        <h3 id="staff-game-review-comparison-title">对比上次</h3>
-        {comparison ? (
-          <>
-            <p className="staff-game-review-summary-common-notes">
-              按共同音符对比 · {comparison.commonNoteMidis.length} 个
-            </p>
-            <div className="staff-game-review-comparison-metrics">
-              <div className="staff-game-review-comparison-metric">
-                <div className="staff-game-review-comparison-primary-line">
-                  <h4>答对率</h4>
-                  <strong>{Math.round(comparison.currentFirstTryAccuracyPercent)}%</strong>
-                  <span
-                    className={`staff-game-review-comparison-change ${changeTone(rateChange ?? 0)}`}
-                  >
-                    {formatRateChange(rateChange ?? 0)}
-                  </span>
+      {comparison || (performance?.weakNoteCount ?? 0) > 0 ? (
+        <section
+          aria-labelledby="staff-game-review-comparison-title"
+          className="staff-game-review-summary-comparison"
+        >
+          <h3 id="staff-game-review-comparison-title">对比上次</h3>
+          {comparison ? (
+            <>
+              <p className="staff-game-review-summary-common-notes">
+                按共同音符对比 · {comparison.commonNoteMidis.length} 个
+              </p>
+              <div className="staff-game-review-comparison-metrics">
+                <div className="staff-game-review-comparison-metric">
+                  <div className="staff-game-review-comparison-primary-line">
+                    <h4>答对率</h4>
+                    <strong>{Math.round(comparison.currentFirstTryAccuracyPercent)}%</strong>
+                    <span
+                      className={`staff-game-review-comparison-change ${changeTone(rateChange ?? 0)}`}
+                    >
+                      {formatRateChange(rateChange ?? 0)}
+                    </span>
+                  </div>
+                  <p className="staff-game-review-comparison-previous-line">
+                    上次 {Math.round(comparison.previousFirstTryAccuracyPercent)}%
+                    {previousDateLabel ? ` · ${previousDateLabel}` : ""}
+                    {previousSourceLabel ? ` · ${previousSourceLabel}` : ""}
+                  </p>
                 </div>
-                <p className="staff-game-review-comparison-previous-line">
-                  上次 {Math.round(comparison.previousFirstTryAccuracyPercent)}%
-                  {previousDateLabel ? ` · ${previousDateLabel}` : ""}
-                  {previousSourceLabel ? ` · ${previousSourceLabel}` : ""}
-                </p>
+
+                {comparison.currentAverageResponseMs !== null &&
+                comparison.previousAverageResponseMs !== null ? (
+                  <div className="staff-game-review-comparison-metric">
+                    <div className="staff-game-review-comparison-primary-line">
+                      <h4>反应时长</h4>
+                      <strong>{(comparison.currentAverageResponseMs / 1_000).toFixed(1)}s</strong>
+                      <span
+                        className={`staff-game-review-comparison-change ${changeTone(reactionChangeSeconds ?? 0, true)}`}
+                      >
+                        {formatReactionChange(reactionChangeSeconds ?? 0)}
+                      </span>
+                    </div>
+                    <p className="staff-game-review-comparison-previous-line">
+                      上次 {(comparison.previousAverageResponseMs / 1_000).toFixed(1)}s
+                    </p>
+                  </div>
+                ) : null}
+
+                {wrongNoteStatisticsEnabled ? (
+                  <div className="staff-game-review-comparison-metric">
+                    <div className="staff-game-review-comparison-primary-line">
+                      <h4>薄弱音</h4>
+                      <strong>{comparison.currentWeakNoteCount} 次</strong>
+                      <span
+                        className={`staff-game-review-comparison-change ${changeTone(weakNoteChange ?? 0, true)}`}
+                      >
+                        {formatWeakNoteChange(weakNoteChange ?? 0)}
+                      </span>
+                    </div>
+                    <p className="staff-game-review-comparison-previous-line">
+                      上次 {comparison.previousWeakNoteCount} 次
+                    </p>
+                  </div>
+                ) : null}
               </div>
-
-              {comparison.currentAverageResponseMs !== null &&
-              comparison.previousAverageResponseMs !== null ? (
-                <div className="staff-game-review-comparison-metric">
-                  <div className="staff-game-review-comparison-primary-line">
-                    <h4>反应时长</h4>
-                    <strong>{(comparison.currentAverageResponseMs / 1_000).toFixed(1)}s</strong>
-                    <span
-                      className={`staff-game-review-comparison-change ${changeTone(reactionChangeSeconds ?? 0, true)}`}
-                    >
-                      {formatReactionChange(reactionChangeSeconds ?? 0)}
-                    </span>
-                  </div>
-                  <p className="staff-game-review-comparison-previous-line">
-                    上次 {(comparison.previousAverageResponseMs / 1_000).toFixed(1)}s
-                  </p>
-                </div>
-              ) : null}
-
-              {wrongNoteStatisticsEnabled ? (
-                <div className="staff-game-review-comparison-metric">
-                  <div className="staff-game-review-comparison-primary-line">
-                    <h4>薄弱音</h4>
-                    <strong>{comparison.currentWeakNoteCount} 次</strong>
-                    <span
-                      className={`staff-game-review-comparison-change ${changeTone(weakNoteChange ?? 0, true)}`}
-                    >
-                      {formatWeakNoteChange(weakNoteChange ?? 0)}
-                    </span>
-                  </div>
-                  <p className="staff-game-review-comparison-previous-line">
-                    上次 {comparison.previousWeakNoteCount} 次
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          </>
-        ) : (
-          <p className="staff-game-review-summary-note">本次作为基线，下次可对比</p>
-        )}
-      </section>
+            </>
+          ) : (
+            <p className="staff-game-review-summary-note">本次作为基线，下次可对比</p>
+          )}
+        </section>
+      ) : null}
 
       {archiveStatus !== "idle" && archiveStatus !== "manual" ? (
         <div

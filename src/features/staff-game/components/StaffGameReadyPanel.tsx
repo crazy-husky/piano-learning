@@ -45,7 +45,7 @@ type StaffGameReadyPanelProps = SharedArtwork &
         isStarting: boolean;
         onSelectReadyMode: (mode: "level" | "review") => void;
         onChangeReviewRange: (range: StaffGameWrongNoteRange) => void;
-        onClearWrongNoteArchives: () => Promise<void>;
+        onOpenWrongNoteArchiveManager: () => void;
         onOpenWrongNoteStudy: () => void;
         onStartReview: () => void;
         onStartLevel: () => void;
@@ -223,6 +223,17 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
           src={notationC4Preview}
         />
       </div>
+      {props.readyMode === "level" ? (
+        <button
+          className={`staff-game-primary staff-game-ready-start${props.isStarting ? " is-loading" : ""}`}
+          disabled={props.isStarting}
+          onClick={props.onStartLevel}
+          type="button"
+        >
+          <Play fill="currentColor" size={20} />
+          {props.isStarting ? "正在准备…" : "开始闯关"}
+        </button>
+      ) : null}
       {props.readyMode === "review" ? (
         <div className="staff-game-review-picker">
           <div className="staff-game-review-range-row">
@@ -246,16 +257,14 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
                 <option value="all">全部</option>
               </select>
             </label>
-            {props.wrongNoteArchiveDateCount > 0 ? (
-              <button
-                aria-label="管理错题归档"
-                className="staff-game-archive-manage"
-                onClick={() => void props.onClearWrongNoteArchives()}
-                type="button"
-              >
-                管理
-              </button>
-            ) : null}
+            <button
+              aria-label="错题趋势与管理"
+              className="staff-game-archive-manage"
+              onClick={props.onOpenWrongNoteArchiveManager}
+              type="button"
+            >
+              趋势与管理
+            </button>
           </div>
           <div className="staff-game-review-preview" aria-live="polite">
             <strong>优先复习的音</strong>
@@ -335,17 +344,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             {props.isStarting ? "正在准备…" : "开始测试"}
           </button>
         </div>
-      ) : (
-        <button
-          className={`staff-game-primary${props.isStarting ? " is-loading" : ""}`}
-          disabled={props.isStarting}
-          onClick={props.onStartLevel}
-          type="button"
-        >
-          <Play fill="currentColor" size={20} />
-          {props.isStarting ? "正在准备…" : "开始闯关"}
-        </button>
-      )}
+      ) : null}
     </div>
   );
 }

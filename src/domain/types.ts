@@ -195,7 +195,7 @@ export interface StaffRecallRunRecordV2 extends StaffRecallRunRecordBase {
 
 export type StaffRecallRunRecord = StaffRecallRunRecordV1 | StaffRecallRunRecordV2;
 
-export type StaffGameWrongNoteArchiveSource = "challenge" | "review" | "drill";
+export type StaffGameWrongNoteArchiveSource = "challenge" | "review";
 
 export interface StaffGameWrongNoteNoteStats {
   midi: number;
@@ -221,8 +221,12 @@ export interface StaffGameWrongNoteArchiveRun {
   endedAt: string;
   /** Missing on archives created before updatedAt was introduced. */
   updatedAt?: string;
-  /** Review pool range; null for drills and challenges, missing on legacy runs. */
+  /** Review pool range; null for challenges, missing on legacy runs. */
   reviewRange?: 3 | 7 | 15 | 30 | "all" | null;
+  /** Challenge note pool scope; null for reviews and missing on legacy runs. */
+  notePoolScope?: "current-group" | "all-history" | "all-history-current-clef" | null;
+  /** Review uses its dedicated weighted bag; missing on legacy runs. */
+  noteSchedulingStrategy?: "random" | "system" | "review-weighted";
   totalTargets: number;
   firstTryCorrect: number;
   lowSample: boolean;

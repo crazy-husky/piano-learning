@@ -27,7 +27,10 @@ import type {
   StaffNotationMode,
 } from "../domain/types";
 import { localDateKey } from "../domain/stats";
-import { mergeStaffGameWrongNoteArchives } from "../domain/staffGameWrongNoteArchives";
+import {
+  filterLegacyStaffGameDrillArchives,
+  mergeStaffGameWrongNoteArchives,
+} from "../domain/staffGameWrongNoteArchives";
 import type { VocalAudioMaterial } from "../domain/vocalPitch";
 
 export class AppDatabase extends Dexie {
@@ -39,8 +42,8 @@ export class AppDatabase extends Dexie {
   vocalAudioMaterials!: Table<VocalAudioMaterial, string>;
   staffGameWrongNoteArchives!: Table<StaffGameWrongNoteArchive, string>;
 
-  constructor() {
-    super("anki-note");
+  constructor(name = "anki-note") {
+    super(name);
     this.version(1).stores({
       settings: "id",
       practiceSessions: "id, startedAt, mode, endReason",
@@ -71,6 +74,30 @@ export class AppDatabase extends Dexie {
       vocalAudioMaterials: "id, createdAt, updatedAt, name",
       staffGameWrongNoteArchives: "id, date",
     });
+    this.version(5)
+      .stores({
+        settings: "id",
+        practiceSessions: "id, startedAt, mode, endReason",
+        reviews: "id, sessionId, targetNoteId, groupId, startedAt, answeredCorrectly, interrupted",
+        staffRecallRuns: "id, answerSetKey, endedAt",
+        backupStates: "id",
+        vocalAudioMaterials: "id, createdAt, updatedAt, name",
+        staffGameWrongNoteArchives: "id, date",
+      })
+      .upgrade(async (transaction) => {
+        const archiveTable = transaction.table<StaffGameWrongNoteArchive>(
+          "staffGameWrongNoteArchives"
+        );
+        const archives = await archiveTable.toArray();
+        for (const archive of archives) {
+          const [filteredArchive] = filterLegacyStaffGameDrillArchives([archive]);
+          if (!filteredArchive) {
+            await archiveTable.delete(archive.id);
+          } else if (filteredArchive.runs.length !== archive.runs.length) {
+            await archiveTable.put(filteredArchive);
+          }
+        }
+      });
   }
 }
 
@@ -377,6 +404,27 @@ export async function archiveStaffGameWrongNoteRun(
 
 export async function clearStaffGameWrongNoteArchives(): Promise<void> {
   await db.staffGameWrongNoteArchives.clear();
+}
+
+export async function deleteStaffGameWrongNoteArchiveRuns(
+  runIds: readonly string[]
+): Promise<StaffGameWrongNoteArchive[]> {
+  const idsToDelete = new Set(runIds);
+  if (idsToDelete.size === 0) return db.staffGameWrongNoteArchives.orderBy("date").toArray();
+
+  return db.transaction("rw", db.staffGameWrongNoteArchives, async () => {
+    const archives = await db.staffGameWrongNoteArchives.toArray();
+    for (const archive of archives) {
+      const runs = archive.runs.filter((run) => !idsToDelete.has(run.runId));
+      if (runs.length === archive.runs.length) continue;
+      if (runs.length === 0) {
+        await db.staffGameWrongNoteArchives.delete(archive.id);
+      } else {
+        await db.staffGameWrongNoteArchives.put({ ...archive, runs });
+      }
+    }
+    return db.staffGameWrongNoteArchives.orderBy("date").toArray();
+  });
 }
 
 export async function loadPracticeHistory(): Promise<{

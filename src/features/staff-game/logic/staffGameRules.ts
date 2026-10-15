@@ -341,29 +341,6 @@ function weightedNoteDraws(
   });
 }
 
-export function shuffledWrongNotePracticeBag(
-  level: number,
-  notePoolScope: StaffGameNotePoolScope,
-  weakNoteWeights: ReadonlyMap<number, number>,
-  bagSize = 20
-): StaffGamePitch[] {
-  const candidates = notePoolCandidates(level, notePoolScope);
-  if (candidates.length === 0) return [];
-  const weakNotes = candidates.filter((note) => (weakNoteWeights.get(note.midi) ?? 0) > 0);
-  if (weakNotes.length === 0) return [];
-
-  const weakCount = Math.ceil(bagSize * 0.7);
-  const bag = weightedNoteDraws(weakNotes, weakCount, weakNoteWeights);
-  let regularRemaining = bagSize - weakCount;
-  while (regularRemaining > 0) {
-    const cycle = shuffledItems(candidates);
-    const selected = cycle.slice(0, regularRemaining);
-    bag.push(...selected.map((note) => ({ ...note })));
-    regularRemaining -= selected.length;
-  }
-  return shuffledItems(bag);
-}
-
 export function shuffledWrongNoteReviewBag(
   unlockedLevel: number,
   weakNoteWeights: ReadonlyMap<number, number>,
@@ -434,20 +411,10 @@ export function drawNextNote(
   recentNoteMidis: number[],
   notePoolScope: StaffGameNotePoolScope = "all-history",
   noteSchedulingStrategy: StaffGameNoteSchedulingStrategy = "system",
-  weakNoteWeights?: ReadonlyMap<number, number>,
-  wrongNotePracticeWeights?: ReadonlyMap<number, number>
+  weakNoteWeights?: ReadonlyMap<number, number>
 ): StaffGamePitch | null {
-  const nextBag = (): StaffGamePitch[] => {
-    if (wrongNotePracticeWeights) {
-      const practiceBag = shuffledWrongNotePracticeBag(
-        level,
-        notePoolScope,
-        wrongNotePracticeWeights
-      );
-      if (practiceBag.length > 0) return practiceBag;
-    }
-    return shuffledNoteBag(level, notePoolScope, noteSchedulingStrategy, weakNoteWeights);
-  };
+  const nextBag = (): StaffGamePitch[] =>
+    shuffledNoteBag(level, notePoolScope, noteSchedulingStrategy, weakNoteWeights);
   if (level === 1) {
     if (notePool.length === 0) notePool.push(...nextBag());
     return notePool.pop() ?? null;
@@ -460,7 +427,7 @@ export function drawNextNote(
     return notePool.pop() ?? null;
   }
 
-  if (noteSchedulingStrategy === "random" && !wrongNotePracticeWeights) {
+  if (noteSchedulingStrategy === "random") {
     let eligibleIndices = notePool.flatMap((note, index) =>
       canFollowRecentNotes(note.midi, recentNoteMidis) ? [index] : []
     );

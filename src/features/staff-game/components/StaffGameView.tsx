@@ -22,7 +22,8 @@ import {
   calculateStaffGameWrongNoteErrorCounts,
   calculateStaffGameWrongNoteWeights,
   compareStaffGameWrongNoteRun,
-  getStaffGameWrongNoteArchiveRunCount,
+  getStaffGameWrongNoteArchiveDateCount,
+  getStaffGameWrongNoteRunErrorCount,
   mergeStaffGameWrongNoteArchives,
   type StaffGameWrongNoteComparison,
   type StaffGameWrongNoteRange,
@@ -30,7 +31,7 @@ import {
 import { localDateKey } from "../../../domain/stats";
 import {
   archiveStaffGameWrongNoteRun,
-  clearStaffGameWrongNoteArchives,
+  deleteStaffGameWrongNoteArchiveRuns,
   db,
 } from "../../../data/db";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
@@ -55,6 +56,7 @@ import {
   type StaffGameRoundNoteOutcome,
 } from "../hooks/useStaffGameRoundClock";
 import { useStaffGameScoring } from "../hooks/useStaffGameScoring";
+import { triggerStaffGameHitHaptic } from "../logic/staffGameHaptics";
 import { useStaffGameAudio } from "../hooks/useStaffGameAudio";
 import type {
   StaffGameComboIndicator as ComboIndicator,
@@ -67,6 +69,7 @@ import { StaffGameHud } from "./StaffGameHud";
 import { StaffGameReadyPanel } from "./StaffGameReadyPanel";
 import { StaffGameSummaryDialog } from "./StaffGameSummaryDialog";
 import { StaffGameWrongNoteStudyDialog } from "./StaffGameWrongNoteStudyDialog";
+import { StaffGameWrongNoteArchiveManagerDialog } from "./StaffGameWrongNoteArchiveManagerDialog";
 import {
   StaffGameMascot,
   StaffGameParticles,
@@ -177,7 +180,7 @@ const SOLFEGE_NAMES = ["Do", "Re", "Mi", "Fa", "Sol", "La", "Si"] as const;
 type GameInputMode = "physical" | "virtual" | "midi";
 type GameDisplayMode = "note" | "solfege" | "number" | "none";
 type StaffGameMode = "levels" | "songs";
-type StaffGameRoundPurpose = "level" | "wrong-note-practice" | "wrong-note-review";
+type StaffGameRoundPurpose = "level" | "wrong-note-review";
 type WrongNoteArchiveStatus = "idle" | "manual" | "saving" | "saved" | "error";
 type WrongNoteArchiveMode = "automatic" | "manual" | null;
 type SongSelectionStep = "list" | "detail" | null;
@@ -766,16 +769,15 @@ export function StaffGameView({
   const [summaryWrongAnswerRecords, setSummaryWrongAnswerRecords] = useState<
     StaffGameWrongAnswerRecord[]
   >([]);
-  const [summaryWrongTargetMidis, setSummaryWrongTargetMidis] = useState<number[]>([]);
   const [summaryWeakNoteOutcomes, setSummaryWeakNoteOutcomes] = useState<
     StaffGameRoundNoteOutcome[]
   >([]);
-  const [summaryIsWrongNotePractice, setSummaryIsWrongNotePractice] = useState(false);
   const [summaryIsWrongNoteReview, setSummaryIsWrongNoteReview] = useState(false);
   const [weakNoteWeights, setWeakNoteWeights] = useState(readStaffGameWeakNoteWeights);
   const [wrongNoteArchives, setWrongNoteArchives] = useState<StaffGameWrongNoteArchive[]>([]);
   const [wrongNoteReviewRange, setWrongNoteReviewRange] = useState<StaffGameWrongNoteRange>(7);
   const [isWrongNoteStudyDialogOpen, setIsWrongNoteStudyDialogOpen] = useState(false);
+  const [isWrongNoteArchiveManagerOpen, setIsWrongNoteArchiveManagerOpen] = useState(false);
   const [readyWrongNoteMode, setReadyWrongNoteMode] = useState<"level" | "review">("level");
   const [wrongNoteArchiveStatus, setWrongNoteArchiveStatus] =
     useState<WrongNoteArchiveStatus>("idle");
@@ -819,14 +821,15 @@ export function StaffGameView({
   const maxComboRef = useRef(0);
   const errorFlashTimeoutRef = useRef<number | null>(null);
   const wrongAnswerRecordsRef = useRef<StaffGameWrongAnswerRecord[]>([]);
-  const summaryWrongTargetMidisRef = useRef<number[]>([]);
   const weakNoteWeightsRef = useRef(weakNoteWeights);
-  const wrongNotePracticeWeightsRef = useRef<Map<number, number> | null>(null);
   const wrongNoteReviewWeightsRef = useRef<Map<number, number> | null>(null);
   const pendingWrongNoteArchiveRunsRef = useRef<StaffGameWrongNoteArchiveRun[]>([]);
   const summaryArchiveRunIdRef = useRef<string | null>(null);
   const roundStartedAtRef = useRef(new Date().toISOString());
   const roundReviewRangeRef = useRef<StaffGameWrongNoteRange | null>(null);
+  const roundNotePoolScopeRef = useRef<StaffGameWrongNoteArchiveRun["notePoolScope"]>(null);
+  const roundNoteSchedulingStrategyRef =
+    useRef<StaffGameWrongNoteArchiveRun["noteSchedulingStrategy"]>(undefined);
   const roundPurposeRef = useRef<StaffGameRoundPurpose>("level");
   const roundRecordsAtStartRef = useRef({ score: 0, maxCombo: 0 });
   const gameModeRef = useRef<StaffGameMode>(initialMode);
@@ -886,22 +889,12 @@ export function StaffGameView({
     [unlockedReviewMidiSet, wrongNoteArchives, wrongNoteReviewRange]
   );
   const wrongNoteArchiveDateCount = useMemo(
-    () =>
-      new Set(
-        wrongNoteArchives
-          .filter((archive) => archive.runs.length > 0)
-          .map((archive) => archive.date)
-      ).size,
-    [wrongNoteArchives]
-  );
-  const wrongNoteArchiveRunCount = useMemo(
-    () => getStaffGameWrongNoteArchiveRunCount(wrongNoteArchives),
+    () => getStaffGameWrongNoteArchiveDateCount(wrongNoteArchives),
     [wrongNoteArchives]
   );
   const summaryWrongNoteComparison = useMemo<StaffGameWrongNoteComparison | null>(
     () =>
-      summaryArchiveRun &&
-      (summaryArchiveRun.source === "review" || summaryArchiveRun.source === "drill")
+      summaryArchiveRun?.source === "review"
         ? compareStaffGameWrongNoteRun(wrongNoteArchives, summaryArchiveRun)
         : null,
     [summaryArchiveRun, wrongNoteArchives]
@@ -914,25 +907,28 @@ export function StaffGameView({
     [summaryArchiveRun, summaryIsWrongNoteReview]
   );
 
-  const clearWrongNoteArchiveHistory = useCallback(async (): Promise<void> => {
-    if (wrongNoteArchiveDateCount === 0) return;
-    const confirmed = await confirmDialog({
-      title: "清空所有错题归档？",
-      description: `将删除 ${wrongNoteArchiveDateCount} 份归档、共 ${wrongNoteArchiveRunCount} 局记录。此操作不可撤销。`,
-      cancelLabel: "取消",
-      confirmLabel: "确认清空",
-      destructive: true,
-    });
-    if (!confirmed) return;
+  const deleteSelectedWrongNoteArchiveRuns = useCallback(
+    async (runIds: string[]): Promise<void> => {
+      if (runIds.length === 0) return;
+      const confirmed = await confirmDialog({
+        title: `删除选中的 ${runIds.length} 局记录？`,
+        description: "此操作不可撤销。",
+        cancelLabel: "取消",
+        confirmLabel: "确认删除",
+        destructive: true,
+      });
+      if (!confirmed) return;
 
-    try {
-      await clearStaffGameWrongNoteArchives();
-      setWrongNoteArchives([]);
-      toast.success("已清空", { duration: 2000 });
-    } catch {
-      toast.error("清空失败", { description: "请稍后重试。" });
-    }
-  }, [confirmDialog, wrongNoteArchiveDateCount, wrongNoteArchiveRunCount]);
+      try {
+        const remainingArchives = await deleteStaffGameWrongNoteArchiveRuns(runIds);
+        setWrongNoteArchives(remainingArchives);
+        toast.success(`已删除 ${runIds.length} 局记录`, { duration: 2000 });
+      } catch {
+        toast.error("删除失败", { description: "请稍后重试。" });
+      }
+    },
+    [confirmDialog]
+  );
 
   useEffect(() => {
     let active = true;
@@ -1484,8 +1480,6 @@ export function StaffGameView({
             .map((outcome) => outcome.midi)
         ),
       ].sort((first, second) => first - second);
-      summaryWrongTargetMidisRef.current = failedTargetMidis;
-      setSummaryWrongTargetMidis(failedTargetMidis);
       setSummaryWeakNoteOutcomes(outcomes);
       setSummaryArchiveRunId(null);
       setSummaryArchiveRun(null);
@@ -1511,12 +1505,7 @@ export function StaffGameView({
         outcomes,
         wrongAnswerRecords
       );
-      const source =
-        roundPurpose === "level"
-          ? "challenge"
-          : roundPurpose === "wrong-note-practice"
-            ? "drill"
-            : "review";
+      const source = roundPurpose === "level" ? "challenge" : "review";
       const endedAt = new Date().toISOString();
       const run: StaffGameWrongNoteArchiveRun = {
         runId: createUuid(),
@@ -1528,11 +1517,16 @@ export function StaffGameView({
         endedAt,
         updatedAt: endedAt,
         reviewRange: source === "review" ? roundReviewRangeRef.current : null,
+        notePoolScope: roundNotePoolScopeRef.current ?? null,
+        noteSchedulingStrategy: roundNoteSchedulingStrategyRef.current,
         totalTargets: outcomes.length,
         firstTryCorrect,
         lowSample: source !== "challenge" && outcomes.length < 10,
         notes,
       };
+      if (source === "review") setSummaryArchiveRun(run);
+      if (getStaffGameWrongNoteRunErrorCount(run) === 0) return;
+
       pendingWrongNoteArchiveRunsRef.current.push(run);
       setSummaryArchiveRunId(run.runId);
       setSummaryArchiveRun(run);
@@ -1615,7 +1609,6 @@ export function StaffGameView({
     setSongNotesCompleted,
     setSummaryAccuracy,
     setSummaryWrongAnswerRecords,
-    setSummaryIsWrongNotePractice,
     setSummaryIsWrongNoteReview,
     onRoundNoteOutcomes: recordRoundNoteOutcomes,
     setTarget,
@@ -1631,6 +1624,7 @@ export function StaffGameView({
     targetRef,
     targetWrong,
     triggerMascotReaction,
+    triggerHitHaptic: triggerStaffGameHitHaptic,
     waitingForNextTargetRef,
     wrongClearTimeoutRef,
     wrongAnswerRecordsRef,
@@ -1659,7 +1653,7 @@ export function StaffGameView({
   );
 
   useEffect(() => {
-    if (phase !== "summary" || summaryIsWrongNotePractice || summaryIsWrongNoteReview) {
+    if (phase !== "summary" || summaryIsWrongNoteReview) {
       setRevealedSummaryStars(0);
       return undefined;
     }
@@ -1683,7 +1677,6 @@ export function StaffGameView({
     phase,
     playStarReveal,
     settings.inputMode,
-    summaryIsWrongNotePractice,
     summaryIsWrongNoteReview,
   ]);
 
@@ -1805,7 +1798,6 @@ export function StaffGameView({
     notePoolScopeRef,
     noteSchedulingStrategyRef,
     weakNoteWeightsRef,
-    wrongNotePracticeWeightsRef,
     wrongNoteReviewWeightsRef,
     unlockedLevelRef,
     noteLabel,
@@ -1868,10 +1860,7 @@ export function StaffGameView({
     setSummaryScoreCount(0);
     setSummaryComboCount(0);
     setSummaryWrongAnswerRecords([]);
-    setSummaryWrongTargetMidis([]);
-    summaryWrongTargetMidisRef.current = [];
     setSummaryWeakNoteOutcomes([]);
-    setSummaryIsWrongNotePractice(false);
     setSummaryIsWrongNoteReview(false);
     setSummaryArchiveRunId(null);
     setSummaryArchiveRun(null);
@@ -1880,8 +1869,9 @@ export function StaffGameView({
     setSummaryArchiveMode(null);
     setWrongNoteArchiveStatus("idle");
     roundPurposeRef.current = "level";
-    wrongNotePracticeWeightsRef.current = null;
     wrongNoteReviewWeightsRef.current = null;
+    roundNotePoolScopeRef.current = null;
+    roundNoteSchedulingStrategyRef.current = undefined;
     wrongAnswerRecordsRef.current = [];
     clearComboDisplay();
     setMaxCombo(0);
@@ -1924,7 +1914,7 @@ export function StaffGameView({
   const beginRound = useCallback(
     async (
       purpose: StaffGameRoundPurpose = "level",
-      practiceWeights?: Map<number, number>
+      reviewWeights?: Map<number, number>
     ): Promise<boolean> => {
       if (resourceLoadState !== "ready") return false;
       if (isStartingRef.current) return false;
@@ -1993,23 +1983,25 @@ export function StaffGameView({
         resetRoundState();
         roundStartedAtRef.current = new Date().toISOString();
         roundPurposeRef.current = purpose;
-        wrongNotePracticeWeightsRef.current =
-          purpose === "wrong-note-practice" ? (practiceWeights ?? new Map()) : null;
+        roundNotePoolScopeRef.current =
+          purpose === "wrong-note-review" ? null : settingsRef.current.notePoolScope;
+        roundNoteSchedulingStrategyRef.current =
+          purpose === "wrong-note-review"
+            ? "review-weighted"
+            : settingsRef.current.noteSchedulingStrategy;
         wrongNoteReviewWeightsRef.current =
-          purpose === "wrong-note-review" ? (practiceWeights ?? new Map()) : null;
+          purpose === "wrong-note-review" ? (reviewWeights ?? new Map()) : null;
         startRunSegment();
         setFeedback(
-          purpose === "wrong-note-practice"
-            ? "薄弱音优先练习，弹对后继续"
-            : purpose === "wrong-note-review"
-              ? "错题音会更常出现，也会穿插其他已解锁音"
-              : gameModeRef.current === "songs"
-                ? "按旋律顺序弹奏；答错可重试，漏音后会继续"
-                : settingsRef.current.inputMode === "virtual"
-                  ? "点击琴键，弹出对应音符"
-                  : settingsRef.current.inputMode === "midi"
-                    ? "弹奏 MIDI 键盘，弹出对应音符"
-                    : "聆听麦克风，弹出对应音符"
+          purpose === "wrong-note-review"
+            ? "错题音会更常出现，也会穿插其他已解锁音"
+            : gameModeRef.current === "songs"
+              ? "按旋律顺序弹奏；答错可重试，漏音后会继续"
+              : settingsRef.current.inputMode === "virtual"
+                ? "点击琴键，弹出对应音符"
+                : settingsRef.current.inputMode === "midi"
+                  ? "弹奏 MIDI 键盘，弹出对应音符"
+                  : "聆听麦克风，弹出对应音符"
         );
         phaseRef.current = "running";
         setPhase("running");
@@ -2339,12 +2331,8 @@ export function StaffGameView({
     onExit();
   }, [cancelPendingStart, onExit, onSessionActiveChange, stopMicrophone]);
 
-  const exitWrongNotePractice = useCallback((): void => {
-    if (
-      roundPurposeRef.current !== "wrong-note-practice" &&
-      roundPurposeRef.current !== "wrong-note-review"
-    )
-      return;
+  const exitWrongNoteReview = useCallback((): void => {
+    if (roundPurposeRef.current !== "wrong-note-review") return;
     cancelPendingStart();
     stopMicrophone();
     onSessionActiveChange(false);
@@ -2364,15 +2352,20 @@ export function StaffGameView({
         "wrong-note-review",
         new Map(wrongNoteReviewWeightsRef.current ?? wrongNoteReviewWeights)
       );
-    } else if (roundPurposeRef.current === "wrong-note-practice") {
-      void beginRound(
-        "wrong-note-practice",
-        new Map(wrongNotePracticeWeightsRef.current ?? weakNoteWeightsRef.current)
-      );
     } else {
       void beginRound();
     }
   }, [beginRound, wrongNoteReviewWeights]);
+
+  const closeChallengeSummary = useCallback((): void => {
+    if (phaseRef.current !== "summary" || gameModeRef.current !== "levels") return;
+    if (roundPurposeRef.current !== "level") return;
+    resetRoundState();
+    setReadyWrongNoteMode("level");
+    setDialog(null);
+    phaseRef.current = "ready";
+    setPhase("ready");
+  }, [resetRoundState]);
 
   const startWrongNoteReview = useCallback((): void => {
     if (wrongNoteReviewWeights.size === 0) return;
@@ -2389,15 +2382,13 @@ export function StaffGameView({
     setIsWrongNoteStudyDialogOpen(false);
   }, []);
 
-  const startWrongNotePractice = useCallback((): void => {
-    const targetMidis = summaryWrongTargetMidisRef.current;
-    if (targetMidis.length === 0) return;
-    const practiceWeights = new Map(weakNoteWeightsRef.current);
-    for (const midi of targetMidis) {
-      practiceWeights.set(midi, Math.min(10, (practiceWeights.get(midi) ?? 0) + 4));
-    }
-    void beginRound("wrong-note-practice", practiceWeights);
-  }, [beginRound]);
+  const openWrongNoteArchiveManager = useCallback((): void => {
+    setIsWrongNoteArchiveManagerOpen(true);
+  }, []);
+
+  const closeWrongNoteArchiveManager = useCallback((): void => {
+    setIsWrongNoteArchiveManagerOpen(false);
+  }, []);
 
   const advanceLevel = useCallback(
     (nextLevel: number): void => {
@@ -2716,8 +2707,7 @@ export function StaffGameView({
       roundPurposeRef.current === "wrong-note-review" ||
       (phase === "ready" && readyWrongNoteMode === "review"));
   const shouldCelebrateSummary =
-    score > 0 &&
-    (isSongMode || earnedStars > 0 || summaryIsWrongNotePractice || summaryIsWrongNoteReview);
+    score > 0 && (isSongMode || earnedStars > 0 || summaryIsWrongNoteReview);
   const songProgressPercent =
     selectedSong.noteMidis.length > 0
       ? Math.round((songNotesCompleted * 100) / selectedSong.noteMidis.length)
@@ -3179,7 +3169,7 @@ export function StaffGameView({
               isStarting={isStarting}
               maxCombo={progress.maxCombos[level - 1]}
               onChangeReviewRange={setWrongNoteReviewRange}
-              onClearWrongNoteArchives={clearWrongNoteArchiveHistory}
+              onOpenWrongNoteArchiveManager={openWrongNoteArchiveManager}
               onOpenWrongNoteStudy={openWrongNoteStudyDialog}
               onStartLevel={() => void beginRound()}
               onStartReview={startWrongNoteReview}
@@ -3199,6 +3189,19 @@ export function StaffGameView({
           {phase === "ready" &&
           songSelectionStep === null &&
           gameMode === "levels" &&
+          isWrongNoteArchiveManagerOpen ? (
+            <StaffGameWrongNoteArchiveManagerDialog
+              archives={wrongNoteArchives}
+              onChangeRange={setWrongNoteReviewRange}
+              onClose={closeWrongNoteArchiveManager}
+              onDeleteRuns={(runIds) => void deleteSelectedWrongNoteArchiveRuns(runIds)}
+              range={wrongNoteReviewRange}
+            />
+          ) : null}
+
+          {phase === "ready" &&
+          songSelectionStep === null &&
+          gameMode === "levels" &&
           isWrongNoteStudyDialogOpen ? (
             <StaffGameWrongNoteStudyDialog
               archives={wrongNoteArchives}
@@ -3210,26 +3213,13 @@ export function StaffGameView({
           {phase === "summary" && typeof document !== "undefined" ? (
             <StaffGameSummaryDialog
               accuracy={summaryAccuracy}
-              mode={
-                summaryIsWrongNoteReview
-                  ? "review"
-                  : summaryIsWrongNotePractice
-                    ? "drill"
-                    : isSongMode
-                      ? "song"
-                      : "challenge"
-              }
+              mode={summaryIsWrongNoteReview ? "review" : isSongMode ? "song" : "challenge"}
               ariaLabel={
                 summaryIsWrongNoteReview
                   ? "错题复习结算"
-                  : summaryIsWrongNotePractice
-                    ? "薄弱音加练结算"
-                    : isSongMode
-                      ? `${selectedSong.title} 演奏结算`
-                      : `第 ${level} 关结算`
-              }
-              canPracticeWrongNotes={
-                !isSongMode && !summaryIsWrongNoteReview && summaryWrongTargetMidis.length > 0
+                  : isSongMode
+                    ? `${selectedSong.title} 演奏结算`
+                    : `第 ${level} 关结算`
               }
               comboCount={summaryComboCount}
               earnedStars={earnedStars}
@@ -3241,7 +3231,6 @@ export function StaffGameView({
               gameArtStyle={gameArtStyle}
               gameEffectsEnabled={settings.gameEffectsEnabled}
               isFinalLevel={level >= GAME_LEVEL_COUNT}
-              isWrongNotePractice={summaryIsWrongNotePractice}
               isWrongNoteReview={summaryIsWrongNoteReview}
               wrongNoteComparison={summaryWrongNoteComparison}
               reviewPerformance={summaryReviewPerformance}
@@ -3249,13 +3238,11 @@ export function StaffGameView({
               wrongNoteArchiveMode={summaryArchiveMode}
               wrongNoteArchiveStatus={wrongNoteArchiveStatus}
               isNewComboRecord={
-                !summaryIsWrongNotePractice &&
                 !summaryIsWrongNoteReview &&
                 roundRecordsAtStartRef.current.maxCombo > 0 &&
                 maxCombo > roundRecordsAtStartRef.current.maxCombo
               }
               isNewScoreRecord={
-                !summaryIsWrongNotePractice &&
                 !summaryIsWrongNoteReview &&
                 roundRecordsAtStartRef.current.score > 0 &&
                 score > roundRecordsAtStartRef.current.score
@@ -3273,9 +3260,9 @@ export function StaffGameView({
               }
               onAdvanceLevel={() => advanceLevel(level + 1)}
               onPlayNextSong={playNextSong}
-              onPracticeWrongNotes={startWrongNotePractice}
               onReturnToSongList={returnToSongList}
-              onExitWrongNotePractice={exitWrongNotePractice}
+              onExitWrongNoteReview={exitWrongNoteReview}
+              onCloseChallengeSummary={closeChallengeSummary}
               onArchiveWrongNotes={() => void archiveWrongNoteRun(summaryArchiveRunId)}
               onRetryArchive={() => void archiveWrongNoteRun(summaryArchiveRunId)}
               onRetry={retryLevel}
@@ -3560,13 +3547,7 @@ export function StaffGameView({
         gameEffectsEnabled={settings.gameEffectsEnabled}
         gameError={gameError}
         isMidiInput={settings.inputMode === "midi"}
-        wrongNoteExitLabel={
-          roundPurposeRef.current === "wrong-note-review"
-            ? "退出复习"
-            : roundPurposeRef.current === "wrong-note-practice"
-              ? "退出加练"
-              : null
-        }
+        wrongNoteExitLabel={roundPurposeRef.current === "wrong-note-review" ? "退出复习" : null}
         isStarting={isStarting}
         onDisableEffects={() => {
           const nextSettings = { ...settingsRef.current, gameEffectsEnabled: false };
@@ -3582,7 +3563,7 @@ export function StaffGameView({
           void resumeRound();
         }}
         onResume={() => void resumeRound()}
-        onExitWrongNotePractice={exitWrongNotePractice}
+        onExitWrongNoteReview={exitWrongNoteReview}
         onRetryInput={() => void (phase === "paused" ? resumeRound() : beginRound())}
         onRetryLevel={retryLevel}
         showLowFpsPrompt={showLowFpsPrompt}

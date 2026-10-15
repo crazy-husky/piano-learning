@@ -1,15 +1,19 @@
 import "fake-indexeddb/auto";
+import Dexie from "dexie";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_VOCAL_PITCH_CONFIG, type VocalAudioMaterial } from "../domain/vocalPitch";
 import { makeReview } from "../domain/testFactories";
 import type {
+  StaffGameWrongNoteArchive,
   PracticeSessionRecordV1,
   StaffGameWrongNoteArchiveRun,
   StaffRecallRunRecordV1,
 } from "../domain/types";
 import {
+  AppDatabase,
   db,
   clearStaffGameWrongNoteArchives,
+  deleteStaffGameWrongNoteArchiveRuns,
   makeDefaultSettings,
   normalizeAppSettings,
   replaceAllData,
@@ -207,6 +211,71 @@ describe("restoreDefaultConfiguration", () => {
   });
 });
 
+describe("staff game archive database migration", () => {
+  it("removes legacy drill runs and empty dates when upgrading to version 5", async () => {
+    const databaseName = `anki-note-drill-migration-${Date.now()}-${Math.random()}`;
+    const legacyDatabase = new Dexie(databaseName);
+    legacyDatabase.version(4).stores({
+      settings: "id",
+      practiceSessions: "id, startedAt, mode, endReason",
+      reviews: "id, sessionId, targetNoteId, groupId, startedAt, answeredCorrectly, interrupted",
+      staffRecallRuns: "id, answerSetKey, endedAt",
+      backupStates: "id",
+      vocalAudioMaterials: "id, createdAt, updatedAt, name",
+      staffGameWrongNoteArchives: "id, date",
+    });
+    await legacyDatabase.open();
+
+    const challengeRun: StaffGameWrongNoteArchiveRun = {
+      runId: "challenge-run",
+      source: "challenge",
+      level: 1,
+      difficulty: "easy",
+      inputMode: "virtual",
+      startedAt: "2026-10-15T10:00:00.000Z",
+      endedAt: "2026-10-15T10:01:00.000Z",
+      totalTargets: 1,
+      firstTryCorrect: 0,
+      lowSample: false,
+      notes: {},
+    };
+    const reviewRun: StaffGameWrongNoteArchiveRun = {
+      ...challengeRun,
+      runId: "review-run",
+      source: "review",
+      level: null,
+      reviewRange: 7,
+    };
+    const legacyDrillRun = {
+      ...challengeRun,
+      runId: "drill-run",
+      source: "drill",
+    };
+    const mixedDateArchive: StaffGameWrongNoteArchive = {
+      id: "2026-10-15",
+      date: "2026-10-15",
+      runs: [challengeRun, reviewRun, legacyDrillRun as unknown as StaffGameWrongNoteArchiveRun],
+    };
+    const drillOnlyArchive = {
+      id: "2026-10-14",
+      date: "2026-10-14",
+      runs: [legacyDrillRun],
+    };
+    await legacyDatabase
+      .table("staffGameWrongNoteArchives")
+      .bulkPut([mixedDateArchive, drillOnlyArchive]);
+    legacyDatabase.close();
+
+    const upgradedDatabase = new AppDatabase(databaseName);
+    await upgradedDatabase.open();
+
+    expect(await upgradedDatabase.staffGameWrongNoteArchives.toArray()).toEqual([
+      { ...mixedDateArchive, runs: [challengeRun, reviewRun] },
+    ]);
+    await upgradedDatabase.delete();
+  });
+});
+
 describe("wrong note archive backup merge", () => {
   it("preserves unique runs and prefers the newer same-ID run during backup import", async () => {
     const run = (runId: string): StaffGameWrongNoteArchiveRun => ({
@@ -240,6 +309,10 @@ describe("wrong note archive backup merge", () => {
       totalTargets: 2,
     };
     const remote = run("remote-run");
+    const legacyDrillRun = {
+      ...run("legacy-drill-run"),
+      source: "drill",
+    };
     await Promise.all(db.tables.map((table) => table.clear()));
     await db.staffGameWrongNoteArchives.put({
       id: "2026-10-15",
@@ -248,7 +321,16 @@ describe("wrong note archive backup merge", () => {
     });
 
     await replaceAllData(makeDefaultSettings(), [], [], [], undefined, [
-      { id: "2026-10-15", date: "2026-10-15", runs: [remote, newerRemote, local] },
+      {
+        id: "2026-10-15",
+        date: "2026-10-15",
+        runs: [
+          remote,
+          newerRemote,
+          local,
+          legacyDrillRun as unknown as StaffGameWrongNoteArchiveRun,
+        ],
+      },
     ]);
 
     expect(await db.staffGameWrongNoteArchives.get("2026-10-15")).toEqual({
@@ -300,6 +382,51 @@ describe("wrong note archive backup merge", () => {
     expect(await db.settings.get("default")).toBeTruthy();
     expect(await db.practiceSessions.get(session.id)).toEqual(session);
     expect(await db.reviews.get(review.id)).toEqual(review);
+    await Promise.all(db.tables.map((table) => table.clear()));
+  });
+
+  it("deletes selected wrong note runs and removes empty daily rows", async () => {
+    await Promise.all(db.tables.map((table) => table.clear()));
+    const makeRun = (runId: string): StaffGameWrongNoteArchiveRun => ({
+      runId,
+      source: runId.startsWith("review") ? "review" : "challenge",
+      level: runId.startsWith("review") ? null : 2,
+      difficulty: "normal",
+      inputMode: "virtual",
+      startedAt: "2026-10-15T10:00:00.000Z",
+      endedAt: "2026-10-15T10:01:00.000Z",
+      reviewRange: runId.startsWith("review") ? 7 : null,
+      totalTargets: 1,
+      firstTryCorrect: 0,
+      lowSample: false,
+      notes: {},
+    });
+    await db.staffGameWrongNoteArchives.bulkPut([
+      {
+        id: "2026-10-15",
+        date: "2026-10-15",
+        runs: [makeRun("challenge-keep"), makeRun("challenge-delete")],
+      },
+      {
+        id: "2026-10-14",
+        date: "2026-10-14",
+        runs: [makeRun("review-delete")],
+      },
+    ]);
+
+    const remaining = await deleteStaffGameWrongNoteArchiveRuns([
+      "challenge-delete",
+      "review-delete",
+    ]);
+
+    expect(remaining).toEqual([
+      {
+        id: "2026-10-15",
+        date: "2026-10-15",
+        runs: [makeRun("challenge-keep")],
+      },
+    ]);
+    expect(await db.staffGameWrongNoteArchives.get("2026-10-14")).toBeUndefined();
     await Promise.all(db.tables.map((table) => table.clear()));
   });
 });

@@ -538,7 +538,7 @@ export function StaffGameDialogs({
                       <section className="staff-game-settings-section staff-game-wrong-note-setting">
                         <div>
                           <h3>错题自动归档</h3>
-                          <p>控制闯关中的错音和漏音是否自动归档；复习和加练始终自动归档</p>
+                          <p>控制闯关中的错音和漏音是否自动归档；错题复习始终自动归档</p>
                         </div>
                         <ToggleSwitch
                           aria-label="错题自动归档"
