@@ -192,8 +192,9 @@ function weightedPick<T>(
 
 function nonUnisonDistanceWeight(distance: number, staff: TargetNote["staff"]): number {
   if (staff === "treble") {
-    if (distance <= 2) return 0.35;
-    if (distance <= 4) return 0.1;
+    if (distance <= 2) return 0.3;
+    if (distance === 3) return 0.2;
+    if (distance === 4) return 0.1;
     return 0.1 / 3;
   }
   if (distance <= 2) return 0.25 / 2;

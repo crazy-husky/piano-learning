@@ -78,6 +78,36 @@ describe("staff distance practice", () => {
     }
   });
 
+  it("uses the configured treble distance weights", () => {
+    const notes = makeNotes().slice(0, 8);
+    const distanceAtQuantile = (quantile: number): number => {
+      let call = 0;
+      const random = (): number => {
+        call += 1;
+        if (call === 1) return 0; // Select the only starting note, C4.
+        if (call === 2) return 0.9; // Keep the first transition out of the forced-leap route.
+        if (call === 3) return quantile; // Select a distance from the weighted distribution.
+        return 0;
+      };
+      const sequence = createStaffDistanceSequence(
+        notes,
+        { includeUnison: false, maxDistance: 7 },
+        1,
+        random,
+        notes[0]
+      );
+      return staffDistance(sequence[0]!, sequence[1]!);
+    };
+
+    expect(distanceAtQuantile(0.15)).toBe(1);
+    expect(distanceAtQuantile(0.45)).toBe(2);
+    expect(distanceAtQuantile(0.7)).toBe(3);
+    expect(distanceAtQuantile(0.85)).toBe(4);
+    expect(distanceAtQuantile(0.91)).toBe(5);
+    expect(distanceAtQuantile(0.95)).toBe(6);
+    expect(distanceAtQuantile(0.99)).toBe(7);
+  });
+
   it("keeps enabled unison answers near five percent when only short distances are available", () => {
     const notes = makeNotes().slice(0, 3);
     let seed = 123456789;
