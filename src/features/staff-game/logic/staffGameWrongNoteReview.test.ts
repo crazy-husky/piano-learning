@@ -1,11 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { localDateKey } from "../../../domain/stats";
+import type {
+  StaffGameWrongNoteArchive,
+  StaffGameWrongNoteArchiveRun,
+  StaffGameWrongNoteNoteStats,
+} from "../../../domain/types";
+import { drawNextWrongNoteReviewNote, GAME_NOTE_PROGRESSION } from "./staffGameRules";
 import {
-  GAME_DIFFICULTIES,
-  GAME_NOTE_PROGRESSION,
-  WRONG_NOTE_REVIEW_BAG_SIZE,
-  shuffledWrongNoteReviewBag,
-  wrongNoteReviewDurationMs,
-} from "./staffGameRules";
+  buildStaffGameWrongNoteReviewPlan,
+  formatStaffGameWrongNoteReviewDuration,
+  getStaffGameWrongNoteMasteredMidis,
+  staffGameWrongNoteReviewDurationMs,
+  staffGameWrongNoteReviewFamiliarTargetCount,
+  staffGameWrongNoteReviewQuestionCounts,
+} from "./staffGameWrongNoteReview";
 
 function makeWeights(count: number): Map<number, number> {
   return new Map(
@@ -13,96 +21,187 @@ function makeWeights(count: number): Map<number, number> {
   );
 }
 
-function countByMidi(bag: Array<{ midi: number }>): Map<number, number> {
-  return bag.reduce((counts, note) => {
+function countByMidi(notes: Array<{ midi: number }>): Map<number, number> {
+  return notes.reduce((counts, note) => {
     counts.set(note.midi, (counts.get(note.midi) ?? 0) + 1);
     return counts;
   }, new Map<number, number>());
 }
 
-describe("wrong note review bag", () => {
-  it.each([
-    ["muggle", 90_000],
-    ["easy", 60_000],
-    ["normal", 45_000],
-    ["hard", 30_000],
-    ["nightmare", 30_000],
-  ] as const)("calculates the review duration for %s difficulty", (difficulty, expected) => {
-    const preset = GAME_DIFFICULTIES.find((item) => item.id === difficulty)!;
+function dateOffset(today: Date, daysBefore: number): string {
+  const date = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  date.setDate(date.getDate() - daysBefore);
+  return localDateKey(date.toISOString());
+}
 
-    expect(wrongNoteReviewDurationMs(preset.bubbleDurationMs)).toBe(expected);
-  });
+function archiveFor(
+  date: string,
+  runId: string,
+  notes: StaffGameWrongNoteNoteStats[],
+  trendOnly = false
+): StaffGameWrongNoteArchive {
+  const run: StaffGameWrongNoteArchiveRun = {
+    runId,
+    source: "challenge",
+    ...(trendOnly ? { trendOnly: true } : {}),
+    level: 1,
+    difficulty: "normal",
+    inputMode: "virtual",
+    startedAt: `${date}T12:00:00.000Z`,
+    endedAt: `${date}T12:01:00.000Z`,
+    totalTargets: notes.reduce((total, note) => total + note.appear, 0),
+    firstTryCorrect: notes.reduce((total, note) => total + note.correct, 0),
+    lowSample: false,
+    notes: Object.fromEntries(notes.map((note) => [String(note.midi), note])),
+  };
+  return { id: date, date, runs: [run] };
+}
 
-  it("uses the shared review bag size for duration and note bag defaults", () => {
-    expect(WRONG_NOTE_REVIEW_BAG_SIZE).toBe(20);
-    expect(wrongNoteReviewDurationMs(3_300, 10)).toBe(15_000);
-  });
+function makeNoteStats(midi: number, appear: number, correct: number): StaffGameWrongNoteNoteStats {
+  return {
+    midi,
+    note: "C4",
+    appear,
+    correct,
+    wrong: appear - correct,
+    missed: 0,
+    confusions: {},
+  };
+}
 
+describe("wrong note review plan", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it.each([
-    { weakCount: 3, expectedWeakSlots: 7 },
-    { weakCount: 8, expectedWeakSlots: 8 },
-    { weakCount: 15, expectedWeakSlots: 15 },
-  ])(
-    "covers $weakCount weak notes and fills a 20-note bag with the expected weak share",
-    ({ weakCount, expectedWeakSlots }) => {
-      const weights = makeWeights(weakCount);
-      const bag = shuffledWrongNoteReviewBag(20, weights);
-      const counts = countByMidi(bag);
-      const weakMidis = new Set(weights.keys());
+    [18, 15_000, 135_000],
+    [46, 15_000, 180_000],
+    [18, 7_000, 63_000],
+    [46, 7_000, 161_000],
+    [18, 2_200, 60_000],
+    [46, 2_200, 60_000],
+  ])("calculates the review time limit for %i questions", (count, fallTime, expected) => {
+    expect(staffGameWrongNoteReviewDurationMs(count, fallTime)).toBe(expected);
+  });
 
-      expect(bag).toHaveLength(20);
-      expect(bag.filter((note) => weakMidis.has(note.midi))).toHaveLength(expectedWeakSlots);
-      for (const midi of weakMidis) expect(counts.get(midi)).toBeGreaterThanOrEqual(1);
-      expect(bag.filter((note) => !weakMidis.has(note.midi))).toHaveLength(20 - expectedWeakSlots);
+  it.each([
+    [60_000, "1分"],
+    [63_000, "1分3秒"],
+    [180_000, "3分"],
+  ])("formats %i ms as %s", (duration, expected) => {
+    expect(formatStaffGameWrongNoteReviewDuration(duration)).toBe(expected);
+  });
+
+  it.each([
+    [0, 0],
+    [1, 2],
+    [2, 4],
+    [4, 8],
+    [5, 10],
+    [6, 10],
+    [10, 11],
+    [20, 13],
+    [30, 15],
+  ])("sets the familiar-note target for N=%i to %i", (weakCount, expected) => {
+    expect(staffGameWrongNoteReviewFamiliarTargetCount(weakCount)).toBe(expected);
+  });
+
+  it.each([
+    [1, 10, 4],
+    [4, 10, 14],
+    [5, 10, 18],
+    [10, 30, 26],
+    [20, 40, 43],
+    [30, 55, 60],
+  ])(
+    "calculates the finite question count for %i weak notes",
+    (weakCount, availableFamiliarCount, expectedTotal) => {
+      const counts = staffGameWrongNoteReviewQuestionCounts(weakCount, availableFamiliarCount);
+
+      expect(counts.totalQuestionCount).toBe(expectedTotal);
+      expect(counts.weakNoteCount).toBe(weakCount);
+      expect(counts.weightedRepeatCount).toBe(Math.ceil(weakCount / 2));
     }
   );
 
-  it("fills the full bag with weak notes when no unlocked buffer note exists", () => {
-    const weights = makeWeights(5);
-    const bag = shuffledWrongNoteReviewBag(5, weights);
-    const counts = countByMidi(bag);
+  it("covers every weak pitch, adds weighted repeats, and prefers stable familiar pitches", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const unlockedNotes = GAME_NOTE_PROGRESSION.slice(0, 12);
+    const weights = makeWeights(3);
+    const masteredMidis = new Set([unlockedNotes[3]!.midi, unlockedNotes[4]!.midi]);
+    const plan = buildStaffGameWrongNoteReviewPlan(unlockedNotes, weights, masteredMidis);
+    const counts = countByMidi(plan.notes);
+    const weakMidis = new Set(weights.keys());
+    const familiarNotes = plan.notes.filter((note) => !weakMidis.has(note.midi));
 
-    expect(bag).toHaveLength(20);
-    expect(new Set(bag.map((note) => note.midi))).toEqual(new Set(weights.keys()));
+    expect(plan.weakNoteCount).toBe(3);
+    expect(plan.weightedRepeatCount).toBe(2);
+    expect(plan.familiarNoteCount).toBe(6);
+    expect(plan.totalQuestionCount).toBe(11);
+    expect(plan.notes).toHaveLength(11);
+    for (const midi of weakMidis) expect(counts.get(midi)).toBeGreaterThanOrEqual(1);
+    expect(plan.notes.filter((note) => weakMidis.has(note.midi))).toHaveLength(5);
+    expect(new Set(familiarNotes.map((note) => note.midi)).size).toBe(6);
+    expect(familiarNotes.some((note) => masteredMidis.has(note.midi))).toBe(true);
+    expect(counts.get(unlockedNotes[0]!.midi)).toBe(3);
+  });
+
+  it("shrinks the familiar layer when fewer non-weak unlocked pitches exist", () => {
+    const unlockedNotes = GAME_NOTE_PROGRESSION.slice(0, 3);
+    const plan = buildStaffGameWrongNoteReviewPlan(
+      unlockedNotes,
+      makeWeights(2),
+      new Set<number>()
+    );
+
+    expect(plan.weakNoteCount).toBe(2);
+    expect(plan.weightedRepeatCount).toBe(1);
+    expect(plan.familiarNoteCount).toBe(1);
+    expect(plan.totalQuestionCount).toBe(4);
+    expect(
+      plan.notes.filter((note) => ![...makeWeights(2).keys()].includes(note.midi))
+    ).toHaveLength(1);
+  });
+
+  it("keeps full weak-note coverage when there are more than 20 weak pitches", () => {
+    const unlockedNotes = GAME_NOTE_PROGRESSION.slice(0, 40);
+    const weights = makeWeights(25);
+    const plan = buildStaffGameWrongNoteReviewPlan(unlockedNotes, weights, new Set<number>());
+    const counts = countByMidi(plan.notes);
+
+    expect(plan.weakNoteCount).toBe(25);
+    expect(plan.totalQuestionCount).toBe(52);
     for (const midi of weights.keys()) expect(counts.get(midi)).toBeGreaterThanOrEqual(1);
   });
 
-  it("uses remaining weak-note slots as weighted draws", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0);
-    const weights = makeWeights(3);
-    const bag = shuffledWrongNoteReviewBag(20, weights);
-    const counts = countByMidi(bag);
-    const highestWeightMidi = GAME_NOTE_PROGRESSION[2]!.midi;
+  it("uses stable accuracy over the last 14 local calendar days", () => {
+    const today = new Date(2026, 9, 16, 12);
+    const archives = [
+      archiveFor(dateOffset(today, 13), "oldest-in-window", [makeNoteStats(60, 2, 2)]),
+      archiveFor(dateOffset(today, 1), "recent-in-window", [
+        makeNoteStats(60, 3, 2),
+        makeNoteStats(61, 2, 2),
+      ]),
+      archiveFor(dateOffset(today, 14), "outside-window", [makeNoteStats(62, 5, 5)]),
+      archiveFor(dateOffset(today, 0), "today", [makeNoteStats(63, 5, 3)]),
+      archiveFor(dateOffset(today, 0), "trend-only", [makeNoteStats(64, 5, 5)], true),
+    ];
 
-    expect(bag.filter((note) => weights.has(note.midi))).toHaveLength(7);
-    expect(counts.get(highestWeightMidi)).toBe(5);
-    expect(counts.get(GAME_NOTE_PROGRESSION[0]!.midi)).toBe(1);
-    expect(counts.get(GAME_NOTE_PROGRESSION[1]!.midi)).toBe(1);
+    expect(getStaffGameWrongNoteMasteredMidis(archives, today)).toEqual(new Set([60]));
   });
 
-  it("keeps only the 20 highest-weight notes when weak notes exceed bag size", () => {
-    const weights = new Map(
-      GAME_NOTE_PROGRESSION.slice(0, 25).map((note, index) => [note.midi, index + 1])
+  it("consumes the finite queue once and returns null when it is exhausted", () => {
+    const noteBag = GAME_NOTE_PROGRESSION.slice(0, 3).map((note) => ({ ...note }));
+    const drawn = [
+      drawNextWrongNoteReviewNote(noteBag, []),
+      drawNextWrongNoteReviewNote(noteBag, []),
+      drawNextWrongNoteReviewNote(noteBag, []),
+    ];
+
+    expect(drawn.every((note) => note !== null)).toBe(true);
+    expect(new Set(drawn.map((note) => note!.midi))).toEqual(
+      new Set(GAME_NOTE_PROGRESSION.slice(0, 3).map((note) => note.midi))
     );
-    const expected = new Set(GAME_NOTE_PROGRESSION.slice(5, 25).map((note) => note.midi));
-    const bag = shuffledWrongNoteReviewBag(25, weights);
-
-    expect(bag).toHaveLength(20);
-    expect(new Set(bag.map((note) => note.midi))).toEqual(expected);
-  });
-
-  it("uses only unlocked pitches for weak and buffer notes", () => {
-    const weights = new Map([
-      [GAME_NOTE_PROGRESSION[0]!.midi, 1],
-      [GAME_NOTE_PROGRESSION[30]!.midi, 100],
-    ]);
-    const bag = shuffledWrongNoteReviewBag(20, weights);
-    const unlockedMidis = new Set(GAME_NOTE_PROGRESSION.slice(0, 20).map((note) => note.midi));
-
-    expect(bag).toHaveLength(20);
-    expect(bag.every((note) => unlockedMidis.has(note.midi))).toBe(true);
-    expect(bag.some((note) => note.midi === GAME_NOTE_PROGRESSION[30]!.midi)).toBe(false);
+    expect(noteBag).toHaveLength(0);
+    expect(drawNextWrongNoteReviewNote(noteBag, [])).toBeNull();
   });
 });

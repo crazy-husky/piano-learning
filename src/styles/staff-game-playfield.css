@@ -1551,6 +1551,22 @@ body.rush-mode .staff-game-scene::before {
   font-size: 12px;
 }
 
+.staff-game-review-count {
+  margin-bottom: 7px;
+}
+
+.staff-game-review-count strong {
+  display: block;
+  color: #176f8b;
+  font-size: 13px;
+}
+
+.staff-game-review-count p {
+  margin: 3px 0 0;
+  color: #965b37;
+  font-size: 11px;
+}
+
 .staff-game-review-preview ol {
   display: grid;
   max-height: 112px;

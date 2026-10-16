@@ -140,8 +140,17 @@
 }
 
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview > strong,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-count strong,
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview li {
   color: var(--staff-game-night-mint);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-count p {
+  color: #ffc2a8;
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-end-button {
+  color: #ffaaa0;
 }
 
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview li small {

@@ -6,6 +6,8 @@ import type {
   StaffGameSongRecord,
 } from "../data/staffGameSongs";
 import type { StaffGameWrongNoteRange } from "../../../domain/staffGameWrongNoteArchives";
+import { GAME_DIFFICULTIES, type GameDifficulty } from "../logic/staffGameRules";
+import { formatStaffGameWrongNoteReviewDuration } from "../logic/staffGameWrongNoteReview";
 import notationC4Preview from "../assets/notation/treble-staff-c4-note.webp";
 
 interface SharedArtwork {
@@ -19,6 +21,7 @@ type StaffGameReadyPanelProps = SharedArtwork &
         variant: "song-list";
         songs: readonly StaffGameSong[];
         songProgress: StaffGameSongProgress;
+        difficulty: GameDifficulty;
         onSelectSong: (songId: string) => void;
       }
     | {
@@ -38,6 +41,9 @@ type StaffGameReadyPanelProps = SharedArtwork &
         maxCombo: number;
         reviewRange: StaffGameWrongNoteRange;
         reviewNotes: Array<{ label: string; errorCount: number; accuracyPercent: number | null }>;
+        reviewQuestionCount: number;
+        reviewDurationMs: number;
+        reviewWeakNoteCount: number;
         wrongNoteArchiveDateCount: number;
         inputMode: "virtual" | "physical" | "midi";
         inputStatusText: string;
@@ -68,7 +74,9 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
         </div>
         <div className="staff-game-song-list">
           {props.songs.map((song) => {
-            const record = props.songProgress[song.id];
+            const record = props.songProgress[song.id]?.[props.difficulty];
+            const difficultyLabel =
+              GAME_DIFFICULTIES.find((item) => item.id === props.difficulty)?.label ?? "当前";
             return (
               <button
                 className="staff-game-song-choice"
@@ -83,7 +91,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
                   <strong>{song.title}</strong>
                   <small>{song.englishTitle}</small>
                   <span>
-                    {song.difficulty} · {song.noteMidis.length} 个音 · 最佳{" "}
+                    {song.difficulty} · {song.noteMidis.length} 个音 · {difficultyLabel}难度最佳{" "}
                     {Math.round(record?.bestScore ?? 0)} 分
                   </span>
                 </span>
@@ -267,6 +275,21 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             </button>
           </div>
           <div className="staff-game-review-preview" aria-live="polite">
+            {props.reviewWeakNoteCount > 0 ? (
+              <div className="staff-game-review-count">
+                <strong>
+                  本次复习约 {props.reviewQuestionCount} 题 · 覆盖全部 {props.reviewWeakNoteCount}{" "}
+                  个错音
+                </strong>
+                <p>
+                  限时 {formatStaffGameWrongNoteReviewDuration(props.reviewDurationMs)}
+                  ，时间到或题目练完即结束
+                </p>
+                {props.reviewWeakNoteCount > 20 ? (
+                  <p role="status">错音较多，本次仍会全部覆盖；可缩小复习范围减少题量。</p>
+                ) : null}
+              </div>
+            ) : null}
             <strong>优先复习的音</strong>
             {props.reviewNotes.length > 0 ? (
               <ol>

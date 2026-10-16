@@ -30,6 +30,8 @@ export interface StaffGameSummaryDialogProps {
   weakNoteOutcomes: StaffGameRoundNoteOutcome[];
   wrongNoteStatisticsEnabled: boolean;
   isWrongNoteReview: boolean;
+  wrongNoteReviewTimedOut: boolean;
+  reviewQuestionCount: number;
   wrongNoteArchiveStatus: "idle" | "manual" | "saving" | "saved" | "error";
   wrongNoteArchiveRetryQueued: boolean;
   wrongNoteArchiveMode: "automatic" | "manual" | "trend" | null;
@@ -72,6 +74,8 @@ export function StaffGameSummaryDialog({
   weakNoteOutcomes,
   wrongNoteStatisticsEnabled,
   isWrongNoteReview,
+  wrongNoteReviewTimedOut,
+  reviewQuestionCount,
   wrongNoteArchiveStatus,
   wrongNoteArchiveRetryQueued,
   wrongNoteArchiveMode,
@@ -274,6 +278,9 @@ export function StaffGameSummaryDialog({
             </div>
             {mode === "review" ? (
               <StaffGameReviewSummaryContent
+                timedOut={wrongNoteReviewTimedOut}
+                questionCount={reviewQuestionCount}
+                generatedQuestionCount={generatedNoteCount}
                 archiveMode={wrongNoteArchiveMode}
                 archiveDateLabel={archiveDateLabel}
                 archiveRetryQueued={wrongNoteArchiveRetryQueued}

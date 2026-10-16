@@ -1,7 +1,7 @@
 // ⚠️ [错题袋覆盖]。详见 docs/product-decisions.md
 import type { NoteName, PianoKeyName } from "../../../domain/types";
 
-export type GameDifficulty = "muggle" | "easy" | "normal" | "hard" | "nightmare";
+export type GameDifficulty = "muggle" | "leisure" | "easy" | "normal" | "hard" | "nightmare";
 export type StaffGameNotePoolScope = "current-group" | "all-history" | "all-history-current-clef";
 export type StaffGameNoteSchedulingStrategy = "random" | "system";
 
@@ -12,11 +12,8 @@ export interface StaffGamePitch {
 }
 
 export const GAME_LEVEL_COUNT = 60;
-export const WRONG_NOTE_REVIEW_BAG_SIZE = 20;
-export const WRONG_NOTE_REVIEW_DURATION_FACTOR = 0.6;
-export const WRONG_NOTE_REVIEW_DURATION_ROUNDING_STEP_MS = 15_000;
 export const BUBBLE_FADE_IN_MS = 200;
-export const SONG_STAR_THRESHOLDS = [60, 80, 95] as const;
+export const ACCURACY_STAR_THRESHOLDS = [60, 75, 90] as const;
 export const RUSH_MODE_COMBO_THRESHOLD = 5;
 export const COMBO_BONUS_MAX_STEPS = 5;
 export const RUSH_SCORE_MULTIPLIER = 2;
@@ -105,17 +102,6 @@ export function gameDurationMsForLevel(level: number): number {
   return 140_000;
 }
 
-export function wrongNoteReviewDurationMs(
-  bubbleDurationMs: number,
-  bagSize = WRONG_NOTE_REVIEW_BAG_SIZE
-): number {
-  const rawDurationMs = bagSize * bubbleDurationMs * WRONG_NOTE_REVIEW_DURATION_FACTOR;
-  return (
-    Math.round(rawDurationMs / WRONG_NOTE_REVIEW_DURATION_ROUNDING_STEP_MS) *
-    WRONG_NOTE_REVIEW_DURATION_ROUNDING_STEP_MS
-  );
-}
-
 export const GAME_DIFFICULTIES: Array<{
   id: GameDifficulty;
   label: string;
@@ -127,32 +113,40 @@ export const GAME_DIFFICULTIES: Array<{
   {
     id: "muggle",
     label: "麻瓜",
-    bubbleDurationMs: 7_000,
-    comboWindowMs: 4_500,
+    bubbleDurationMs: 15_000,
+    comboWindowMs: 9_000,
     correctPoints: 6,
     comboBonusPoints: 1,
   },
   {
+    id: "leisure",
+    label: "悠闲",
+    bubbleDurationMs: 10_000,
+    comboWindowMs: 6_000,
+    correctPoints: 7,
+    comboBonusPoints: 2,
+  },
+  {
     id: "easy",
     label: "简单",
-    bubbleDurationMs: 4_900,
-    comboWindowMs: 3_000,
+    bubbleDurationMs: 7_000,
+    comboWindowMs: 4_200,
     correctPoints: 8,
     comboBonusPoints: 2,
   },
   {
     id: "normal",
     label: "普通",
-    bubbleDurationMs: 3_300,
-    comboWindowMs: 2_200,
+    bubbleDurationMs: 4_900,
+    comboWindowMs: 3_000,
     correctPoints: 10,
     comboBonusPoints: 3,
   },
   {
     id: "hard",
     label: "困难",
-    bubbleDurationMs: 2_700,
-    comboWindowMs: 1_600,
+    bubbleDurationMs: 3_300,
+    comboWindowMs: 2_000,
     correctPoints: 12,
     comboBonusPoints: 4,
   },
@@ -160,7 +154,7 @@ export const GAME_DIFFICULTIES: Array<{
     id: "nightmare",
     label: "噩梦",
     bubbleDurationMs: 2_200,
-    comboWindowMs: 1_000,
+    comboWindowMs: 1_300,
     correctPoints: 15,
     comboBonusPoints: 5,
   },
@@ -173,35 +167,11 @@ export function gameDifficultyPreset(difficulty: GameDifficulty) {
   );
 }
 
-export const STAR_THRESHOLDS = [36, 70, 110] as const;
-export const DIFFICULTY_SCORE_FACTORS: Record<GameDifficulty, number> = {
-  muggle: 3,
-  easy: 4,
-  normal: 5,
-  hard: 7,
-  nightmare: 16,
-};
-
-export function starScoreThreshold(
-  threshold: number,
-  level: number,
-  difficulty: GameDifficulty
-): number {
-  return Math.ceil(
-    (threshold * gameDurationMsForLevel(level) * DIFFICULTY_SCORE_FACTORS[difficulty]) / 120_000
-  );
-}
-
-export function starsForScore(score: number, level: number, difficulty: GameDifficulty): number {
-  return STAR_THRESHOLDS.filter(
-    (threshold) => score >= starScoreThreshold(threshold, level, difficulty)
-  ).length;
-}
-
-export function starsForSongAccuracy(correctCount: number, totalCount: number): number {
+export function starsForAccuracy(correctCount: number, totalCount: number): number {
   if (totalCount <= 0) return 0;
-  return SONG_STAR_THRESHOLDS.filter((threshold) => correctCount * 100 >= threshold * totalCount)
-    .length;
+  return ACCURACY_STAR_THRESHOLDS.filter(
+    (threshold) => correctCount * 100 >= threshold * totalCount
+  ).length;
 }
 
 export function gameNoteFromMidi(midi: number): StaffGamePitch {
@@ -349,60 +319,10 @@ function weightedNoteDraws(
   });
 }
 
-export function shuffledWrongNoteReviewBag(
-  unlockedLevel: number,
-  weakNoteWeights: ReadonlyMap<number, number>,
-  bagSize = WRONG_NOTE_REVIEW_BAG_SIZE
-): StaffGamePitch[] {
-  const unlockedNotes = GAME_NOTE_PROGRESSION.slice(0, unlockedLevel);
-  const weakNotes = unlockedNotes
-    .filter((note) => (weakNoteWeights.get(note.midi) ?? 0) > 0)
-    .sort(
-      (left, right) =>
-        (weakNoteWeights.get(right.midi) ?? 0) - (weakNoteWeights.get(left.midi) ?? 0) ||
-        left.midi - right.midi
-    );
-  if (weakNotes.length === 0 || unlockedNotes.length === 0) return [];
-
-  // Coverage takes precedence over the one-third target. If more weak notes than
-  // slots exist, retain only the highest-weight notes and include each once.
-  const selectedWeakNotes = weakNotes.slice(0, bagSize);
-  const bag = selectedWeakNotes.map((note) => ({ ...note }));
-  if (weakNotes.length > bagSize) return shuffledItems(bag);
-
-  const targetWeakCount = Math.max(Math.round(bagSize / 3), selectedWeakNotes.length);
-  const regularNotes = unlockedNotes.filter(
-    (note) => !weakNoteWeights.has(note.midi) || (weakNoteWeights.get(note.midi) ?? 0) <= 0
-  );
-  const hasRegularNotes = regularNotes.length > 0;
-  const weakCount = hasRegularNotes ? targetWeakCount : bagSize;
-  bag.push(...weightedNoteDraws(selectedWeakNotes, weakCount - bag.length, weakNoteWeights));
-
-  const regularCount = bagSize - weakCount;
-  if (hasRegularNotes) {
-    let remaining = regularCount;
-    while (remaining > 0) {
-      const cycle = shuffledItems(regularNotes);
-      const selected = cycle.slice(0, remaining);
-      bag.push(...selected.map((note) => ({ ...note })));
-      remaining -= selected.length;
-    }
-  } else if (bag.length < bagSize) {
-    bag.push(...weightedNoteDraws(selectedWeakNotes, bagSize - bag.length, weakNoteWeights));
-  }
-
-  return shuffledItems(bag);
-}
-
 export function drawNextWrongNoteReviewNote(
   noteBag: StaffGamePitch[],
-  recentNoteMidis: number[],
-  unlockedLevel: number,
-  weakNoteWeights: ReadonlyMap<number, number>
+  recentNoteMidis: number[]
 ): StaffGamePitch | null {
-  if (noteBag.length === 0) {
-    noteBag.push(...shuffledWrongNoteReviewBag(unlockedLevel, weakNoteWeights));
-  }
   if (noteBag.length === 0) return null;
   const eligibleIndices = noteBag.flatMap((note, index) =>
     canFollowRecentNotes(note.midi, recentNoteMidis) ? [index] : []

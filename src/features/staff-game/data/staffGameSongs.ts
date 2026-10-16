@@ -1,3 +1,5 @@
+import { GAME_DIFFICULTIES, type GameDifficulty } from "../logic/staffGameRules";
+
 export interface StaffGameSong {
   id: string;
   title: string;
@@ -233,31 +235,52 @@ export interface StaffGameSongRecord {
   plays: number;
 }
 
-export type StaffGameSongProgress = Record<string, StaffGameSongRecord>;
+export type StaffGameSongProgress = Record<string, Record<GameDifficulty, StaffGameSongRecord>>;
 
-const SONG_PROGRESS_KEY = "anki-note.staffGameSongProgress.v1";
+const SONG_PROGRESS_KEY = "anki-note.staffGameSongProgress.v2";
+const LEGACY_SONG_PROGRESS_KEY = "anki-note.staffGameSongProgress.v1";
 
-export function readStaffGameSongProgress(): StaffGameSongProgress {
-  const defaults: StaffGameSongProgress = Object.fromEntries(
+function emptySongRecord(): StaffGameSongRecord {
+  return { bestScore: 0, bestAccuracy: 0, bestStars: 0, maxCombo: 0, plays: 0 };
+}
+
+function defaultSongProgress(): StaffGameSongProgress {
+  return Object.fromEntries(
     STAFF_GAME_SONGS.map(({ id }) => [
       id,
-      { bestScore: 0, bestAccuracy: 0, bestStars: 0, maxCombo: 0, plays: 0 },
+      Object.fromEntries(
+        GAME_DIFFICULTIES.map(({ id: difficulty }) => [difficulty, emptySongRecord()])
+      ),
     ])
-  );
+  ) as StaffGameSongProgress;
+}
+
+export function readStaffGameSongProgress(): StaffGameSongProgress {
+  const defaults = defaultSongProgress();
   try {
+    window.localStorage.removeItem(LEGACY_SONG_PROGRESS_KEY);
     const parsed: unknown = JSON.parse(window.localStorage.getItem(SONG_PROGRESS_KEY) ?? "null");
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return defaults;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      window.localStorage.removeItem(LEGACY_SONG_PROGRESS_KEY);
+      saveStaffGameSongProgress(defaults);
+      return defaults;
+    }
     for (const song of STAFF_GAME_SONGS) {
       const value = (parsed as Record<string, unknown>)[song.id];
       if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-      const record = value as Record<string, unknown>;
-      defaults[song.id] = {
-        bestScore: Math.max(0, Math.floor(Number(record.bestScore) || 0)),
-        bestAccuracy: Math.max(0, Math.min(100, Math.floor(Number(record.bestAccuracy) || 0))),
-        bestStars: Math.max(0, Math.min(3, Math.floor(Number(record.bestStars) || 0))),
-        maxCombo: Math.max(0, Math.floor(Number(record.maxCombo) || 0)),
-        plays: Math.max(0, Math.floor(Number(record.plays) || 0)),
-      };
+      const difficultyRecords = value as Record<string, unknown>;
+      for (const { id: difficulty } of GAME_DIFFICULTIES) {
+        const record = difficultyRecords[difficulty];
+        if (!record || typeof record !== "object" || Array.isArray(record)) continue;
+        const values = record as Record<string, unknown>;
+        defaults[song.id]![difficulty] = {
+          bestScore: Math.max(0, Math.floor(Number(values.bestScore) || 0)),
+          bestAccuracy: Math.max(0, Math.min(100, Math.floor(Number(values.bestAccuracy) || 0))),
+          bestStars: Math.max(0, Math.min(3, Math.floor(Number(values.bestStars) || 0))),
+          maxCombo: Math.max(0, Math.floor(Number(values.maxCombo) || 0)),
+          plays: Math.max(0, Math.floor(Number(values.plays) || 0)),
+        };
+      }
     }
     return defaults;
   } catch {

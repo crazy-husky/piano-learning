@@ -469,6 +469,10 @@
   padding: 0 10px;
 }
 
+.staff-game-controls.is-touch-layout.is-wrong-note-review .staff-game-toolbar.is-mobile-control {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .staff-game-action-button {
   appearance: none;
   display: inline-flex;
@@ -529,6 +533,14 @@
   opacity: 0.6;
 }
 
+.staff-game-review-end-button {
+  color: #a83a30;
+}
+
+.staff-game-action-button.staff-game-review-end-button:hover:not(:disabled) {
+  color: #8c231c;
+}
+
 .staff-game-toolbar.is-desktop-control {
   display: flex;
   width: 180px;
@@ -542,6 +554,10 @@
   background: #fff;
   box-shadow: 0 4px 14px rgba(28, 82, 100, 0.18);
   padding: 6px 8px;
+}
+
+.staff-game-toolbar.is-desktop-control.is-wrong-note-review {
+  width: 232px;
 }
 
 .staff-game-toolbar.is-desktop-control .staff-game-action-button {
@@ -1019,6 +1035,10 @@
     height: 60px;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     padding-inline: 6px;
+  }
+
+  .staff-game-controls.is-touch-layout.is-wrong-note-review .staff-game-toolbar.is-mobile-control {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 

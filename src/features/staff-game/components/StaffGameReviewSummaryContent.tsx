@@ -4,6 +4,9 @@ import type { StaffGameWrongNoteComparison } from "../../../domain/staffGameWron
 import type { StaffGameWrongNoteRunPerformance } from "../logic/staffGameWrongNoteArchive";
 
 interface StaffGameReviewSummaryContentProps {
+  timedOut: boolean;
+  questionCount: number;
+  generatedQuestionCount: number;
   archiveMode: "automatic" | "manual" | "trend" | null;
   performance: StaffGameWrongNoteRunPerformance | null;
   comparison: StaffGameWrongNoteComparison | null;
@@ -36,6 +39,9 @@ function changeTone(change: number, lowerIsBetter = false): string {
 }
 
 export function StaffGameReviewSummaryContent({
+  timedOut,
+  questionCount,
+  generatedQuestionCount,
   archiveMode,
   performance,
   comparison,
@@ -74,7 +80,10 @@ export function StaffGameReviewSummaryContent({
 
   return (
     <div className="staff-game-review-summary">
-      <h2>复习完成</h2>
+      <h2>{timedOut ? "时间到，复习结束" : "复习完成"}</h2>
+      <p className="staff-game-review-summary-progress">
+        已出题 {Math.min(generatedQuestionCount, questionCount)} / {questionCount} 题
+      </p>
 
       <section aria-labelledby="staff-game-review-current-title">
         <h3 id="staff-game-review-current-title">本次表现</h3>

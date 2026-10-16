@@ -13,10 +13,8 @@ import {
   PITCH_NAMES,
   RUSH_MODE_COMBO_THRESHOLD,
   RUSH_SCORE_MULTIPLIER,
-  gameLevelForNotePoolScope,
   gameDifficultyPreset,
-  starsForSongAccuracy,
-  starsForScore,
+  starsForAccuracy,
   staffGameReactionMs,
   type GameDifficulty,
   type StaffGameNotePoolScope,
@@ -85,7 +83,6 @@ interface StaffGameScoringOptions {
   songTargetIndexRef: MutableRefObject<number>;
   songFirstTryHitsRef: MutableRefObject<number>;
   songWrongTargetTokenRef: MutableRefObject<number | null>;
-  levelRef: MutableRefObject<number>;
   scoreRef: MutableRefObject<number>;
   displayedScoreRef: MutableRefObject<number>;
   scoreAnimationTargetRef: MutableRefObject<number>;
@@ -160,7 +157,6 @@ export function useStaffGameScoring({
   songTargetIndexRef,
   songFirstTryHitsRef,
   songWrongTargetTokenRef,
-  levelRef,
   scoreRef,
   displayedScoreRef,
   scoreAnimationTargetRef,
@@ -228,20 +224,17 @@ export function useStaffGameScoring({
     const isSongMode = gameModeRef.current === "songs";
     const isWrongNoteReview = !isSongMode && roundPurposeRef.current === "wrong-note-review";
     const activeSong = STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current);
-    const accuracy = activeSong
-      ? (songFirstTryHitsRef.current * 100) / activeSong.noteMidis.length
-      : 0;
-    const finalStars = isWrongNoteReview
-      ? 0
-      : isSongMode
-        ? activeSong
-          ? starsForSongAccuracy(songFirstTryHitsRef.current, activeSong.noteMidis.length)
-          : 0
-        : starsForScore(
-            scoreRef.current,
-            gameLevelForNotePoolScope(levelRef.current, settingsRef.current.notePoolScope),
-            settingsRef.current.difficulty
-          );
+    const generatedNoteCount = activeSong
+      ? activeSong.noteMidis.length
+      : roundMetricsRef.current.generatedBubbleCount;
+    const firstTryCorrectCount = activeSong
+      ? songFirstTryHitsRef.current
+      : roundMetricsRef.current.firstTryCorrectCount;
+    const accuracy = generatedNoteCount > 0 ? (firstTryCorrectCount * 100) / generatedNoteCount : 0;
+    const finalStars =
+      isWrongNoteReview || generatedNoteCount === 0
+        ? 0
+        : starsForAccuracy(firstTryCorrectCount, generatedNoteCount);
     if (
       finalStars > 0 &&
       settingsRef.current.audioByMode[gameModeRef.current].soundEffectsEnabled
@@ -277,7 +270,6 @@ export function useStaffGameScoring({
     flushScorePresentation,
     gameModeRef,
     roundMetricsRef,
-    levelRef,
     microphoneStop,
     nextTargetTimeoutRef,
     onSessionActiveChange,
@@ -452,15 +444,16 @@ export function useStaffGameScoring({
           setDisplayedScoreImmediately(totalScore);
         }
         setFeedback(`+${points} · ${noteLabel(currentTarget)}`);
-        const nextStars = isSongMode
-          ? activeSong
-            ? starsForSongAccuracy(songFirstTryHitsRef.current, activeSong.noteMidis.length)
-            : 0
-          : starsForScore(
-              totalScore,
-              gameLevelForNotePoolScope(levelRef.current, settingsRef.current.notePoolScope),
-              settingsRef.current.difficulty
-            );
+        const generatedNoteCount = activeSong
+          ? activeSong.noteMidis.length
+          : roundMetricsRef.current.generatedBubbleCount;
+        const firstTryCorrectCount = activeSong
+          ? songFirstTryHitsRef.current
+          : roundMetricsRef.current.firstTryCorrectCount;
+        const nextStars =
+          roundPurposeRef.current === "wrong-note-review" || generatedNoteCount === 0
+            ? 0
+            : starsForAccuracy(firstTryCorrectCount, generatedNoteCount);
         setEarnedStars(nextStars);
         if (nextTargetTimeoutRef.current !== null)
           window.clearTimeout(nextTargetTimeoutRef.current);
@@ -525,7 +518,6 @@ export function useStaffGameScoring({
       errorFlashTimeoutRef,
       finishRound,
       gameModeRef,
-      levelRef,
       maxComboRef,
       nextTargetTimeoutRef,
       noteLabel,
@@ -538,6 +530,7 @@ export function useStaffGameScoring({
       restartComboTimer,
       roundMetricsRef,
       runSegmentStartedAtRef,
+      roundPurposeRef,
       rushScoreFlightTokenRef,
       rushScoreFlightsRef,
       sceneRef,

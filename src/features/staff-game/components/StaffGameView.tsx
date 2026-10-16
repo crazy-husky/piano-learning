@@ -1,5 +1,5 @@
 // ⚠️ [归档规则]。详见 docs/product-decisions.md
-import { Volume2 } from "lucide-react";
+import { Square, Volume2 } from "lucide-react";
 import "vexflow/bravura";
 import { toast } from "sonner";
 import {
@@ -104,18 +104,22 @@ import {
   PITCH_NAMES,
   RUSH_FALL_SPEED_MULTIPLIER,
   RUSH_MODE_COMBO_THRESHOLD,
-  STAR_THRESHOLDS,
   gameDurationMsForLevel,
   gameLevelForNotePoolScope,
   gameDifficultyPreset,
   gameNoteFromMidi,
   staffGameSolfegeLabel,
-  starScoreThreshold,
-  starsForScore,
-  wrongNoteReviewDurationMs,
+  starsForAccuracy,
   type StaffGameNotePoolScope,
   type StaffGameNoteSchedulingStrategy,
+  type StaffGamePitch,
 } from "../logic/staffGameRules";
+import {
+  buildStaffGameWrongNoteReviewPlan,
+  getStaffGameWrongNoteMasteredMidis,
+  staffGameWrongNoteReviewDurationMs,
+  formatStaffGameWrongNoteReviewDuration,
+} from "../logic/staffGameWrongNoteReview";
 import {
   readStaffGameWeakNoteWeights,
   updateStaffGameWeakNoteWeights,
@@ -211,8 +215,11 @@ function isNearComboVoiceMilestone(comboCount: number): boolean {
   return Math.min(offset, COMBO_UNBELIEVABLE_INTERVAL - offset) <= COMBO_VOICE_MILESTONE_BUFFER;
 }
 
-const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v3";
-const LEGACY_GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v2";
+const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v4";
+const LEGACY_GAME_PROGRESS_KEYS = [
+  "anki-note.staffGameProgress.v3",
+  "anki-note.staffGameProgress.v2",
+] as const;
 const GAME_SETTINGS_KEY = "anki-note.staffGameSettings.v1";
 const LOW_FPS_PROMPT_SESSION_KEY = "anki-note.staffGameLowFpsPrompted.v1";
 let lowFpsPromptShownThisPage = false;
@@ -265,7 +272,7 @@ function areStaffGameSettingsEqual(left: StaffGameSettings, right: StaffGameSett
 }
 
 interface StaffGameProgress {
-  version: 3;
+  version: 4;
   bestScores: number[];
   bestStars: number[];
   maxCombos: number[];
@@ -347,7 +354,7 @@ function createRoundMetrics(): StaffGameLevelRoundMetrics {
 
 function defaultProgress(): StaffGameProgress {
   return {
-    version: 3,
+    version: 4,
     bestScores: Array(GAME_LEVEL_COUNT).fill(0),
     bestStars: Array(GAME_LEVEL_COUNT).fill(0),
     maxCombos: Array(GAME_LEVEL_COUNT).fill(0),
@@ -520,15 +527,19 @@ function updateModeAudioSettings(
 
 function readProgress(): StaffGameProgress {
   try {
-    const storedV3 = readStoredJson(GAME_PROGRESS_KEY);
-    const hasValidV3 =
-      Boolean(storedV3) &&
-      typeof storedV3 === "object" &&
-      !Array.isArray(storedV3) &&
-      (storedV3 as { version?: unknown }).version === 3;
-    const storedLegacy = hasValidV3 ? null : readStoredJson(LEGACY_GAME_PROGRESS_KEY);
-    const parsed = (hasValidV3 ? storedV3 : storedLegacy) as Partial<StaffGameProgress> | null;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return defaultProgress();
+    for (const key of LEGACY_GAME_PROGRESS_KEYS) localStorage.removeItem(key);
+    const storedV4 = readStoredJson(GAME_PROGRESS_KEY);
+    const hasValidV4 =
+      Boolean(storedV4) &&
+      typeof storedV4 === "object" &&
+      !Array.isArray(storedV4) &&
+      (storedV4 as { version?: unknown }).version === 4;
+    if (!hasValidV4) {
+      const fresh = defaultProgress();
+      saveProgress(fresh);
+      return fresh;
+    }
+    const parsed = storedV4 as Partial<StaffGameProgress>;
     const base = defaultProgress();
     const readArray = (value: unknown): number[] =>
       Array.from({ length: GAME_LEVEL_COUNT }, (_, index) => {
@@ -581,15 +592,13 @@ function readProgress(): StaffGameProgress {
     };
     const bestScores = readArray(parsed.bestScores);
     const progress: StaffGameProgress = {
-      version: 3,
+      version: 4,
       bestScores,
       bestStars: readArray(parsed.bestStars),
       maxCombos: readArray(parsed.maxCombos),
-      bestAccuracy: hasValidV3 ? readMetricSlots(parsed.bestAccuracy, 1) : base.bestAccuracy,
-      bestResponseMs: hasValidV3
-        ? readMetricSlots(parsed.bestResponseMs, Number.MAX_SAFE_INTEGER)
-        : base.bestResponseMs,
-      _debugLastRound: hasValidV3 ? readLastRound(parsed._debugLastRound) : null,
+      bestAccuracy: readMetricSlots(parsed.bestAccuracy, 1),
+      bestResponseMs: readMetricSlots(parsed.bestResponseMs, Number.MAX_SAFE_INTEGER),
+      _debugLastRound: readLastRound(parsed._debugLastRound),
       unlockedLevel: Math.max(
         1,
         Math.min(GAME_LEVEL_COUNT, Math.floor(Number(parsed.unlockedLevel) || base.unlockedLevel))
@@ -604,7 +613,6 @@ function readProgress(): StaffGameProgress {
         )
       ),
     };
-    if (!hasValidV3 && storedLegacy !== null) saveProgress(progress);
     return progress;
   } catch {
     return defaultProgress();
@@ -813,6 +821,7 @@ export function StaffGameView({
     StaffGameRoundNoteOutcome[]
   >([]);
   const [summaryIsWrongNoteReview, setSummaryIsWrongNoteReview] = useState(false);
+  const [summaryWrongNoteReviewTimedOut, setSummaryWrongNoteReviewTimedOut] = useState(false);
   const [weakNoteWeights, setWeakNoteWeights] = useState(readStaffGameWeakNoteWeights);
   const [wrongNoteArchives, setWrongNoteArchives] = useState<StaffGameWrongNoteArchive[]>([]);
   const [wrongNoteReviewRange, setWrongNoteReviewRange] = useState<StaffGameWrongNoteRange>(7);
@@ -868,7 +877,6 @@ export function StaffGameView({
   const errorFlashTimeoutRef = useRef<number | null>(null);
   const wrongAnswerRecordsRef = useRef<StaffGameWrongAnswerRecord[]>([]);
   const weakNoteWeightsRef = useRef(weakNoteWeights);
-  const wrongNoteReviewWeightsRef = useRef<Map<number, number> | null>(null);
   const pendingWrongNoteArchiveRunsRef = useRef<StaffGameWrongNoteArchiveRun[]>([]);
   const summaryArchiveRunIdRef = useRef<string | null>(null);
   const roundStartedAtRef = useRef(new Date().toISOString());
@@ -902,6 +910,8 @@ export function StaffGameView({
   const midiRef = useRef(midi);
   const recentNoteMidisRef = useRef<number[]>([]);
   const noteBagRef = useRef<Array<{ midi: number; name: PianoKeyName; octave: number }>>([]);
+  const roundReviewQuestionCountRef = useRef(0);
+  const roundReviewDurationMsRef = useRef(0);
   const targetTokenRef = useRef(0);
   const elapsedBeforeRunRef = useRef(0);
   const runSegmentStartedAtRef = useRef(0);
@@ -915,6 +925,10 @@ export function StaffGameView({
 
   const unlockedReviewMidiSet = useMemo(
     () => new Set(GAME_NOTE_PROGRESSION.slice(0, progress.unlockedLevel).map((note) => note.midi)),
+    [progress.unlockedLevel]
+  );
+  const unlockedReviewNotes = useMemo(
+    () => GAME_NOTE_PROGRESSION.slice(0, progress.unlockedLevel),
     [progress.unlockedLevel]
   );
   const wrongNoteReviewWeights = useMemo(
@@ -959,6 +973,15 @@ export function StaffGameView({
       wrongNoteReviewErrorCounts,
       wrongNoteReviewWeights,
     ]
+  );
+  const wrongNoteReviewPlan = useMemo(
+    () =>
+      buildStaffGameWrongNoteReviewPlan(
+        unlockedReviewNotes,
+        wrongNoteReviewWeights,
+        getStaffGameWrongNoteMasteredMidis(wrongNoteArchives)
+      ),
+    [unlockedReviewNotes, wrongNoteArchives, wrongNoteReviewWeights]
   );
   const wrongNoteArchiveDateCount = useMemo(
     () => getStaffGameWrongNoteArchiveDateCount(wrongNoteArchives),
@@ -1218,18 +1241,21 @@ export function StaffGameView({
   const difficulty = gameDifficultyPreset(settings.difficulty);
   const bubbleDurationMs = difficulty.bubbleDurationMs;
   const durationLevel = gameLevelForNotePoolScope(level, settings.notePoolScope);
-  const gameDurationMs =
-    roundPurposeRef.current === "wrong-note-review"
-      ? wrongNoteReviewDurationMs(bubbleDurationMs)
-      : gameDurationMsForLevel(durationLevel);
+  const gameDurationMs = gameDurationMsForLevel(durationLevel);
   const draftDifficulty = gameDifficultyPreset(settingsDraft.difficulty);
-  const currentRoundStars = starsForScore(score, durationLevel, settings.difficulty);
-  const threeStarScore = starScoreThreshold(
-    STAR_THRESHOLDS[STAR_THRESHOLDS.length - 1],
-    durationLevel,
-    settings.difficulty
-  );
-  const levelProgress = threeStarScore > 0 ? Math.min(1, score / threeStarScore) : 0;
+  const activeSongForStars =
+    gameMode === "songs"
+      ? STAFF_GAME_SONGS.find((song) => song.id === selectedSongIdRef.current)
+      : null;
+  const roundGeneratedCount = activeSongForStars
+    ? activeSongForStars.noteMidis.length
+    : roundMetricsRef.current.generatedBubbleCount;
+  const roundFirstTryCorrectCount = activeSongForStars
+    ? songFirstTryHitsRef.current
+    : roundMetricsRef.current.firstTryCorrectCount;
+  const currentRoundStars = starsForAccuracy(roundFirstTryCorrectCount, roundGeneratedCount);
+  const levelProgress =
+    roundGeneratedCount > 0 ? roundFirstTryCorrectCount / roundGeneratedCount : 0;
   const rushModeActive = combo >= RUSH_MODE_COMBO_THRESHOLD && phase === "running";
   // Keep the rush playfield geometry fixed while paused so a frozen bubble cannot jump.
   const preserveRushBubbleScreenTop =
@@ -1458,7 +1484,7 @@ export function StaffGameView({
         ? metrics.responseTotalMs / metrics.responseSampleCount
         : null;
     const next: StaffGameProgress = {
-      version: 3,
+      version: 4,
       bestScores: current.bestScores.map((best, itemIndex) =>
         itemIndex === index ? Math.max(best, scoreRef.current) : best
       ),
@@ -1511,8 +1537,9 @@ export function StaffGameView({
 
   const persistSongResult = useCallback((finalStars: number, accuracy: number): void => {
     const songId = selectedSongIdRef.current;
+    const difficulty = settingsRef.current.difficulty;
     const current = songProgressRef.current;
-    const previous = current[songId] ?? {
+    const previous = current[songId]?.[difficulty] ?? {
       bestScore: 0,
       bestAccuracy: 0,
       bestStars: 0,
@@ -1522,11 +1549,14 @@ export function StaffGameView({
     const next = {
       ...current,
       [songId]: {
-        bestScore: Math.max(previous.bestScore, scoreRef.current),
-        bestAccuracy: Math.max(previous.bestAccuracy, accuracy),
-        bestStars: Math.max(previous.bestStars, finalStars),
-        maxCombo: Math.max(previous.maxCombo, maxComboRef.current),
-        plays: previous.plays + 1,
+        ...current[songId],
+        [difficulty]: {
+          bestScore: Math.max(previous.bestScore, scoreRef.current),
+          bestAccuracy: Math.max(previous.bestAccuracy, accuracy),
+          bestStars: Math.max(previous.bestStars, finalStars),
+          maxCombo: Math.max(previous.maxCombo, maxComboRef.current),
+          plays: previous.plays + 1,
+        },
       },
     };
     songProgressRef.current = next;
@@ -1691,7 +1721,6 @@ export function StaffGameView({
     flushScorePresentation,
     gameModeRef,
     roundPurposeRef,
-    levelRef,
     maxComboRef,
     microphoneStop: microphone.stop,
     nextTargetTimeoutRef,
@@ -1913,19 +1942,19 @@ export function StaffGameView({
     gameDurationMs,
     gameModeRef,
     roundPurposeRef,
+    wrongNoteReviewDurationMsRef: roundReviewDurationMsRef,
     inputMode: settings.inputMode,
     levelRef,
     noteBagRef,
     notePoolScopeRef,
     noteSchedulingStrategyRef,
     weakNoteWeightsRef,
-    wrongNoteReviewWeightsRef,
-    unlockedLevelRef,
     noteLabel,
     nextTargetTimeoutRef,
     phase,
     phaseRef,
     playGameSound,
+    setWrongNoteReviewTimedOut: setSummaryWrongNoteReviewTimedOut,
     playfieldRef,
     recentNoteMidisRef,
     roundMetricsRef,
@@ -1967,6 +1996,8 @@ export function StaffGameView({
     targetRef.current = null;
     targetPoppedRef.current = false;
     noteBagRef.current = [];
+    roundReviewQuestionCountRef.current = 0;
+    roundReviewDurationMsRef.current = 0;
     recentNoteMidisRef.current = [];
     roundFinishedRef.current = false;
     roundMetricsRef.current = createRoundMetrics();
@@ -1983,6 +2014,7 @@ export function StaffGameView({
     setSummaryWrongAnswerRecords([]);
     setSummaryWeakNoteOutcomes([]);
     setSummaryIsWrongNoteReview(false);
+    setSummaryWrongNoteReviewTimedOut(false);
     setSummaryArchiveRunId(null);
     setSummaryArchiveRun(null);
     summaryArchiveRunIdRef.current = null;
@@ -1991,7 +2023,6 @@ export function StaffGameView({
     setWrongNoteArchiveStatus("idle");
     setWrongNoteArchiveRetryQueued(false);
     roundPurposeRef.current = "level";
-    wrongNoteReviewWeightsRef.current = null;
     roundNotePoolScopeRef.current = null;
     roundNoteSchedulingStrategyRef.current = undefined;
     wrongAnswerRecordsRef.current = [];
@@ -2036,7 +2067,7 @@ export function StaffGameView({
   const beginRound = useCallback(
     async (
       purpose: StaffGameRoundPurpose = "level",
-      reviewWeights?: Map<number, number>
+      reviewNotes?: readonly StaffGamePitch[]
     ): Promise<boolean> => {
       if (resourceLoadState !== "ready") return false;
       if (isStartingRef.current) return false;
@@ -2091,7 +2122,8 @@ export function StaffGameView({
         const records = progressRef.current;
         const levelIndex = levelRef.current - 1;
         if (gameModeRef.current === "songs") {
-          const record = songProgressRef.current[selectedSongIdRef.current];
+          const record =
+            songProgressRef.current[selectedSongIdRef.current]?.[settingsRef.current.difficulty];
           roundRecordsAtStartRef.current = {
             score: record?.bestScore ?? 0,
             maxCombo: record?.maxCombo ?? 0,
@@ -2105,14 +2137,21 @@ export function StaffGameView({
         resetRoundState();
         roundStartedAtRef.current = new Date().toISOString();
         roundPurposeRef.current = purpose;
+        if (purpose === "wrong-note-review") {
+          const preparedNotes = reviewNotes ?? [];
+          roundReviewQuestionCountRef.current = preparedNotes.length;
+          roundReviewDurationMsRef.current = staffGameWrongNoteReviewDurationMs(
+            preparedNotes.length,
+            gameDifficultyPreset(settingsRef.current.difficulty).bubbleDurationMs
+          );
+          noteBagRef.current = preparedNotes.map((note) => ({ ...note }));
+        }
         roundNotePoolScopeRef.current =
           purpose === "wrong-note-review" ? null : settingsRef.current.notePoolScope;
         roundNoteSchedulingStrategyRef.current =
           purpose === "wrong-note-review"
             ? "review-weighted"
             : settingsRef.current.noteSchedulingStrategy;
-        wrongNoteReviewWeightsRef.current =
-          purpose === "wrong-note-review" ? (reviewWeights ?? new Map()) : null;
         startRunSegment();
         setFeedback(
           purpose === "wrong-note-review"
@@ -2165,7 +2204,18 @@ export function StaffGameView({
 
   const pauseRound = useCallback((): void => {
     if (phaseRef.current !== "running") return;
-    setElapsedMs(pauseRunSegment());
+    const elapsed = pauseRunSegment();
+    setElapsedMs(elapsed);
+    if (
+      roundPurposeRef.current === "wrong-note-review" &&
+      roundReviewDurationMsRef.current > 0 &&
+      elapsed >= roundReviewDurationMsRef.current
+    ) {
+      setElapsedMs(roundReviewDurationMsRef.current);
+      setSummaryWrongNoteReviewTimedOut(true);
+      finishRound();
+      return;
+    }
     setMascotReaction((current) => ({
       action: "idle",
       token: current.token + 1,
@@ -2175,7 +2225,13 @@ export function StaffGameView({
     setPhase("paused");
     setFeedback(gameModeRef.current === "songs" ? "演奏已暂停" : "闯关已暂停");
     stopMicrophone();
-  }, [pauseRunSegment, stopMicrophone]);
+  }, [
+    finishRound,
+    pauseRunSegment,
+    roundPurposeRef,
+    setSummaryWrongNoteReviewTimedOut,
+    stopMicrophone,
+  ]);
 
   useEffect(() => {
     if (phase !== "running" || !settings.gameEffectsEnabled || showLowFpsPrompt) return undefined;
@@ -2468,16 +2524,48 @@ export function StaffGameView({
     setPhase("ready");
   }, [cancelPendingStart, onSessionActiveChange, resetRoundState, stopMicrophone]);
 
+  const endWrongNoteReview = useCallback((): void => {
+    if (
+      roundPurposeRef.current !== "wrong-note-review" ||
+      (phaseRef.current !== "running" && phaseRef.current !== "paused")
+    )
+      return;
+
+    const activeTarget = targetRef.current;
+    if (activeTarget && !targetPoppedRef.current) {
+      const outcome = roundMetricsRef.current.firstInputByToken.get(activeTarget.token);
+      if (outcome && outcome.firstInputCorrect === null && !outcome.missed) {
+        roundMetricsRef.current.firstInputByToken.delete(activeTarget.token);
+      }
+    }
+
+    if (roundMetricsRef.current.firstInputByToken.size === 0) {
+      exitWrongNoteReview();
+      return;
+    }
+    finishRound();
+  }, [
+    exitWrongNoteReview,
+    finishRound,
+    phaseRef,
+    roundMetricsRef,
+    roundPurposeRef,
+    targetRef,
+    targetPoppedRef,
+  ]);
+
   const retryLevel = useCallback((): void => {
     if (roundPurposeRef.current === "wrong-note-review") {
-      void beginRound(
-        "wrong-note-review",
-        new Map(wrongNoteReviewWeightsRef.current ?? wrongNoteReviewWeights)
+      const retryPlan = buildStaffGameWrongNoteReviewPlan(
+        unlockedReviewNotes,
+        wrongNoteReviewWeights,
+        getStaffGameWrongNoteMasteredMidis(wrongNoteArchives)
       );
+      void beginRound("wrong-note-review", retryPlan.notes);
     } else {
       void beginRound();
     }
-  }, [beginRound, wrongNoteReviewWeights]);
+  }, [beginRound, unlockedReviewNotes, wrongNoteArchives, wrongNoteReviewWeights]);
 
   const closeChallengeSummary = useCallback((): void => {
     if (phaseRef.current !== "summary" || gameModeRef.current !== "levels") return;
@@ -2493,8 +2581,8 @@ export function StaffGameView({
     if (wrongNoteReviewWeights.size === 0) return;
     setReadyWrongNoteMode("review");
     roundReviewRangeRef.current = wrongNoteReviewRange;
-    void beginRound("wrong-note-review", new Map(wrongNoteReviewWeights));
-  }, [beginRound, wrongNoteReviewRange, wrongNoteReviewWeights]);
+    void beginRound("wrong-note-review", wrongNoteReviewPlan.notes);
+  }, [beginRound, wrongNoteReviewPlan.notes, wrongNoteReviewRange, wrongNoteReviewWeights]);
 
   const openWrongNoteStudyDialog = useCallback((): void => {
     setWrongNoteStudyRange((current) => current ?? wrongNoteReviewRange);
@@ -2817,7 +2905,7 @@ export function StaffGameView({
     centerX: 0,
     spawnAt: 0,
   };
-  const selectedSongRecord = songProgress[selectedSong.id] ?? {
+  const selectedSongRecord = songProgress[selectedSong.id]?.[settings.difficulty] ?? {
     bestScore: 0,
     bestAccuracy: 0,
     bestStars: 0,
@@ -2844,7 +2932,12 @@ export function StaffGameView({
       : 0;
   const activeProgress = isSongMode ? songProgressRatio : levelProgress;
   const midiOptionAvailable = supportsMidi(midi.status);
-  const remainingSeconds = Math.max(0, Math.ceil((gameDurationMs - elapsedMs) / 1000));
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil(
+      ((isWrongNoteReview ? roundReviewDurationMsRef.current : gameDurationMs) - elapsedMs) / 1000
+    )
+  );
   const gameArtStyle = {
     "--staff-game-bg-desktop": `url("${gameBackgroundDesktop}")`,
     "--staff-game-bg-mobile": `url("${gameBackgroundMobile}")`,
@@ -2903,6 +2996,7 @@ export function StaffGameView({
       ? Math.round((loadedResourceCount / resourceProgress.length) * 100)
       : 0;
   const showPauseControl = phase === "running" || phase === "paused";
+  const showWrongNoteEndControl = isWrongNoteReview && showPauseControl;
 
   if (resourceLoadState !== "ready") {
     return (
@@ -3088,8 +3182,8 @@ export function StaffGameView({
           scoreDetail={
             isWrongNoteReview
               ? phase === "ready"
-                ? "按音符顺序完成复习"
-                : `错题复习\u3000·\u3000${remainingSeconds} 秒`
+                ? `约 ${wrongNoteReviewPlan.totalQuestionCount} 题 · 限时 ${formatStaffGameWrongNoteReviewDuration(staffGameWrongNoteReviewDurationMs(wrongNoteReviewPlan.totalQuestionCount, bubbleDurationMs))}`
+                : `已出题 ${Math.min(roundMetricsRef.current.generatedBubbleCount, roundReviewQuestionCountRef.current)}/${roundReviewQuestionCountRef.current} 题 · 剩余 ${remainingSeconds} 秒`
               : isSongMode
                 ? `最佳 ${Math.round(selectedSongRecord.bestScore)}\u3000·\u3000${songNotesCompleted}/${selectedSong.noteMidis.length} 音\u3000·\u3000${Math.round(songAccuracy)}%`
                 : `最高 ${Math.round(progress.bestScores[level - 1])}${phase === "ready" ? "" : `\u3000·\u3000${remainingSeconds} 秒`}`
@@ -3263,6 +3357,7 @@ export function StaffGameView({
               onSelectSong={selectSong}
               songProgress={songProgress}
               songs={STAFF_GAME_SONGS}
+              difficulty={settings.difficulty}
               starImage={starParticleArt}
               variant="song-list"
             />
@@ -3304,7 +3399,13 @@ export function StaffGameView({
                 errorCount: note.errorCount,
                 accuracyPercent: note.accuracyPercent,
               }))}
+              reviewQuestionCount={wrongNoteReviewPlan.totalQuestionCount}
+              reviewDurationMs={staffGameWrongNoteReviewDurationMs(
+                wrongNoteReviewPlan.totalQuestionCount,
+                bubbleDurationMs
+              )}
               reviewRange={wrongNoteReviewRange}
+              reviewWeakNoteCount={wrongNoteReviewPlan.weakNoteCount}
               wrongNoteArchiveDateCount={wrongNoteArchiveDateCount}
               starImage={starParticleArt}
               variant="level"
@@ -3358,6 +3459,8 @@ export function StaffGameView({
               gameEffectsEnabled={settings.gameEffectsEnabled}
               isFinalLevel={level >= GAME_LEVEL_COUNT}
               isWrongNoteReview={summaryIsWrongNoteReview}
+              wrongNoteReviewTimedOut={summaryWrongNoteReviewTimedOut}
+              reviewQuestionCount={roundReviewQuestionCountRef.current}
               wrongNoteComparison={summaryWrongNoteComparison}
               reviewPerformance={summaryReviewPerformance}
               wrongNoteArchiveDate={summaryArchiveDate}
@@ -3451,7 +3554,7 @@ export function StaffGameView({
           </div>
         ) : null}
         <footer
-          className={`staff-game-controls${touchGameLayout ? " is-touch-layout" : ""}${isSongMode ? " is-song-mode" : ""}`}
+          className={`staff-game-controls${touchGameLayout ? " is-touch-layout" : ""}${isSongMode ? " is-song-mode" : ""}${showWrongNoteEndControl ? " is-wrong-note-review" : ""}`}
         >
           <button
             aria-label={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
@@ -3473,7 +3576,10 @@ export function StaffGameView({
               <span>{feedback}</span>
             )}
           </div>
-          <div aria-label="游戏操作" className="staff-game-toolbar is-desktop-control">
+          <div
+            aria-label="游戏操作"
+            className={`staff-game-toolbar is-desktop-control${showWrongNoteEndControl ? " is-wrong-note-review" : ""}`}
+          >
             <button
               aria-label="游戏提示"
               title="游戏提示"
@@ -3524,8 +3630,22 @@ export function StaffGameView({
                 />
               </button>
             ) : null}
+            {showWrongNoteEndControl ? (
+              <button
+                aria-label="结束复习"
+                className="staff-game-action-button staff-game-review-end-button"
+                onClick={endWrongNoteReview}
+                title="结束复习"
+                type="button"
+              >
+                <Square aria-hidden="true" size={20} strokeWidth={3} />
+              </button>
+            ) : null}
           </div>
-          <div aria-label="游戏操作" className="staff-game-toolbar is-mobile-control">
+          <div
+            aria-label="游戏操作"
+            className={`staff-game-toolbar is-mobile-control${showWrongNoteEndControl ? " is-wrong-note-review" : ""}`}
+          >
             <button
               aria-label={
                 !isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"
@@ -3585,6 +3705,17 @@ export function StaffGameView({
                   aria-hidden="true"
                   src={phase === "paused" ? actionResumeArt : actionPauseArt}
                 />
+              </button>
+            ) : null}
+            {showWrongNoteEndControl ? (
+              <button
+                aria-label="结束复习"
+                className="staff-game-action-button staff-game-review-end-button"
+                onClick={endWrongNoteReview}
+                title="结束复习"
+                type="button"
+              >
+                <Square aria-hidden="true" size={20} strokeWidth={3} />
               </button>
             ) : null}
           </div>

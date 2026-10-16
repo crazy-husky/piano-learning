@@ -72,11 +72,10 @@ interface StaffGameRoundClockOptions {
   notePoolScopeRef: MutableRefObject<StaffGameNotePoolScope>;
   noteSchedulingStrategyRef: MutableRefObject<StaffGameNoteSchedulingStrategy>;
   weakNoteWeightsRef: MutableRefObject<Map<number, number>>;
-  wrongNoteReviewWeightsRef: MutableRefObject<Map<number, number> | null>;
-  unlockedLevelRef: MutableRefObject<number>;
   recentNoteMidisRef: MutableRefObject<number[]>;
   targetTokenRef: MutableRefObject<number>;
   roundMetricsRef: MutableRefObject<StaffGameLevelRoundMetrics>;
+  wrongNoteReviewDurationMsRef: MutableRefObject<number>;
   elapsedBeforeRunRef: MutableRefObject<number>;
   runSegmentStartedAtRef: MutableRefObject<number>;
   targetRef: MutableRefObject<StaffGameTarget | null>;
@@ -91,6 +90,7 @@ interface StaffGameRoundClockOptions {
   setSongNotesCompleted: Dispatch<SetStateAction<number>>;
   setFeedback: Dispatch<SetStateAction<string>>;
   finishRound: () => void;
+  setWrongNoteReviewTimedOut: Dispatch<SetStateAction<boolean>>;
   resetComboDisplay: () => void;
   triggerMascotReaction: (action: "cheer" | "sad") => void;
   playGameSound: (sound: StaffGameSoundName) => void;
@@ -113,11 +113,10 @@ export function useStaffGameRoundClock({
   notePoolScopeRef,
   noteSchedulingStrategyRef,
   weakNoteWeightsRef,
-  wrongNoteReviewWeightsRef,
-  unlockedLevelRef,
   recentNoteMidisRef,
   targetTokenRef,
   roundMetricsRef,
+  wrongNoteReviewDurationMsRef,
   elapsedBeforeRunRef,
   runSegmentStartedAtRef,
   targetRef,
@@ -132,6 +131,7 @@ export function useStaffGameRoundClock({
   setSongNotesCompleted,
   setFeedback,
   finishRound,
+  setWrongNoteReviewTimedOut,
   resetComboDisplay,
   triggerMascotReaction,
   playGameSound,
@@ -143,6 +143,7 @@ export function useStaffGameRoundClock({
       // Do not introduce a new target when the timer cannot leave a fair response window.
       if (
         gameModeRef.current === "levels" &&
+        roundPurposeRef.current !== "wrong-note-review" &&
         gameDurationMs - atGameMs < MIN_LEVEL_TARGET_RESPONSE_WINDOW_MS
       ) {
         return;
@@ -155,14 +156,7 @@ export function useStaffGameRoundClock({
               return midi === undefined ? null : gameNoteFromMidi(midi);
             })()
           : roundPurposeRef.current === "wrong-note-review"
-            ? wrongNoteReviewWeightsRef.current
-              ? drawNextWrongNoteReviewNote(
-                  noteBagRef.current,
-                  recentNoteMidisRef.current,
-                  unlockedLevelRef.current,
-                  wrongNoteReviewWeightsRef.current
-                )
-              : null
+            ? drawNextWrongNoteReviewNote(noteBagRef.current, recentNoteMidisRef.current)
             : drawNextNote(
                 levelRef.current,
                 noteBagRef.current,
@@ -171,7 +165,12 @@ export function useStaffGameRoundClock({
                 noteSchedulingStrategyRef.current,
                 weakNoteWeightsRef.current
               );
-      if (!drawnNote) return;
+      if (!drawnNote) {
+        if (gameModeRef.current === "levels" && roundPurposeRef.current === "wrong-note-review") {
+          finishRound();
+        }
+        return;
+      }
       targetTokenRef.current += 1;
       const next = {
         ...drawnNote,
@@ -208,8 +207,6 @@ export function useStaffGameRoundClock({
       noteSchedulingStrategyRef,
       noteLabel,
       weakNoteWeightsRef,
-      wrongNoteReviewWeightsRef,
-      unlockedLevelRef,
       recentNoteMidisRef,
       roundMetricsRef,
       selectedSongIdRef,
@@ -220,6 +217,7 @@ export function useStaffGameRoundClock({
       targetPoppedRef,
       targetRef,
       targetTokenRef,
+      finishRound,
     ]
   );
 
@@ -232,11 +230,35 @@ export function useStaffGameRoundClock({
       if (now - lastUiUpdateAt >= 100) {
         lastUiUpdateAt = now;
         setElapsedMs(
-          gameModeRef.current === "songs" ? gameTime : Math.min(gameDurationMs, gameTime)
+          gameModeRef.current === "songs" || roundPurposeRef.current === "wrong-note-review"
+            ? gameTime
+            : Math.min(gameDurationMs, gameTime)
         );
       }
-      if (gameModeRef.current === "levels" && gameTime >= gameDurationMs) {
+      if (
+        gameModeRef.current === "levels" &&
+        roundPurposeRef.current !== "wrong-note-review" &&
+        gameTime >= gameDurationMs
+      ) {
         setElapsedMs(gameDurationMs);
+        finishRound();
+        return;
+      }
+      if (
+        gameModeRef.current === "levels" &&
+        roundPurposeRef.current === "wrong-note-review" &&
+        wrongNoteReviewDurationMsRef.current > 0 &&
+        gameTime >= wrongNoteReviewDurationMsRef.current
+      ) {
+        setElapsedMs(wrongNoteReviewDurationMsRef.current);
+        setWrongNoteReviewTimedOut(true);
+        const activeTarget = targetRef.current;
+        if (activeTarget && !targetPoppedRef.current) {
+          const outcome = roundMetricsRef.current.firstInputByToken.get(activeTarget.token);
+          if (outcome && outcome.firstInputCorrect === null && !outcome.missed) {
+            roundMetricsRef.current.firstInputByToken.delete(activeTarget.token);
+          }
+        }
         finishRound();
         return;
       }
@@ -307,8 +329,10 @@ export function useStaffGameRoundClock({
     phase,
     phaseRef,
     playGameSound,
+    roundPurposeRef,
     resetComboDisplay,
     roundMetricsRef,
+    wrongNoteReviewDurationMsRef,
     runSegmentStartedAtRef,
     selectedSongIdRef,
     setElapsedMs,
@@ -322,6 +346,7 @@ export function useStaffGameRoundClock({
     targetRef,
     triggerMascotReaction,
     waitingForNextTargetRef,
+    setWrongNoteReviewTimedOut,
   ]);
 
   const startRunSegment = useCallback((): void => {
@@ -332,9 +357,11 @@ export function useStaffGameRoundClock({
     const pausedAt = performance.now();
     const elapsedAtPause = elapsedBeforeRunRef.current + pausedAt - runSegmentStartedAtRef.current;
     elapsedBeforeRunRef.current =
-      gameModeRef.current === "songs" ? elapsedAtPause : Math.min(gameDurationMs, elapsedAtPause);
+      gameModeRef.current === "songs" || roundPurposeRef.current === "wrong-note-review"
+        ? elapsedAtPause
+        : Math.min(gameDurationMs, elapsedAtPause);
     return elapsedBeforeRunRef.current;
-  }, [elapsedBeforeRunRef, gameDurationMs, gameModeRef, runSegmentStartedAtRef]);
+  }, [elapsedBeforeRunRef, gameDurationMs, gameModeRef, roundPurposeRef, runSegmentStartedAtRef]);
 
   return { pauseRunSegment, spawnTarget, startRunSegment };
 }

@@ -18,6 +18,7 @@ import { StaffGameWrongNoteTrendPanel } from "./StaffGameWrongNoteTrendPanel";
 
 const DIFFICULTY_LABELS: Record<string, string> = {
   muggle: "麻瓜",
+  leisure: "悠闲",
   easy: "简单",
   normal: "普通",
   hard: "困难",
