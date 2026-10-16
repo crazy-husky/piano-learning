@@ -25,6 +25,7 @@ import type {
   StaffGameWrongNoteArchiveRun,
   StoredAppSettings,
   StaffNotationMode,
+  StaffRangeSelection,
 } from "../domain/types";
 import { localDateKey } from "../domain/stats";
 import {
@@ -35,6 +36,7 @@ import type { VocalAudioMaterial } from "../domain/vocalPitch";
 
 const PENDING_STAFF_GAME_ARCHIVES_KEY = "anki-note.pendingArchive";
 const STAFF_GAME_ARCHIVE_MUTATION_LOCK_NAME = "anki-note.staff-game-archive-mutations";
+const STORED_PROMPT_NOTE_DURATIONS = ["whole", "quarter", "eighth", "sixteenth"] as const;
 let staffGameArchiveMutationQueue: Promise<void> = Promise.resolve();
 
 function withStaffGameArchiveMutationLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -279,6 +281,35 @@ function normalizeStoredStaffNotationMode(value: unknown): StaffNotationMode {
   return "grand";
 }
 
+function normalizeStaffRangeProfiles(
+  value: unknown
+): Partial<Record<StaffNotationMode, StaffRangeSelection>> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const storedProfiles = value as Record<string, unknown>;
+  const profiles: Partial<Record<StaffNotationMode, StaffRangeSelection>> = {};
+  for (const mode of ["treble-only", "bass-only", "grand"] as const) {
+    const candidate = storedProfiles[mode];
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+    const storedRange = candidate as Record<string, unknown>;
+    profiles[mode] = {
+      enabledGroupIds: Array.isArray(storedRange.enabledGroupIds)
+        ? normalizeCurrentPracticeGroupIds(storedRange.enabledGroupIds as string[])
+        : [],
+      enabledPitchIds: normalizeEnabledPitchIds(
+        Array.isArray(storedRange.enabledPitchIds)
+          ? (storedRange.enabledPitchIds as string[])
+          : undefined
+      ),
+      crossGroupPitchIds: normalizeEnabledPitchIds(
+        Array.isArray(storedRange.crossGroupPitchIds)
+          ? (storedRange.crossGroupPitchIds as string[])
+          : undefined
+      ),
+    };
+  }
+  return Object.keys(profiles).length > 0 ? profiles : undefined;
+}
+
 export function normalizeAppSettings(existing: StoredAppSettings): AppSettings {
   const { selectedStaffs: _discardedStaffs, ...stored } = existing as StoredAppSettings & {
     selectedStaffs?: unknown;
@@ -295,12 +326,25 @@ export function normalizeAppSettings(existing: StoredAppSettings): AppSettings {
         : normalizePracticeGroupIds(existing.enabledGroupIds),
     enabledPitchIds: normalizeEnabledPitchIds(existing.enabledPitchIds),
     crossGroupPitchIds: normalizeEnabledPitchIds(existing.crossGroupPitchIds),
+    staffRangeProfiles: normalizeStaffRangeProfiles(existing.staffRangeProfiles),
     staffNotationMode: normalizeStoredStaffNotationMode(
       "staffNotationMode" in stored ? stored.staffNotationMode : undefined
     ),
     defaultMode: existing.defaultMode ?? defaults.defaultMode,
     promptDisplayMode: existing.promptDisplayMode ?? "staff-page",
     promptNoteDuration: existing.promptNoteDuration ?? "quarter",
+    ...(Array.isArray(existing.promptNoteDurations) &&
+    existing.promptNoteDurations.some((duration) =>
+      STORED_PROMPT_NOTE_DURATIONS.includes(
+        duration as (typeof STORED_PROMPT_NOTE_DURATIONS)[number]
+      )
+    )
+      ? {
+          promptNoteDurations: STORED_PROMPT_NOTE_DURATIONS.filter((duration) =>
+            existing.promptNoteDurations?.includes(duration)
+          ),
+        }
+      : {}),
     fixedCount: existing.fixedCount ?? defaults.fixedCount,
     fixedDurationSeconds: existing.fixedDurationSeconds ?? defaults.fixedDurationSeconds,
     autoPlayTarget: existing.autoPlayTarget ?? defaults.autoPlayTarget,

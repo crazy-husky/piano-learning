@@ -1,0 +1,602 @@
+.staff-distance-setup-grid {
+  --setup-panel-width: 760px;
+  gap: 16px;
+}
+
+.staff-distance-setup-panel,
+.staff-distance-history-panel,
+.staff-distance-summary-panel {
+  width: min(760px, 100%);
+  margin-inline: auto;
+}
+
+.staff-distance-setup-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.staff-distance-setup-panel .panel-heading {
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
+.staff-distance-setup-panel .panel-heading h1,
+.staff-distance-setup-panel .panel-heading p {
+  margin: 0;
+}
+
+.staff-distance-description,
+.staff-distance-field-hint,
+.staff-distance-summary-next-step {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.staff-distance-setup-panel .control-block {
+  margin-top: 0;
+}
+
+.staff-distance-range-options {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.staff-distance-range-options button {
+  min-height: 42px;
+  padding-inline: 8px;
+}
+
+.staff-distance-range-options button.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.staff-distance-duration-options {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.staff-distance-duration-options button {
+  display: inline-flex;
+  min-width: 0;
+  height: auto;
+  min-height: var(--control-height-compact);
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding-inline: 2px;
+  font-size: 13px;
+}
+
+.staff-distance-field-hint {
+  margin: 0;
+}
+
+.staff-distance-training-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.staff-distance-training-options button {
+  display: grid;
+  min-height: 70px;
+  gap: 4px;
+  justify-items: start;
+  padding: 11px 13px;
+  text-align: left;
+}
+
+.staff-distance-training-options button span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.staff-distance-training-options button.is-selected,
+.staff-distance-input-methods button.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.staff-distance-input-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.staff-distance-input-methods button {
+  min-height: 42px;
+  padding-inline: 14px;
+}
+
+.staff-distance-input-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.staff-distance-input-status button {
+  min-height: 38px;
+}
+
+.staff-distance-count-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.staff-distance-count-input input {
+  width: 76px;
+  min-height: var(--control-height);
+}
+
+.staff-distance-definition {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.staff-distance-definition span {
+  color: var(--muted);
+}
+
+.staff-distance-setup-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.staff-distance-setup-panel .action-row {
+  margin-top: 0;
+}
+
+.staff-distance-setup-panel .action-row button {
+  min-height: 48px;
+}
+
+.staff-distance-setup-panel .action-row kbd {
+  margin-left: 8px;
+}
+
+.staff-distance-history-panel {
+  padding-block: 14px;
+}
+
+.staff-distance-history-panel h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.staff-distance-history-panel ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.staff-distance-history-panel li {
+  display: grid;
+  grid-template-columns: 1.1fr 0.8fr 0.7fr 1fr;
+  gap: 8px;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.staff-distance-history-panel li strong {
+  color: var(--text);
+}
+
+.staff-distance-run-shell {
+  position: relative;
+  display: grid;
+  width: min(980px, 100%);
+  gap: 12px;
+  margin: 0 auto;
+  padding: 12px 0 20px;
+}
+
+.staff-distance-run-header {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.staff-distance-run-header h1,
+.staff-distance-run-header p {
+  margin: 0;
+}
+
+.staff-distance-run-header h1 {
+  font-size: 20px;
+}
+
+.staff-distance-run-header p,
+.staff-distance-run-shortcuts {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.staff-distance-run-actions,
+.staff-distance-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.staff-distance-run-actions button,
+.staff-distance-summary-actions button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.staff-distance-score-wrap {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-surface);
+}
+
+.staff-distance-score-wrap .staff-page-renderer > svg {
+  width: auto;
+  max-width: 100%;
+}
+
+.staff-distance-question-copy {
+  min-height: 26px;
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.staff-distance-play-input-status {
+  justify-self: center;
+  min-height: 38px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.staff-distance-answer-row {
+  display: grid;
+  width: min(344px, 100%);
+  margin-inline: auto;
+  gap: 8px;
+}
+
+.staff-distance-answer-line {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.staff-distance-answer-button {
+  flex: 1 1 72px;
+  max-width: 72px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.staff-distance-answer-button.is-correct {
+  border-color: var(--success);
+  background: var(--success-surface);
+  color: var(--success);
+}
+
+.staff-distance-hint-trigger {
+  justify-self: center;
+}
+
+.staff-distance-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.staff-distance-hint-steps {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.staff-distance-hint-steps i {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  background: var(--accent-soft);
+}
+
+.staff-distance-hint small {
+  flex-basis: 100%;
+  text-align: center;
+}
+
+.staff-distance-run-shortcuts {
+  margin: 0;
+  text-align: center;
+}
+
+.staff-distance-pause-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(3px);
+}
+
+.staff-distance-pause-overlay strong {
+  font-size: 24px;
+}
+
+.staff-distance-pause-overlay span {
+  color: var(--muted);
+}
+
+.staff-distance-pause-overlay button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 7px;
+}
+
+.staff-distance-summary-shell {
+  width: min(760px, 100%);
+  margin: 24px auto;
+}
+
+.staff-distance-summary-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.staff-distance-summary-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.staff-distance-summary-heading h1,
+.staff-distance-summary-heading p {
+  margin: 0;
+}
+
+.staff-distance-summary-heading p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.staff-distance-summary-mark {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--success-surface);
+  color: var(--success);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.staff-distance-summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.staff-distance-summary-metrics > div {
+  display: grid;
+  gap: 3px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  text-align: center;
+}
+
+.staff-distance-summary-metrics strong {
+  font-size: 20px;
+}
+
+.staff-distance-summary-metrics span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.staff-distance-summary-table-wrap {
+  overflow-x: auto;
+}
+
+.staff-distance-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: right;
+}
+
+.staff-distance-summary-table th,
+.staff-distance-summary-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.staff-distance-summary-table thead th,
+.staff-distance-summary-table tbody th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.staff-distance-summary-table thead th:first-child,
+.staff-distance-summary-table tbody th {
+  text-align: left;
+}
+
+.staff-distance-summary-next-step {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .practice-setup-shell:has(.staff-distance-run-shell) {
+    width: 100%;
+    padding: 8px 12px;
+  }
+
+  .practice-setup-shell .practice-kind-tabs {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .practice-setup-shell .practice-kind-tabs button {
+    min-width: 0;
+    padding-inline: 5px;
+    font-size: 13px;
+  }
+
+  .staff-distance-setup-grid {
+    gap: 10px;
+  }
+
+  .staff-distance-setup-panel,
+  .staff-distance-history-panel {
+    padding: 14px;
+  }
+
+  .staff-distance-range-options {
+    gap: 4px;
+  }
+
+  .staff-distance-training-options {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-distance-training-options button {
+    min-height: 60px;
+  }
+
+  .staff-distance-input-methods button {
+    flex: 1 1 120px;
+  }
+
+  .staff-distance-range-options button {
+    min-height: 40px;
+    padding-inline: 2px;
+    font-size: 12px;
+  }
+
+  .staff-distance-run-shell {
+    gap: 10px;
+    padding-top: 6px;
+  }
+
+  .staff-distance-run-header h1 {
+    font-size: 18px;
+  }
+
+  .staff-distance-run-actions {
+    gap: 5px;
+  }
+
+  .staff-distance-run-actions button {
+    min-height: 36px;
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+
+  .staff-distance-answer-row {
+    gap: 5px;
+  }
+
+  .staff-distance-answer-line {
+    gap: 5px;
+  }
+
+  .staff-distance-answer-button {
+    min-height: 48px;
+    font-size: 19px;
+  }
+
+  .staff-distance-summary-shell {
+    margin-block: 12px;
+  }
+
+  .staff-distance-summary-panel {
+    padding: 14px;
+  }
+
+  .staff-distance-summary-metrics > div {
+    padding: 9px 4px;
+  }
+
+  .staff-distance-summary-metrics strong {
+    font-size: 17px;
+  }
+
+  .staff-distance-summary-metrics span {
+    font-size: 10px;
+  }
+
+  .staff-distance-history-panel li {
+    grid-template-columns: 1fr 0.8fr 0.7fr;
+  }
+
+  .staff-distance-history-panel li span:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .staff-distance-run-shortcuts {
+    display: none;
+  }
+}

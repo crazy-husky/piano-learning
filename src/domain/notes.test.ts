@@ -70,17 +70,19 @@ describe("notes", () => {
     );
   });
 
-  it("selects all 37 written pitches on either single clef", () => {
+  it("keeps single-clef core ranges on the correct side of middle C", () => {
     const groups = PRACTICE_GROUPS.map((group) => group.id);
     const trebleNotes = getNotesForGroups(groups, true, "treble-only");
     const bassNotes = getNotesForGroups(groups, true, "bass-only");
 
-    expect(trebleNotes).toHaveLength(37);
+    expect(trebleNotes).toHaveLength(19);
     expect(trebleNotes.every((note) => note.staff === "treble")).toBe(true);
-    expect(bassNotes).toHaveLength(37);
+    expect(trebleNotes.map((note) => note.pitchId)).toContain("C4");
+    expect(trebleNotes.map((note) => note.pitchId)).not.toContain("B3");
+    expect(bassNotes).toHaveLength(18);
     expect(bassNotes.every((note) => note.staff === "bass")).toBe(true);
-    expect(trebleNotes.map((note) => note.id)).toContain("F1-treble");
-    expect(bassNotes.map((note) => note.id)).toContain("G6-bass");
+    expect(bassNotes.map((note) => note.pitchId)).toContain("B3");
+    expect(bassNotes.map((note) => note.pitchId)).not.toContain("C4");
   });
 
   it("normalizes persisted group ids to the current low-to-high groups", () => {

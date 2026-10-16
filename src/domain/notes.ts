@@ -268,6 +268,95 @@ export function getSelectedPitchIds(
   return AVAILABLE_PITCH_IDS.filter((pitchId) => selected.has(pitchId));
 }
 
+export interface StaffRangeExtensionOption {
+  direction: "lower" | "higher";
+  pitchIds: PitchId[];
+}
+
+export function getStaffCorePitchIds(
+  pitchIds: readonly PitchId[],
+  staffNotationMode: StaffNotationMode
+): PitchId[] {
+  const selectedPitchIds = new Set(pitchIds);
+  if (staffNotationMode === "grand") {
+    return AVAILABLE_PITCH_IDS.filter((pitchId) => selectedPitchIds.has(pitchId));
+  }
+  const boundaryPitchId = staffNotationMode === "treble-only" ? "C4" : "B3";
+  const boundary = AVAILABLE_PITCH_IDS.indexOf(boundaryPitchId);
+  return AVAILABLE_PITCH_IDS.filter((pitchId) => {
+    const index = AVAILABLE_PITCH_IDS.indexOf(pitchId);
+    return (
+      selectedPitchIds.has(pitchId) &&
+      (staffNotationMode === "treble-only" ? index >= boundary : index <= boundary)
+    );
+  });
+}
+
+export function getStaffRangeExtensionOptions(
+  basePitchIds: readonly PitchId[]
+): StaffRangeExtensionOption[] {
+  if (basePitchIds.length === 0) return [];
+  const indexes = basePitchIds
+    .map((pitchId) => AVAILABLE_PITCH_IDS.indexOf(pitchId))
+    .filter((index) => index >= 0);
+  if (indexes.length === 0) return [];
+  const options: StaffRangeExtensionOption[] = [];
+  const counts = [3, 5];
+  const lowest = Math.min(...indexes);
+  const highest = Math.max(...indexes);
+  for (const count of counts) {
+    const start = lowest - count;
+    if (start >= 0) {
+      options.push({ direction: "lower", pitchIds: AVAILABLE_PITCH_IDS.slice(start, lowest) });
+    }
+    const end = highest + count;
+    if (end < AVAILABLE_PITCH_IDS.length) {
+      options.push({
+        direction: "higher",
+        pitchIds: AVAILABLE_PITCH_IDS.slice(highest + 1, end + 1),
+      });
+    }
+  }
+  return options;
+}
+
+export function getValidStaffCrossGroupPitchIds(
+  basePitchIds: readonly PitchId[],
+  crossGroupPitchIds: readonly PitchId[] | undefined
+): PitchId[] {
+  if (!crossGroupPitchIds?.length) return [];
+  const candidate = new Set(crossGroupPitchIds);
+  const options = getStaffRangeExtensionOptions(basePitchIds);
+  const selected = new Set<PitchId>();
+  for (const direction of ["lower", "higher"] as const) {
+    const option = options
+      .filter((candidateOption) => candidateOption.direction === direction)
+      .filter((candidateOption) =>
+        candidateOption.pitchIds.every((pitchId) => candidate.has(pitchId))
+      )
+      .sort((left, right) => right.pitchIds.length - left.pitchIds.length)[0];
+    option?.pitchIds.forEach((pitchId) => selected.add(pitchId));
+  }
+  return AVAILABLE_PITCH_IDS.filter((pitchId) => selected.has(pitchId));
+}
+
+export function getStaffSelectedPitchIds(
+  groupIds: readonly PracticeGroupId[],
+  enabledPitchIds: readonly PitchId[] | undefined,
+  crossGroupPitchIds: readonly PitchId[] | undefined,
+  staffNotationMode: StaffNotationMode
+): PitchId[] {
+  const basePitchIds = getStaffCorePitchIds(
+    enabledPitchIds ?? getPitchIdsForGroups(groupIds),
+    staffNotationMode
+  );
+  const selected = new Set([
+    ...basePitchIds,
+    ...getValidStaffCrossGroupPitchIds(basePitchIds, crossGroupPitchIds),
+  ]);
+  return AVAILABLE_PITCH_IDS.filter((pitchId) => selected.has(pitchId));
+}
+
 export function normalizeEnabledPitchIds(
   pitchIds: readonly string[] | undefined
 ): PitchId[] | undefined {
@@ -285,13 +374,10 @@ export function getNotesForSelection(
   includeInterStaffLedgerSpellings = true,
   staffNotationMode: StaffNotationMode = "grand"
 ): TargetNote[] {
-  const enabled = new Set(groupIds);
-  const selectedPitchIds =
-    enabledPitchIds === undefined && (crossGroupPitchIds?.length ?? 0) === 0
-      ? undefined
-      : new Set(getSelectedPitchIds(groupIds, enabledPitchIds, crossGroupPitchIds));
-  const isSelected = (note: TargetNote): boolean =>
-    selectedPitchIds ? selectedPitchIds.has(note.pitchId) : enabled.has(note.groupId);
+  const selectedPitchIds = new Set(
+    getStaffSelectedPitchIds(groupIds, enabledPitchIds, crossGroupPitchIds, staffNotationMode)
+  );
+  const isSelected = (note: TargetNote): boolean => selectedPitchIds.has(note.pitchId);
   if (staffNotationMode !== "grand") {
     const staff = staffForSingleClefMode(staffNotationMode);
     return ALL_NOTES.filter((note) => isSelected(note) && note.staff === staff);

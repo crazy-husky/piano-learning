@@ -123,6 +123,9 @@ export function buildPracticeSessionStartSnapshot({
         playAnswerNote: settings.playAnswerNote,
         promptDisplayMode: settings.promptDisplayMode,
         promptNoteDuration: settings.promptNoteDuration,
+        ...(settings.promptNoteDurations && settings.promptNoteDurations.length > 1
+          ? { promptNoteDurations: [...settings.promptNoteDurations] }
+          : {}),
         smoothStaffPageScroll,
         startPausedReading,
       },

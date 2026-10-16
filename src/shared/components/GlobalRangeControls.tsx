@@ -2,19 +2,27 @@ import { useRef } from "react";
 
 import {
   AVAILABLE_PITCH_IDS,
+  DEFAULT_ENABLED_GROUPS,
   getPitchIdsForGroups,
-  getSelectedPitchIds,
+  getStaffCorePitchIds,
+  getStaffRangeExtensionOptions,
+  getStaffSelectedPitchIds,
+  getValidStaffCrossGroupPitchIds,
   PITCH_OCTAVE_GROUPS,
 } from "../../domain/notes";
-import type { AppSettings, PitchId, StaffNotationMode } from "../../domain/types";
+import type {
+  AppSettings,
+  PitchId,
+  StaffNotationMode,
+  StaffRangeSelection,
+} from "../../domain/types";
 
 interface GlobalRangeControlsProps {
   disabled?: boolean;
+  allowInterStaffLedgerChoice?: boolean;
   settings: AppSettings;
   onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
 }
-
-type PitchDirection = "lower" | "higher";
 
 function groupPitchIds(pitchIds: readonly PitchId[]): PitchId[][] {
   const selected = new Set(pitchIds);
@@ -42,22 +50,6 @@ function formatPitchRanges(pitchIds: readonly PitchId[]): string {
     .join("、");
 }
 
-function getAdjacentPitchRange(
-  selectedPitchIds: readonly PitchId[],
-  direction: PitchDirection
-): PitchId[] {
-  if (selectedPitchIds.length === 0) return [];
-  const selectedIndices = selectedPitchIds
-    .map((pitchId) => AVAILABLE_PITCH_IDS.indexOf(pitchId))
-    .filter((index) => index >= 0);
-  if (selectedIndices.length === 0) return [];
-
-  const edge = direction === "lower" ? Math.min(...selectedIndices) : Math.max(...selectedIndices);
-  return direction === "lower"
-    ? AVAILABLE_PITCH_IDS.slice(Math.max(0, edge - 3), edge)
-    : AVAILABLE_PITCH_IDS.slice(edge + 1, edge + 4);
-}
-
 function orderedPitchIds(pitchIds: Iterable<PitchId>): PitchId[] {
   const selected = new Set(pitchIds);
   return AVAILABLE_PITCH_IDS.filter((pitchId) => selected.has(pitchId));
@@ -65,20 +57,29 @@ function orderedPitchIds(pitchIds: Iterable<PitchId>): PitchId[] {
 
 export function GlobalRangeControls({
   disabled = false,
+  allowInterStaffLedgerChoice = true,
   settings,
   onSettingsSaved,
 }: GlobalRangeControlsProps): JSX.Element {
   const pointerToggleRef = useRef(false);
-  const selectedPitchIds = getSelectedPitchIds(
-    settings.enabledGroupIds,
-    settings.enabledPitchIds,
-    settings.crossGroupPitchIds
+  const staffMode = settings.staffNotationMode;
+  const activeRange = settings.staffRangeProfiles?.[staffMode] ?? settings;
+  const basePitchIds = getStaffCorePitchIds(
+    activeRange.enabledPitchIds ?? getPitchIdsForGroups(activeRange.enabledGroupIds),
+    staffMode
+  );
+  const crossPitchIds = getValidStaffCrossGroupPitchIds(
+    basePitchIds,
+    activeRange.crossGroupPitchIds
+  );
+  const selectedPitchIds = getStaffSelectedPitchIds(
+    activeRange.enabledGroupIds,
+    activeRange.enabledPitchIds,
+    activeRange.crossGroupPitchIds,
+    staffMode
   );
   const selectedPitchSet = new Set(selectedPitchIds);
-  const basePitchIds = settings.enabledPitchIds ?? getPitchIdsForGroups(settings.enabledGroupIds);
-  const crossPitchIds = settings.crossGroupPitchIds ?? [];
-  const lowerExtension = getAdjacentPitchRange(selectedPitchIds, "lower");
-  const higherExtension = getAdjacentPitchRange(selectedPitchIds, "higher");
+  const extensionOptions = getStaffRangeExtensionOptions(basePitchIds);
   const selectedOctaveGroupLabels = PITCH_OCTAVE_GROUPS.filter((group) =>
     group.pitchIds.some((pitchId) => selectedPitchSet.has(pitchId))
   ).map((group) => group.label);
@@ -104,14 +105,22 @@ export function GlobalRangeControls({
 
   function savePitchSelection(nextBase: Iterable<PitchId>, nextCross: Iterable<PitchId>): void {
     const normalizedBase = orderedPitchIds(nextBase);
-    const normalizedCross = orderedPitchIds(nextCross).filter(
-      (pitchId) => !normalizedBase.includes(pitchId)
+    const normalizedCross = getValidStaffCrossGroupPitchIds(
+      normalizedBase,
+      orderedPitchIds(nextCross)
     );
-    save({
-      ...settings,
+    const nextRange: StaffRangeSelection = {
       enabledGroupIds: [],
       enabledPitchIds: normalizedBase,
       crossGroupPitchIds: normalizedCross,
+    };
+    save({
+      ...settings,
+      ...nextRange,
+      staffRangeProfiles: {
+        ...settings.staffRangeProfiles,
+        [staffMode]: nextRange,
+      },
     });
   }
 
@@ -135,24 +144,77 @@ export function GlobalRangeControls({
     savePitchSelection(nextBase, nextCross);
   }
 
-  function addCrossGroupRange(pitchIds: readonly PitchId[]): void {
-    const nextCross = new Set(crossPitchIds);
-    pitchIds.forEach((pitchId) => {
-      if (!basePitchIds.includes(pitchId)) nextCross.add(pitchId);
-    });
-    savePitchSelection(basePitchIds, nextCross);
-  }
-
-  function removeCrossGroupRange(pitchIds: readonly PitchId[]): void {
-    const removed = new Set(pitchIds);
-    savePitchSelection(
-      basePitchIds,
-      crossPitchIds.filter((pitchId) => !removed.has(pitchId))
+  function isExtensionSelected(
+    direction: "lower" | "higher",
+    pitchIds: readonly PitchId[]
+  ): boolean {
+    const directionOptions = extensionOptions.filter((option) => option.direction === direction);
+    const directionPitchIds = new Set(directionOptions.flatMap((option) => option.pitchIds));
+    const selectedDirectionPitchIds = crossPitchIds.filter((pitchId) =>
+      directionPitchIds.has(pitchId)
+    );
+    return (
+      selectedDirectionPitchIds.length === pitchIds.length &&
+      pitchIds.every((pitchId) => selectedDirectionPitchIds.includes(pitchId))
     );
   }
 
+  function toggleCrossGroupRange(option: {
+    direction: "lower" | "higher";
+    pitchIds: PitchId[];
+  }): void {
+    const directionPitchIds = new Set(
+      extensionOptions
+        .filter((candidate) => candidate.direction === option.direction)
+        .flatMap((candidate) => candidate.pitchIds)
+    );
+    const keptOtherDirection = crossPitchIds.filter((pitchId) => !directionPitchIds.has(pitchId));
+    const selected = isExtensionSelected(option.direction, option.pitchIds);
+    savePitchSelection(
+      basePitchIds,
+      selected ? keptOtherDirection : [...keptOtherDirection, ...option.pitchIds]
+    );
+  }
+
+  function removeCrossGroupRange(): void {
+    savePitchSelection(basePitchIds, []);
+  }
+
   function selectStaffNotationMode(staffNotationMode: StaffNotationMode): void {
-    save({ ...settings, staffNotationMode });
+    const existingRange = settings.staffRangeProfiles?.[staffNotationMode];
+    const nextBase = existingRange
+      ? getStaffCorePitchIds(
+          existingRange.enabledPitchIds ?? getPitchIdsForGroups(existingRange.enabledGroupIds),
+          staffNotationMode
+        )
+      : (() => {
+          const compatible = getStaffCorePitchIds(basePitchIds, staffNotationMode);
+          return compatible.length > 0
+            ? compatible
+            : getStaffCorePitchIds(getPitchIdsForGroups(DEFAULT_ENABLED_GROUPS), staffNotationMode);
+        })();
+    const nextCross = existingRange
+      ? getValidStaffCrossGroupPitchIds(nextBase, existingRange.crossGroupPitchIds)
+      : [];
+    const nextRange: StaffRangeSelection = {
+      enabledGroupIds: [],
+      enabledPitchIds: nextBase,
+      crossGroupPitchIds: nextCross,
+    };
+    save({
+      ...settings,
+      ...nextRange,
+      staffNotationMode,
+      staffRangeProfiles: {
+        ...settings.staffRangeProfiles,
+        [staffMode]: {
+          enabledGroupIds: [],
+          enabledPitchIds: basePitchIds,
+          crossGroupPitchIds: crossPitchIds,
+        },
+        [staffNotationMode]: nextRange,
+      },
+    });
   }
 
   function toggleInterStaffLedger(checked: boolean): void {
@@ -177,15 +239,27 @@ export function GlobalRangeControls({
       >
         <div className="global-range-pitch-heading">
           <strong>练习音组</strong>
-          <small>可多选；小字一组包含中央 C</small>
+          <small>
+            {staffMode === "treble-only"
+              ? "高音谱主体从中央 C（C4）起；低于 C4 的加练音按跨手识谱处理"
+              : staffMode === "bass-only"
+                ? "低音谱主体到中央 C 下方 B3；高于 B3 的加练音按跨手识谱处理"
+                : "可多选；小字一组包含中央 C"}
+          </small>
         </div>
         <div className="global-range-groups">
           {PITCH_OCTAVE_GROUPS.map((group) => {
-            const selectedCount = group.pitchIds.filter((pitchId) =>
+            const selectablePitchIds = getStaffCorePitchIds(group.pitchIds, staffMode);
+            const selectedCount = selectablePitchIds.filter((pitchId) =>
               selectedPitchSet.has(pitchId)
             ).length;
-            const checked = selectedCount === group.pitchIds.length;
+            const checked =
+              selectablePitchIds.length > 0 && selectedCount === selectablePitchIds.length;
             const partial = selectedCount > 0 && !checked;
+            const displayedRange =
+              selectablePitchIds.length > 0
+                ? formatPitchRanges(selectablePitchIds)
+                : group.rangeLabel;
             return (
               <label
                 className={
@@ -200,19 +274,19 @@ export function GlobalRangeControls({
               >
                 <input
                   checked={checked}
-                  disabled={disabled}
+                  disabled={disabled || selectablePitchIds.length === 0}
                   ref={(input) => {
                     if (input) input.indeterminate = partial;
                   }}
                   type="checkbox"
                   onChange={(event) => {
-                    toggleOctaveGroup(group.pitchIds);
+                    toggleOctaveGroup(selectablePitchIds);
                     blurAfterPointerToggle(event.currentTarget);
                   }}
                 />
                 <span className="global-range-group-text">
                   <strong>{group.label}</strong>
-                  <small>{group.rangeLabel}</small>
+                  <small>{displayedRange}</small>
                 </span>
                 {partial ? <small className="global-range-partial-label">部分</small> : null}
               </label>
@@ -232,44 +306,65 @@ export function GlobalRangeControls({
           ) : null}
         </div>
         <div className="global-range-cross-section">
-          <span className="global-range-cross-title">跨组加练</span>
+          <span className="global-range-cross-title">音域加练</span>
           <div className="global-range-cross-options">
-            {lowerExtension.length > 0 ? (
-              <button
-                disabled={disabled}
-                type="button"
-                onClick={() => addCrossGroupRange(lowerExtension)}
+            {extensionOptions.length === 0 ? (
+              <small>
+                {basePitchIds.length === 0
+                  ? "先选择一个音组，再设置加练。"
+                  : "当前音域已到可用范围边界。"}
+              </small>
+            ) : (
+              extensionOptions.map((option) => {
+                const selected = isExtensionSelected(option.direction, option.pitchIds);
+                const directionLabel = option.direction === "lower" ? "向低" : "向高";
+                return (
+                  <button
+                    aria-label={
+                      selected
+                        ? `取消${directionLabel}加练 ${option.pitchIds.length} 音`
+                        : `${directionLabel}加练 ${option.pitchIds.length} 音`
+                    }
+                    aria-pressed={selected}
+                    className={selected ? "active" : ""}
+                    disabled={disabled}
+                    key={`${option.direction}-${option.pitchIds.length}`}
+                    type="button"
+                    onClick={() => toggleCrossGroupRange(option)}
+                  >
+                    {directionLabel}加练 {option.pitchIds.length} 音 ·{" "}
+                    {formatPitchRanges(option.pitchIds)}
+                  </button>
+                );
+              })
+            )}
+            {basePitchIds.length > 0 && (staffMode === "grand" || extensionOptions.length > 0) ? (
+              <small
+                className={
+                  staffMode === "grand"
+                    ? "global-range-cross-note"
+                    : "global-range-cross-note global-range-cross-note-crossover"
+                }
               >
-                向低加练 {formatPitchRanges(lowerExtension)}
-              </button>
-            ) : null}
-            {higherExtension.length > 0 ? (
-              <button
-                disabled={disabled}
-                type="button"
-                onClick={() => addCrossGroupRange(higherExtension)}
-              >
-                向高加练 {formatPitchRanges(higherExtension)}
-              </button>
-            ) : null}
-            {lowerExtension.length === 0 && higherExtension.length === 0 ? (
-              <small>先选择一个音组</small>
+                {staffMode === "grand"
+                  ? "大谱表可同时向低、向高加练（每侧选 3 或 5 音）。加练音按 C4/B3 分界归谱，不做单谱模式的跨手交叉练习。"
+                  : staffMode === "treble-only"
+                    ? "高音谱向低、向高可同时加练；低于 C4 的部分按跨手识谱处理，仍记在高音谱。"
+                    : "低音谱向低、向高可同时加练；高于 B3 的部分按跨手识谱处理，仍记在低音谱。"}
+              </small>
             ) : null}
           </div>
           {crossPitchIds.length > 0 ? (
-            <div className="global-range-cross-selected" aria-label="已添加的跨组音">
+            <div className="global-range-cross-selected" aria-label="已添加的加练音">
               <span>已加练：{formatPitchRanges(crossPitchIds)}</span>
-              {groupPitchIds(crossPitchIds).map((range) => (
-                <button
-                  aria-label={`移除跨组加练 ${formatPitchRanges(range)}`}
-                  disabled={disabled}
-                  key={range.join("-")}
-                  type="button"
-                  onClick={() => removeCrossGroupRange(range)}
-                >
-                  移除
-                </button>
-              ))}
+              <button
+                aria-label="取消音域加练"
+                disabled={disabled}
+                type="button"
+                onClick={removeCrossGroupRange}
+              >
+                取消加练
+              </button>
             </div>
           ) : null}
         </div>
@@ -302,7 +397,7 @@ export function GlobalRangeControls({
             </button>
           ))}
         </div>
-        {settings.staffNotationMode === "grand" ? (
+        {settings.staffNotationMode === "grand" && allowInterStaffLedgerChoice ? (
           <label className="global-range-ledger-choice" onPointerDown={markPointerToggle}>
             <input
               checked={settings.includeInterStaffLedgerSpellings}

@@ -1,0 +1,932 @@
+import { Pause, Play, Square } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  StaffDistanceInputMethod,
+  PitchId,
+  PracticeMode,
+  PracticeSessionRecord,
+  PromptNoteDuration,
+  StaffDistanceTrainingMode,
+  StaffDistancePracticeSettings,
+  StaffNotationMode,
+  TargetNote,
+} from "../../../domain/types";
+import type { PracticeAnswerInput } from "../../../domain/answerInput";
+import { isPracticeAnswerCorrect } from "../../../domain/answerInput";
+import type { MidiInputController } from "../../../midi/useMidiInput";
+import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
+import { isNaturalPianoKey } from "../../../shared/components/PianoKeyboard";
+import {
+  createStaffDistanceSequence,
+  summarizeStaffDistancePair,
+} from "../../../domain/staffDistancePractice";
+import { appendStaffDistanceRhythm, createStaffDistanceRhythm } from "../logic/staffDistanceRhythm";
+import { StaffPagePrompt } from "./StaffPagePrompt";
+import { MOBILE_PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
+
+interface PracticeNavigationExitRequest {
+  id: number;
+  returnToSetup?: boolean;
+  targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal";
+}
+
+interface StaffDistanceRunProps {
+  fixedCount: number;
+  fixedDurationSeconds: number;
+  inputMethod: StaffDistanceInputMethod;
+  mode: PracticeMode;
+  noteDurations: readonly PromptNoteDuration[];
+  navigationExitRequest?: PracticeNavigationExitRequest | null;
+  notes: TargetNote[];
+  onFinish: (session: PracticeSessionRecord, showSummary: boolean) => Promise<void>;
+  onNavigationExit?: (
+    targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal"
+  ) => void;
+  onRunningChange: (running: boolean) => void;
+  onMicrophoneAnswerHandlerChange: (
+    handler: ((answer: PracticeAnswerInput) => void) | null
+  ) => void;
+  midi: MidiInputController;
+  microphone: StaffDistanceMicrophoneInput;
+  session: PracticeSessionRecord;
+  settings: StaffDistancePracticeSettings;
+  staffNotationMode: StaffNotationMode;
+  trainingMode: StaffDistanceTrainingMode;
+  useLedgerGap: boolean;
+}
+
+export interface StaffDistanceMicrophoneInput {
+  error: string | null;
+  isListening: boolean;
+  start: (options?: { includeAccidentals?: boolean }) => Promise<boolean>;
+  status: PracticeMicrophoneStatus;
+  stop: () => void;
+}
+
+function durationLabel(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
+}
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target.closest("input, textarea, select, [contenteditable='true']") !== null
+  );
+}
+
+function intervalCountForRun(
+  mode: PracticeMode,
+  fixedCount: number,
+  durationSeconds: number
+): number {
+  if (mode === "fixed-count") return fixedCount;
+  if (mode === "fixed-duration") return Math.max(32, Math.ceil(durationSeconds * 4) + 8);
+  return 30_000;
+}
+
+interface StaffDistanceScorePage {
+  endIndex: number;
+  startIndex: number;
+}
+
+const DISTANCE_SCORE_MIN_NOTE_GAP_PX = 39;
+const DISTANCE_SCORE_BEAT_WIDTH_PX = 58;
+const DISTANCE_SCORE_BARLINE_GAP_PX = 12;
+const DISTANCE_SCORE_FIXED_WIDTH_RESERVE_PX = 220;
+const DISTANCE_SCORE_EXTENSION_BUFFER = 32;
+const GRAND_STAFF_SEGMENT_TRANSITIONS = 6;
+const EMPTY_EXTRA_PITCH_IDS: readonly PitchId[] = [];
+
+interface StaffDistanceRunSequence {
+  breakIndices: number[];
+  notes: TargetNote[];
+}
+
+function createStaffDistanceRunSequence(
+  notes: readonly TargetNote[],
+  settings: StaffDistancePracticeSettings,
+  transitionCount: number,
+  staffNotationMode: StaffNotationMode,
+  random: () => number = Math.random,
+  initialNote?: TargetNote,
+  extraPitchIds: readonly PitchId[] = []
+): StaffDistanceRunSequence {
+  const createSingleStaffSequence = (): StaffDistanceRunSequence => ({
+    breakIndices: [],
+    notes: createStaffDistanceSequence(
+      notes,
+      settings,
+      transitionCount,
+      random,
+      initialNote,
+      extraPitchIds
+    ),
+  });
+  if (staffNotationMode !== "grand" || transitionCount <= 0) {
+    return createSingleStaffSequence();
+  }
+
+  const sequences = {
+    bass: createStaffDistanceSequence(
+      notes.filter((note) => note.staff === "bass"),
+      settings,
+      transitionCount,
+      random,
+      initialNote?.staff === "bass" ? initialNote : undefined,
+      extraPitchIds
+    ),
+    treble: createStaffDistanceSequence(
+      notes.filter((note) => note.staff === "treble"),
+      settings,
+      transitionCount,
+      random,
+      initialNote?.staff === "treble" ? initialNote : undefined,
+      extraPitchIds
+    ),
+  };
+  if (sequences.treble.length < 2 || sequences.bass.length < 2) {
+    return createSingleStaffSequence();
+  }
+
+  const cursors = { bass: 0, treble: 0 };
+  const result: StaffDistanceRunSequence = { breakIndices: [], notes: [] };
+  let staff: TargetNote["staff"] = initialNote?.staff ?? (random() < 0.5 ? "treble" : "bass");
+  let generatedTransitions = 0;
+  while (generatedTransitions < transitionCount) {
+    const source = sequences[staff];
+    const cursor = cursors[staff];
+    const transitions = Math.min(
+      GRAND_STAFF_SEGMENT_TRANSITIONS,
+      transitionCount - generatedTransitions,
+      source.length - cursor - 1
+    );
+    if (transitions <= 0) break;
+
+    const segment = source.slice(cursor, cursor + transitions + 1);
+    if (result.notes.length === 0) {
+      result.notes.push(...segment);
+    } else {
+      // The staff handoff is visible in the score but is not a distance question.
+      result.breakIndices.push(result.notes.length - 1);
+      result.notes.push(...segment);
+    }
+    cursors[staff] += transitions;
+    generatedTransitions += transitions;
+    staff = staff === "treble" ? "bass" : "treble";
+  }
+
+  return generatedTransitions === transitionCount ? result : createSingleStaffSequence();
+}
+
+function createStaffDistanceScorePages(
+  onsets: readonly number[],
+  measures: readonly number[],
+  scoreWidth: number
+): StaffDistanceScorePage[] {
+  if (onsets.length === 0) return [];
+  if (onsets.length === 1) return [{ endIndex: 1, startIndex: 0 }];
+
+  const usableWidth = Math.max(
+    DISTANCE_SCORE_MIN_NOTE_GAP_PX,
+    scoreWidth - DISTANCE_SCORE_FIXED_WIDTH_RESERVE_PX
+  );
+  const pages: StaffDistanceScorePage[] = [];
+  let startIndex = 0;
+
+  while (startIndex < onsets.length - 1) {
+    let endIndex = startIndex + 1;
+    let usedWidth = 0;
+    while (endIndex < onsets.length) {
+      const beatGap = Math.max(0, onsets[endIndex]! - onsets[endIndex - 1]!);
+      const barlineGap =
+        measures[endIndex] !== measures[endIndex - 1] ? DISTANCE_SCORE_BARLINE_GAP_PX : 0;
+      const noteGap =
+        Math.max(DISTANCE_SCORE_MIN_NOTE_GAP_PX, beatGap * DISTANCE_SCORE_BEAT_WIDTH_PX) +
+        barlineGap;
+      if (endIndex > startIndex && usedWidth + noteGap > usableWidth) break;
+      usedWidth += noteGap;
+      endIndex += 1;
+    }
+
+    if (endIndex === startIndex + 1 && endIndex < onsets.length) endIndex += 1;
+    pages.push({ endIndex, startIndex });
+    if (endIndex >= onsets.length) break;
+    // Repeat the previous page's last note to keep the boundary interval visible.
+    startIndex = endIndex - 1;
+  }
+
+  return pages;
+}
+
+export function StaffDistanceRun({
+  fixedCount,
+  fixedDurationSeconds,
+  inputMethod,
+  mode,
+  noteDurations,
+  navigationExitRequest,
+  notes,
+  onFinish,
+  onNavigationExit,
+  onRunningChange,
+  onMicrophoneAnswerHandlerChange,
+  midi,
+  microphone,
+  session,
+  settings,
+  staffNotationMode,
+  trainingMode,
+  useLedgerGap,
+}: StaffDistanceRunProps): JSX.Element {
+  const subscribeMidi = midi.subscribe;
+  const extraPitchIds = session.staffDistance?.crossGroupPitchIds ?? EMPTY_EXTRA_PITCH_IDS;
+  const [initialSequence] = useState(() =>
+    createStaffDistanceRunSequence(
+      notes,
+      settings,
+      Math.min(128, intervalCountForRun(mode, fixedCount, fixedDurationSeconds)),
+      staffNotationMode,
+      Math.random,
+      undefined,
+      extraPitchIds
+    )
+  );
+  const [sequence, setSequence] = useState(initialSequence.notes);
+  const sequenceRef = useRef(sequence);
+  const [sequenceRhythm, setSequenceRhythm] = useState(() =>
+    createStaffDistanceRhythm(noteDurations, sequence.length)
+  );
+  const sequenceRhythmRef = useRef(sequenceRhythm);
+  const breakIndicesRef = useRef(new Set(initialSequence.breakIndices));
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [completedTargetIndices, setCompletedTargetIndices] = useState<number[]>([]);
+  const [hasPlayedStartingNote, setHasPlayedStartingNote] = useState(() => trainingMode !== "play");
+  const hasPlayedStartingNoteRef = useRef(trainingMode !== "play");
+  const [startingNoteWrong, setStartingNoteWrong] = useState(false);
+  const [attemptCount, setAttemptCount] = useState(0);
+  const [showHint, setShowHint] = useState(false);
+  const [feedback, setFeedback] = useState<
+    { type: "wrong" } | { type: "correct"; distance: number } | null
+  >(null);
+  const [inputError, setInputError] = useState<string | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches
+  );
+  const [isTouchDevice, setIsTouchDevice] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      (navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches)
+  );
+  const scoreWrapRef = useRef<HTMLDivElement | null>(null);
+  const [scoreWidth, setScoreWidth] = useState(0);
+  const resultsRef = useRef(session.staffDistance?.questionResults ?? []);
+  const firstResponseRef = useRef<{ correct: boolean; responseMs: number } | null>(null);
+  const wrongAttemptsRef = useRef(0);
+  const usedHintRef = useRef(false);
+  const pendingAdvanceRef = useRef<(() => void) | null>(null);
+  const isPausedRef = useRef(false);
+  const activeStartedAtRef = useRef(performance.now());
+  const activeElapsedRef = useRef(0);
+  const questionStartedAtRef = useRef(performance.now());
+  const questionElapsedRef = useRef(0);
+  const advanceTimerRef = useRef<number | undefined>();
+  const endingRef = useRef(false);
+  const handledExitRequestRef = useRef<number | null>(null);
+  const finishRef = useRef<
+    (reason: PracticeSessionRecord["endReason"], showSummary: boolean) => Promise<void>
+  >(async () => undefined);
+  const details = session.staffDistance!;
+  const measuredScoreWidth = scoreWidth || (isMobile ? 360 : 980);
+  const scorePages = useMemo(
+    () =>
+      createStaffDistanceScorePages(
+        sequenceRhythm.onsets,
+        sequenceRhythm.measures,
+        measuredScoreWidth
+      ),
+    [measuredScoreWidth, sequenceRhythm.measures, sequenceRhythm.onsets]
+  );
+  const activeScorePage =
+    scorePages.find(
+      (page) => questionIndex >= page.startIndex && questionIndex < page.endIndex - 1
+    ) ?? scorePages[scorePages.length - 1]!;
+  const pageStartIndex = activeScorePage.startIndex;
+  const pageEndIndex = activeScorePage.endIndex;
+  const notesOnPage = sequence.slice(pageStartIndex, pageEndIndex);
+  const completedNoteIndicesOnPage = completedTargetIndices
+    .filter((noteIndex) => noteIndex >= pageStartIndex && noteIndex < pageEndIndex)
+    .map((noteIndex) => noteIndex - pageStartIndex);
+  const pageSize = notesOnPage.length;
+  const pageOnsets = sequenceRhythm.onsets
+    .slice(pageStartIndex, pageEndIndex)
+    .map((onset) => onset - (sequenceRhythm.onsets[pageStartIndex] ?? 0));
+  const pageMeasures = sequenceRhythm.measures.slice(pageStartIndex, pageEndIndex);
+  const pageBeamGroupIds = sequenceRhythm.beamGroupIds.slice(pageStartIndex, pageEndIndex);
+  const pageBarlineAfterNoteIndices = Array.from(
+    new Set([
+      ...pageMeasures.flatMap((measure, index) =>
+        index < pageMeasures.length - 1 && pageMeasures[index + 1] !== measure ? [index] : []
+      ),
+      ...Array.from({ length: Math.max(0, pageSize - 1) }, (_, index) => index).filter((index) =>
+        breakIndicesRef.current.has(pageStartIndex + index)
+      ),
+    ])
+  );
+  const activePairStartIndex = questionIndex - pageStartIndex;
+  const currentFrom = sequence[questionIndex];
+  const currentTo = sequence[questionIndex + 1];
+  const answerOptions = Array.from({ length: details.maxDistance + 1 }, (_, index) => index).filter(
+    (distance) => distance > 0 || details.includeUnison
+  );
+  const firstAnswerRowCount =
+    answerOptions.length <= 3
+      ? answerOptions.length
+      : answerOptions.length === 4
+        ? 2
+        : Math.min(4, Math.ceil(answerOptions.length / 2));
+  const answerRows =
+    answerOptions.length > firstAnswerRowCount
+      ? [answerOptions.slice(0, firstAnswerRowCount), answerOptions.slice(firstAnswerRowCount)]
+      : [answerOptions];
+  const [activeElapsed, setActiveElapsed] = useState(0);
+  const remainingTime =
+    mode === "fixed-duration"
+      ? Math.max(0, fixedDurationSeconds * 1000 - activeElapsed)
+      : undefined;
+
+  const getActiveElapsed = useCallback((): number => {
+    const activeNow = activeStartedAtRef.current;
+    return activeElapsedRef.current + (activeNow === 0 ? 0 : performance.now() - activeNow);
+  }, []);
+
+  const finish = useCallback(
+    async (endReason: PracticeSessionRecord["endReason"], showSummary: boolean): Promise<void> => {
+      if (endingRef.current) return;
+      endingRef.current = true;
+      if (advanceTimerRef.current !== undefined) window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = undefined;
+      pendingAdvanceRef.current = null;
+      const activeNow = activeStartedAtRef.current;
+      const finalActiveMs =
+        activeElapsedRef.current + (activeNow === 0 ? 0 : performance.now() - activeNow);
+      activeStartedAtRef.current = 0;
+      isPausedRef.current = true;
+      if (trainingMode === "play" && inputMethod === "microphone") microphone.stop();
+      const questionResults = resultsRef.current;
+      onRunningChange(false);
+      await onFinish(
+        {
+          ...session,
+          activePracticeMs: finalActiveMs,
+          endedAt: new Date().toISOString(),
+          endReason,
+          completedCount: questionResults.length,
+          interruptedCount: questionResults.filter((result) => !result.firstTryCorrect).length,
+          staffDistance: { ...details, questionResults },
+        },
+        showSummary
+      );
+    },
+    [details, inputMethod, microphone, onFinish, onRunningChange, session, trainingMode]
+  );
+  finishRef.current = finish;
+
+  const advanceQuestion = useCallback(
+    (requestedNextIndex: number): void => {
+      let nextIndex = requestedNextIndex;
+      while (breakIndicesRef.current.has(nextIndex)) nextIndex += 1;
+      const extensionBuffer = Math.min(
+        DISTANCE_SCORE_EXTENSION_BUFFER,
+        Math.max(2, Math.ceil(sequenceRef.current.length / 3))
+      );
+      if (nextIndex >= sequenceRef.current.length - extensionBuffer) {
+        const lastNote = sequenceRef.current[sequenceRef.current.length - 1];
+        if (lastNote) {
+          const extension = createStaffDistanceRunSequence(
+            notes,
+            settings,
+            128,
+            staffNotationMode,
+            Math.random,
+            lastNote,
+            extraPitchIds
+          );
+          const extensionStartIndex = sequenceRef.current.length - 1;
+          extension.breakIndices.forEach((index) =>
+            breakIndicesRef.current.add(extensionStartIndex + index)
+          );
+          const expandedSequence = [...sequenceRef.current, ...extension.notes.slice(1)];
+          sequenceRef.current = expandedSequence;
+          setSequence(expandedSequence);
+          const extensionRhythm = createStaffDistanceRhythm(
+            noteDurations,
+            extension.notes.length - 1,
+            sequenceRhythmRef.current.endBeat
+          );
+          const expandedRhythm = appendStaffDistanceRhythm(
+            sequenceRhythmRef.current,
+            extensionRhythm
+          );
+          sequenceRhythmRef.current = expandedRhythm;
+          setSequenceRhythm(expandedRhythm);
+        }
+      }
+      while (breakIndicesRef.current.has(nextIndex)) nextIndex += 1;
+      setQuestionIndex(nextIndex);
+      setAttemptCount(0);
+      setShowHint(false);
+      setFeedback(null);
+      firstResponseRef.current = null;
+      wrongAttemptsRef.current = 0;
+      usedHintRef.current = false;
+      questionElapsedRef.current = 0;
+      questionStartedAtRef.current = isPausedRef.current ? 0 : performance.now();
+    },
+    [extraPitchIds, noteDurations, notes, settings, staffNotationMode]
+  );
+
+  const schedulePendingAdvance = useCallback((): void => {
+    if (
+      advanceTimerRef.current !== undefined ||
+      pendingAdvanceRef.current === null ||
+      isPausedRef.current ||
+      endingRef.current
+    ) {
+      return;
+    }
+    advanceTimerRef.current = window.setTimeout(() => {
+      advanceTimerRef.current = undefined;
+      const pendingAdvance = pendingAdvanceRef.current;
+      pendingAdvanceRef.current = null;
+      pendingAdvance?.();
+    }, 240);
+  }, []);
+
+  const submitAnswer = useCallback(
+    (isCorrect: boolean): void => {
+      if (isPausedRef.current || endingRef.current || feedback?.type === "correct") return;
+      if (!currentFrom || !currentTo) return;
+      const { distance: targetDistance } = summarizeStaffDistancePair(currentFrom, currentTo);
+      const now = performance.now();
+      const questionStart = questionStartedAtRef.current;
+      const responseMs =
+        questionElapsedRef.current + (questionStart === 0 ? 0 : now - questionStart);
+      if (!firstResponseRef.current) {
+        firstResponseRef.current = { correct: isCorrect, responseMs };
+      }
+      if (!isCorrect) {
+        wrongAttemptsRef.current += 1;
+        setAttemptCount(wrongAttemptsRef.current);
+        setFeedback({ type: "wrong" });
+        if (wrongAttemptsRef.current >= 2) {
+          usedHintRef.current = true;
+          setShowHint(true);
+        }
+        return;
+      }
+
+      const pair = summarizeStaffDistancePair(currentFrom, currentTo);
+      const firstResponse = firstResponseRef.current;
+      const nextResults = [
+        ...resultsRef.current,
+        {
+          ...pair,
+          firstTryCorrect: firstResponse.correct,
+          responseMs: firstResponse.responseMs,
+          wrongAttempts: wrongAttemptsRef.current,
+          usedHint: usedHintRef.current,
+          targetPitchId: trainingMode === "play" ? currentTo.pitchId : undefined,
+        },
+      ];
+      resultsRef.current = nextResults;
+      setCompletedTargetIndices((current) =>
+        current.includes(questionIndex + 1) ? current : [...current, questionIndex + 1]
+      );
+      setFeedback({ type: "correct", distance: targetDistance });
+      pendingAdvanceRef.current = () => {
+        if (mode === "fixed-count" && nextResults.length >= fixedCount) {
+          void finishRef.current("completed-count", true);
+        } else {
+          advanceQuestion(questionIndex + 1);
+        }
+      };
+      schedulePendingAdvance();
+    },
+    [
+      advanceQuestion,
+      currentFrom,
+      currentTo,
+      feedback?.type,
+      fixedCount,
+      mode,
+      questionIndex,
+      schedulePendingAdvance,
+      trainingMode,
+    ]
+  );
+
+  const answerDistance = useCallback(
+    (distance: number): void => {
+      if (trainingMode !== "look" || !currentFrom || !currentTo) return;
+      submitAnswer(distance === summarizeStaffDistancePair(currentFrom, currentTo).distance);
+    },
+    [currentFrom, currentTo, submitAnswer, trainingMode]
+  );
+
+  const answerPitch = useCallback(
+    (answer: PracticeAnswerInput): void => {
+      if (trainingMode !== "play" || isPausedRef.current || endingRef.current || !currentTo) {
+        return;
+      }
+      const answerMode = inputMethod === "midi" ? "exact-pitch" : "microphone";
+      if (!hasPlayedStartingNoteRef.current) {
+        const startingNote = sequence[0];
+        if (!startingNote) return;
+        const isStartingNoteCorrect = isPracticeAnswerCorrect(answer, startingNote, answerMode);
+        if (!isStartingNoteCorrect) {
+          setStartingNoteWrong(true);
+          setInputError("音高不对，请先弹奏谱面上的第一个音。");
+          return;
+        }
+
+        hasPlayedStartingNoteRef.current = true;
+        setHasPlayedStartingNote(true);
+        setStartingNoteWrong(false);
+        setInputError(null);
+        setCompletedTargetIndices((current) => (current.includes(0) ? current : [...current, 0]));
+        firstResponseRef.current = null;
+        wrongAttemptsRef.current = 0;
+        usedHintRef.current = false;
+        questionElapsedRef.current = 0;
+        questionStartedAtRef.current = performance.now();
+        return;
+      }
+      submitAnswer(isPracticeAnswerCorrect(answer, currentTo, answerMode));
+    },
+    [currentTo, inputMethod, sequence, submitAnswer, trainingMode]
+  );
+
+  const togglePause = useCallback(async (): Promise<void> => {
+    if (!isPausedRef.current) {
+      const now = performance.now();
+      activeElapsedRef.current += now - activeStartedAtRef.current;
+      activeStartedAtRef.current = 0;
+      questionElapsedRef.current += now - questionStartedAtRef.current;
+      questionStartedAtRef.current = 0;
+      isPausedRef.current = true;
+      if (advanceTimerRef.current !== undefined) {
+        window.clearTimeout(advanceTimerRef.current);
+        advanceTimerRef.current = undefined;
+      }
+      if (trainingMode === "play" && inputMethod === "microphone") microphone.stop();
+      setIsPaused(true);
+      return;
+    }
+    if (trainingMode === "play" && inputMethod === "midi" && !midi.isConnected) {
+      setInputError("MIDI 连接已断开；重新连接后可继续练习。");
+      return;
+    }
+    if (trainingMode === "play" && inputMethod === "microphone") {
+      const microphoneReady = await microphone.start({ includeAccidentals: false });
+      if (!microphoneReady) {
+        setInputError(microphone.error ?? "麦克风未能重新连接，请检查权限和输入设备。");
+        return;
+      }
+    }
+    setInputError(null);
+    const now = performance.now();
+    activeStartedAtRef.current = now;
+    questionStartedAtRef.current = now;
+    isPausedRef.current = false;
+    setIsPaused(false);
+    schedulePendingAdvance();
+  }, [inputMethod, microphone, midi.isConnected, schedulePendingAdvance, trainingMode]);
+
+  const toggleHint = (): void => {
+    usedHintRef.current = true;
+    setShowHint((current) => !current);
+  };
+
+  useEffect(() => {
+    if (trainingMode !== "play" || inputMethod !== "midi") return undefined;
+    return subscribeMidi((event) => {
+      if (event.type !== "press" || !isNaturalPianoKey(event.note.keyName)) return;
+      answerPitch({
+        diagnosticSampleId: event.note.diagnosticSampleId,
+        midiNoteNumber: event.note.midiNoteNumber,
+        noteName: event.note.keyName,
+        octave: event.note.octave,
+        source: "midi",
+      });
+    });
+  }, [answerPitch, inputMethod, subscribeMidi, trainingMode]);
+
+  useEffect(() => {
+    if (trainingMode !== "play" || inputMethod !== "microphone") {
+      onMicrophoneAnswerHandlerChange(null);
+      return undefined;
+    }
+    onMicrophoneAnswerHandlerChange(answerPitch);
+    return () => onMicrophoneAnswerHandlerChange(null);
+  }, [answerPitch, inputMethod, onMicrophoneAnswerHandlerChange, trainingMode]);
+
+  useEffect(() => {
+    if (trainingMode !== "play" || isPausedRef.current) return;
+    if (inputMethod === "midi" && !midi.isConnected) {
+      setInputError("MIDI 连接已断开；重新连接后可继续练习。");
+      void togglePause();
+    } else if (inputMethod === "microphone" && microphone.status === "error") {
+      setInputError(microphone.error ?? "麦克风连接已中断；重新连接后可继续练习。");
+      void togglePause();
+    }
+  }, [
+    inputMethod,
+    microphone.error,
+    microphone.status,
+    midi.isConnected,
+    togglePause,
+    trainingMode,
+  ]);
+
+  useEffect(() => {
+    onRunningChange(true);
+    const mediaQuery = window.matchMedia("(max-width: 820px)");
+    const onViewportChange = (): void => setIsMobile(mediaQuery.matches);
+    mediaQuery.addEventListener("change", onViewportChange);
+    const pointerQuery = window.matchMedia("(pointer: coarse)");
+    const onPointerChange = (): void =>
+      setIsTouchDevice(navigator.maxTouchPoints > 0 || pointerQuery.matches);
+    pointerQuery.addEventListener("change", onPointerChange);
+    return () => {
+      mediaQuery.removeEventListener("change", onViewportChange);
+      pointerQuery.removeEventListener("change", onPointerChange);
+      onRunningChange(false);
+      if (advanceTimerRef.current !== undefined) window.clearTimeout(advanceTimerRef.current);
+      pendingAdvanceRef.current = null;
+    };
+  }, [onRunningChange]);
+
+  useEffect(() => {
+    const element = scoreWrapRef.current;
+    if (!element) return;
+    const updateWidth = (): void => setScoreWidth(element.clientWidth);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const pauseWhenInactive = (): void => {
+      if (document.visibilityState === "hidden" && !isPausedRef.current) void togglePause();
+    };
+    const pauseOnWindowBlur = (): void => {
+      if (!isPausedRef.current) void togglePause();
+    };
+    document.addEventListener("visibilitychange", pauseWhenInactive);
+    window.addEventListener("blur", pauseOnWindowBlur);
+    return () => {
+      document.removeEventListener("visibilitychange", pauseWhenInactive);
+      window.removeEventListener("blur", pauseOnWindowBlur);
+    };
+  }, [togglePause]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const elapsed = getActiveElapsed();
+      setActiveElapsed(elapsed);
+      if (mode === "fixed-duration" && elapsed >= fixedDurationSeconds * 1000) {
+        void finishRef.current("completed-duration", true);
+      }
+    }, 200);
+    return () => window.clearInterval(interval);
+  }, [fixedDurationSeconds, getActiveElapsed, mode]);
+
+  useEffect(() => {
+    if (!navigationExitRequest || handledExitRequestRef.current === navigationExitRequest.id)
+      return;
+    handledExitRequestRef.current = navigationExitRequest.id;
+    void finishRef.current("manual-stop", false).then(() => {
+      onNavigationExit?.(navigationExitRequest.targetView);
+    });
+  }, [navigationExitRequest, onNavigationExit]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.repeat) return;
+      if (event.code === "Escape") {
+        event.preventDefault();
+        void finishRef.current("manual-stop", true);
+        return;
+      }
+      if (
+        event.code === "Space" &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        !event.isComposing &&
+        !isTextEntryTarget(event.target)
+      ) {
+        event.preventDefault();
+        void togglePause();
+        return;
+      }
+      if (trainingMode === "look" && !isPausedRef.current && /^[0-7]$/.test(event.key)) {
+        const selectedDistance = Number(event.key);
+        if (selectedDistance <= details.maxDistance && answerOptions.includes(selectedDistance)) {
+          event.preventDefault();
+          answerDistance(selectedDistance);
+        }
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [answerDistance, answerOptions, details.maxDistance, togglePause, trainingMode]);
+
+  if (!currentFrom || !currentTo || notesOnPage.length < 2) {
+    return (
+      <section className="staff-distance-run-shell" role="alert">
+        <h1>无法生成这段间距</h1>
+        <p>返回设置页，扩大音域或缩小最大间距后重试。</p>
+        <button className="primary" onClick={() => void finish("manual-stop", false)} type="button">
+          返回设置
+        </button>
+      </section>
+    );
+  }
+
+  const currentQuestionNumber = resultsRef.current.length + 1;
+  const progressLabel = (() => {
+    if (trainingMode === "play" && !hasPlayedStartingNote) {
+      if (mode === "fixed-count") {
+        return `先弹第一个音（不计题） · 0 / ${fixedCount} 题`;
+      }
+      if (mode === "fixed-duration") {
+        return `先弹第一个音（不计题） · 剩余 ${durationLabel(remainingTime ?? 0)}`;
+      }
+      return "先弹第一个音（不计题）";
+    }
+    if (mode === "fixed-count") return `第 ${currentQuestionNumber} / ${fixedCount} 题`;
+    if (mode === "fixed-duration") return `剩余 ${durationLabel(remainingTime ?? 0)}`;
+    return `第 ${currentQuestionNumber} 题`;
+  })();
+  const liveQuestionLabel =
+    trainingMode === "look"
+      ? `第 ${currentQuestionNumber} 题，当前音和下一个音相隔几步？`
+      : hasPlayedStartingNote
+        ? `第 ${currentQuestionNumber} 题，根据当前音弹奏下一个音。`
+        : "先弹奏谱面上的第一个音；这一步不计题。";
+
+  return (
+    <section aria-label="间距推导练习" className="staff-distance-run-shell">
+      <header className="staff-distance-run-header">
+        <div>
+          <h1>{trainingMode === "look" ? "间距推导 · 看间距" : "间距推导 · 弹奏"}</h1>
+          <p>{progressLabel}</p>
+        </div>
+        <div className="staff-distance-run-actions">
+          <button onClick={togglePause} type="button">
+            {isPaused ? <Play size={16} /> : <Pause size={16} />}
+            {isPaused ? "继续" : "暂停"}
+          </button>
+          <button onClick={() => void finish("manual-stop", true)} type="button">
+            <Square size={15} />
+            结束
+          </button>
+        </div>
+      </header>
+
+      <div
+        ref={scoreWrapRef}
+        aria-label={liveQuestionLabel}
+        className="staff-distance-score-wrap"
+        role="group"
+      >
+        <StaffPagePrompt
+          completedCount={activePairStartIndex}
+          completedNoteIndices={completedNoteIndicesOnPage}
+          notes={notesOnPage}
+          monophonicGrandStaff
+          showGrandStaffRightConnector={false}
+          layout={isMobile ? MOBILE_PRACTICE_PAGE_STAFF_LAYOUT : undefined}
+          noteDuration="quarter"
+          noteDurations={sequenceRhythm.durations.slice(pageStartIndex, pageEndIndex)}
+          noteMeasures={pageMeasures}
+          noteOnsets={pageOnsets}
+          noteBeamGroups={pageBeamGroupIds}
+          beatsPerMeasure={4}
+          timeSignature="4/4"
+          barlineAfterNoteIndices={pageBarlineAfterNoteIndices}
+          staffNotationMode={staffNotationMode}
+          useLedgerGap={useLedgerGap}
+          notesPerRow={pageSize}
+          maxRowCount={1}
+          visibleRowCount={1}
+          minDisplayWidthPx={0}
+          wrongIndex={
+            !hasPlayedStartingNote && startingNoteWrong
+              ? 0
+              : feedback?.type === "wrong"
+                ? activePairStartIndex + 1
+                : undefined
+          }
+        />
+      </div>
+
+      <p aria-live="polite" className="staff-distance-question-copy">
+        {feedback?.type === "correct"
+          ? trainingMode === "look"
+            ? `${feedback.distance} 步，答对了`
+            : "弹对了"
+          : feedback?.type === "wrong"
+            ? attemptCount >= 2
+              ? trainingMode === "look"
+                ? "再看一眼，可以用下方提示数一数"
+                : "音高不对，再试一次；也可以用下方提示数一数"
+              : trainingMode === "look"
+                ? "再看一眼"
+                : "音高不对，再试一次"
+            : trainingMode === "look"
+              ? "当前音和下一个音相隔几步？"
+              : hasPlayedStartingNote
+                ? "根据当前音，弹奏谱面上的下一个音。"
+                : "请先弹奏谱面上的第一个音。"}
+      </p>
+
+      {trainingMode === "look" ? (
+        <div aria-label="间距答案" className="staff-distance-answer-row" role="group">
+          {answerRows.map((row, rowIndex) => (
+            <div className="staff-distance-answer-line" key={rowIndex}>
+              {row.map((distance) => (
+                <button
+                  aria-label={`${distance} 步`}
+                  className={`staff-distance-answer-button${feedback?.type === "correct" && feedback.distance === distance ? " is-correct" : ""}`}
+                  disabled={isPaused || feedback?.type === "correct"}
+                  key={distance}
+                  onClick={() => answerDistance(distance)}
+                  type="button"
+                >
+                  {distance}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="staff-distance-play-input-status" role="status">
+          {inputError ??
+            (inputMethod === "midi"
+              ? `请弹奏 MIDI 键盘上的${hasPlayedStartingNote ? "下一个音" : "第一个音"}${midi.selectedInput?.name ? ` · ${midi.selectedInput.name}` : ""}`
+              : microphone.status === "listening"
+                ? `麦克风已连接，请弹奏${hasPlayedStartingNote ? "下一个音" : "谱面上的第一个音"}`
+                : (microphone.error ?? "正在连接麦克风…"))}
+        </div>
+      )}
+
+      {wrongAttemptsRef.current > 0 && feedback?.type !== "correct" ? (
+        <button className="staff-distance-hint-trigger" onClick={toggleHint} type="button">
+          {showHint ? "收起提示" : "提示"}
+        </button>
+      ) : null}
+      {showHint ? (
+        <div aria-live="polite" className="staff-distance-hint">
+          <span>当前音</span>
+          <span aria-hidden="true" className="staff-distance-hint-steps">
+            {Array.from(
+              { length: summarizeStaffDistancePair(currentFrom, currentTo).distance },
+              (_, index) => (
+                <i key={index} />
+              )
+            )}
+          </span>
+          <span>下一个音</span>
+          <small>每跨一个相邻线位或间位，算 1 步</small>
+        </div>
+      ) : null}
+
+      {!isTouchDevice ? (
+        <p className="staff-distance-run-shortcuts">
+          {trainingMode === "look"
+            ? `电脑键盘：${details.includeUnison ? "0" : "1"}–${details.maxDistance} 作答 · `
+            : ""}
+          空格暂停/继续 · Esc 结束
+        </p>
+      ) : null}
+
+      {isPaused ? (
+        <div className="staff-distance-pause-overlay" role="status">
+          <strong>已暂停</strong>
+          <span>{inputError ?? "练习计时已停止"}</span>
+          <button className="primary" onClick={togglePause} type="button">
+            <Play size={16} />
+            继续
+          </button>
+        </div>
+      ) : null}
+    </section>
+  );
+}

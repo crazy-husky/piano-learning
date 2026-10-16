@@ -62,6 +62,7 @@ import type {
   PianoKeyName,
   ReviewRecord,
   TargetNote,
+  TargetNoteId,
 } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { resolveHistoryLimit } from "../../../shared/components/HistoryLimitControl";
@@ -76,6 +77,7 @@ import {
 } from "../../../shared/preferences/sessionProgressPreferences";
 import { PauseOverlay } from "../../../shared/components/PauseOverlay";
 import type { PracticePagePreferences } from "../../../shared/preferences/practicePagePreferences";
+import type { PracticeDistanceMode } from "../../../routing/appRoutes";
 import {
   isNaturalPianoKey,
   NATURAL_PIANO_KEYS,
@@ -89,7 +91,7 @@ import {
   DESKTOP_STAFF_PAGE_NOTE_COUNT,
   MOBILE_STAFF_PAGE_NOTE_COUNT,
 } from "../logic/staffPageFlow";
-import { PROMPT_NOTE_DURATIONS } from "../logic/staffPageNotation";
+import { PROMPT_NOTE_DURATIONS, type GeneratedStaffPageRhythm } from "../logic/staffPageNotation";
 import {
   DEFAULT_STAFF_PAGE_UI_PREFERENCES,
   normalizePausedPlaybackBpm,
@@ -114,6 +116,7 @@ import { usePracticeSummaryData } from "../hooks/usePracticeSummaryData";
 import { PracticeMicrophoneAnalysisDialog } from "./PracticeMicrophoneAnalysisDialog";
 import { PracticeMicrophoneDebugDialog } from "./PracticeMicrophoneDebugDialog";
 import { PracticeSummaryView } from "./PracticeSummaryView";
+import { StaffDistancePracticeView } from "./StaffDistancePracticeView";
 import {
   PracticeSetupView,
   type PracticeSetupTab,
@@ -169,7 +172,12 @@ interface PracticeViewProps {
   onOpenStats: () => void;
   onOpenSettings: () => void;
   onBeforePracticeStart: () => Promise<PracticeStartPreflightResult>;
+  onPracticeDistanceModeChange: (mode: PracticeDistanceMode, replace?: boolean) => void;
+  onPracticeTabChange: (tab: PracticeSetupTab) => void;
   onPracticeFinished: () => void;
+  onPracticeStageChange: (active: boolean) => void;
+  practiceTab: PracticeSetupTab;
+  practiceDistanceMode?: PracticeDistanceMode;
   onRunningChange: (running: boolean) => void;
 }
 
@@ -184,6 +192,7 @@ export interface PracticeStartPreflightResult {
 
 export interface PracticeNavigationExitRequest {
   id: number;
+  returnToSetup?: boolean;
   targetView: PracticeNavigationExitTarget;
 }
 
@@ -207,6 +216,16 @@ const PRACTICE_QUEUE_STRATEGIES: readonly PracticeQueueStrategy[] = [
   "melody",
   "note-drill",
 ];
+const CROSS_GROUP_NOTE_RATE = 0.08;
+
+function pickRangeExtensionNote(
+  notes: readonly TargetNote[],
+  lastTargetNoteId?: TargetNoteId
+): TargetNote | undefined {
+  const eligible = notes.filter((note) => note.id !== lastTargetNoteId);
+  const pool = eligible.length > 0 ? eligible : notes;
+  return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : undefined;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -222,6 +241,16 @@ function isPromptDisplayMode(value: unknown): value is PromptDisplayMode {
 
 function isPromptNoteDuration(value: unknown): value is PromptNoteDuration {
   return typeof value === "string" && PROMPT_NOTE_DURATIONS.includes(value as PromptNoteDuration);
+}
+
+function normalizePromptNoteDurations(
+  value: unknown,
+  fallback: readonly PromptNoteDuration[]
+): PromptNoteDuration[] {
+  const candidates = Array.isArray(value) ? value.filter(isPromptNoteDuration) : [...fallback];
+  const selected = new Set(candidates);
+  const normalized = PROMPT_NOTE_DURATIONS.filter((duration) => selected.has(duration));
+  return normalized.length > 0 ? normalized : [...fallback];
 }
 
 function isPracticeQueueStrategy(value: unknown): value is PracticeQueueStrategy {
@@ -253,6 +282,9 @@ function normalizeDrillNoteNames(value: unknown, fallback: NoteName[]): NoteName
 }
 
 function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeSetupUiPreferences {
+  const promptNoteDurations = normalizePromptNoteDurations(settings.promptNoteDurations, [
+    settings.promptNoteDuration ?? "quarter",
+  ]);
   return {
     answerPitchMode: settings.answerPitchMode,
     autoPlayTarget: settings.autoPlayTarget,
@@ -261,8 +293,10 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
     fixedCount: settings.fixedCount,
     fixedDurationSeconds: settings.fixedDurationSeconds,
     mode: settings.defaultMode,
-    promptDisplayMode: settings.promptDisplayMode ?? "staff-page",
-    promptNoteDuration: settings.promptNoteDuration ?? "quarter",
+    promptDisplayMode:
+      promptNoteDurations.length > 1 ? "staff-page" : (settings.promptDisplayMode ?? "staff-page"),
+    promptNoteDuration: promptNoteDurations[0]!,
+    promptNoteDurations,
     queueStrategy: resolveQueueStrategy(settings),
   };
 }
@@ -274,6 +308,12 @@ function parsePracticeSetupUiPreferences(
   if (!isRecord(value)) {
     return fallback;
   }
+
+  const promptNoteDurations = normalizePromptNoteDurations(value.promptNoteDurations, [
+    isPromptNoteDuration(value.promptNoteDuration)
+      ? value.promptNoteDuration
+      : fallback.promptNoteDuration,
+  ]);
 
   return {
     answerPitchMode: normalizeAnswerPitchMode(value.answerPitchMode, fallback.answerPitchMode),
@@ -288,12 +328,14 @@ function parsePracticeSetupUiPreferences(
       fallback.fixedDurationSeconds
     ),
     mode: isPracticeMode(value.mode) ? value.mode : fallback.mode,
-    promptDisplayMode: isPromptDisplayMode(value.promptDisplayMode)
-      ? value.promptDisplayMode
-      : fallback.promptDisplayMode,
-    promptNoteDuration: isPromptNoteDuration(value.promptNoteDuration)
-      ? value.promptNoteDuration
-      : fallback.promptNoteDuration,
+    promptDisplayMode:
+      promptNoteDurations.length > 1
+        ? "staff-page"
+        : isPromptDisplayMode(value.promptDisplayMode)
+          ? value.promptDisplayMode
+          : fallback.promptDisplayMode,
+    promptNoteDuration: promptNoteDurations[0]!,
+    promptNoteDurations,
     queueStrategy: isPracticeQueueStrategy(value.queueStrategy)
       ? value.queueStrategy === "focused"
         ? "adaptive"
@@ -317,8 +359,13 @@ export function PracticeView({
   onOpenStats,
   onOpenSettings,
   onBeforePracticeStart,
+  onPracticeDistanceModeChange,
+  onPracticeTabChange,
   onPracticeFinished,
+  onPracticeStageChange,
+  practiceTab,
   onRunningChange,
+  practiceDistanceMode,
 }: PracticeViewProps): JSX.Element {
   const defaultPracticeSetupUiPreferences = useMemo(
     () => makeDefaultPracticeSetupUiPreferences(settings),
@@ -373,10 +420,19 @@ export function PracticeView({
   );
   const midiConnectedRef = useRef(midi.isConnected);
   midiConnectedRef.current = midi.isConnected;
-  const [practiceSetupTab, setPracticeSetupTab] = useState<PracticeSetupTab>("free");
+  const [isStaffDistanceRunning, setIsStaffDistanceRunning] = useState(false);
+  const [isStaffDistanceStageActive, setIsStaffDistanceStageActive] = useState(false);
+  const handleStaffDistanceStageChange = useCallback(
+    (active: boolean): void => {
+      setIsStaffDistanceStageActive(active);
+      onPracticeStageChange(active);
+    },
+    [onPracticeStageChange]
+  );
   const songPracticeMicrophoneAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => {});
   const [tick, setTick] = useState(0);
   const [staffPageNotes, setStaffPageNotes] = useState<TargetNote[]>([]);
+  const [staffPageRhythm, setStaffPageRhythm] = useState<GeneratedStaffPageRhythm | undefined>();
   const [staffPageIndex, setStaffPageIndex] = useState(0);
   const [staffPageCompletedCount, setStaffPageCompletedCount] = useState(0);
   const [staffPageFirstNoteOffset, setStaffPageFirstNoteOffset] = useState(0);
@@ -403,6 +459,16 @@ export function PracticeView({
   const promptDisplayMode =
     runningStartSnapshot?.presentationConfig.promptDisplayMode ??
     practiceSetupPreferences.promptDisplayMode;
+  const promptNoteDurations = useMemo(
+    () =>
+      runningStartSnapshot
+        ? normalizePromptNoteDurations(
+            runningStartSnapshot.presentationConfig.promptNoteDurations,
+            [runningStartSnapshot.presentationConfig.promptNoteDuration]
+          )
+        : practiceSetupPreferences.promptNoteDurations,
+    [practiceSetupPreferences.promptNoteDurations, runningStartSnapshot]
+  );
   const promptNoteDuration =
     runningStartSnapshot?.presentationConfig.promptNoteDuration ??
     practiceSetupPreferences.promptNoteDuration;
@@ -451,15 +517,22 @@ export function PracticeView({
     }));
   };
   const setPromptDisplayMode = (nextPromptDisplayMode: PromptDisplayMode): void => {
-    setPracticeSetupPreferences((current) => ({
-      ...current,
-      promptDisplayMode: nextPromptDisplayMode,
-    }));
+    setPracticeSetupPreferences((current) =>
+      nextPromptDisplayMode === "single-note" && current.promptNoteDurations.length > 1
+        ? current
+        : { ...current, promptDisplayMode: nextPromptDisplayMode }
+    );
   };
-  const setPromptNoteDuration = (nextPromptNoteDuration: PromptNoteDuration): void => {
+  const setPromptNoteDurations = (nextPromptNoteDurations: PromptNoteDuration[]): void => {
+    const normalized = PROMPT_NOTE_DURATIONS.filter((duration) =>
+      nextPromptNoteDurations.includes(duration)
+    );
+    if (normalized.length === 0) return;
     setPracticeSetupPreferences((current) => ({
       ...current,
-      promptNoteDuration: nextPromptNoteDuration,
+      promptDisplayMode: normalized.length > 1 ? "staff-page" : current.promptDisplayMode,
+      promptNoteDuration: normalized[0]!,
+      promptNoteDurations: normalized,
     }));
   };
   const setFixedCount = (nextFixedCount: number): void => {
@@ -531,9 +604,14 @@ export function PracticeView({
     resumeActiveTimers,
   } = practiceTimers;
   const submitAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => undefined);
+  const staffDistanceMicrophoneAnswerRef = useRef<((answer: PracticeAnswerInput) => void) | null>(
+    null
+  );
   const practiceMicrophone = usePracticeMicrophoneInput(
     (answer) => {
-      if (songPracticeSelection) {
+      if (staffDistanceMicrophoneAnswerRef.current) {
+        staffDistanceMicrophoneAnswerRef.current(answer);
+      } else if (songPracticeSelection) {
         songPracticeMicrophoneAnswerRef.current(answer);
       } else {
         submitAnswerRef.current(answer);
@@ -696,9 +774,10 @@ export function PracticeView({
   }, []);
 
   useEffect(() => {
-    onRunningChange(phase === "running");
-    return () => onRunningChange(false);
-  }, [onRunningChange, phase]);
+    onRunningChange(phase === "running" || isStaffDistanceRunning);
+  }, [isStaffDistanceRunning, onRunningChange, phase]);
+
+  useEffect(() => () => onRunningChange(false), [onRunningChange]);
 
   const applySettingsSnapshot = useCallback(
     (nextSettings: AppSettings): void => {
@@ -716,8 +795,10 @@ export function PracticeView({
   const effectiveCrossGroupPitchIds =
     runningStartSnapshot?.practiceConfig.crossGroupPitchIds ?? settings.crossGroupPitchIds;
   const effectiveInterStaffLedgerSpellings =
-    runningStartSnapshot?.practiceConfig.includeInterStaffLedgerSpellings ??
-    settings.includeInterStaffLedgerSpellings;
+    staffNotationMode === "grand"
+      ? false
+      : (runningStartSnapshot?.practiceConfig.includeInterStaffLedgerSpellings ??
+        settings.includeInterStaffLedgerSpellings);
   const enabledNotes = useMemo(
     () =>
       getNotesForSelection(
@@ -735,6 +816,22 @@ export function PracticeView({
       staffNotationMode,
     ]
   );
+  const coreEnabledNotes = useMemo(
+    () =>
+      getNotesForSelection(
+        effectiveEnabledGroupIds,
+        effectiveEnabledPitchIds,
+        undefined,
+        effectiveInterStaffLedgerSpellings,
+        staffNotationMode
+      ),
+    [
+      effectiveEnabledGroupIds,
+      effectiveEnabledPitchIds,
+      effectiveInterStaffLedgerSpellings,
+      staffNotationMode,
+    ]
+  );
   const useLedgerGap = enabledNotes.some((note) => note.isInterStaffLedgerSpelling);
   const fullPracticeCount = useMemo(
     () =>
@@ -746,7 +843,7 @@ export function PracticeView({
     () => Array.from(new Set([10, 20, fullPracticeCount])).filter((count) => count > 0),
     [fullPracticeCount]
   );
-  const queueNotes = useMemo(
+  const allQueueNotes = useMemo(
     () =>
       getEffectivePracticeNotes({
         crossGroupPitchIds: effectiveCrossGroupPitchIds,
@@ -767,9 +864,40 @@ export function PracticeView({
       staffNotationMode,
     ]
   );
+  const coreQueueNotes = useMemo(
+    () =>
+      getEffectivePracticeNotes({
+        drillNoteNames,
+        enabledGroupIds: effectiveEnabledGroupIds,
+        enabledPitchIds: effectiveEnabledPitchIds,
+        includeInterStaffLedgerSpellings: effectiveInterStaffLedgerSpellings,
+        queueStrategy,
+        staffNotationMode,
+      }),
+    [
+      drillNoteNames,
+      queueStrategy,
+      effectiveEnabledGroupIds,
+      effectiveEnabledPitchIds,
+      effectiveInterStaffLedgerSpellings,
+      staffNotationMode,
+    ]
+  );
+  const queueNotes = coreQueueNotes.length > 0 ? coreQueueNotes : allQueueNotes;
+  const rangeExtensionNoteIds = useMemo(
+    () => new Set(effectiveCrossGroupPitchIds ?? []),
+    [effectiveCrossGroupPitchIds]
+  );
+  const rangeExtensionNotes = useMemo(
+    () =>
+      coreQueueNotes.length > 0
+        ? allQueueNotes.filter((note) => rangeExtensionNoteIds.has(note.pitchId))
+        : [],
+    [allQueueNotes, coreQueueNotes.length, rangeExtensionNoteIds]
+  );
   const effectiveTargetNoteIds = useMemo(
-    () => new Set(queueNotes.map((note) => note.id)),
-    [queueNotes]
+    () => new Set(allQueueNotes.map((note) => note.id)),
+    [allQueueNotes]
   );
   const schedulerReviews = useMemo(() => filterLongTermReviews(reviews), [reviews]);
   const setupSettings = useMemo<AppSettings>(
@@ -785,6 +913,7 @@ export function PracticeView({
       focusedTraining: false,
       promptDisplayMode,
       promptNoteDuration,
+      promptNoteDurations,
       queueStrategy,
     }),
     [
@@ -797,6 +926,7 @@ export function PracticeView({
       mode,
       promptDisplayMode,
       promptNoteDuration,
+      promptNoteDurations,
       queueStrategy,
       settings,
     ]
@@ -965,6 +1095,7 @@ export function PracticeView({
       defaultMode: mode,
       promptDisplayMode,
       promptNoteDuration,
+      promptNoteDurations,
       fixedCount,
       fixedDurationSeconds,
       autoPlayTarget,
@@ -988,6 +1119,7 @@ export function PracticeView({
     settings,
     promptDisplayMode,
     promptNoteDuration,
+    promptNoteDurations,
   ]);
 
   const maybeBackupDuringOpenEnded = useCallback(
@@ -1046,7 +1178,9 @@ export function PracticeView({
   } = usePracticeStaffPageFlow({
     values: {
       drillNoteNames,
-      enabledNotes,
+      enabledNotes: coreEnabledNotes,
+      promptNoteDurations,
+      rangeExtensionNotes,
       fixedCount,
       isMobileViewport,
       mode,
@@ -1078,6 +1212,7 @@ export function PracticeView({
       setStaffPageFirstNoteOffset,
       setStaffPageIndex,
       setStaffPageNotes,
+      setStaffPageRhythm,
     },
   });
   const drawMelodyNote = useCallback(
@@ -1109,31 +1244,38 @@ export function PracticeView({
   const selectAndStartNext = useCallback(
     (nextCompletedCount: number): void => {
       const remainingCount = mode === "fixed-count" ? fixedCount - nextCompletedCount : undefined;
+      const rangeExtensionNote =
+        rangeExtensionNotes.length > 0 && Math.random() < CROSS_GROUP_NOTE_RATE
+          ? pickRangeExtensionNote(rangeExtensionNotes, lastTargetNoteIdRef.current)
+          : undefined;
       const note =
-        queueStrategy === "melody"
-          ? drawMelodyNote(enabledNotes, remainingCount)
+        rangeExtensionNote ??
+        (queueStrategy === "melody"
+          ? drawMelodyNote(coreEnabledNotes, remainingCount)
           : (adaptiveSchedulerRef.current?.select({
               lastTargetNoteId: lastTargetNoteIdRef.current,
             }) ??
             selectNextNote({
-              notes: enabledNotes,
+              notes: queueNotes,
               reviews: [...schedulerReviews, ...sessionReviewsRef.current],
               sessions,
               currentSessionId: sessionRef.current?.id,
               queueStrategy,
               drillNoteNames,
               lastTargetNoteId: lastTargetNoteIdRef.current,
-            }));
+            })));
       startPrompt(note);
     },
     [
       drillNoteNames,
       drawMelodyNote,
-      enabledNotes,
+      coreEnabledNotes,
       fixedCount,
       mode,
       queueStrategy,
+      queueNotes,
       schedulerReviews,
+      rangeExtensionNotes,
       sessions,
       startPrompt,
     ]
@@ -1205,11 +1347,21 @@ export function PracticeView({
       return;
     }
     handledNavigationExitRequestIdRef.current = navigationExitRequest.id;
+    const returnToSetup = navigationExitRequest.returnToSetup === true;
     const backgroundExit = Promise.resolve().then(() =>
-      completeSession("manual-stop", "manual-stop", { showSummary: false, updateUi: false })
+      completeSession("manual-stop", "manual-stop", {
+        showSummary: false,
+        updateUi: returnToSetup,
+      })
     );
-    onNavigationExit?.(navigationExitRequest.targetView);
-    void backgroundExit.catch(() => undefined);
+    if (returnToSetup) {
+      void backgroundExit
+        .then(() => onNavigationExit?.(navigationExitRequest.targetView))
+        .catch(() => undefined);
+    } else {
+      onNavigationExit?.(navigationExitRequest.targetView);
+      void backgroundExit.catch(() => undefined);
+    }
   }, [completeSession, navigationExitRequest, onNavigationExit, phase]);
 
   const { startSession } = usePracticeSessionStart({
@@ -1328,7 +1480,7 @@ export function PracticeView({
   }, [completeSession, isMicrophoneAnalysisDialogOpen, isMicrophoneDebugDialogOpen]);
   const { pressedAnswerKeys } = usePracticeInput({
     answerPitchMode,
-    canStartOnMidi: songPracticeSelection === null,
+    canStartOnMidi: songPracticeSelection === null && practiceTab === "free",
     isPausedRef,
     isRunning: phase === "running",
     midi,
@@ -1447,6 +1599,7 @@ export function PracticeView({
     function handleEnter(event: KeyboardEvent): void {
       if (
         !shouldHandleGlobalEnter(event, isInteractiveShortcutTarget(event.target)) ||
+        (phase === "setup" && practiceTab !== "free") ||
         (phase === "setup" && setupDisabled) ||
         songPracticeSelection !== null
       ) {
@@ -1458,7 +1611,7 @@ export function PracticeView({
 
     window.addEventListener("keydown", handleEnter);
     return () => window.removeEventListener("keydown", handleEnter);
-  }, [phase, setupDisabled, songPracticeSelection, startSession]);
+  }, [phase, practiceTab, setupDisabled, songPracticeSelection, startSession]);
 
   const remainingMs =
     mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
@@ -1480,6 +1633,28 @@ export function PracticeView({
         : staffPageNotes,
     [isMobileStaffPage, mobileStaffPageNoteCount, mobileStaffPageStartIndex, staffPageNotes]
   );
+  const visibleStaffPageRhythm = useMemo(() => {
+    if (!staffPageRhythm) return undefined;
+    if (!isMobileStaffPage) return staffPageRhythm;
+    const start = mobileStaffPageStartIndex;
+    const end = start + mobileStaffPageNoteCount;
+    return {
+      ...staffPageRhythm,
+      durations: staffPageRhythm.durations.slice(start, end),
+      measures: staffPageRhythm.measures.slice(start, end),
+      noteBeamGroups: staffPageRhythm.noteBeamGroups.slice(start, end),
+      onsets: staffPageRhythm.onsets.slice(start, end),
+    };
+  }, [isMobileStaffPage, mobileStaffPageNoteCount, mobileStaffPageStartIndex, staffPageRhythm]);
+  const staffPageBarlineAfterNoteIndices = useMemo(() => {
+    if (!visibleStaffPageRhythm) return undefined;
+    return visibleStaffPageRhythm.measures.flatMap((measure, index) =>
+      index < visibleStaffPageRhythm.measures.length - 1 &&
+      visibleStaffPageRhythm.measures[index + 1] !== measure
+        ? [index]
+        : []
+    );
+  }, [visibleStaffPageRhythm]);
   const staffPageNoteCount = isMobileStaffPage
     ? mobileStaffPageNoteCount
     : DESKTOP_STAFF_PAGE_NOTE_COUNT;
@@ -1539,7 +1714,43 @@ export function PracticeView({
   if (phase === "setup") {
     return (
       <PracticeSetupView
-        activeTab={practiceSetupTab}
+        activeTab={practiceTab}
+        distanceContent={
+          <StaffDistancePracticeView
+            isActive={practiceTab === "distance"}
+            midi={midi}
+            microphone={{
+              error: practiceMicrophone.error,
+              isListening: practiceMicrophone.isListening,
+              start: practiceMicrophone.start,
+              status: practiceMicrophone.status,
+              stop: practiceMicrophone.stop,
+            }}
+            onMicrophoneAnswerHandlerChange={(handler) => {
+              staffDistanceMicrophoneAnswerRef.current = handler;
+            }}
+            navigationExitRequest={navigationExitRequest}
+            onBeforePracticeStart={onBeforePracticeStart}
+            onDataChanged={onDataChanged}
+            onNavigationExit={onNavigationExit}
+            onDistanceModeChange={onPracticeDistanceModeChange}
+            onPracticeFinished={onPracticeFinished}
+            onPracticeSingleNote={() => {
+              onPracticeTabChange("free");
+              setPracticeSetupPreferences((current) => ({
+                ...current,
+                promptDisplayMode: "single-note",
+              }));
+            }}
+            onRunStageChange={handleStaffDistanceStageChange}
+            onRunningChange={setIsStaffDistanceRunning}
+            onSettingsSaved={onSettingsSaved}
+            sessions={sessions}
+            settings={setupSettings}
+            distanceMode={practiceDistanceMode}
+          />
+        }
+        distanceStageActive={isStaffDistanceStageActive}
         actions={{
           onAnswerPitchModeChange: setAnswerPitchMode,
           onAutoPlayTargetChange: setAutoPlayTarget,
@@ -1550,7 +1761,7 @@ export function PracticeView({
           onOpenStats,
           onPlayAnswerNoteChange: setPlayAnswerNote,
           onPromptDisplayModeChange: setPromptDisplayMode,
-          onPromptNoteDurationChange: setPromptNoteDuration,
+          onPromptNoteDurationsChange: setPromptNoteDurations,
           onQueueStrategyChange: setQueueStrategy,
           onSettingsSaved,
           onStartSongPractice: async (selection) => {
@@ -1571,7 +1782,7 @@ export function PracticeView({
           onStartPausedReadingChange: (enabled) =>
             setStaffPageUiPreferences((current) => ({ ...current, startPausedReading: enabled })),
           onStartSession: () => void startSession(),
-          onSetupTabChange: setPracticeSetupTab,
+          onSetupTabChange: onPracticeTabChange,
           onToggleDrillNoteName: toggleDrillNoteName,
         }}
         fixedCountPresets={fixedCountPresets}
@@ -1884,6 +2095,8 @@ export function PracticeView({
           <div className={isMobileStaffPage ? "staff-page-mobile-view" : "staff-page-desktop-view"}>
             <StaffPagePrompt
               notes={mobileStaffPageNotes}
+              barlineAfterNoteIndices={staffPageBarlineAfterNoteIndices}
+              beatsPerMeasure={visibleStaffPageRhythm ? 4 : undefined}
               completedCount={
                 isMobileStaffPage
                   ? (staffPageView?.completedCount ?? staffPageCompletedCount)
@@ -1893,10 +2106,16 @@ export function PracticeView({
               isScrolling={isMobileStaffPage ? false : isStaffPageScrolling}
               layout={isMobileStaffPage ? MOBILE_PRACTICE_PAGE_STAFF_LAYOUT : undefined}
               noteDuration={effectivePromptNoteDuration}
+              noteDurations={visibleStaffPageRhythm?.durations}
+              noteMeasures={visibleStaffPageRhythm?.measures}
+              noteOnsets={visibleStaffPageRhythm?.onsets}
+              noteBeamGroups={visibleStaffPageRhythm?.noteBeamGroups}
+              monophonicGrandStaff
               scrollDurationMs={staffPageScrollDurationMs}
               staffNotationMode={staffNotationMode}
               useLedgerGap={useLedgerGap}
-              distributeNotesEvenly={isMobileStaffPage}
+              distributeNotesEvenly={isMobileStaffPage && !visibleStaffPageRhythm}
+              timeSignature={visibleStaffPageRhythm ? "4/4" : undefined}
               notesPerRow={isMobileStaffPage ? MOBILE_STAFF_PAGE_NOTE_COUNT : undefined}
               maxRowCount={isMobileStaffPage ? mobileStaffPageRowCount : undefined}
               minDisplayWidthPx={isMobileStaffPage ? 0 : undefined}
@@ -1909,11 +2128,6 @@ export function PracticeView({
                   : undefined
               }
             />
-            {staffPageView ? (
-              <div aria-live="polite" className="staff-page-counter">
-                第 {staffPageView.currentPage} / {staffPageView.totalPages} 页
-              </div>
-            ) : null}
           </div>
         ) : currentNote ? (
           <StaffPrompt

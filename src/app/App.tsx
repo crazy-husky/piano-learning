@@ -77,6 +77,7 @@ import {
   type AppData,
 } from "./useBackupReminder";
 import {
+  appRouteQuery,
   appRouteFromHash,
   appRoutePathForPage,
   appRouteUrl,
@@ -226,6 +227,7 @@ export function App(): JSX.Element {
   const isGameNavExpanded = expandedNavigationMenu === "game";
   const routeRef = useRef(route);
   routeRef.current = route;
+  const practiceHistoryRestorePendingRef = useRef(false);
   useEffect(() => {
     setExpandedNavigationMenu(isStaffGameRoutePath(route.path) ? "game" : null);
   }, [route.path]);
@@ -293,6 +295,9 @@ export function App(): JSX.Element {
   const [practiceRunning, setPracticeRunning] = useState(false);
   const practiceRunningRef = useRef(false);
   practiceRunningRef.current = practiceRunning;
+  const [practiceStageActive, setPracticeStageActive] = useState(false);
+  const practiceStageActiveRef = useRef(false);
+  practiceStageActiveRef.current = practiceStageActive;
   const pendingRoutePathRef = useRef<AppRoutePath | null>(null);
   const [mobileBackPosition, setMobileBackPosition] = useState<{
     left: number;
@@ -571,8 +576,14 @@ export function App(): JSX.Element {
         staffGameSelectionReturnPathRef.current = currentRoute.path;
         staffGameSelectionRoutePushedRef.current = !options.replace;
       }
-      if (currentRoute.path === nextRoute.path && currentRoute.songId === nextRoute.songId) return;
-      const url = appRouteUrl(nextRoute.path, options.query);
+      if (
+        currentRoute.path === nextRoute.path &&
+        currentRoute.songId === nextRoute.songId &&
+        currentRoute.practiceTab === nextRoute.practiceTab &&
+        currentRoute.practiceDistanceMode === nextRoute.practiceDistanceMode
+      )
+        return;
+      const url = appRouteUrl(nextRoute.path, options.query ?? appRouteQuery(nextRoute));
       if (options.replace) {
         window.history.replaceState(window.history.state, "", url);
       } else {
@@ -586,22 +597,28 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const normalizedRoute = appRouteFromHash(window.location.hash);
-    const normalizedHash = `${normalizedRoute.path}${normalizedRoute.songId ? `?songId=${encodeURIComponent(normalizedRoute.songId)}` : ""}`;
+    const normalizedQuery = appRouteQuery(normalizedRoute);
+    const normalizedHash = `${normalizedRoute.path}${normalizedQuery ? `?${new URLSearchParams(normalizedQuery).toString()}` : ""}`;
     if (!window.location.hash || normalizedHash !== window.location.hash.slice(1)) {
       window.history.replaceState(
         window.history.state,
         "",
-        appRouteUrl(
-          normalizedRoute.path,
-          normalizedRoute.songId ? { songId: normalizedRoute.songId } : undefined
-        )
+        appRouteUrl(normalizedRoute.path, normalizedQuery)
       );
     }
     const synchronizeRoute = (): void => {
       const incomingRoute = appRouteFromHash(window.location.hash);
       const currentRoute = routeRef.current;
-      if (incomingRoute.path === currentRoute.path && incomingRoute.songId === currentRoute.songId)
+      if (
+        incomingRoute.path === currentRoute.path &&
+        incomingRoute.songId === currentRoute.songId &&
+        incomingRoute.practiceTab === currentRoute.practiceTab &&
+        incomingRoute.practiceDistanceMode === currentRoute.practiceDistanceMode
+      ) {
+        practiceHistoryRestorePendingRef.current = false;
         return;
+      }
+      if (practiceHistoryRestorePendingRef.current) return;
       if (
         !isStaffGameSongRoutePath(currentRoute.path) &&
         incomingRoute.path === "/practice/game/songs"
@@ -627,6 +644,27 @@ export function App(): JSX.Element {
       ) {
         staffGameSelectionRoutePushedRef.current = false;
       }
+      if (
+        (practiceRunningRef.current || practiceStageActiveRef.current) &&
+        currentRoute.path === "/practice" &&
+        (incomingRoute.path !== "/practice" ||
+          incomingRoute.practiceTab !== currentRoute.practiceTab ||
+          incomingRoute.practiceDistanceMode !== currentRoute.practiceDistanceMode)
+      ) {
+        pendingRoutePathRef.current = null;
+        practiceExitRequestIdRef.current += 1;
+        setPracticeExitRequest({
+          id: practiceExitRequestIdRef.current,
+          returnToSetup: true,
+          targetView: "practice",
+        });
+        practiceHistoryRestorePendingRef.current = true;
+        window.history.forward();
+        window.setTimeout(() => {
+          practiceHistoryRestorePendingRef.current = false;
+        }, 250);
+        return;
+      }
       if (currentRoute.page === "vocal" && incomingRoute.page !== "vocal") {
         pendingRoutePathRef.current = incomingRoute.path;
         vocalExitRequestIdRef.current += 1;
@@ -637,17 +675,17 @@ export function App(): JSX.Element {
         window.history.pushState(
           window.history.state,
           "",
-          appRouteUrl(
-            currentRoute.path,
-            currentRoute.songId ? { songId: currentRoute.songId } : undefined
-          )
+          appRouteUrl(currentRoute.path, appRouteQuery(currentRoute))
         );
         return;
       }
       const isLeavingPractice =
         currentRoute.page === "practice" && incomingRoute.page !== "practice";
       const isLeavingStaffGame = currentRoute.page === "game" && incomingRoute.page !== "game";
-      if (practiceRunningRef.current && (isLeavingPractice || isLeavingStaffGame)) {
+      if (
+        (practiceRunningRef.current || practiceStageActiveRef.current) &&
+        (isLeavingPractice || isLeavingStaffGame)
+      ) {
         pendingRoutePathRef.current = incomingRoute.path;
         practiceExitRequestIdRef.current += 1;
         setPracticeExitRequest({
@@ -657,10 +695,7 @@ export function App(): JSX.Element {
         window.history.pushState(
           window.history.state,
           "",
-          appRouteUrl(
-            currentRoute.path,
-            currentRoute.songId ? { songId: currentRoute.songId } : undefined
-          )
+          appRouteUrl(currentRoute.path, appRouteQuery(currentRoute))
         );
         return;
       }
@@ -839,7 +874,11 @@ export function App(): JSX.Element {
   const selectView = useCallback(
     (nextView: View): void => {
       const nextPath = appRoutePathForPage(nextView);
-      if (practiceRunning && view === "practice" && nextPath !== route.path) {
+      if (
+        (practiceRunning || practiceStageActive) &&
+        view === "practice" &&
+        nextPath !== route.path
+      ) {
         pendingRoutePathRef.current = nextPath;
         if (!practiceExitRequest) {
           practiceExitRequestIdRef.current += 1;
@@ -858,18 +897,23 @@ export function App(): JSX.Element {
       }
       navigateToRoute(nextPath);
     },
-    [navigateToRoute, practiceExitRequest, practiceRunning, route.path, view]
+    [navigateToRoute, practiceExitRequest, practiceRunning, practiceStageActive, route.path, view]
   );
 
   const handleNavigationExit = useCallback(
     (targetView: PracticeNavigationExitTarget): void => {
+      const returnToSetup = practiceExitRequest?.returnToSetup === true;
       setPracticeExitRequest(null);
+      if (returnToSetup) {
+        pendingRoutePathRef.current = null;
+        return;
+      }
       const path = pendingRoutePathRef.current ?? appRoutePathForPage(targetView);
       const replace = pendingRoutePathRef.current !== null;
       pendingRoutePathRef.current = null;
       navigateToRoute(path, { replace });
     },
-    [navigateToRoute]
+    [navigateToRoute, practiceExitRequest]
   );
 
   const handleVocalNavigationExit = useCallback(
@@ -913,7 +957,11 @@ export function App(): JSX.Element {
   const selectStaffGameModeFromNavigation = useCallback(
     (mode: "levels" | "songs"): void => {
       const nextPath: AppRoutePath = mode === "songs" ? "/practice/game/songs" : "/practice/game";
-      if (practiceRunning && view === "practice" && nextPath !== route.path) {
+      if (
+        (practiceRunning || practiceStageActive) &&
+        view === "practice" &&
+        nextPath !== route.path
+      ) {
         pendingRoutePathRef.current = nextPath;
         if (!practiceExitRequest) {
           practiceExitRequestIdRef.current += 1;
@@ -929,7 +977,14 @@ export function App(): JSX.Element {
       }
       selectStaffGameMode(mode);
     },
-    [practiceExitRequest, practiceRunning, route.path, selectStaffGameMode, view]
+    [
+      practiceExitRequest,
+      practiceRunning,
+      practiceStageActive,
+      route.path,
+      selectStaffGameMode,
+      view,
+    ]
   );
 
   const startStaffGameSong = useCallback(
@@ -991,6 +1046,7 @@ export function App(): JSX.Element {
     view !== "home" &&
     !(view === "practice" && isStaffGameRoutePath(route.path)) &&
     (!practiceRunning || view === "practice");
+  const mobileBackReturnsToSetup = view === "practice" && (practiceRunning || practiceStageActive);
   useLayoutEffect(() => {
     if (!showMobileBackButton || !mobileBackPosition) return;
     const button = mobileBackButtonRef.current;
@@ -1246,6 +1302,15 @@ export function App(): JSX.Element {
                   sessions={data.practiceHistoryLoaded ? data.sessions : []}
                   reviews={data.practiceHistoryLoaded ? data.reviews : []}
                   navigationExitRequest={practiceExitRequest}
+                  practiceTab={route.practiceTab ?? "free"}
+                  practiceDistanceMode={route.practiceDistanceMode}
+                  onPracticeDistanceModeChange={(mode, replace = false) =>
+                    navigateToRoute("/practice", {
+                      query: { tab: "distance", distanceMode: mode },
+                      replace,
+                    })
+                  }
+                  onPracticeTabChange={(tab) => navigateToRoute("/practice", { query: { tab } })}
                   onDataChanged={refreshPracticeHistory}
                   onNavigationExit={handleNavigationExit}
                   onOpenStats={() => selectView("stats")}
@@ -1253,6 +1318,7 @@ export function App(): JSX.Element {
                   onBeforePracticeStart={preflightBeforePracticeStart}
                   onPracticeFinished={showBackupReminderAfterActivity}
                   onRunningChange={setPracticeRunning}
+                  onPracticeStageChange={setPracticeStageActive}
                   onSettingsSaved={(settings, options) =>
                     saveSettings(settings, { ...options, feedback: false })
                   }
@@ -1354,11 +1420,22 @@ export function App(): JSX.Element {
         </main>
         {showMobileBackButton ? (
           <button
-            aria-label="返回首页，可拖动调整位置"
+            aria-label={`${mobileBackReturnsToSetup ? "返回练习配置" : "返回首页"}，可拖动调整位置`}
             className="mobile-route-back"
             onClick={() => {
               if (ignoreMobileBackClickRef.current) {
                 ignoreMobileBackClickRef.current = false;
+                return;
+              }
+              if (mobileBackReturnsToSetup) {
+                if (!practiceExitRequest?.returnToSetup) {
+                  practiceExitRequestIdRef.current += 1;
+                  setPracticeExitRequest({
+                    id: practiceExitRequestIdRef.current,
+                    returnToSetup: true,
+                    targetView: "practice",
+                  });
+                }
                 return;
               }
               selectView("home");
@@ -1378,12 +1455,12 @@ export function App(): JSX.Element {
                   }
                 : undefined
             }
-            title="拖动调整位置，点击返回首页"
+            title={`拖动调整位置，点击${mobileBackReturnsToSetup ? "返回练习配置" : "返回首页"}`}
             type="button"
           >
             <ArrowLeft aria-hidden="true" size={19} />
             <GripVertical aria-hidden="true" size={16} />
-            返回
+            {mobileBackReturnsToSetup ? "配置" : "返回"}
           </button>
         ) : null}
         {MIDI_LATENCY_DIAGNOSTICS_ENABLED ? (

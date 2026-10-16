@@ -109,6 +109,36 @@ function chooseRegisterAnchorIndex(
   );
 }
 
+function chooseOtherStaffAnchorIndex(
+  pitches: MelodyPitch[],
+  currentIndex: number,
+  pitchVisitCounts: MelodyGenerationState["pitchVisitCounts"],
+  rng: () => number
+): number | undefined {
+  const currentStaff = pitches[currentIndex]?.notes[0]?.staff;
+  if (!currentStaff) return undefined;
+  const otherStaffIndexes = pitches.flatMap((pitch, index) =>
+    pitch.notes[0]?.staff !== currentStaff ? [index] : []
+  );
+  if (otherStaffIndexes.length === 0) return undefined;
+
+  const stableIndexes = otherStaffIndexes.filter((index) =>
+    CADENCE_NOTE_NAMES.has(pitches[index].notes[0].noteName)
+  );
+  const source = stableIndexes.length > 0 ? stableIndexes : otherStaffIndexes;
+  const minimumVisits = Math.min(
+    ...source.map((index) => pitchVisitCounts[pitches[index].pitchId] ?? 0)
+  );
+  const leastVisited = source.filter(
+    (index) => (pitchVisitCounts[pitches[index].pitchId] ?? 0) === minimumVisits
+  );
+  const nearestDistance = Math.min(...leastVisited.map((index) => Math.abs(index - currentIndex)));
+  return chooseFromIndexes(
+    leastVisited.filter((index) => Math.abs(index - currentIndex) === nearestDistance),
+    rng
+  );
+}
+
 function chooseCadenceIndex(
   pitches: MelodyPitch[],
   register: MelodyRegister,
@@ -271,6 +301,7 @@ export function selectMelodyNotes({
 
   const pitches = getMelodyPitches(notes);
   const registers = getMelodyRegisters(pitches);
+  const hasMultipleStaves = new Set(pitches.map((pitch) => pitch.notes[0]?.staff)).size > 1;
   if (state.registerVisitCounts.length !== registers.length) {
     state.currentRegisterIndex = undefined;
     state.registerVisitCounts = Array.from({ length: registers.length }, () => 0);
@@ -297,6 +328,27 @@ export function selectMelodyNotes({
                   previousIndex >= register.startIndex && previousIndex <= register.endIndex
               )
             : Math.floor(rng() * registers.length);
+      } else if (hasMultipleStaves && previousIndex >= 0) {
+        const targetIndex = chooseOtherStaffAnchorIndex(
+          pitches,
+          previousIndex,
+          state.pitchVisitCounts,
+          rng
+        );
+        if (targetIndex !== undefined) {
+          state.transitionPitchIds = chooseTransitionPitchIds(
+            pitches,
+            previousIndex,
+            targetIndex,
+            rng
+          );
+          state.currentRegisterIndex = Math.max(
+            0,
+            registers.findIndex(
+              (register) => targetIndex >= register.startIndex && targetIndex <= register.endIndex
+            )
+          );
+        }
       } else if (registers.length > 1 && rng() < REGISTER_TRANSFER_RATE) {
         const nextRegisterIndex = chooseNextRegisterIndex(
           state.currentRegisterIndex,

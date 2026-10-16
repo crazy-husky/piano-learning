@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { BarChart3, Music2, Play } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -41,6 +41,7 @@ export interface PracticeSetupUiPreferences {
   mode: PracticeMode;
   promptDisplayMode: PromptDisplayMode;
   promptNoteDuration: PromptNoteDuration;
+  promptNoteDurations: PromptNoteDuration[];
   queueStrategy: PracticeQueueStrategy;
 }
 
@@ -54,7 +55,7 @@ interface PracticeSetupActions {
   onOpenStats: () => void;
   onPlayAnswerNoteChange: (enabled: boolean) => void;
   onPromptDisplayModeChange: (mode: PromptDisplayMode) => void;
-  onPromptNoteDurationChange: (duration: PromptNoteDuration) => void;
+  onPromptNoteDurationsChange: (durations: PromptNoteDuration[]) => void;
   onQueueStrategyChange: (strategy: PracticeQueueStrategy) => void;
   onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
   onStartSongPractice: (selection: SongPracticeSelection) => Promise<boolean>;
@@ -64,11 +65,13 @@ interface PracticeSetupActions {
   onToggleDrillNoteName: (noteName: NoteName, checked: boolean) => void;
 }
 
-export type PracticeSetupTab = "free" | "songs";
+export type PracticeSetupTab = "free" | "distance" | "songs";
 
 interface PracticeSetupViewProps {
   activeTab: PracticeSetupTab;
   actions: PracticeSetupActions;
+  distanceContent: ReactNode;
+  distanceStageActive: boolean;
   fixedCountPresets: number[];
   isBusy: boolean;
   microphoneError: string | null;
@@ -157,6 +160,8 @@ const SONG_KEY_OPTIONS: Array<{
 export function PracticeSetupView({
   activeTab,
   actions,
+  distanceContent,
+  distanceStageActive,
   fixedCountPresets,
   isBusy: showStartingSessionStatus,
   microphoneError,
@@ -175,7 +180,7 @@ export function PracticeSetupView({
     mode,
     playAnswerNote,
     promptDisplayMode,
-    promptNoteDuration,
+    promptNoteDurations,
     queueStrategy,
   } = preferences;
   const {
@@ -188,7 +193,7 @@ export function PracticeSetupView({
     onOpenStats,
     onPlayAnswerNoteChange: setPlayAnswerNote,
     onPromptDisplayModeChange: setPromptDisplayMode,
-    onPromptNoteDurationChange: setPromptNoteDuration,
+    onPromptNoteDurationsChange: setPromptNoteDurations,
     onQueueStrategyChange: setQueueStrategy,
     onSettingsSaved,
     onStartSongPractice,
@@ -267,7 +272,7 @@ export function PracticeSetupView({
           aria-controls="practice-free-panel"
           aria-selected={activeTab === "free"}
           className={activeTab === "free" ? "is-active" : ""}
-          disabled={isStartingSongPractice}
+          disabled={distanceStageActive || isStartingSongPractice}
           id="practice-free-tab"
           role="tab"
           type="button"
@@ -276,10 +281,22 @@ export function PracticeSetupView({
           自由练习
         </button>
         <button
+          aria-controls="practice-distance-panel"
+          aria-selected={activeTab === "distance"}
+          className={activeTab === "distance" ? "is-active" : ""}
+          disabled={distanceStageActive || isStartingSongPractice}
+          id="practice-distance-tab"
+          role="tab"
+          type="button"
+          onClick={() => onSetupTabChange("distance")}
+        >
+          间距推导
+        </button>
+        <button
           aria-controls="practice-songs-panel"
           aria-selected={activeTab === "songs"}
           className={activeTab === "songs" ? "is-active" : ""}
-          disabled={isStartingSongPractice}
+          disabled={distanceStageActive || isStartingSongPractice}
           id="practice-songs-tab"
           role="tab"
           type="button"
@@ -287,6 +304,15 @@ export function PracticeSetupView({
         >
           歌曲
         </button>
+      </div>
+      <div
+        className="practice-setup-tab-panel"
+        hidden={activeTab !== "distance"}
+        id="practice-distance-panel"
+        role="tabpanel"
+        aria-labelledby="practice-distance-tab"
+      >
+        {distanceContent}
       </div>
       <div
         className="practice-setup-tab-panel practice-free-tab-content"
@@ -298,7 +324,12 @@ export function PracticeSetupView({
         <div className="setup-grid">
           <div className="panel setup-panel">
             <div className="panel-heading">
-              <h1>识谱视奏</h1>
+              <div>
+                <h1>自由练习</h1>
+                <p className="practice-panel-description">
+                  看到音符后，快速识别音高并找到对应琴键。
+                </p>
+              </div>
               <div className="practice-setup-heading-meta">
                 <div className="practice-midi-heading-status">
                   <span title={midi.selectedInput?.name}>
@@ -308,7 +339,11 @@ export function PracticeSetupView({
                 </div>
               </div>
             </div>
-            <GlobalRangeControls settings={settings} onSettingsSaved={onSettingsSaved} />
+            <GlobalRangeControls
+              allowInterStaffLedgerChoice={false}
+              settings={settings}
+              onSettingsSaved={onSettingsSaved}
+            />
 
             <div className="control-block">
               <span className="control-label">模式</span>
@@ -340,13 +375,17 @@ export function PracticeSetupView({
                 <div className="segmented">
                   <button
                     className={promptDisplayMode === "single-note" ? "active" : ""}
+                    disabled={promptNoteDurations.length > 1}
                     onClick={() => setPromptDisplayMode("single-note")}
+                    title={promptNoteDurations.length > 1 ? "多选时值需要使用谱页展示" : undefined}
+                    type="button"
                   >
                     单音
                   </button>
                   <button
                     className={promptDisplayMode === "staff-page" ? "active" : ""}
                     onClick={() => setPromptDisplayMode("staff-page")}
+                    type="button"
                   >
                     谱页
                   </button>
@@ -354,15 +393,33 @@ export function PracticeSetupView({
                 <div className="segmented prompt-note-duration-options">
                   {PROMPT_NOTE_DURATION_OPTIONS.map((option) => (
                     <button
+                      aria-pressed={promptNoteDurations.includes(option.value)}
                       aria-label={option.ariaLabel}
-                      className={promptNoteDuration === option.value ? "active" : ""}
+                      className={promptNoteDurations.includes(option.value) ? "active" : ""}
                       key={option.value}
-                      onClick={() => setPromptNoteDuration(option.value)}
+                      onClick={() => {
+                        const selected = new Set(promptNoteDurations);
+                        if (selected.has(option.value)) {
+                          if (selected.size === 1) return;
+                          selected.delete(option.value);
+                        } else {
+                          selected.add(option.value);
+                        }
+                        setPromptNoteDurations(
+                          PROMPT_NOTE_DURATION_OPTIONS.map((item) => item.value).filter((value) =>
+                            selected.has(value)
+                          )
+                        );
+                      }}
+                      type="button"
                     >
                       {option.label}
                     </button>
                   ))}
                 </div>
+                {promptNoteDurations.length > 1 ? (
+                  <small>多选后按混合节奏显示连续谱面，仍逐音答题。</small>
+                ) : null}
               </div>
             </div>
 
@@ -618,9 +675,8 @@ export function PracticeSetupView({
           <div className="panel-heading">
             <div>
               <h1>歌曲练习</h1>
-              <p className="song-practice-description">
-                选择歌曲版本和手型，练习数据会单独保存，不计入自由练习的音符熟练度。已提供 MIDI
-                的曲目按各自文件中的音符与时间信息录入。
+              <p className="practice-panel-description song-practice-description">
+                选择熟悉的旋律，跟随谱面练习读谱与弹奏。
               </p>
             </div>
             <div className="practice-midi-heading-status">

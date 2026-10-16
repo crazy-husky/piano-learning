@@ -16,6 +16,13 @@
   flex: 0 0 auto;
 }
 
+@media (min-width: 821px) {
+  .practice-topline .practice-return-home,
+  .practice-topline .topline-actions > button[aria-keyshortcuts] {
+    min-height: var(--control-height);
+  }
+}
+
 .progress-readout {
   min-width: 118px;
   min-height: 40px;
@@ -118,18 +125,6 @@
 
 .staff-page-desktop-view .staff-page {
   margin-inline: auto;
-}
-
-.staff-page-counter {
-  box-sizing: border-box;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  margin: 6px auto 0;
-  padding-right: 12px;
-  text-align: right;
-  width: min(980px, 100%);
 }
 
 .staff-page-renderer {

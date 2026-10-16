@@ -16,6 +16,7 @@ import type {
   TargetNote,
   WrongAnswer,
 } from "../../../domain/types";
+import type { GeneratedStaffPageRhythm } from "../logic/staffPageNotation";
 import type { PracticePromptTimerState, PracticeTimers } from "./usePracticeTimers";
 
 export interface PracticePromptRuntime extends PracticePromptTimerState {
@@ -32,6 +33,7 @@ export interface PracticeStaffPageRuntime {
   notes: TargetNote[];
   index: number;
   completedCount: number;
+  rhythm?: GeneratedStaffPageRhythm;
 }
 
 export interface CompletePracticeSessionOptions {

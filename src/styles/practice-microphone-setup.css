@@ -975,7 +975,8 @@
   gap: 8px;
 }
 
-.action-row > button {
+.action-row > button,
+.action-row .practice-start-action > button {
   min-height: var(--control-height);
 }
 

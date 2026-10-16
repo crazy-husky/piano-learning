@@ -17,6 +17,19 @@ export type PromptNoteDuration = "whole" | "quarter" | "eighth" | "sixteenth";
 export type EffectiveQueueAlgorithm =
   "adaptive-v1" | "adaptive-v2" | "focused-v1" | "melody-v1" | "melody-v2";
 export type QueueComparisonFamily = "adaptive" | "melody-v1" | "melody-v2";
+export type StaffDistanceDirection = "up" | "down" | "same";
+export type StaffDistanceTrainingMode = "look" | "play";
+export type StaffDistanceInputMethod = "midi" | "microphone";
+export interface StaffDistancePracticeSettings {
+  includeUnison: boolean;
+  maxDistance: number;
+}
+
+export interface StaffRangeSelection {
+  enabledGroupIds: PracticeGroupId[];
+  enabledPitchIds?: PitchId[];
+  crossGroupPitchIds?: PitchId[];
+}
 export type SessionEndReason =
   "manual-stop" | "completed-count" | "completed-duration" | "abandoned";
 export type InterruptReason =
@@ -83,6 +96,8 @@ export interface ReviewRecord {
 interface PracticeSessionRecordBase {
   activePracticeMs?: number;
   id: string;
+  practiceType?: "staff-distance";
+  staffDistance?: StaffDistancePracticeSessionDetails;
   mode: PracticeMode;
   enabledGroupIds: PracticeGroupId[];
   fixedCount?: number;
@@ -96,6 +111,31 @@ interface PracticeSessionRecordBase {
   endReason?: SessionEndReason;
   completedCount: number;
   interruptedCount: number;
+}
+
+export interface StaffDistanceQuestionResult {
+  distance: number;
+  direction: StaffDistanceDirection;
+  firstTryCorrect: boolean;
+  responseMs: number;
+  wrongAttempts: number;
+  usedHint: boolean;
+  targetPitchId?: PitchId;
+}
+
+export interface StaffDistancePracticeSessionDetails {
+  enabledGroupIds: PracticeGroupId[];
+  enabledPitchIds?: PitchId[];
+  crossGroupPitchIds?: PitchId[];
+  includeInterStaffLedgerSpellings: boolean;
+  includeUnison: boolean;
+  inputMethod?: StaffDistanceInputMethod;
+  maxDistance: number;
+  noteDuration?: PromptNoteDuration;
+  noteDurations?: PromptNoteDuration[];
+  questionResults: StaffDistanceQuestionResult[];
+  staffNotationMode: StaffNotationMode;
+  trainingMode?: StaffDistanceTrainingMode;
 }
 
 export interface PracticeSessionRecordV1 extends PracticeSessionRecordBase {
@@ -135,6 +175,7 @@ export interface PracticeSessionStartSnapshot {
     playAnswerNote?: boolean;
     promptDisplayMode: PromptDisplayMode;
     promptNoteDuration: PromptNoteDuration;
+    promptNoteDurations?: PromptNoteDuration[];
     smoothStaffPageScroll: boolean;
     startPausedReading: boolean;
   };
@@ -252,12 +293,14 @@ interface AppSettingsBase {
   createdAt: string;
   firstReviewAt?: string;
   crossGroupPitchIds?: PitchId[];
+  staffRangeProfiles?: Partial<Record<StaffNotationMode, StaffRangeSelection>>;
   enabledGroupIds: PracticeGroupId[];
   enabledPitchIds?: PitchId[];
   answerPitchMode: AnswerPitchMode;
   defaultMode: PracticeMode;
   promptDisplayMode: PromptDisplayMode;
   promptNoteDuration: PromptNoteDuration;
+  promptNoteDurations?: PromptNoteDuration[];
   fixedCount: number;
   fixedDurationSeconds: number;
   autoPlayTarget: boolean;

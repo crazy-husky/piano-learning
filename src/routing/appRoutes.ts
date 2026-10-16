@@ -9,10 +9,14 @@ export type AppRoutePath =
   | "/vocal"
   | "/settings";
 export type AppRoutePage = "home" | "study" | "practice" | "game" | "stats" | "settings" | "vocal";
+export type PracticeRouteTab = "free" | "distance" | "songs";
+export type PracticeDistanceMode = "look" | "play";
 
 export interface AppRoute {
   page: AppRoutePage;
   path: AppRoutePath;
+  practiceTab?: PracticeRouteTab;
+  practiceDistanceMode?: PracticeDistanceMode;
   songId?: string;
 }
 
@@ -39,13 +43,42 @@ export function appRouteFromHash(hash: string): AppRoute {
     path === "/practice/game/songs/play"
       ? new URLSearchParams(rawQuery).get("songId")?.slice(0, 80) || undefined
       : undefined;
+  const requestedPracticeTab = new URLSearchParams(rawQuery).get("tab");
+  const requestedDistanceMode = new URLSearchParams(rawQuery).get("distanceMode");
+  const practiceTab: PracticeRouteTab | undefined =
+    path === "/practice"
+      ? requestedPracticeTab === "distance" || requestedPracticeTab === "songs"
+        ? requestedPracticeTab
+        : "free"
+      : undefined;
+  const practiceDistanceMode: PracticeDistanceMode | undefined =
+    path === "/practice" && practiceTab === "distance"
+      ? requestedDistanceMode === "play"
+        ? "play"
+        : requestedDistanceMode === "look"
+          ? "look"
+          : undefined
+      : undefined;
   const page: AppRoutePage =
     path === "/"
       ? "home"
       : path.startsWith("/practice/game")
         ? "game"
         : (path.slice(1) as Exclude<AppRoutePage, "home">);
-  return { page, path, songId };
+  return { page, path, practiceTab, practiceDistanceMode, songId };
+}
+
+export function appRouteQuery(route: AppRoute): Record<string, string> | undefined {
+  if (route.path === "/practice") {
+    return {
+      tab: route.practiceTab ?? "free",
+      ...(route.practiceTab === "distance" && route.practiceDistanceMode
+        ? { distanceMode: route.practiceDistanceMode }
+        : {}),
+    };
+  }
+  if (route.songId) return { songId: route.songId };
+  return undefined;
 }
 
 export function isStaffGameRoutePath(path: AppRoutePath): boolean {

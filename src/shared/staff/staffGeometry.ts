@@ -186,18 +186,29 @@ export function drawGrandStaff(
   context: ReturnType<Renderer["getContext"]>,
   frame: StaffFrame,
   anchors: GrandStaffAnchors,
-  options: { brace?: boolean; yOffset?: number } = {}
+  options: {
+    brace?: boolean;
+    showRightConnector?: boolean;
+    timeSignature?: string;
+    yOffset?: number;
+  } = {}
 ): DrawnGrandStaff {
   const yOffset = options.yOffset ?? 0;
   const treble = new Stave(frame.x, yOffset + anchors.trebleY, frame.staveWidth).addClef("treble");
   const bass = new Stave(frame.x, yOffset + anchors.bassY, frame.staveWidth).addClef("bass");
+  if (options.timeSignature) {
+    treble.addTimeSignature(options.timeSignature);
+    bass.addTimeSignature(options.timeSignature);
+  }
   treble.setContext(context).draw();
   bass.setContext(context).draw();
   if (options.brace) {
     new StaveConnector(treble, bass).setType("brace").setContext(context).draw();
   }
   new StaveConnector(treble, bass).setType("singleLeft").setContext(context).draw();
-  new StaveConnector(treble, bass).setType("singleRight").setContext(context).draw();
+  if (options.showRightConnector !== false) {
+    new StaveConnector(treble, bass).setType("singleRight").setContext(context).draw();
+  }
   return { bass, treble };
 }
 
@@ -206,9 +217,10 @@ export function drawSingleStaff(
   frame: StaffFrame,
   staff: "treble" | "bass",
   y: number,
-  options: { yOffset?: number } = {}
+  options: { timeSignature?: string; yOffset?: number } = {}
 ): DrawnSingleStaff {
   const stave = new Stave(frame.x, (options.yOffset ?? 0) + y, frame.staveWidth).addClef(staff);
+  if (options.timeSignature) stave.addTimeSignature(options.timeSignature);
   stave.setContext(context).draw();
   return { staff: stave };
 }
@@ -223,6 +235,8 @@ export function drawStaffSystem({
   scale,
   useLedgerGap,
   vertical,
+  timeSignature,
+  showGrandStaffRightConnector = true,
   yOffset = 0,
 }: {
   brace?: boolean;
@@ -234,6 +248,8 @@ export function drawStaffSystem({
   mode: StaffNotationMode;
   scale: number;
   useLedgerGap: boolean;
+  showGrandStaffRightConnector?: boolean;
+  timeSignature?: string;
   vertical: StaffVerticalProfile;
   yOffset?: number;
 }): StaffSystem {
@@ -246,7 +262,7 @@ export function drawStaffSystem({
         vertical.centerYPx,
         useLedgerGap ? vertical.ledgerGapPx : vertical.gapPx
       ),
-      { brace, yOffset }
+      { brace, showRightConnector: showGrandStaffRightConnector, timeSignature, yOffset }
     );
     const commonNoteStartX = Math.max(staves.treble.getNoteStartX(), staves.bass.getNoteStartX());
     staves.treble.setNoteStartX(commonNoteStartX);
@@ -260,7 +276,10 @@ export function drawStaffSystem({
 
   const staff = staffForSingleClefMode(mode);
   const yPx = staff === "treble" ? vertical.trebleOnlyYPx : vertical.bassOnlyYPx;
-  const stave = drawSingleStaff(context, frame, staff, logicalPx(yPx, scale), { yOffset }).staff;
+  const stave = drawSingleStaff(context, frame, staff, logicalPx(yPx, scale), {
+    timeSignature,
+    yOffset,
+  }).staff;
   return {
     mode,
     noteArea: getSingleStaffNoteArea(stave, columnCount, scale, horizontal),

@@ -30,6 +30,12 @@ import type { PracticeStaffPageRuntime } from "./usePracticeSessionLifecycle";
 import type { PracticeTimers } from "./usePracticeTimers";
 import type { PracticeMicrophoneAnalysis } from "../../vocal-pitch/logic/practiceMicrophoneAnalysis";
 
+const CROSS_GROUP_NOTE_RATE = 0.08;
+
+function pickRangeExtensionNote(notes: readonly TargetNote[]): TargetNote | undefined {
+  return notes.length > 0 ? notes[Math.floor(Math.random() * notes.length)] : undefined;
+}
+
 interface PracticeStaffPageStartInput {
   nextCompletedCount: number;
   sourceDrillNoteNames: NoteName[];
@@ -205,10 +211,14 @@ export function usePracticeSessionStart({
         const nextSchedulerReviews = preflightResult.reviews
           ? filterLongTermReviews(preflightResult.reviews)
           : schedulerReviews;
+        const practiceSettings =
+          nextSettings.staffNotationMode === "grand"
+            ? { ...nextSettings, includeInterStaffLedgerSpellings: false }
+            : nextSettings;
         const microphoneSettings =
           availablePreflightAnswerPitchMode === "microphone"
-            ? { ...nextSettings, playAnswerNote: false }
-            : nextSettings;
+            ? { ...practiceSettings, playAnswerNote: false }
+            : practiceSettings;
         const builtStartSnapshot = buildPracticeSessionStartSnapshot({
           autoPlayTarget:
             availablePreflightAnswerPitchMode === "microphone"
@@ -226,6 +236,16 @@ export function usePracticeSessionStart({
         const { snapshot: startSnapshot } = builtStartSnapshot;
         const { practiceConfig, presentationConfig } = startSnapshot;
         const nextEnabledNotes = builtStartSnapshot.notes;
+        const rangeExtensionPitchIds = new Set(practiceConfig.crossGroupPitchIds ?? []);
+        const candidateExtensionNotes = nextEnabledNotes.filter((note) =>
+          rangeExtensionPitchIds.has(note.pitchId)
+        );
+        const candidateCoreNotes = nextEnabledNotes.filter(
+          (note) => !rangeExtensionPitchIds.has(note.pitchId)
+        );
+        const coreEnabledNotes =
+          candidateCoreNotes.length > 0 ? candidateCoreNotes : nextEnabledNotes;
+        const rangeExtensionNotes = candidateCoreNotes.length > 0 ? candidateExtensionNotes : [];
         const shouldStartPaused =
           presentationConfig.promptDisplayMode === "staff-page" &&
           presentationConfig.startPausedReading;
@@ -262,7 +282,7 @@ export function usePracticeSessionStart({
           practiceConfig.queueStrategy === "melody"
             ? null
             : createAdaptiveNoteScheduler({
-                notes: nextEnabledNotes,
+                notes: coreEnabledNotes,
                 reviews: nextSchedulerReviews,
                 sessions,
                 currentSessionId: nextSession.id,
@@ -282,25 +302,30 @@ export function usePracticeSessionStart({
         sessionStarted = true;
         if (presentationConfig.promptDisplayMode === "staff-page") {
           startStaffPage({
-            sourceNotes: nextEnabledNotes,
+            sourceNotes: coreEnabledNotes,
             sourceReviews: nextSchedulerReviews,
             sourceQueueStrategy: practiceConfig.queueStrategy,
             sourceDrillNoteNames: practiceConfig.drillNoteNames,
             nextCompletedCount: 0,
           });
         } else {
+          const firstRangeExtensionNote =
+            Math.random() < CROSS_GROUP_NOTE_RATE
+              ? pickRangeExtensionNote(rangeExtensionNotes)
+              : undefined;
           const firstNote =
-            practiceConfig.queueStrategy === "melody"
-              ? drawMelodyNote(nextEnabledNotes, practiceConfig.fixedCount)
+            firstRangeExtensionNote ??
+            (practiceConfig.queueStrategy === "melody"
+              ? drawMelodyNote(coreEnabledNotes, practiceConfig.fixedCount)
               : (adaptiveSchedulerRef.current?.select() ??
                 selectNextNote({
-                  notes: nextEnabledNotes,
+                  notes: coreEnabledNotes,
                   reviews: nextSchedulerReviews,
                   sessions,
                   currentSessionId: nextSession.id,
                   queueStrategy: practiceConfig.queueStrategy,
                   drillNoteNames: practiceConfig.drillNoteNames,
-                }));
+                })));
           startPrompt(firstNote);
         }
       });

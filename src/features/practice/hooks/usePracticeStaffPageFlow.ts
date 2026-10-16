@@ -13,15 +13,35 @@ import type {
   PracticeMode,
   PracticeQueueStrategy,
   PracticeSessionRecord,
+  PromptNoteDuration,
   ReviewRecord,
   TargetNote,
 } from "../../../domain/types";
 import { PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
 import { getStaffPageRefillCount } from "../logic/staffPageFlow";
+import { generateStaffPageRhythm } from "../logic/staffPageNotation";
+import type { GeneratedStaffPageRhythm } from "../logic/staffPageNotation";
 import type { PracticeStaffPageRuntime } from "./usePracticeSessionLifecycle";
 
 const STAFF_PAGE_SIZE =
   PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows * PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow;
+const CROSS_GROUP_NOTE_RATE = 0.08;
+
+function addOccasionalRangeNotes(
+  notes: readonly TargetNote[],
+  rangeExtensionNotes: readonly TargetNote[]
+): TargetNote[] {
+  if (rangeExtensionNotes.length === 0) return [...notes];
+  const result = [...notes];
+  for (let index = 0; index < result.length; index += 1) {
+    if (Math.random() >= CROSS_GROUP_NOTE_RATE) continue;
+    const previousNote = result[index - 1];
+    const eligible = rangeExtensionNotes.filter((candidate) => candidate.id !== previousNote?.id);
+    const pool = eligible.length > 0 ? eligible : rangeExtensionNotes;
+    result[index] = pool[Math.floor(Math.random() * pool.length)] ?? result[index]!;
+  }
+  return result;
+}
 
 interface PracticeStaffPageFlowValues {
   drillNoteNames: NoteName[];
@@ -30,6 +50,8 @@ interface PracticeStaffPageFlowValues {
   isMobileViewport: boolean;
   mode: PracticeMode;
   pageNoteCount: number;
+  promptNoteDurations: PromptNoteDuration[];
+  rangeExtensionNotes: TargetNote[];
   queueStrategy: PracticeQueueStrategy;
   schedulerReviews: ReviewRecord[];
   sessions: PracticeSessionRecord[];
@@ -58,6 +80,7 @@ interface PracticeStaffPageFlowUi {
   setStaffPageFirstNoteOffset: Dispatch<SetStateAction<number>>;
   setStaffPageIndex: Dispatch<SetStateAction<number>>;
   setStaffPageNotes: Dispatch<SetStateAction<TargetNote[]>>;
+  setStaffPageRhythm: Dispatch<SetStateAction<GeneratedStaffPageRhythm | undefined>>;
 }
 
 interface UsePracticeStaffPageFlowOptions {
@@ -80,6 +103,8 @@ export function usePracticeStaffPageFlow({
     isMobileViewport,
     mode,
     pageNoteCount,
+    promptNoteDurations,
+    rangeExtensionNotes,
     queueStrategy,
     schedulerReviews,
     sessions,
@@ -102,6 +127,7 @@ export function usePracticeStaffPageFlow({
     setStaffPageFirstNoteOffset,
     setStaffPageIndex,
     setStaffPageNotes,
+    setStaffPageRhythm,
   } = ui;
   const staffPageScrollFrameRef = useRef<number | null>(null);
   const staffPageScrollTimeoutRef = useRef<number | null>(null);
@@ -123,6 +149,7 @@ export function usePracticeStaffPageFlow({
     (page: PracticeStaffPageRuntime | null): void => {
       staffPageRef.current = page;
       setStaffPageNotes(page?.notes ?? []);
+      setStaffPageRhythm(page?.rhythm);
       setStaffPageIndex(page?.index ?? 0);
       setStaffPageCompletedCount(page?.completedCount ?? 0);
       if (!page) {
@@ -134,6 +161,7 @@ export function usePracticeStaffPageFlow({
       setStaffPageFirstNoteOffset,
       setStaffPageIndex,
       setStaffPageNotes,
+      setStaffPageRhythm,
       staffPageRef,
     ]
   );
@@ -194,10 +222,12 @@ export function usePracticeStaffPageFlow({
       if (count <= 0) {
         return;
       }
-      const notes =
-        sourceQueueStrategy !== "melody"
+      const lastTargetNoteId = lastTargetNoteIdRef.current;
+      const isSplitStaffRange = new Set(sourceNotes.map((note) => note.staff)).size > 1;
+      const generatedNotes =
+        sourceQueueStrategy !== "melody" && !isSplitStaffRange
           ? (adaptiveSchedulerRef.current?.selectPage(count, {
-              lastTargetNoteId: lastTargetNoteIdRef.current,
+              lastTargetNoteId,
             }) ??
             selectNotePage({
               notes: sourceNotes,
@@ -206,7 +236,7 @@ export function usePracticeStaffPageFlow({
               currentSessionId: sessionRef.current?.id,
               queueStrategy: sourceQueueStrategy,
               drillNoteNames: sourceDrillNoteNames,
-              lastTargetNoteId: lastTargetNoteIdRef.current,
+              lastTargetNoteId,
               melodyState: melodyGenerationStateRef.current,
               count,
             }))
@@ -217,14 +247,20 @@ export function usePracticeStaffPageFlow({
               currentSessionId: sessionRef.current?.id,
               queueStrategy: sourceQueueStrategy,
               drillNoteNames: sourceDrillNoteNames,
-              lastTargetNoteId: lastTargetNoteIdRef.current,
+              lastTargetNoteId,
               melodyState: melodyGenerationStateRef.current,
               count,
             });
+      const notes = addOccasionalRangeNotes(generatedNotes, rangeExtensionNotes);
+      const rhythm =
+        promptNoteDurations.length > 1
+          ? generateStaffPageRhythm(promptNoteDurations, notes.length)
+          : undefined;
       const page = {
         notes,
         index: 0,
         completedCount: 0,
+        ...(rhythm ? { rhythm } : {}),
       };
       syncStaffPage(page);
       startPrompt(notes[0]);
@@ -234,6 +270,8 @@ export function usePracticeStaffPageFlow({
       getNextStaffPageCount,
       lastTargetNoteIdRef,
       melodyGenerationStateRef,
+      rangeExtensionNotes,
+      promptNoteDurations,
       sessionRef,
       sessions,
       startPrompt,
@@ -266,7 +304,10 @@ export function usePracticeStaffPageFlow({
       }
 
       let nextNotes = page.notes;
+      let nextRhythm = page.rhythm;
       if (nextRowCount > 0) {
+        const lastTargetNoteId = page.notes[page.notes.length - 1]?.id;
+        const isSplitStaffRange = new Set(enabledNotes.map((note) => note.staff)).size > 1;
         const pageSelectionOptions = {
           notes: enabledNotes,
           reviews: [...schedulerReviews, ...sessionReviewsRef.current],
@@ -274,25 +315,41 @@ export function usePracticeStaffPageFlow({
           currentSessionId: sessionRef.current?.id,
           queueStrategy,
           drillNoteNames,
-          lastTargetNoteId: page.notes[page.notes.length - 1]?.id,
+          lastTargetNoteId,
           plannedTargetNoteIds: remainingVisibleNotes.map((note) => note.id),
           melodyState: melodyGenerationStateRef.current,
           count: nextRowCount,
         };
         const nextRow =
-          queueStrategy !== "melody"
+          !isSplitStaffRange && queueStrategy !== "melody"
             ? (adaptiveSchedulerRef.current?.selectPage(nextRowCount, {
                 lastTargetNoteId: pageSelectionOptions.lastTargetNoteId,
                 plannedTargetNoteIds: pageSelectionOptions.plannedTargetNoteIds,
               }) ?? selectNotePage(pageSelectionOptions))
             : selectNotePage(pageSelectionOptions);
-        nextNotes = [...page.notes, ...nextRow];
+        const appendedNotes = addOccasionalRangeNotes(nextRow, rangeExtensionNotes);
+        nextNotes = [...page.notes, ...appendedNotes];
+        if (page.rhythm) {
+          const appendedRhythm = generateStaffPageRhythm(
+            promptNoteDurations,
+            appendedNotes.length,
+            page.rhythm.endBeat
+          );
+          nextRhythm = {
+            durations: [...page.rhythm.durations, ...appendedRhythm.durations],
+            endBeat: appendedRhythm.endBeat,
+            measures: [...page.rhythm.measures, ...appendedRhythm.measures],
+            noteBeamGroups: [...page.rhythm.noteBeamGroups, ...appendedRhythm.noteBeamGroups],
+            onsets: [...page.rhythm.onsets, ...appendedRhythm.onsets],
+          };
+        }
       }
       const sessionId = sessionRef.current?.id;
       syncStaffPage({
         ...page,
         index: nextIndex,
         notes: nextNotes,
+        ...(nextRhythm ? { rhythm: nextRhythm } : {}),
       });
       const finishScroll = (): void => {
         staffPageScrollTimeoutRef.current = null;
@@ -312,6 +369,25 @@ export function usePracticeStaffPageFlow({
           index: scrolledPage.index - PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
           completedCount:
             scrolledPage.completedCount - PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
+          ...(scrolledPage.rhythm
+            ? {
+                rhythm: {
+                  ...scrolledPage.rhythm,
+                  durations: scrolledPage.rhythm.durations.slice(
+                    PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
+                  ),
+                  measures: scrolledPage.rhythm.measures.slice(
+                    PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
+                  ),
+                  noteBeamGroups: scrolledPage.rhythm.noteBeamGroups.slice(
+                    PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
+                  ),
+                  onsets: scrolledPage.rhythm.onsets.slice(
+                    PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
+                  ),
+                },
+              }
+            : {}),
         };
         setStaffPageFirstNoteOffset(
           (offset) => offset + PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
@@ -352,6 +428,8 @@ export function usePracticeStaffPageFlow({
       pageNoteCount,
       pendingAfterPauseRef,
       queueStrategy,
+      promptNoteDurations,
+      rangeExtensionNotes,
       resumeActiveTimers,
       schedulerReviews,
       sessionRef,

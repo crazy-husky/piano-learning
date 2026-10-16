@@ -7,6 +7,87 @@ export const PROMPT_NOTE_DURATIONS: readonly PromptNoteDuration[] = [
   "sixteenth",
 ];
 
+const PROMPT_NOTE_DURATION_BEATS: Record<PromptNoteDuration, number> = {
+  whole: 4,
+  quarter: 1,
+  eighth: 0.5,
+  sixteenth: 0.25,
+};
+
+const PROMPT_NOTE_DURATION_WEIGHTS: Record<PromptNoteDuration, number> = {
+  whole: 0.35,
+  quarter: 4,
+  eighth: 3,
+  sixteenth: 2,
+};
+
+export interface GeneratedStaffPageRhythm {
+  durations: PromptNoteDuration[];
+  endBeat: number;
+  measures: number[];
+  noteBeamGroups: number[];
+  onsets: number[];
+}
+
+export function generateStaffPageRhythm(
+  selectedDurations: readonly PromptNoteDuration[],
+  noteCount: number,
+  startBeat = 0,
+  random: () => number = Math.random
+): GeneratedStaffPageRhythm {
+  const selected = new Set(selectedDurations.length > 0 ? selectedDurations : ["quarter"]);
+  const choices = PROMPT_NOTE_DURATIONS.filter((duration) => selected.has(duration));
+  const durations: PromptNoteDuration[] = [];
+  const onsets: number[] = [];
+  let beat = Math.max(0, startBeat);
+
+  while (durations.length < noteCount) {
+    const measureStart = Math.floor((beat + 0.001) / 4) * 4;
+    const beatInMeasure = beat - measureStart;
+    const remainingMeasureBeats = 4 - beatInMeasure;
+    const available = choices.filter(
+      (duration) => PROMPT_NOTE_DURATION_BEATS[duration] <= remainingMeasureBeats + 0.001
+    );
+    const useWholeMeasure =
+      beatInMeasure < 0.001 &&
+      available.includes("whole") &&
+      (choices.length === 1 || random() < 0.08);
+    if (useWholeMeasure) {
+      durations.push("whole");
+      onsets.push(beat);
+      beat += 4;
+      continue;
+    }
+
+    const noteChoices = available.filter((duration) => duration !== "whole");
+    const weightedChoices = noteChoices.length > 0 ? noteChoices : available;
+    const totalWeight = weightedChoices.reduce(
+      (sum, duration) => sum + PROMPT_NOTE_DURATION_WEIGHTS[duration],
+      0
+    );
+    let remainingWeight = Math.min(0.999999999, Math.max(0, random())) * totalWeight;
+    let duration = weightedChoices[weightedChoices.length - 1] ?? "quarter";
+    for (const candidate of weightedChoices) {
+      remainingWeight -= PROMPT_NOTE_DURATION_WEIGHTS[candidate];
+      if (remainingWeight < 0) {
+        duration = candidate;
+        break;
+      }
+    }
+    durations.push(duration);
+    onsets.push(beat);
+    beat += PROMPT_NOTE_DURATION_BEATS[duration];
+  }
+
+  return {
+    durations,
+    endBeat: beat,
+    measures: onsets.map((onset) => Math.floor((onset + 0.001) / 4)),
+    noteBeamGroups: onsets.map((onset) => Math.floor(onset + 0.001)),
+    onsets,
+  };
+}
+
 interface PromptNoteDurationConfig {
   barlineInterval: number;
   beamGroupSize?: number;

@@ -450,6 +450,17 @@ main.has-backup-reminder .setup-grid::after {
   font-size: 13px;
 }
 
+.practice-panel-description {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.practice-free-tab-content .setup-panel > .panel-heading h1 {
+  margin: 0 0 5px;
+}
+
 .control-block {
   display: grid;
   gap: 8px;

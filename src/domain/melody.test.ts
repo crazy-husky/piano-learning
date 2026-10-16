@@ -34,25 +34,35 @@ describe("melody generator", () => {
   it("covers every register once before revisiting one when every phrase transfers", () => {
     const notes = getNotesForGroups(
       PRACTICE_GROUPS.map((group) => group.id),
-      false
+      false,
+      "treble-only"
     );
     const state = createMelodyGenerationState();
     const selected = selectMelodyNotes({ notes, count: 40, state, rng: () => 0 });
 
-    expect(state.registerVisitCounts).toEqual([1, 1, 1, 1, 1]);
-    expect(Math.min(...selected.map((note) => note.octave))).toBe(1);
+    expect(state.registerVisitCounts).toHaveLength(3);
+    expect(state.registerVisitCounts.every((count) => count > 0)).toBe(true);
+    expect(Math.min(...selected.map((note) => note.octave))).toBe(4);
     expect(Math.max(...selected.map((note) => note.octave))).toBeGreaterThanOrEqual(5);
   });
 
   it("can keep consecutive phrases in the same register", () => {
     const notes = getNotesForGroups(
       PRACTICE_GROUPS.map((group) => group.id),
-      false
+      false,
+      "treble-only"
     );
     const state = createMelodyGenerationState();
     selectMelodyNotes({ notes, count: 24, state, rng: () => 0.99 });
 
-    expect(state.registerVisitCounts).toEqual([0, 0, 0, 0, 3]);
+    expect(state.registerVisitCounts).toEqual([0, 0, 3]);
+  });
+
+  it("alternates grand-staff phrases between treble and bass when both are selected", () => {
+    const notes = getNotesForGroups(["G3-F4", "G4-F5"], false);
+    const selected = selectMelodyNotes({ notes, count: 32, rng: () => 0.5 });
+
+    expect(new Set(selected.map((note) => note.staff))).toEqual(new Set(["treble", "bass"]));
   });
 
   it("softly prefers the less-practiced pitch when both melodic directions are available", () => {
@@ -74,7 +84,7 @@ describe("melody generator", () => {
     expect(selected[0].pitchId).toBe("D4");
   });
 
-  it("can carry two non-equidistant transition notes into the next phrase", () => {
+  it("carries a short transition into the opposite grand staff at the next phrase", () => {
     const notes = getNotesForGroups(
       PRACTICE_GROUPS.map((group) => group.id),
       false
@@ -84,7 +94,7 @@ describe("melody generator", () => {
     state.currentRegisterIndex = 0;
     state.registerVisitCounts = [1, 0, 0, 0, 0];
 
-    selectMelodyNotes({
+    const selected = selectMelodyNotes({
       notes,
       count: 1,
       lastTargetNoteId: previousNote?.id,
@@ -92,7 +102,7 @@ describe("melody generator", () => {
       rng: rngFrom([0, 0, 0, 0, 0.8, 0, 0, 0]),
     });
 
-    expect(state.currentRegisterIndex).toBe(1);
-    expect(state.transitionPitchIds).toHaveLength(2);
+    expect(state.currentRegisterIndex).toBe(2);
+    expect(selected[0].staff).toBe("treble");
   });
 });
