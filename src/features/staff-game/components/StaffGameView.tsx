@@ -64,6 +64,7 @@ import {
 import { useStaffGameScoring } from "../hooks/useStaffGameScoring";
 import { triggerStaffGameHitHaptic } from "../logic/staffGameHaptics";
 import { useStaffGameAudio } from "../hooks/useStaffGameAudio";
+import { resolveStaffGameInputMode } from "../logic/staffGameSettings";
 import type {
   StaffGameComboIndicator as ComboIndicator,
   StaffGameRushScoreFlight as RushScoreFlight,
@@ -383,7 +384,7 @@ function supportsMidi(status: MidiAccessStatus): boolean {
 
 function defaultGameSettings(): StaffGameSettings {
   return {
-    inputMode: "physical",
+    inputMode: "virtual",
     displayMode: "note",
     difficulty: "normal",
     notePoolScope: "all-history",
@@ -409,12 +410,10 @@ function readGameSettings(virtualAvailable: boolean, midiAvailable: boolean): St
         })
       | null;
     const base = defaultGameSettings();
-    const inputMode: GameInputMode =
-      parsed?.inputMode === "virtual" && virtualAvailable
-        ? "virtual"
-        : parsed?.inputMode === "midi" && midiAvailable
-          ? "midi"
-          : "physical";
+    const inputMode: GameInputMode = resolveStaffGameInputMode(parsed?.inputMode, {
+      midiAvailable,
+      virtualAvailable,
+    });
     const displayMode: GameDisplayMode =
       parsed?.displayMode === "solfege" ||
       parsed?.displayMode === "number" ||

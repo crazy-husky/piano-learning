@@ -142,6 +142,13 @@
 - 影响文件：`src/features/staff-game/hooks/useStaffGameScoring.ts`、`src/features/staff-game/components/StaffGameView.tsx`
 - 不要改回：虚拟键盘按音名匹配，不要改成严格八度判定；MIDI 和麦克风仍按完整音高判定。
 
+### 闯关和歌曲模式默认使用虚拟琴键
+
+- 日期：2026-10-17
+- 理由：虚拟琴键无需连接外设或申请麦克风权限，首次进入即可开始游戏。
+- 影响文件：`src/features/staff-game/components/StaffGameView.tsx`、`src/features/staff-game/logic/staffGameSettings.ts`
+- 不要改回：闯关与歌曲模式的新默认输入方式均为虚拟琴键；两种模式共用输入偏好。已有保存的输入方式继续沿用，不因默认值变化覆盖本地设置。
+
 ### 错题复习局不写入闯关进度
 
 - 日期：2026-10-16
