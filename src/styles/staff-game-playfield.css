@@ -1824,7 +1824,7 @@ body.rush-mode .staff-game-scene::before {
   place-items: center;
   overflow: auto;
   background: rgba(28, 38, 46, 0.52);
-  backdrop-filter: grayscale(0.72) brightness(0.58) blur(2px);
+  backdrop-filter: grayscale(0.72) brightness(0.58);
   padding: 24px 16px;
 }
 

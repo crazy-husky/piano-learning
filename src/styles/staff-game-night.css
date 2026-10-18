@@ -685,7 +685,7 @@
 }
 
 :root[data-app-theme="dark"] .staff-game-pause-backdrop {
-  backdrop-filter: grayscale(0.5) brightness(0.5) blur(3px);
+  backdrop-filter: grayscale(0.5) brightness(0.5);
 }
 
 :root[data-app-theme="dark"] .staff-game-low-fps-dialog,

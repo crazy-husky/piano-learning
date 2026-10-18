@@ -856,6 +856,12 @@ export function StaffDistanceRun({
                 ? "根据当前音，弹奏谱面上的下一个音。"
                 : "请先弹奏谱面上的第一个音。"}
       </p>
+      {trainingMode === "look" ? (
+        <p className="staff-distance-question-example">
+          举例：Do 到 Mi 相隔 2 步，手指从 Do 向右移动 2 格即可到
+          Mi；这里的“步数”就是手指移动的格数。
+        </p>
+      ) : null}
 
       {trainingMode === "look" ? (
         <div aria-label="间距答案" className="staff-distance-answer-row" role="group">

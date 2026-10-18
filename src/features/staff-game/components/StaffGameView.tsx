@@ -216,11 +216,13 @@ function isNearComboVoiceMilestone(comboCount: number): boolean {
   return Math.min(offset, COMBO_UNBELIEVABLE_INTERVAL - offset) <= COMBO_VOICE_MILESTONE_BUFFER;
 }
 
-const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v4";
+const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v5";
+const PREVIOUS_GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v4";
 const LEGACY_GAME_PROGRESS_KEYS = [
   "anki-note.staffGameProgress.v3",
   "anki-note.staffGameProgress.v2",
 ] as const;
+const LEVELS_WITH_CHANGED_PITCH_MAPPING = new Set([32, 33, 34, 35, 58, 59, 60]);
 const GAME_SETTINGS_KEY = "anki-note.staffGameSettings.v1";
 const LOW_FPS_PROMPT_SESSION_KEY = "anki-note.staffGameLowFpsPrompted.v1";
 let lowFpsPromptShownThisPage = false;
@@ -273,7 +275,7 @@ function areStaffGameSettingsEqual(left: StaffGameSettings, right: StaffGameSett
 }
 
 interface StaffGameProgress {
-  version: 4;
+  version: 5;
   bestScores: number[];
   bestStars: number[];
   maxCombos: number[];
@@ -355,7 +357,7 @@ function createRoundMetrics(): StaffGameLevelRoundMetrics {
 
 function defaultProgress(): StaffGameProgress {
   return {
-    version: 4,
+    version: 5,
     bestScores: Array(GAME_LEVEL_COUNT).fill(0),
     bestStars: Array(GAME_LEVEL_COUNT).fill(0),
     maxCombos: Array(GAME_LEVEL_COUNT).fill(0),
@@ -527,18 +529,27 @@ function updateModeAudioSettings(
 function readProgress(): StaffGameProgress {
   try {
     for (const key of LEGACY_GAME_PROGRESS_KEYS) localStorage.removeItem(key);
-    const storedV4 = readStoredJson(GAME_PROGRESS_KEY);
+    const storedV5 = readStoredJson(GAME_PROGRESS_KEY);
+    const hasValidV5 =
+      Boolean(storedV5) &&
+      typeof storedV5 === "object" &&
+      !Array.isArray(storedV5) &&
+      (storedV5 as { version?: unknown }).version === 5;
+    const storedV4 = hasValidV5 ? null : readStoredJson(PREVIOUS_GAME_PROGRESS_KEY);
     const hasValidV4 =
       Boolean(storedV4) &&
       typeof storedV4 === "object" &&
       !Array.isArray(storedV4) &&
       (storedV4 as { version?: unknown }).version === 4;
-    if (!hasValidV4) {
+    const isMigratingPitchMapping = !hasValidV5 && hasValidV4;
+    const stored = hasValidV5 ? storedV5 : hasValidV4 ? storedV4 : null;
+
+    if (!stored) {
       const fresh = defaultProgress();
-      saveProgress(fresh);
+      if (saveProgress(fresh)) localStorage.removeItem(PREVIOUS_GAME_PROGRESS_KEY);
       return fresh;
     }
-    const parsed = storedV4 as Partial<StaffGameProgress>;
+    const parsed = stored as Partial<StaffGameProgress>;
     const base = defaultProgress();
     const readArray = (value: unknown): number[] =>
       Array.from({ length: GAME_LEVEL_COUNT }, (_, index) => {
@@ -589,15 +600,33 @@ function readProgress(): StaffGameProgress {
         averageResponseMs: readOptionalMetric("averageResponseMs"),
       };
     };
+    const clearChangedLevels = <T,>(values: T[], replacement: T): T[] =>
+      values.map((value, index) =>
+        LEVELS_WITH_CHANGED_PITCH_MAPPING.has(index + 1) ? replacement : value
+      );
     const bestScores = readArray(parsed.bestScores);
+    const bestStars = readArray(parsed.bestStars);
+    const maxCombos = readArray(parsed.maxCombos);
+    const bestAccuracy = readMetricSlots(parsed.bestAccuracy, 1);
+    const bestResponseMs = readMetricSlots(parsed.bestResponseMs, Number.MAX_SAFE_INTEGER);
+    const lastRound = readLastRound(parsed._debugLastRound);
     const progress: StaffGameProgress = {
-      version: 4,
-      bestScores,
-      bestStars: readArray(parsed.bestStars),
-      maxCombos: readArray(parsed.maxCombos),
-      bestAccuracy: readMetricSlots(parsed.bestAccuracy, 1),
-      bestResponseMs: readMetricSlots(parsed.bestResponseMs, Number.MAX_SAFE_INTEGER),
-      _debugLastRound: readLastRound(parsed._debugLastRound),
+      version: 5,
+      bestScores: isMigratingPitchMapping ? clearChangedLevels(bestScores, 0) : bestScores,
+      bestStars: isMigratingPitchMapping ? clearChangedLevels(bestStars, 0) : bestStars,
+      maxCombos: isMigratingPitchMapping ? clearChangedLevels(maxCombos, 0) : maxCombos,
+      bestAccuracy: isMigratingPitchMapping
+        ? clearChangedLevels(bestAccuracy, base.bestAccuracy[0])
+        : bestAccuracy,
+      bestResponseMs: isMigratingPitchMapping
+        ? clearChangedLevels(bestResponseMs, base.bestResponseMs[0])
+        : bestResponseMs,
+      _debugLastRound:
+        isMigratingPitchMapping &&
+        lastRound &&
+        LEVELS_WITH_CHANGED_PITCH_MAPPING.has(lastRound.level)
+          ? null
+          : lastRound,
       unlockedLevel: Math.max(
         1,
         Math.min(GAME_LEVEL_COUNT, Math.floor(Number(parsed.unlockedLevel) || base.unlockedLevel))
@@ -612,17 +641,24 @@ function readProgress(): StaffGameProgress {
         )
       ),
     };
+    if (isMigratingPitchMapping) {
+      if (saveProgress(progress)) localStorage.removeItem(PREVIOUS_GAME_PROGRESS_KEY);
+    } else if (hasValidV5) {
+      localStorage.removeItem(PREVIOUS_GAME_PROGRESS_KEY);
+    }
     return progress;
   } catch {
     return defaultProgress();
   }
 }
 
-function saveProgress(progress: StaffGameProgress): void {
+function saveProgress(progress: StaffGameProgress): boolean {
   try {
     localStorage.setItem(GAME_PROGRESS_KEY, JSON.stringify(progress));
+    return true;
   } catch {
     // The current game remains playable if browser storage is unavailable.
+    return false;
   }
 }
 
@@ -1483,7 +1519,7 @@ export function StaffGameView({
         ? metrics.responseTotalMs / metrics.responseSampleCount
         : null;
     const next: StaffGameProgress = {
-      version: 4,
+      version: 5,
       bestScores: current.bestScores.map((best, itemIndex) =>
         itemIndex === index ? Math.max(best, scoreRef.current) : best
       ),

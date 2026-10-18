@@ -68,7 +68,9 @@ export const COMPUTER_KEY_PITCHES: Record<string, PianoKeyName> = {
   KeyY: "G#",
   KeyU: "A#",
 };
-const WHITE_NOTE_MIDI_RANGE = { min: 29, max: 88 } as const;
+// Five complete octaves, C2 through B6. This keeps every octave's seven white
+// keys and five black keys together in the level progression.
+const GAME_NOTE_MIDI_RANGE = { min: 36, max: 95 } as const;
 export const GAME_NOTE_PROGRESSION: Array<{ midi: number; name: PianoKeyName; octave: number }> =
   (() => {
     const pitchForMidi = (midi: number) => ({
@@ -77,15 +79,15 @@ export const GAME_NOTE_PROGRESSION: Array<{ midi: number; name: PianoKeyName; oc
       octave: Math.floor(midi / 12) - 1,
     });
     const whiteNotes = Array.from(
-      { length: WHITE_NOTE_MIDI_RANGE.max - WHITE_NOTE_MIDI_RANGE.min + 1 },
-      (_, index) => pitchForMidi(WHITE_NOTE_MIDI_RANGE.min + index)
+      { length: GAME_NOTE_MIDI_RANGE.max - GAME_NOTE_MIDI_RANGE.min + 1 },
+      (_, index) => pitchForMidi(GAME_NOTE_MIDI_RANGE.min + index)
     ).filter((note) => !note.name.includes("#"));
     const blackNotes = Array.from(
-      { length: WHITE_NOTE_MIDI_RANGE.max - WHITE_NOTE_MIDI_RANGE.min + 1 },
-      (_, index) => pitchForMidi(WHITE_NOTE_MIDI_RANGE.min + index)
+      { length: GAME_NOTE_MIDI_RANGE.max - GAME_NOTE_MIDI_RANGE.min + 1 },
+      (_, index) => pitchForMidi(GAME_NOTE_MIDI_RANGE.min + index)
     ).filter((note) => note.name.includes("#"));
     const interleaveOctaves = (notes: typeof whiteNotes) =>
-      [4, 3, 5, 2, 6, 1].flatMap((octave) =>
+      [4, 3, 5, 2, 6].flatMap((octave) =>
         notes
           .filter((note) => note.octave === octave)
           .sort((first, second) => first.midi - second.midi)

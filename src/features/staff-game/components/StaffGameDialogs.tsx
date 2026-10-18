@@ -387,7 +387,7 @@ export function StaffGameDialogs({
                         </section>
                         <section aria-label="黑键关卡" className="staff-game-level-picker-group">
                           <h3>黑键 · 36–60</h3>
-                          <div className="staff-game-level-picker-grid">
+                          <div className="staff-game-level-picker-grid is-black-key-grid">
                             {GAME_NOTE_PROGRESSION.slice(35).map((note, index) => {
                               const selectedLevel = index + 36;
                               const progressIndex = selectedLevel - 1;

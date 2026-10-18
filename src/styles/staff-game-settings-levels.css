@@ -1076,3 +1076,7 @@
   left: 5px;
   top: 4px;
 }
+
+.staff-game-levels-dialog .staff-game-level-picker-grid.is-black-key-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
