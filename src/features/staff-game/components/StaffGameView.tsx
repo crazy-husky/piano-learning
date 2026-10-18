@@ -67,6 +67,10 @@ import { useStaffGameScoring } from "../hooks/useStaffGameScoring";
 import { triggerStaffGameHitHaptic } from "../logic/staffGameHaptics";
 import { useStaffGameAudio } from "../hooks/useStaffGameAudio";
 import { resolveStaffGameInputMode } from "../logic/staffGameSettings";
+import {
+  staffGamePromptSuppressedMidiNotes,
+  STAFF_GAME_PROMPT_RECOGNITION_TAIL_MS,
+} from "../logic/staffGamePromptPitchSuppression";
 import type {
   StaffGameComboIndicator as ComboIndicator,
   StaffGameRushScoreFlight as RushScoreFlight,
@@ -316,6 +320,7 @@ type MicrophoneController = Pick<
   | "isPreparingSwiftF0"
   | "prepare"
   | "start"
+  | "suppressRecognizedNotes"
   | "status"
   | "stop"
 > & { diagnostics: PracticeMicrophoneDiagnostics | null };
@@ -334,6 +339,12 @@ interface StaffGameViewProps {
   onExit: () => void;
   onSessionActiveChange: (active: boolean) => void;
   onRegisterAnswerHandler: (handler: ((answer: PracticeAnswerInput) => void) | null) => void;
+}
+
+interface StaffGamePromptSuppressionWindow {
+  endAtMs: number;
+  midiNotes: ReadonlySet<number>;
+  startAtMs: number;
 }
 
 function createDifficultyMetricSlots(): Array<Record<GameDifficulty, number | null>> {
@@ -787,6 +798,7 @@ export function StaffGameView({
 }: StaffGameViewProps): JSX.Element {
   const confirmDialog = useConfirmDialog();
   const microphoneError = microphone.error;
+  const suppressRecognizedNotes = microphone.suppressRecognizedNotes;
   const startMicrophone = microphone.start;
   const stopMicrophone = microphone.stop;
   const subscribeMidi = midi.subscribe;
@@ -893,6 +905,7 @@ export function StaffGameView({
   const startAttemptRef = useRef(0);
   const comboIndicatorRef = useRef<ComboIndicator | null>(null);
   const targetRef = useRef<GameNote | null>(null);
+  const promptSuppressionWindowsRef = useRef<StaffGamePromptSuppressionWindow[]>([]);
   const spawnTargetRef = useRef<(atGameMs: number) => void>(() => undefined);
   const roundMetricsRef = useRef<StaffGameLevelRoundMetrics>(createRoundMetrics());
   const playfieldRef = useRef<HTMLDivElement>(null);
@@ -1735,19 +1748,53 @@ export function StaffGameView({
 
   const playComboFeedback = useCallback(
     (nextCombo: number): void => {
-      if (nextCombo === COMBO_EXCELLENT_MILESTONE) {
-        playGameSound("comboExcellent");
-      } else if (nextCombo === COMBO_AMAZING_MILESTONE) {
-        playGameSound("comboAmazing");
-      } else if (isComboVoiceMilestone(nextCombo)) {
-        playGameSound("comboUnbelievable");
+      const promptSound =
+        nextCombo === COMBO_EXCELLENT_MILESTONE
+          ? "comboExcellent"
+          : nextCombo === COMBO_AMAZING_MILESTONE
+            ? "comboAmazing"
+            : isComboVoiceMilestone(nextCombo)
+              ? "comboUnbelievable"
+              : null;
+      const isMicrophoneInput = settingsRef.current.inputMode === "physical";
+      const shouldPlayPrompt =
+        promptSound !== null && !(isMicrophoneInput && gameModeRef.current === "songs");
+      if (shouldPlayPrompt && promptSound) {
+        const suppressedMidiNotes = isMicrophoneInput
+          ? staffGamePromptSuppressedMidiNotes(promptSound, microphoneAlgorithm)
+          : [];
+        playGameSound(promptSound, ({ startedAtMs, durationMs }) => {
+          if (suppressedMidiNotes.length === 0) return;
+          const endAtMs = startedAtMs + durationMs + STAFF_GAME_PROMPT_RECOGNITION_TAIL_MS;
+          promptSuppressionWindowsRef.current = [
+            ...promptSuppressionWindowsRef.current.filter((window) => window.endAtMs > startedAtMs),
+            {
+              endAtMs,
+              midiNotes: new Set(suppressedMidiNotes),
+              startAtMs: startedAtMs,
+            },
+          ];
+          suppressRecognizedNotes(suppressedMidiNotes, startedAtMs, endAtMs);
+        });
       }
       if (nextCombo >= 3 && nextCombo % 3 === 0 && !isNearComboVoiceMilestone(nextCombo)) {
         playGameSound("comboStreak");
       }
     },
-    [playGameSound]
+    [gameModeRef, microphoneAlgorithm, playGameSound, settingsRef, suppressRecognizedNotes]
   );
+
+  const getPromptSuppressionWindow = useCallback(() => {
+    const now = performance.now();
+    const windows = promptSuppressionWindowsRef.current.filter((window) => window.endAtMs > now);
+    promptSuppressionWindowsRef.current = windows;
+    const activeWindows = windows.filter((window) => window.startAtMs <= now);
+    if (activeWindows.length === 0) return null;
+    return {
+      endAtMs: Math.min(...activeWindows.map((window) => window.endAtMs)),
+      midiNotes: new Set(activeWindows.flatMap((window) => [...window.midiNotes])),
+    };
+  }, []);
 
   const { finishRound, handleRecognizedAnswer } = useStaffGameScoring({
     burstTimeoutRef,
@@ -1978,6 +2025,7 @@ export function StaffGameView({
     activeBubbleDurationMs,
     elapsedBeforeRunRef,
     finishRound,
+    getPromptSuppressionWindow,
     gameDurationMs,
     gameModeRef,
     roundPurposeRef,
@@ -2017,6 +2065,7 @@ export function StaffGameView({
   spawnTargetRef.current = spawnTarget;
 
   const resetRoundState = useCallback((): void => {
+    promptSuppressionWindowsRef.current = [];
     if (nextTargetTimeoutRef.current !== null) window.clearTimeout(nextTargetTimeoutRef.current);
     nextTargetTimeoutRef.current = null;
     if (wrongClearTimeoutRef.current !== null) window.clearTimeout(wrongClearTimeoutRef.current);

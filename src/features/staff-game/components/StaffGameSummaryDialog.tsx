@@ -304,7 +304,7 @@ export function StaffGameSummaryDialog({
                 <div className="staff-game-result-stats">
                   {wrongNoteStatisticsEnabled ? (
                     <div className="is-wrong-count">
-                      <span>错漏目标 / 总目标</span>
+                      <span>错漏音 / 总音</span>
                       <strong>
                         <span className="staff-game-result-metric-value">
                           {weakNoteCount} / {generatedNoteCount}

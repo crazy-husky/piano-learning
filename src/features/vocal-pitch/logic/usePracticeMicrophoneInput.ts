@@ -107,6 +107,12 @@ interface PendingAnalysis {
   timeMs: number;
 }
 
+interface RecognizedNoteSuppressionWindow {
+  endAtMs: number;
+  midiNotes: ReadonlySet<number>;
+  startAtMs: number;
+}
+
 interface PracticePitchWorkerResponse {
   alternativeClarity?: number | null;
   alternativeFrequencyHz?: number | null;
@@ -377,6 +383,7 @@ export function usePracticeMicrophoneInput(
   const recognizerRef = useRef<PracticeNoteRecognizer>(
     createRecognizerForConfiguration(initialConfiguration)
   );
+  const recognizedNoteSuppressionWindowsRef = useRef<RecognizedNoteSuppressionWindow[]>([]);
   const sampleBufferRef = useRef(new Float32Array(0));
   const captureFramesRef = useRef<PracticeMicrophoneCaptureFrame[]>([]);
   const captureAudioLoopFrameCountRef = useRef(0);
@@ -634,10 +641,24 @@ export function usePracticeMicrophoneInput(
         : frequencyToNaturalPracticeNote;
       const candidateNote = convertFrequency(frequencyHz ?? 0);
       const liveNote = acceptedFrequency === null ? null : convertFrequency(acceptedFrequency);
+      const suppressionWindows = recognizedNoteSuppressionWindowsRef.current.filter(
+        (window) => window.endAtMs >= timeMs
+      );
+      recognizedNoteSuppressionWindowsRef.current = suppressionWindows;
+      const isSuppressedPromptPitch = Boolean(
+        candidateNote &&
+        suppressionWindows.some(
+          (window) =>
+            timeMs >= window.startAtMs &&
+            timeMs < window.endAtMs &&
+            window.midiNotes.has(candidateNote.midiNoteNumber)
+        )
+      );
+      if (isSuppressedPromptPitch) recognizerRef.current.reset();
       const recognized = recognizerRef.current.process({
         ambiguous,
         confidence,
-        frequencyHz: recognizerFrequency,
+        frequencyHz: isSuppressedPromptPitch ? null : recognizerFrequency,
         rms: analysisRms,
         timeMs,
       });
@@ -1813,6 +1834,23 @@ export function usePracticeMicrophoneInput(
     }));
   }, [finishCapture, settleCaptureStopWaiters]);
 
+  const suppressRecognizedNotes = useCallback(
+    (midiNotes: readonly number[], startAtMs: number, endAtMs: number): void => {
+      if (midiNotes.length === 0 || endAtMs <= startAtMs) return;
+      recognizedNoteSuppressionWindowsRef.current = [
+        ...recognizedNoteSuppressionWindowsRef.current.filter(
+          (window) => window.endAtMs >= startAtMs
+        ),
+        {
+          endAtMs,
+          midiNotes: new Set(midiNotes),
+          startAtMs,
+        },
+      ];
+    },
+    []
+  );
+
   const stopCapture = useCallback(async (): Promise<{
     audioContextState: string;
     audioLoopFrameCount: number;
@@ -2031,6 +2069,7 @@ export function usePracticeMicrophoneInput(
     resetCapture,
     saveRecentCapture,
     startCapture,
+    suppressRecognizedNotes,
     stopCapture,
     start,
     stop,

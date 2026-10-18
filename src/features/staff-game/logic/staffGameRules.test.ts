@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { GAME_DIFFICULTIES, starsForAccuracy } from "./staffGameRules";
+import { describe, expect, it, vi } from "vitest";
+import {
+  drawNextNote,
+  GAME_DIFFICULTIES,
+  GAME_NOTE_PROGRESSION,
+  starsForAccuracy,
+} from "./staffGameRules";
 
 describe("staff game difficulty and star rules", () => {
   it("defines the six approved timing and scoring tiers", () => {
@@ -35,5 +40,53 @@ describe("staff game difficulty and star rules", () => {
     [0, 0, 0],
   ])("scores %i/%i as %i stars", (correct, total, stars) => {
     expect(starsForAccuracy(correct, total)).toBe(stars);
+  });
+
+  it.each(["system", "random"] as const)(
+    "replenishes the note bag with safe notes during prompt suppression (%s scheduling)",
+    (scheduling) => {
+      const [recentNote, suppressedNote, expectedNote] = GAME_NOTE_PROGRESSION;
+      const noteBag = [{ ...recentNote! }, { ...suppressedNote! }];
+      const next = drawNextNote(
+        3,
+        noteBag,
+        [recentNote!.midi, recentNote!.midi],
+        "all-history",
+        scheduling,
+        undefined,
+        new Set([suppressedNote!.midi])
+      );
+
+      expect(next?.midi).toBe(expectedNote!.midi);
+      expect(noteBag.some((note) => note.midi === suppressedNote!.midi)).toBe(true);
+    }
+  );
+
+  it("uses a safe older note when system bag sampling misses the only eligible fallback", () => {
+    const targetNote = GAME_NOTE_PROGRESSION[0]!;
+    const focusNote = GAME_NOTE_PROGRESSION[19]!;
+    const noteBag = [{ ...focusNote }];
+    const excludedNotes = new Set(
+      GAME_NOTE_PROGRESSION.slice(0, 20)
+        .filter((note) => note.midi !== targetNote.midi)
+        .map((note) => note.midi)
+    );
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+
+    try {
+      const next = drawNextNote(
+        20,
+        noteBag,
+        [focusNote.midi, focusNote.midi],
+        "all-history",
+        "system",
+        undefined,
+        excludedNotes
+      );
+
+      expect(next?.midi).toBe(targetNote.midi);
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 });

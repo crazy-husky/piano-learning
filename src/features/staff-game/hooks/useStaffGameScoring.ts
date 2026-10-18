@@ -223,7 +223,9 @@ export function useStaffGameScoring({
     setErrorFlashActive(false);
     const isSongMode = gameModeRef.current === "songs";
     const isWrongNoteReview = !isSongMode && roundPurposeRef.current === "wrong-note-review";
-    const activeSong = STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current);
+    const activeSong = isSongMode
+      ? STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current)
+      : undefined;
     const generatedNoteCount = activeSong
       ? activeSong.noteMidis.length
       : roundMetricsRef.current.generatedBubbleCount;

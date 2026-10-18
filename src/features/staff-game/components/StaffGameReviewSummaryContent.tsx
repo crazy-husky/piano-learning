@@ -107,7 +107,7 @@ export function StaffGameReviewSummaryContent({
           {wrongNoteStatisticsEnabled ? (
             <div className="staff-game-review-current-metric">
               <span className="staff-game-review-current-label-with-help">
-                错漏目标 / 总目标
+                错漏音 / 总音
                 <button
                   aria-label="查看薄弱音统计详情"
                   className="staff-game-wrong-answer-details-trigger"

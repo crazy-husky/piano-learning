@@ -26,6 +26,11 @@ interface SoundPlayer {
   ready: Promise<void>;
 }
 
+export interface StaffGameSoundPlaybackTiming {
+  startedAtMs: number;
+  durationMs: number;
+}
+
 const soundSources: Record<
   SampledStaffGameSound,
   { url: string; volumeDb: number; label: string }
@@ -157,13 +162,22 @@ export async function preloadStaffGameSounds(
   return results.filter((result) => result.status === "rejected").length;
 }
 
-export function playStaffGameSound(sound: StaffGameSound): void {
+export function playStaffGameSound(
+  sound: StaffGameSound,
+  onPlaybackStart?: (timing: StaffGameSoundPlaybackTiming) => void
+): void {
   if (typeof window === "undefined" || !canPlayAudio(sound)) return;
   const { player, ready } = getSoundPlayer(sound);
   void Tone.start()
     .then(() => ready)
     .then(() => {
-      if (canPlayAudio(sound)) player.start();
+      if (!canPlayAudio(sound)) return;
+      const startedAtMs = performance.now();
+      player.start();
+      onPlaybackStart?.({
+        startedAtMs,
+        durationMs: Math.max(0, player.buffer.duration * 1_000),
+      });
     })
     .catch(() => undefined);
 }

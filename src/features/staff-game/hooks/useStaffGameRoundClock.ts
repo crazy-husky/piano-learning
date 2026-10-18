@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   type Dispatch,
   type MutableRefObject,
   type RefObject,
@@ -83,6 +84,10 @@ interface StaffGameRoundClockOptions {
   nextTargetTimeoutRef: MutableRefObject<number | null>;
   waitingForNextTargetRef: MutableRefObject<boolean>;
   playfieldRef: RefObject<HTMLDivElement | null>;
+  getPromptSuppressionWindow: () => {
+    endAtMs: number;
+    midiNotes: ReadonlySet<number>;
+  } | null;
   setTarget: Dispatch<SetStateAction<StaffGameTarget | null>>;
   setTargetPopped: Dispatch<SetStateAction<boolean>>;
   setTargetWrong: Dispatch<SetStateAction<boolean>>;
@@ -124,6 +129,7 @@ export function useStaffGameRoundClock({
   nextTargetTimeoutRef,
   waitingForNextTargetRef,
   playfieldRef,
+  getPromptSuppressionWindow,
   setTarget,
   setTargetPopped,
   setTargetWrong,
@@ -137,6 +143,7 @@ export function useStaffGameRoundClock({
   playGameSound,
   noteLabel,
 }: StaffGameRoundClockOptions) {
+  const spawnTargetRef = useRef<(atGameMs: number) => void>(() => undefined);
   const spawnTarget = useCallback(
     (atGameMs: number): void => {
       if (phaseRef.current !== "running") return;
@@ -148,6 +155,11 @@ export function useStaffGameRoundClock({
       ) {
         return;
       }
+      const promptSuppressionWindow =
+        inputMode === "physical" && gameModeRef.current === "levels"
+          ? getPromptSuppressionWindow()
+          : null;
+      const temporarilyExcludedMidiNotes = promptSuppressionWindow?.midiNotes ?? new Set<number>();
       const drawnNote =
         gameModeRef.current === "songs"
           ? (() => {
@@ -156,16 +168,42 @@ export function useStaffGameRoundClock({
               return midi === undefined ? null : gameNoteFromMidi(midi);
             })()
           : roundPurposeRef.current === "wrong-note-review"
-            ? drawNextWrongNoteReviewNote(noteBagRef.current, recentNoteMidisRef.current)
+            ? drawNextWrongNoteReviewNote(
+                noteBagRef.current,
+                recentNoteMidisRef.current,
+                temporarilyExcludedMidiNotes
+              )
             : drawNextNote(
                 levelRef.current,
                 noteBagRef.current,
                 recentNoteMidisRef.current,
                 notePoolScopeRef.current,
                 noteSchedulingStrategyRef.current,
-                weakNoteWeightsRef.current
+                weakNoteWeightsRef.current,
+                temporarilyExcludedMidiNotes
               );
       if (!drawnNote) {
+        if (promptSuppressionWindow && noteBagRef.current.length > 0) {
+          waitingForNextTargetRef.current = true;
+          if (nextTargetTimeoutRef.current !== null) {
+            window.clearTimeout(nextTargetTimeoutRef.current);
+          }
+          nextTargetTimeoutRef.current = window.setTimeout(
+            () => {
+              nextTargetTimeoutRef.current = null;
+              if (phaseRef.current !== "running") {
+                waitingForNextTargetRef.current = true;
+                return;
+              }
+              waitingForNextTargetRef.current = false;
+              const nextGameTime =
+                elapsedBeforeRunRef.current + (performance.now() - runSegmentStartedAtRef.current);
+              spawnTargetRef.current(nextGameTime);
+            },
+            Math.max(0, promptSuppressionWindow.endAtMs - performance.now()) + 16
+          );
+          return;
+        }
         if (gameModeRef.current === "levels" && roundPurposeRef.current === "wrong-note-review") {
           finishRound();
         }
@@ -198,6 +236,8 @@ export function useStaffGameRoundClock({
     [
       gameDurationMs,
       gameModeRef,
+      getPromptSuppressionWindow,
+      inputMode,
       roundPurposeRef,
       levelRef,
       noteBagRef,
@@ -209,6 +249,10 @@ export function useStaffGameRoundClock({
       weakNoteWeightsRef,
       recentNoteMidisRef,
       roundMetricsRef,
+      runSegmentStartedAtRef,
+      elapsedBeforeRunRef,
+      waitingForNextTargetRef,
+      nextTargetTimeoutRef,
       selectedSongIdRef,
       setTarget,
       setTargetPopped,
@@ -220,6 +264,7 @@ export function useStaffGameRoundClock({
       finishRound,
     ]
   );
+  spawnTargetRef.current = spawnTarget;
 
   useEffect(() => {
     if (phase !== "running") return undefined;

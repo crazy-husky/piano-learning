@@ -527,7 +527,7 @@ export function StaffGameDialogs({
                         <section className="staff-game-settings-section staff-game-wrong-note-setting">
                           <div>
                             <h3>展示薄弱音</h3>
-                            <p>在结算页显示错漏目标数和逐音详情</p>
+                            <p>在结算页显示错漏音数和逐音详情</p>
                           </div>
                           <ToggleSwitch
                             aria-label="展示薄弱音"
