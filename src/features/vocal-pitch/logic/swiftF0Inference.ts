@@ -97,3 +97,11 @@ export async function analyzeSwiftF0(
     inferenceMs: performance.now() - startedAt,
   };
 }
+
+export async function warmSwiftF0Runtime(runtime: SwiftF0Runtime): Promise<void> {
+  const samples = Float32Array.from(
+    { length: SWIFTF0_MODEL_SAMPLE_RATE },
+    (_, index) => 0.2 * Math.sin((2 * Math.PI * 440 * index) / SWIFTF0_MODEL_SAMPLE_RATE)
+  );
+  await analyzeSwiftF0(runtime.session, samples, SWIFTF0_MODEL_SAMPLE_RATE);
+}

@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { midiToFrequency } from "../../../domain/vocalPitch";
 import {
   createPracticeNoteRecognizer,
+  frequencyToChromaticPracticeNote,
   frequencyToNaturalPracticeNote,
   PRACTICE_NOTE_MAX_FREQUENCY_HZ,
   PRACTICE_NOTE_MIN_FREQUENCY_HZ,
 } from "./practiceNoteRecognizer";
+import { PRACTICE_BLACK_KEY_MIDI_NOTES } from "./practiceBlackKeyTestFixtures";
 
 function observation(
   timeMs: number,
@@ -23,19 +25,66 @@ function observation(
 }
 
 describe("practice single-note recognition", () => {
-  it("maps the configured F1-G6 range to natural note pitches", () => {
-    expect(frequencyToNaturalPracticeNote(PRACTICE_NOTE_MIN_FREQUENCY_HZ)).toMatchObject({
+  it("maps the configured F1-B6 range to natural note pitches with edge tolerance", () => {
+    expect(frequencyToNaturalPracticeNote(midiToFrequency(29))).toMatchObject({
       midiNoteNumber: 29,
       noteName: "F",
       octave: 1,
     });
-    expect(frequencyToNaturalPracticeNote(PRACTICE_NOTE_MAX_FREQUENCY_HZ)).toMatchObject({
+    expect(frequencyToNaturalPracticeNote(midiToFrequency(91))).toMatchObject({
       midiNoteNumber: 91,
       noteName: "G",
       octave: 6,
     });
+    expect(frequencyToNaturalPracticeNote(midiToFrequency(95))).toMatchObject({
+      midiNoteNumber: 95,
+      noteName: "B",
+      octave: 6,
+    });
+    expect(PRACTICE_NOTE_MIN_FREQUENCY_HZ).toBeLessThan(midiToFrequency(29));
+    expect(PRACTICE_NOTE_MAX_FREQUENCY_HZ).toBeGreaterThan(midiToFrequency(95));
     expect(frequencyToNaturalPracticeNote(midiToFrequency(28))).toBeNull();
-    expect(frequencyToNaturalPracticeNote(midiToFrequency(61))).toBeNull();
+    expect(frequencyToNaturalPracticeNote(midiToFrequency(96))).toBeNull();
+  });
+
+  it("accepts the full 45-cent tuning tolerance at both range endpoints", () => {
+    expect(frequencyToNaturalPracticeNote(midiToFrequency(29 - 0.45))).toMatchObject({
+      midiNoteNumber: 29,
+      noteName: "F",
+      octave: 1,
+    });
+    expect(frequencyToNaturalPracticeNote(midiToFrequency(95 + 0.45))).toMatchObject({
+      midiNoteNumber: 95,
+      noteName: "B",
+      octave: 6,
+    });
+    expect(frequencyToChromaticPracticeNote(midiToFrequency(29 - 0.46))).toBeNull();
+    expect(frequencyToChromaticPracticeNote(midiToFrequency(95 + 0.46))).toBeNull();
+  });
+
+  it("stabilizes every game black key when accidental recognition is enabled", () => {
+    expect(PRACTICE_BLACK_KEY_MIDI_NOTES).toHaveLength(25);
+
+    for (const expected of PRACTICE_BLACK_KEY_MIDI_NOTES) {
+      const frequencyHz = midiToFrequency(expected.midiNoteNumber);
+      expect(frequencyToChromaticPracticeNote(frequencyHz)).toMatchObject(expected);
+
+      const recognizer = createPracticeNoteRecognizer(0.9, {
+        includeAccidentals: true,
+      });
+      const results = [0, 30, 60, 90].map((timeMs) =>
+        recognizer.process({
+          confidence: 0.98,
+          frequencyHz,
+          rms: 0.006,
+          timeMs,
+        })
+      );
+
+      expect(results[3], `MIDI ${expected.midiNoteNumber} stable recognition`).toMatchObject(
+        expected
+      );
+    }
   });
 
   it("submits only after the same confident pitch stays stable", () => {

@@ -1,0 +1,68 @@
+.b6-swiftf0-reminder-overlay {
+  position: fixed;
+  z-index: 1200;
+  background: var(--modal-overlay);
+  inset: 0;
+}
+
+.b6-swiftf0-reminder-dialog {
+  position: fixed;
+  z-index: 1201;
+  top: 50%;
+  left: 50%;
+  width: min(30rem, calc(100vw - 2rem));
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  transform: translate(-50%, -50%);
+}
+
+.b6-swiftf0-reminder-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.b6-swiftf0-reminder-description {
+  margin: 0.85rem 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.b6-swiftf0-reminder-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+.b6-swiftf0-reminder-dismiss {
+  min-height: 2.75rem;
+  padding: 0.65rem 1.2rem;
+  border: 0;
+  border-radius: 0.625rem;
+  background: var(--accent-fill);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+
+.b6-swiftf0-reminder-dismiss:hover {
+  background: var(--accent-fill-hover);
+}
+
+.b6-swiftf0-reminder-dismiss:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 520px) {
+  .b6-swiftf0-reminder-dialog {
+    padding: 1.25rem;
+  }
+}

@@ -6,7 +6,7 @@ Let a learner answer the existing natural-note practice prompts by playing one p
 
 ## Scope
 
-- Supports one natural note at a time in the app's current F1-G6 practice range.
+- Supports one natural note at a time in the app's current F1-B6 microphone range. Detector search bounds include the recognizer's ±45-cent tuning tolerance at both endpoints.
 - Uses an explicit microphone permission action and a live input indicator.
 - Keeps audio in memory for analysis only; it does not record, save, or upload microphone audio.
 - Disables app-generated prompt and answer sounds during microphone sessions to prevent feedback from becoming an answer.
@@ -33,7 +33,7 @@ Let a learner answer the existing natural-note practice prompts by playing one p
 ## Verification Strategy
 
 - Existing Vitest suite covers answer decisions, session compatibility, comparison grouping, and pitch analysis.
-- Manual acceptance uses a real piano and browser microphone in the deployed HTTPS site or localhost. Check low/middle/high notes, wrong notes, repeated notes, prompt playback, silence, and permission denial.
+- Manual acceptance uses a real piano and browser microphone in the deployed HTTPS site or localhost. Check low/middle/high notes through B6, wrong notes, repeated notes, prompt playback, silence, and permission denial.
 
 Platform-specific capture measurements, gain experiments, false-candidate risks, and known limitations are recorded in [iOS / iPadOS 麦克风音高识别记录](../research/ios-ipados-microphone-pitch-recognition.md).
 

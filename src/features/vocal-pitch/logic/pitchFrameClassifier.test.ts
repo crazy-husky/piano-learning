@@ -30,6 +30,31 @@ describe("pitch frame classification ranges", () => {
     ).toBe(f1FrequencyHz);
   });
 
+  it("keeps the inclusive 45-cent F1 and B6 detector edges and rejects pitches beyond them", () => {
+    const samples = new Float32Array(2048).fill(0.01);
+    const classifyCandidate = (frequencyHz: number) => {
+      const detector: PitchFrameDetector = {
+        detect: () => {
+          const candidate = { clarity: 0.98, frequencyHz };
+          return { fallback: candidate, primary: candidate };
+        },
+      };
+      return classifyPitchFrame(
+        detector,
+        samples,
+        44_100,
+        DEFAULT_VOCAL_PITCH_CONFIG,
+        0,
+        PRACTICE_NOTE_FREQUENCY_RANGE
+      ).frame.frequencyHz;
+    };
+
+    expect(classifyCandidate(midiToFrequency(29 - 0.45))).not.toBeNull();
+    expect(classifyCandidate(midiToFrequency(95 + 0.45))).not.toBeNull();
+    expect(classifyCandidate(midiToFrequency(29 - 0.46))).toBeNull();
+    expect(classifyCandidate(midiToFrequency(95 + 0.46))).toBeNull();
+  });
+
   it("applies a caller-provided RMS floor for microphone sensitivity", () => {
     const frequencyHz = midiToFrequency(69);
     const detector: PitchFrameDetector = {

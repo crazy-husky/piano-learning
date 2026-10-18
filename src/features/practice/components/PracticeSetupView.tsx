@@ -76,6 +76,7 @@ interface PracticeSetupViewProps {
   isBusy: boolean;
   microphoneError: string | null;
   midi: Pick<MidiInputController, "isConnected" | "selectedInput">;
+  overlay?: ReactNode;
   preferences: PracticeSetupUiPreferences;
   setupDisabledReason?: string;
   startPausedReading: boolean;
@@ -166,6 +167,7 @@ export function PracticeSetupView({
   isBusy: showStartingSessionStatus,
   microphoneError,
   midi,
+  overlay,
   preferences,
   setupDisabledReason,
   startPausedReading,
@@ -840,6 +842,7 @@ export function PracticeSetupView({
           </div>
         </section>
       </div>
+      {overlay}
     </section>
   );
 }

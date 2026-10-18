@@ -47,6 +47,8 @@ import type {
   PracticeMicrophoneDiagnostics,
   usePracticeMicrophoneInput,
 } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
+import type { PracticeMicrophoneAlgorithm } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
+import { B6SwiftF0ReminderDialog } from "../../vocal-pitch/components/B6SwiftF0ReminderDialog";
 import {
   readStaffGameSongProgress,
   saveStaffGameSongProgress,
@@ -324,6 +326,7 @@ interface StaffGameViewProps {
   initialSongId?: string;
   isSongPlayRoute: boolean;
   microphone: MicrophoneController;
+  microphoneAlgorithm: PracticeMicrophoneAlgorithm;
   midi: MidiInputController;
   onModeChange: (mode: StaffGameMode) => void;
   onSongStart: (songId: string) => void;
@@ -773,6 +776,7 @@ export function StaffGameView({
   initialSongId,
   isSongPlayRoute,
   microphone,
+  microphoneAlgorithm,
   midi,
   onModeChange,
   onSongStart,
@@ -3867,6 +3871,17 @@ export function StaffGameView({
         showLowFpsPrompt={showLowFpsPrompt}
         showPauseDialog={phase === "paused" && dialog === null && !gameError}
         touchGameLayout={touchGameLayout}
+      />
+      <B6SwiftF0ReminderDialog
+        active={
+          phase === "ready" &&
+          gameMode === "levels" &&
+          readyWrongNoteMode === "level" &&
+          dialog === null &&
+          settings.inputMode === "physical" &&
+          microphoneAlgorithm !== "swiftf0" &&
+          focusPitch.midi === 95
+        }
       />
     </section>
   );

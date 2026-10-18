@@ -1,6 +1,11 @@
 /// <reference lib="webworker" />
 
-import { analyzeSwiftF0, createSwiftF0Runtime, type SwiftF0Runtime } from "./swiftF0Inference";
+import {
+  analyzeSwiftF0,
+  createSwiftF0Runtime,
+  warmSwiftF0Runtime,
+  type SwiftF0Runtime,
+} from "./swiftF0Inference";
 import type { SwiftF0PracticeRequest, SwiftF0PracticeResponse } from "./swiftF0PracticeProtocol";
 
 let runtimePromise: Promise<SwiftF0Runtime> | null = null;
@@ -13,7 +18,10 @@ self.addEventListener("message", async (event: MessageEvent<SwiftF0PracticeReque
   const message = event.data;
   try {
     if (message.type === "initialize") {
-      runtimePromise ??= createSwiftF0Runtime();
+      runtimePromise ??= createSwiftF0Runtime().then(async (runtime) => {
+        await warmSwiftF0Runtime(runtime);
+        return runtime;
+      });
       const runtime = await runtimePromise;
       postResponse({ type: "ready", backend: runtime.backend });
       return;

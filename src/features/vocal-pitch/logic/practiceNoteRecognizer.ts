@@ -2,9 +2,17 @@ import { frequencyToMidi, midiToFrequency } from "../../../domain/vocalPitch";
 import type { NoteName, Octave, PianoKeyName } from "../../../domain/types";
 
 export const PRACTICE_NOTE_MIN_MIDI = 29;
-export const PRACTICE_NOTE_MAX_MIDI = 91;
-export const PRACTICE_NOTE_MIN_FREQUENCY_HZ = midiToFrequency(PRACTICE_NOTE_MIN_MIDI);
-export const PRACTICE_NOTE_MAX_FREQUENCY_HZ = midiToFrequency(PRACTICE_NOTE_MAX_MIDI);
+export const PRACTICE_NOTE_MAX_MIDI = 95;
+const MAX_NOTE_DEVIATION_CENTS = 45;
+const NOTE_EDGE_TOLERANCE_SEMITONES = MAX_NOTE_DEVIATION_CENTS / 100;
+// Keep detector bounds wider than the playable endpoints so accepted tuning drift
+// (including a sharp B6 estimate) is not discarded before note conversion.
+export const PRACTICE_NOTE_MIN_FREQUENCY_HZ = midiToFrequency(
+  PRACTICE_NOTE_MIN_MIDI - NOTE_EDGE_TOLERANCE_SEMITONES
+);
+export const PRACTICE_NOTE_MAX_FREQUENCY_HZ = midiToFrequency(
+  PRACTICE_NOTE_MAX_MIDI + NOTE_EDGE_TOLERANCE_SEMITONES
+);
 export const PRACTICE_NOTE_FREQUENCY_RANGE = {
   maxFrequencyHz: PRACTICE_NOTE_MAX_FREQUENCY_HZ,
   minFrequencyHz: PRACTICE_NOTE_MIN_FREQUENCY_HZ,
@@ -20,7 +28,7 @@ const NATURAL_NOTE_BY_SEMITONE: Partial<Record<number, NoteName>> = {
   11: "B",
 };
 const DEFAULT_MIN_NOTE_CONFIDENCE = 0.9;
-const MAX_NOTE_DEVIATION_CENTS = 45;
+const NOTE_DEVIATION_FLOAT_EPSILON_CENTS = 1e-9;
 const REQUIRED_STABLE_FRAMES = 4;
 const REQUIRED_STABLE_MS = 80;
 const SILENCE_REARM_FRAMES = 2;
@@ -60,6 +68,11 @@ export interface PracticeNoteRecognizerStabilityOptions {
 
 const MAX_CONTINUITY_STEP_SEMITONES = 2;
 
+function exceedsNoteDeviation(midiValue: number, midiNoteNumber: number): boolean {
+  const deviationCents = Math.abs(midiValue - midiNoteNumber) * 100;
+  return deviationCents > MAX_NOTE_DEVIATION_CENTS + NOTE_DEVIATION_FLOAT_EPSILON_CENTS;
+}
+
 function isOctaveRegisterChange(candidateMidi: number, referenceMidi: number): boolean {
   return candidateMidi !== referenceMidi && candidateMidi % 12 === referenceMidi % 12;
 }
@@ -73,7 +86,7 @@ export function frequencyToNaturalPracticeNote(frequencyHz: number): RecognizedP
   if (
     midiNoteNumber < PRACTICE_NOTE_MIN_MIDI ||
     midiNoteNumber > PRACTICE_NOTE_MAX_MIDI ||
-    Math.abs(midiValue - midiNoteNumber) * 100 > MAX_NOTE_DEVIATION_CENTS
+    exceedsNoteDeviation(midiValue, midiNoteNumber)
   ) {
     return null;
   }
@@ -97,7 +110,7 @@ export function frequencyToChromaticPracticeNote(
   if (
     midiNoteNumber < PRACTICE_NOTE_MIN_MIDI ||
     midiNoteNumber > PRACTICE_NOTE_MAX_MIDI ||
-    Math.abs(midiValue - midiNoteNumber) * 100 > MAX_NOTE_DEVIATION_CENTS
+    exceedsNoteDeviation(midiValue, midiNoteNumber)
   )
     return null;
   const noteName = (["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const)[

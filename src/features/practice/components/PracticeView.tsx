@@ -28,6 +28,7 @@ import {
 } from "../../../diagnostics/midiLatencyDiagnostics";
 import { markMidiLatencyAfterPaint } from "../../../diagnostics/midiLatencyPaint";
 import {
+  getTargetMidiNoteNumber,
   normalizeAnswerPitchMode,
   resolveAvailableAnswerPitchMode,
   type PracticeAnswerInput,
@@ -76,6 +77,7 @@ import {
   SESSION_PROGRESS_UI_PREFERENCES_KEY,
 } from "../../../shared/preferences/sessionProgressPreferences";
 import { PauseOverlay } from "../../../shared/components/PauseOverlay";
+import { B6SwiftF0ReminderDialog } from "../../vocal-pitch/components/B6SwiftF0ReminderDialog";
 import type { PracticePagePreferences } from "../../../shared/preferences/practicePagePreferences";
 import type { PracticeDistanceMode } from "../../../routing/appRoutes";
 import {
@@ -1769,7 +1771,9 @@ export function PracticeView({
               ? "midi"
               : "microphone";
             if (activeInputMode === "microphone") {
-              const microphoneReady = await practiceMicrophone.start({ includeAccidentals: true });
+              const microphoneReady = await practiceMicrophone.start({
+                includeAccidentals: true,
+              });
               if (!microphoneReady && !midiConnectedRef.current) return false;
               activeInputMode = midiConnectedRef.current ? "midi" : "microphone";
             }
@@ -1793,6 +1797,16 @@ export function PracticeView({
         setupDisabledReason={setupDisabledReason}
         startPausedReading={startPausedReading}
         settings={setupSettings}
+        overlay={
+          <B6SwiftF0ReminderDialog
+            active={
+              practiceTab === "free" &&
+              answerPitchMode === "microphone" &&
+              practiceMicrophonePreferences.algorithm !== "swiftf0" &&
+              allQueueNotes.some((note) => getTargetMidiNoteNumber(note) === 95)
+            }
+          />
+        }
       />
     );
   }

@@ -1290,7 +1290,12 @@ export function App(): JSX.Element {
             </div>
           ) : null}
           <Suspense fallback={<RouteLoadingSkeleton />}>
-            {view === "home" ? <HomeView onNavigate={navigateToRoute} /> : null}
+            {view === "home" ? (
+              <HomeView
+                microphoneAlgorithm={practiceMicrophonePreferences.algorithm}
+                onNavigate={navigateToRoute}
+              />
+            ) : null}
             {view === "practice" && !isStaffGameRoutePath(route.path) ? (
               data.practiceHistoryLoaded ? (
                 <PracticeView
