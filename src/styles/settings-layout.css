@@ -321,6 +321,10 @@
   margin-top: 24px;
 }
 
+.settings-about-panel > .settings-about-version-row {
+  border-bottom: 0;
+}
+
 .settings-about-panel .status-line {
   padding: 8px 0;
 }

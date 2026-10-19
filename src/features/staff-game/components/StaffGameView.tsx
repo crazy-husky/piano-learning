@@ -89,6 +89,7 @@ import type { StaffGameTarget as GameNote } from "../hooks/useStaffGameRoundCloc
 import type { StaffGameDialogKind as GameDialog } from "./StaffGameDialogs";
 import { StaffGameHud } from "./StaffGameHud";
 import { StaffGameReadyPanel } from "./StaffGameReadyPanel";
+import { LoadingActivityIndicator } from "../../../shared/components/LoadingActivity";
 import { StaffGameSummaryDialog } from "./StaffGameSummaryDialog";
 import { StaffGameWrongNoteStudyDialog } from "./StaffGameWrongNoteStudyDialog";
 import { StaffGameWrongNoteArchiveManagerDialog } from "./StaffGameWrongNoteArchiveManagerDialog";
@@ -3249,7 +3250,7 @@ export function StaffGameView({
     ? "麦克风已连接，可以开始听音"
     : microphone.status === "requesting"
       ? microphone.isPreparingSwiftF0
-        ? "正在准备，请稍等…"
+        ? "正在准备识别模型…"
         : "正在连接麦克风…"
       : microphone.error
         ? "麦克风权限或设备需要处理"
@@ -3274,6 +3275,14 @@ export function StaffGameView({
           (settings.inputMode === "midi" && midi.isConnected)
         ? "ready"
         : "pending";
+  const gameInputStatusActivity =
+    settings.inputMode === "physical" && microphone.status === "requesting"
+      ? microphone.isPreparingSwiftF0
+        ? ("music" as const)
+        : ("spinner" as const)
+      : settings.inputMode === "midi" && midi.status === "requesting"
+        ? ("spinner" as const)
+        : null;
   const showVirtualKeyboard =
     virtualKeyboardAvailable &&
     settings.inputMode === "virtual" &&
@@ -3309,7 +3318,7 @@ export function StaffGameView({
           role={resourceLoadState === "error" ? "alert" : undefined}
         >
           {resourceLoadState === "loading" ? (
-            <span aria-hidden="true" className="staff-game-loading-spinner" />
+            <LoadingActivityIndicator kind="music" size="prominent" />
           ) : null}
           <strong>
             {resourceLoadState === "loading" ? "正在加载游戏素材" : "部分游戏素材未能加载"}
@@ -3682,8 +3691,10 @@ export function StaffGameView({
               bubbleImage={bubbleShell}
               focusNote={focusNote}
               inputMode={settings.inputMode}
+              inputStatusActivity={gameInputStatusActivity}
               inputStatusState={gameInputStatusState}
               inputStatusText={gameInputStatusText}
+              isPreparingMicrophone={microphone.isPreparingSwiftF0}
               isStarting={isStarting}
               maxCombo={progress.maxCombos[level - 1]}
               onChangeReviewRange={setWrongNoteReviewRange}

@@ -1,5 +1,6 @@
 import { Mic, Music2, Play, RotateCcw, Sparkles } from "lucide-react";
 import { createPortal } from "react-dom";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import type { CSSProperties } from "react";
 
 interface StaffGameStatusOverlaysProps {
@@ -79,7 +80,11 @@ export function StaffGameStatusOverlays({
                     onClick={onRetryInput}
                     type="button"
                   >
-                    {isStarting ? "正在连接…" : "重新尝试"}
+                    {isStarting ? (
+                      <LoadingActivityText kind="spinner">正在连接…</LoadingActivityText>
+                    ) : (
+                      "重新尝试"
+                    )}
                   </button>
                 </div>
               </section>

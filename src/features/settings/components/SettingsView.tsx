@@ -56,6 +56,7 @@ import {
   STAFF_PAGE_UI_PREFERENCES_KEY,
 } from "../../../shared/preferences/staffPageUiPreferences";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import {
   clearGlobalDebugEvents,
   GLOBAL_DEBUG_ENABLED_KEY,
@@ -917,7 +918,7 @@ export function SettingsView({
           <div className="panel-heading">
             <h2>关于</h2>
           </div>
-          <div className="setting-row">
+          <div className="setting-row settings-about-version-row">
             <div>
               <strong>当前版本</strong>
               <span className="settings-helper">
@@ -925,15 +926,17 @@ export function SettingsView({
               </span>
             </div>
             <button disabled={isAppUpdateBusy} onClick={onCheckForUpdates} type="button">
-              {appUpdateStatus === "checking"
-                ? "正在检查…"
-                : appUpdateStatus === "preparing"
-                  ? "正在准备…"
-                  : appUpdateStatus === "reloading"
-                    ? "正在刷新…"
-                    : appUpdateStatus === "up-to-date" || hasUpdateAvailable
-                      ? "重新检查"
-                      : "检查更新"}
+              {appUpdateStatus === "checking" ? (
+                <LoadingActivityText kind="spinner">正在检查…</LoadingActivityText>
+              ) : appUpdateStatus === "preparing" ? (
+                <LoadingActivityText kind="spinner">正在准备…</LoadingActivityText>
+              ) : appUpdateStatus === "reloading" ? (
+                <LoadingActivityText kind="spinner">正在刷新…</LoadingActivityText>
+              ) : appUpdateStatus === "up-to-date" || hasUpdateAvailable ? (
+                "重新检查"
+              ) : (
+                "检查更新"
+              )}
             </button>
           </div>
           {appUpdateMessage ? (
@@ -952,11 +955,13 @@ export function SettingsView({
                 onClick={onApplyUpdate}
                 type="button"
               >
-                {appUpdateStatus === "reloading"
-                  ? "正在刷新页面…"
-                  : hasPreparedUpdate
-                    ? "立即使用新版"
-                    : "刷新试试"}
+                {appUpdateStatus === "reloading" ? (
+                  <LoadingActivityText kind="spinner">正在刷新页面…</LoadingActivityText>
+                ) : hasPreparedUpdate ? (
+                  "立即使用新版"
+                ) : (
+                  "刷新试试"
+                )}
               </button>
             </div>
           ) : null}

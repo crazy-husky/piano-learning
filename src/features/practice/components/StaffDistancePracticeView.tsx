@@ -30,6 +30,7 @@ import type {
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import {
   isInteractiveShortcutTarget,
@@ -960,9 +961,7 @@ export function StaffDistancePracticeView({
               onClick={() => void startSession()}
               type="button"
             >
-              {isStarting ? (
-                <Play aria-hidden="true" className="staff-distance-start-icon" size={18} />
-              ) : trainingMode === "look" ? (
+              {isStarting ? null : trainingMode === "look" ? (
                 <Eye
                   aria-hidden="true"
                   className="staff-distance-start-icon"
@@ -978,7 +977,13 @@ export function StaffDistancePracticeView({
                 />
               )}
               <span className="staff-distance-start-label" key={trainingMode}>
-                {isStarting ? "正在准备…" : trainingMode === "look" ? "开始看间距" : "开始弹奏"}
+                {isStarting ? (
+                  <LoadingActivityText kind="music">正在准备…</LoadingActivityText>
+                ) : trainingMode === "look" ? (
+                  "开始看间距"
+                ) : (
+                  "开始弹奏"
+                )}
               </span>
               <kbd>Enter</kbd>
             </button>

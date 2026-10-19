@@ -33,6 +33,7 @@ import { StaffPagePrompt } from "./StaffPagePrompt";
 import { MOBILE_PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
 import { estimateStaffGameSystemDelayMs } from "../../staff-game/logic/staffGameProficiency";
 import { practiceMicrophoneDebugParametersForSensitivityLevel } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 
 interface PracticeNavigationExitRequest {
   id: number;
@@ -68,6 +69,7 @@ interface StaffDistanceRunProps {
 export interface StaffDistanceMicrophoneInput {
   error: string | null;
   isListening: boolean;
+  isPreparingSwiftF0?: boolean;
   start: (options?: { includeAccidentals?: boolean }) => Promise<boolean>;
   status: PracticeMicrophoneStatus;
   stop: () => void;
@@ -982,12 +984,19 @@ export function StaffDistanceRun({
         </div>
       ) : (
         <div className="staff-distance-play-input-status" role="status">
-          {inputError ??
-            (inputMethod === "midi"
-              ? `请弹奏 MIDI 键盘上的${hasPlayedStartingNote ? "下一个音" : "第一个音"}${midi.selectedInput?.name ? ` · ${midi.selectedInput.name}` : ""}`
-              : microphone.status === "listening"
-                ? `麦克风已连接，请弹奏${hasPlayedStartingNote ? "下一个音" : "谱面上的第一个音"}`
-                : (microphone.error ?? "正在连接麦克风…"))}
+          {inputError ? (
+            inputError
+          ) : inputMethod === "midi" ? (
+            `请弹奏 MIDI 键盘上的${hasPlayedStartingNote ? "下一个音" : "第一个音"}${midi.selectedInput?.name ? ` · ${midi.selectedInput.name}` : ""}`
+          ) : microphone.status === "listening" ? (
+            `麦克风已连接，请弹奏${hasPlayedStartingNote ? "下一个音" : "谱面上的第一个音"}`
+          ) : microphone.status === "requesting" ? (
+            <LoadingActivityText kind={microphone.isPreparingSwiftF0 ? "music" : "spinner"}>
+              {microphone.isPreparingSwiftF0 ? "正在准备识别模型…" : "正在连接麦克风…"}
+            </LoadingActivityText>
+          ) : (
+            (microphone.error ?? "麦克风未连接")
+          )}
         </div>
       )}
 

@@ -28,6 +28,10 @@ import {
 import { MicrophoneBenchmarkResultTable } from "./MicrophoneBenchmarkResultTable";
 import { MicrophoneBenchmarkWaveform } from "./MicrophoneBenchmarkWaveform";
 import {
+  LoadingActivityIndicator,
+  LoadingActivityText,
+} from "../../../shared/components/LoadingActivity";
+import {
   useMicrophoneParameterBenchmarkRecording,
   type MicrophoneParameterBenchmarkTake,
 } from "./useMicrophoneParameterBenchmarkRecording";
@@ -785,7 +789,7 @@ export function MicrophoneParameterBenchmarkDialog({
           <aside aria-label="录音提示" className="microphone-benchmark-take-reminder">
             <strong>录音提示</strong>
             <span>
-              两遍都录同一段音序，不限定快慢；如果想比较速度影响，可以尝试用不同速度各录一遍。
+              两遍录同一段音序：建议第一遍按平时速度演奏，第二遍稍快一些，方便比较不同速度下的识别表现。
             </span>
           </aside>
           <div className="microphone-benchmark-recording-progress" role="status">
@@ -824,7 +828,9 @@ export function MicrophoneParameterBenchmarkDialog({
                   }
                   type="button"
                 >
-                  {isRecordingThisTake ? (
+                  {isPreparingThisTake ? (
+                    <LoadingActivityIndicator kind="spinner" />
+                  ) : isRecordingThisTake ? (
                     <Square aria-hidden="true" size={17} />
                   ) : isComplete ? (
                     <Check aria-hidden="true" size={17} />
@@ -1134,11 +1140,13 @@ export function MicrophoneParameterBenchmarkDialog({
               onClick={() => void startScan()}
               type="button"
             >
-              {isPreparingAlgorithm
-                ? "正在准备识别模型…"
-                : isScanning
-                  ? "正在扫描…"
-                  : "🚀 开始离线扫描"}
+              {isPreparingAlgorithm ? (
+                <LoadingActivityText kind="music">正在准备识别模型…</LoadingActivityText>
+              ) : isScanning ? (
+                "正在扫描…"
+              ) : (
+                "🚀 开始离线扫描"
+              )}
             </button>
             {isScanning ? (
               <button

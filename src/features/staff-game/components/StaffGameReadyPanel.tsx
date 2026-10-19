@@ -9,6 +9,10 @@ import type { StaffGameWrongNoteRange } from "../../../domain/staffGameWrongNote
 import { GAME_DIFFICULTIES, type GameDifficulty } from "../logic/staffGameRules";
 import { formatStaffGameWrongNoteReviewDuration } from "../logic/staffGameWrongNoteReview";
 import notationC4Preview from "../assets/notation/treble-staff-c4-note.webp";
+import {
+  LoadingActivityText,
+  type LoadingActivityKind,
+} from "../../../shared/components/LoadingActivity";
 
 interface SharedArtwork {
   bubbleImage: string;
@@ -46,8 +50,10 @@ type StaffGameReadyPanelProps = SharedArtwork &
         reviewWeakNoteCount: number;
         wrongNoteArchiveDateCount: number;
         inputMode: "virtual" | "physical" | "midi";
+        inputStatusActivity: LoadingActivityKind | null;
         inputStatusText: string;
         inputStatusState: "error" | "ready" | "pending";
+        isPreparingMicrophone: boolean;
         isStarting: boolean;
         onSelectReadyMode: (mode: "level" | "review") => void;
         onChangeReviewRange: (range: StaffGameWrongNoteRange) => void;
@@ -174,12 +180,16 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
           onClick={props.onStartSong}
           type="button"
         >
-          <Play fill="currentColor" size={20} />
-          {props.isStarting
-            ? props.isPreparingMicrophone
-              ? "正在准备，请稍等…"
-              : "正在准备…"
-            : "开始演奏"}
+          {props.isStarting ? (
+            <LoadingActivityText kind="music">
+              {props.isPreparingMicrophone ? "正在准备识别模型…" : "正在准备…"}
+            </LoadingActivityText>
+          ) : (
+            <>
+              <Play fill="currentColor" size={20} />
+              开始演奏
+            </>
+          )}
         </button>
       </section>
     );
@@ -238,8 +248,16 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
           onClick={props.onStartLevel}
           type="button"
         >
-          <Play fill="currentColor" size={20} />
-          {props.isStarting ? "正在准备…" : "开始闯关"}
+          {props.isStarting ? (
+            <LoadingActivityText kind="music">
+              {props.isPreparingMicrophone ? "正在准备识别模型…" : "正在准备…"}
+            </LoadingActivityText>
+          ) : (
+            <>
+              <Play fill="currentColor" size={20} />
+              开始闯关
+            </>
+          )}
         </button>
       ) : null}
       {props.readyMode === "review" ? (
@@ -346,7 +364,13 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
           {inputModeIcon}
         </span>
         <span aria-live="polite" role="status">
-          {props.inputStatusText}
+          {props.inputStatusActivity ? (
+            <LoadingActivityText kind={props.inputStatusActivity}>
+              {props.inputStatusText}
+            </LoadingActivityText>
+          ) : (
+            props.inputStatusText
+          )}
         </span>
       </div>
       {props.readyMode === "review" ? (
@@ -366,8 +390,16 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             onClick={props.onStartReview}
             type="button"
           >
-            <Play fill="currentColor" size={20} />
-            {props.isStarting ? "正在准备…" : "开始测试"}
+            {props.isStarting ? (
+              <LoadingActivityText kind="music">
+                {props.isPreparingMicrophone ? "正在准备识别模型…" : "正在准备…"}
+              </LoadingActivityText>
+            ) : (
+              <>
+                <Play fill="currentColor" size={20} />
+                开始测试
+              </>
+            )}
           </button>
         </div>
       ) : null}

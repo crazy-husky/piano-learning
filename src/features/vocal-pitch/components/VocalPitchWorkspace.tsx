@@ -11,6 +11,11 @@ import {
 } from "lucide-react";
 import type { ChangeEventHandler, DragEventHandler, RefObject } from "react";
 import {
+  LoadingActivityIndicator,
+  LoadingActivityText,
+  type LoadingActivityKind,
+} from "../../../shared/components/LoadingActivity";
+import {
   formatDuration,
   type VocalAudioMaterial,
   type VocalPitchAnalysisConfig,
@@ -21,6 +26,7 @@ import { PitchPreview } from "./PitchPreview";
 interface VocalPitchWorkspaceProps {
   analysisProgress: number | null;
   backupPreflightPending: boolean;
+  controlStatusActivity: LoadingActivityKind | null;
   controlStatusMessage: string | null;
   currentFrame: VocalPitchFrame | null;
   currentPitch: { cents: number; frequencyHz: number; note: string } | null;
@@ -61,6 +67,7 @@ interface VocalPitchWorkspaceProps {
 export function VocalPitchWorkspace({
   analysisProgress,
   backupPreflightPending,
+  controlStatusActivity,
   controlStatusMessage,
   currentFrame,
   currentPitch,
@@ -186,7 +193,13 @@ export function VocalPitchWorkspace({
             } else onStartRecording();
           }}
         >
-          {recordingBusy ? <Square size={17} /> : <Mic size={18} />}
+          {recordingResultPending ? (
+            <LoadingActivityIndicator kind="spinner" />
+          ) : recordingBusy ? (
+            <Square size={17} />
+          ) : (
+            <Mic size={18} />
+          )}
           {recordingResultPending ? "正在完成" : recordingActive ? "停止" : "录制"}
           {recordingActive ? <kbd>Space</kbd> : null}
         </button>
@@ -218,7 +231,13 @@ export function VocalPitchWorkspace({
             aria-live="polite"
             title={controlStatusMessage ?? undefined}
           >
-            {controlStatusMessage}
+            {controlStatusActivity && controlStatusMessage ? (
+              <LoadingActivityText kind={controlStatusActivity}>
+                {controlStatusMessage}
+              </LoadingActivityText>
+            ) : (
+              controlStatusMessage
+            )}
             {analysisProgress !== null ? <progress max={1} value={analysisProgress} /> : null}
           </span>
         ) : null}

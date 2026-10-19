@@ -805,7 +805,7 @@
   color: var(--staff-game-night-text);
 }
 
-:root[data-app-theme="dark"] .staff-game-loading-card > span:not(.staff-game-loading-spinner),
+:root[data-app-theme="dark"] .staff-game-loading-card > span,
 :root[data-app-theme="dark"] .staff-game-loading-progress-label,
 :root[data-app-theme="dark"] .staff-game-loading-details small,
 :root[data-app-theme="dark"] .staff-game-loading-details li > span {
@@ -852,9 +852,8 @@
   color: #332b1b;
 }
 
-:root[data-app-theme="dark"] .staff-game-loading-spinner {
-  border-color: rgba(125, 210, 189, 0.24);
-  border-top-color: var(--staff-game-night-mint);
+:root[data-app-theme="dark"] .staff-game-loading-card > .loading-activity-indicator--music {
+  color: var(--staff-game-night-mint);
 }
 
 :root[data-app-theme="dark"] .staff-game-combo-cloud {

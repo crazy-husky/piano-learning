@@ -21,6 +21,7 @@ import type {
 import { isInteractiveShortcutTarget } from "../../../shared/keyboard/keyboardShortcuts";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
+import { type LoadingActivityKind } from "../../../shared/components/LoadingActivity";
 import { VocalPitchSidebar } from "./VocalPitchSidebar";
 import { VocalPitchWorkspace } from "./VocalPitchWorkspace";
 import { useVocalFileImport } from "./useVocalFileImport";
@@ -833,11 +834,24 @@ export function VocalPitchView({
         recorder.captureNotice ??
         (playback.isPreparing ? "正在准备回放音量…" : null) ??
         (analysisStale ? "参数已更改，请重新分析" : null));
+  const controlStatusActivity: LoadingActivityKind | null =
+    modelDownloadProgress !== null
+      ? "spinner"
+      : backupPreflightPending && inlineMessage == null
+        ? "spinner"
+        : playback.isPreparing &&
+            !backupPreflightPending &&
+            inlineMessage == null &&
+            analysisMessage == null &&
+            recorder.captureNotice == null
+          ? "music"
+          : null;
   return (
     <div ref={workspaceRef} className="vocal-workspace">
       <VocalPitchWorkspace
         analysisProgress={analysisProgress}
         backupPreflightPending={backupPreflightPending}
+        controlStatusActivity={controlStatusActivity}
         controlStatusMessage={controlStatusMessage}
         currentFrame={currentFrame}
         currentPitch={currentPitch}

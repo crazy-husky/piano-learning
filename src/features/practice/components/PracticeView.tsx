@@ -52,6 +52,7 @@ import {
   SESSION_PROGRESS_UI_PREFERENCES_KEY,
 } from "../../../shared/preferences/sessionProgressPreferences";
 import { PauseOverlay } from "../../../shared/components/PauseOverlay";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { B6SwiftF0ReminderDialog } from "../../vocal-pitch/components/B6SwiftF0ReminderDialog";
 import type { PracticePagePreferences } from "../../../shared/preferences/practicePagePreferences";
 import type { PracticeDistanceMode } from "../../../routing/appRoutes";
@@ -1746,14 +1747,17 @@ export function PracticeView({
             aria-hidden="true"
           />
           <span role="status">
-            {practiceMicrophone.status === "listening"
-              ? `正在监听麦克风 · ${practiceMicrophoneAlgorithmLabel(practiceMicrophone.activeAlgorithm)}`
-              : practiceMicrophone.status === "requesting"
-                ? practiceMicrophone.isPreparingSwiftF0
-                  ? "正在准备，请稍等…"
-                  : "正在连接麦克风…"
-                : (practiceMicrophone.error ??
-                  (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))}
+            {practiceMicrophone.status === "listening" ? (
+              `正在监听麦克风 · ${practiceMicrophoneAlgorithmLabel(practiceMicrophone.activeAlgorithm)}`
+            ) : practiceMicrophone.status === "requesting" ? (
+              <LoadingActivityText
+                kind={practiceMicrophone.isPreparingSwiftF0 ? "music" : "spinner"}
+              >
+                {practiceMicrophone.isPreparingSwiftF0 ? "正在准备识别模型…" : "正在连接麦克风…"}
+              </LoadingActivityText>
+            ) : (
+              (practiceMicrophone.error ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))
+            )}
           </span>
         </div>
       ) : null}
