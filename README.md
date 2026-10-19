@@ -154,12 +154,14 @@ Windows 脚本会构建当前工作区，在 `127.0.0.1:6137` 启动独立的 Vi
 
 #### macOS：手机 / iPad 预览当前代码
 
-在 Mac 终端运行：
+在 Mac 终端运行 `pnpm dev`。如果本机已准备好仓库外的预览脚本，它会自动启动 Vite 和 HTTPS 隧道：
 
 ```bash
-bash "$HOME/.local/bin/piano-learning-mobile-preview.sh"
+pnpm dev
 ```
 
-启动后终端会打印预览地址，例如 `https://gohusky.cn/mobile-preview/#/practice?tab=free`。在手机或 iPad 上打开该地址即可查看当前工作区的最新代码；保存代码后页面会热更新，无需构建、提交或部署。也可以在 Mac Chrome 打开该地址并为页面创建二维码，再用手机扫码访问。
+启动后终端会打印预览首页地址 `https://gohusky.cn/mobile-preview/`，并自动生成、打开指向该首页的二维码图片。在手机或 iPad 上扫码即可进入首页；保存代码后页面会热更新，无需构建、提交或部署。二维码图片保存在 `~/Library/Logs/piano-learning/mobile-preview-home-qr.png`。
 
-预览地址没有密码，任何能访问该域名的人都可以打开。预览期间保持 Mac 在线，并让启动脚本的终端窗口保持打开；按 `Ctrl+C` 会停止本地 Vite 服务和 SSH 隧道。脚本使用本地 Vite 端口 `6137` 和远程隧道端口 `16137`，不会占用或停止 `6136` 开发服务器。启动配置和 SSH 连接信息保存在仓库外的本机配置文件中，不要提交到 Git。
+预览脚本默认位于 `$HOME/.local/bin/piano-learning-mobile-preview.sh`，也可通过 `PIANO_MOBILE_PREVIEW_SCRIPT` 指定其他本地路径。脚本缺失时，`pnpm dev` 会兼容地启动普通本地开发服务器 `127.0.0.1:6136`；需要明确使用本地模式时运行 `pnpm dev:local`。Windows 和其他没有该 macOS 预览脚本的环境也会使用普通本地开发服务器。
+
+预览地址没有密码，任何能访问该域名的人都可以打开。预览期间保持 Mac 在线，并让启动脚本的终端窗口保持打开；按 `Ctrl+C` 会停止本地 Vite 服务和 SSH 隧道。脚本启动前会检查本地 Vite 端口 `6137`，如已占用会显示监听进程并退出；SSH 会在远程隧道端口 `16137` 无法转发时立即失败。预览使用独立端口，不会占用或停止 `6136` 开发服务器。启动配置和 SSH 连接信息保存在仓库外的本机配置文件中，不要提交到 Git。
