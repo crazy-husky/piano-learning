@@ -13,6 +13,14 @@ import type {
 } from "../../../domain/types";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import { isPracticeAnswerCorrect } from "../../../domain/answerInput";
+import { getTargetMidiNoteNumber } from "../../../domain/answerInput";
+import {
+  answerDeviceInfo,
+  answerInputMode,
+  currentMicrophoneContext,
+} from "../../../data/answerEvents";
+import { saveAnswerEvents } from "../../../data/db";
+import type { AnswerAttempt } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import { isNaturalPianoKey } from "../../../shared/components/PianoKeyboard";
@@ -23,6 +31,8 @@ import {
 import { appendStaffDistanceRhythm, createStaffDistanceRhythm } from "../logic/staffDistanceRhythm";
 import { StaffPagePrompt } from "./StaffPagePrompt";
 import { MOBILE_PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
+import { estimateStaffGameSystemDelayMs } from "../../staff-game/logic/staffGameProficiency";
+import { practiceMicrophoneDebugParametersForSensitivityLevel } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
 
 interface PracticeNavigationExitRequest {
   id: number;
@@ -284,6 +294,7 @@ export function StaffDistanceRun({
   const [scoreWidth, setScoreWidth] = useState(0);
   const resultsRef = useRef(session.staffDistance?.questionResults ?? []);
   const firstResponseRef = useRef<{ correct: boolean; responseMs: number } | null>(null);
+  const questionAttemptsRef = useRef<AnswerAttempt[]>([]);
   const wrongAttemptsRef = useRef(0);
   const usedHintRef = useRef(false);
   const pendingAdvanceRef = useRef<(() => void) | null>(null);
@@ -440,6 +451,7 @@ export function StaffDistanceRun({
       setShowHint(false);
       setFeedback(null);
       firstResponseRef.current = null;
+      questionAttemptsRef.current = [];
       wrongAttemptsRef.current = 0;
       usedHintRef.current = false;
       questionElapsedRef.current = 0;
@@ -466,7 +478,7 @@ export function StaffDistanceRun({
   }, []);
 
   const submitAnswer = useCallback(
-    (isCorrect: boolean): void => {
+    async (isCorrect: boolean, answer?: PracticeAnswerInput): Promise<void> => {
       if (isPausedRef.current || endingRef.current || feedback?.type === "correct") return;
       if (!currentFrom || !currentTo) return;
       const { distance: targetDistance } = summarizeStaffDistancePair(currentFrom, currentTo);
@@ -477,6 +489,16 @@ export function StaffDistanceRun({
       if (!firstResponseRef.current) {
         firstResponseRef.current = { correct: isCorrect, responseMs };
       }
+      questionAttemptsRef.current.push({
+        ...(answer?.midiNoteNumber === undefined ? {} : { midi: answer.midiNoteNumber }),
+        ...(answer ? { noteName: answer.noteName } : {}),
+        atMs: responseMs,
+        confidence: answer?.confidence,
+        inputMode: answer ? answerInputMode(answer.source) : undefined,
+        microphoneAlgorithm: answer?.microphoneAlgorithm,
+        isCorrect,
+        clipping: answer?.clipping ?? false,
+      });
       if (!isCorrect) {
         wrongAttemptsRef.current += 1;
         setAttemptCount(wrongAttemptsRef.current);
@@ -501,6 +523,70 @@ export function StaffDistanceRun({
           targetPitchId: trainingMode === "play" ? currentTo.pitchId : undefined,
         },
       ];
+      const eventIndex = resultsRef.current.length;
+      const microphoneContext = currentMicrophoneContext();
+      const microphoneAlgorithm =
+        questionAttemptsRef.current.at(-1)?.microphoneAlgorithm ??
+        microphoneContext.microphoneAlgorithm;
+      const effectiveInputMode = answer
+        ? answerInputMode(answer.source)
+        : trainingMode === "look"
+          ? "computer-keyboard"
+          : answerInputMode(inputMethod);
+      const estimatedSystemDelayMs =
+        effectiveInputMode === "microphone"
+          ? estimateStaffGameSystemDelayMs(
+              "microphone",
+              practiceMicrophoneDebugParametersForSensitivityLevel(
+                microphoneAlgorithm ?? "swiftf0",
+                microphoneContext.sensitivityLevel ?? 3
+              ),
+              microphoneAlgorithm ?? "swiftf0"
+            )
+          : 0;
+      void saveAnswerEvents([
+        {
+          id: `${session.id}:distance:${eventIndex}`,
+          dataSetId: "",
+          sessionId: session.id,
+          eventIndex,
+          occurredAt: new Date().toISOString(),
+          promptStartedAt: new Date(Date.now() - responseMs).toISOString(),
+          promptEndedAt: new Date().toISOString(),
+          mode: "staff-distance",
+          inputMode: effectiveInputMode,
+          deviceInfo: answerDeviceInfo(),
+          ...(effectiveInputMode === "microphone"
+            ? { ...microphoneContext, microphoneAlgorithm }
+            : {}),
+          targetMidi: getTargetMidiNoteNumber(currentTo),
+          targetNoteId: currentTo.id,
+          targetGroupId: currentTo.groupId,
+          targetNoteName: currentTo.noteName,
+          targetOctave: currentTo.octave,
+          recognizedMidi: questionAttemptsRef.current.at(-1)?.midi,
+          confidence: questionAttemptsRef.current.at(-1)?.confidence,
+          attempts: questionAttemptsRef.current,
+          isCorrectFirstTry: firstResponse.correct,
+          isCorrectFinal: true,
+          rawResponseTimeMs: responseMs,
+          estimatedSystemDelayMs,
+          responseTimeMs: Math.max(0, responseMs - estimatedSystemDelayMs),
+          activeMs: responseMs,
+          wrongAttempts: wrongAttemptsRef.current,
+          isExtraNote: false,
+          isMissed: false,
+          staffDistance: {
+            distance: pair.distance,
+            direction: pair.direction,
+            maxDistance: details.maxDistance,
+            trainingMode,
+            usedHint: usedHintRef.current,
+          },
+        },
+      ]).catch((error: unknown) => {
+        console.error("Failed to save staff-distance answer event", error);
+      });
       resultsRef.current = nextResults;
       setCompletedTargetIndices((current) =>
         current.includes(questionIndex + 1) ? current : [...current, questionIndex + 1]
@@ -519,11 +605,14 @@ export function StaffDistanceRun({
       advanceQuestion,
       currentFrom,
       currentTo,
+      details.maxDistance,
       feedback?.type,
       fixedCount,
+      inputMethod,
       mode,
       questionIndex,
       schedulePendingAdvance,
+      session.id,
       trainingMode,
     ]
   );
@@ -531,7 +620,7 @@ export function StaffDistanceRun({
   const answerDistance = useCallback(
     (distance: number): void => {
       if (trainingMode !== "look" || !currentFrom || !currentTo) return;
-      submitAnswer(distance === summarizeStaffDistancePair(currentFrom, currentTo).distance);
+      void submitAnswer(distance === summarizeStaffDistancePair(currentFrom, currentTo).distance);
     },
     [currentFrom, currentTo, submitAnswer, trainingMode]
   );
@@ -564,7 +653,7 @@ export function StaffDistanceRun({
         questionStartedAtRef.current = performance.now();
         return;
       }
-      submitAnswer(isPracticeAnswerCorrect(answer, currentTo, answerMode));
+      void submitAnswer(isPracticeAnswerCorrect(answer, currentTo, answerMode), answer);
     },
     [currentTo, inputMethod, sequence, submitAnswer, trainingMode]
   );

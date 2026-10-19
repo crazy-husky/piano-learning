@@ -1,4 +1,5 @@
 import type { AnswerPitchMode, NoteName, TargetNote } from "./types";
+import type { PracticeMicrophoneAlgorithm } from "../features/vocal-pitch/logic/practiceMicrophonePreferences";
 
 const NOTE_NAME_SEMITONES: Record<NoteName, number> = {
   C: 0,
@@ -13,6 +14,9 @@ const NOTE_NAME_SEMITONES: Record<NoteName, number> = {
 export type AnswerInputSource = "computer-keyboard" | "microphone" | "midi" | "screen-keyboard";
 
 export interface PracticeAnswerInput {
+  clipping?: boolean;
+  confidence?: number;
+  microphoneAlgorithm?: PracticeMicrophoneAlgorithm;
   diagnosticSampleId?: number;
   midiNoteNumber?: number;
   noteName: NoteName;

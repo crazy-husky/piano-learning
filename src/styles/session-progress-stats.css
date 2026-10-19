@@ -558,6 +558,38 @@
   font-size: 12px;
 }
 
+.stats-proficiency-filters,
+.stats-weak-note-sort {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stats-proficiency-filters {
+  margin: 0 0 10px;
+}
+
+.stats-proficiency-filters label,
+.stats-weak-note-sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-proficiency-filters select,
+.stats-weak-note-sort select {
+  min-height: 30px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
 .stats-note-range-legend {
   margin: 4px 0 0;
 }

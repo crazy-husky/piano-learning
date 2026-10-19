@@ -5,7 +5,7 @@ import {
 } from "./staffGameWrongNoteArchive";
 
 describe("summarizeStaffGameWrongNoteOutcomes", () => {
-  it("aggregates first tries, confusions, misses, and positive per-note reaction samples", () => {
+  it("aggregates first tries, confusions, and misses without storing reaction times in archives", () => {
     const result = summarizeStaffGameWrongNoteOutcomes(
       [
         {
@@ -37,16 +37,14 @@ describe("summarizeStaffGameWrongNoteOutcomes", () => {
       correct: 1,
       wrong: 1,
       lastErrorAt: "1970-01-01T00:00:08.000Z",
-      totalResponseMs: 350,
-      responseSampleCount: 1,
       confusions: { D4: 1 },
     });
+    expect(result.notes["60"]).not.toHaveProperty("totalResponseMs");
+    expect(result.notes["60"]).not.toHaveProperty("responseSampleCount");
     expect(result.notes["62"]).toMatchObject({
       appear: 1,
       missed: 1,
       lastErrorAt: "1970-01-01T00:00:09.000Z",
-      totalResponseMs: 0,
-      responseSampleCount: 0,
     });
   });
 });

@@ -9,6 +9,7 @@ import type {
   StaffRecallRunRecord,
   StaffGameWrongNoteArchive,
   StaffGameWrongNoteArchiveRun,
+  AnswerEvent,
 } from "./types";
 
 function latestReview(reviews: ReviewRecord[]): ReviewRecord | undefined {
@@ -47,7 +48,8 @@ export function getBackupDataModifiedAt(
   sessions: PracticeSessionRecord[],
   reviews: ReviewRecord[],
   staffRecallRuns: StaffRecallRunRecord[] = [],
-  wrongNoteArchives: StaffGameWrongNoteArchive[] = []
+  wrongNoteArchives: StaffGameWrongNoteArchive[] = [],
+  answerEvents: AnswerEvent[] = []
 ): string {
   return (
     latestTimestamp([
@@ -59,6 +61,7 @@ export function getBackupDataModifiedAt(
       ...wrongNoteArchives.flatMap((archive) =>
         archive.runs.flatMap((run) => [run.endedAt, run.startedAt])
       ),
+      ...answerEvents.map((event) => event.occurredAt),
     ]) ?? settings.createdAt
   );
 }
@@ -69,22 +72,26 @@ export function buildBackupSnapshot(
   reviews: ReviewRecord[],
   backupAt = new Date().toISOString(),
   staffRecallRuns: StaffRecallRunRecord[] = [],
-  wrongNoteArchives: StaffGameWrongNoteArchive[] = []
+  wrongNoteArchives: StaffGameWrongNoteArchive[] = [],
+  answerEvents: AnswerEvent[] = []
 ): BackupSnapshot {
   const days: Record<string, BackupDayFile> = {};
   const sessionsByDate = new Map<string, PracticeSessionRecord[]>();
   const reviewsByDate = new Map<string, ReviewRecord[]>();
   const staffRecallRunsByDate = new Map<string, StaffRecallRunRecord[]>();
   const wrongNoteArchivesByDate = new Map<string, StaffGameWrongNoteArchive[]>();
+  const answerEventsByDate = new Map<string, AnswerEvent[]>();
 
   for (const session of sessions) {
     const date = localDateKey(session.startedAt);
     appendByDate(sessionsByDate, date, session);
   }
 
-  for (const review of reviews) {
-    const date = localDateKey(review.startedAt);
-    appendByDate(reviewsByDate, date, review);
+  if (answerEvents.length === 0) {
+    for (const review of reviews) {
+      const date = localDateKey(review.startedAt);
+      appendByDate(reviewsByDate, date, review);
+    }
   }
 
   for (const run of staffRecallRuns) {
@@ -96,11 +103,16 @@ export function buildBackupSnapshot(
     appendByDate(wrongNoteArchivesByDate, archive.date || archive.id, archive);
   }
 
+  for (const event of answerEvents) {
+    appendByDate(answerEventsByDate, localDateKey(event.occurredAt), event);
+  }
+
   const dates = new Set([
     ...sessionsByDate.keys(),
     ...reviewsByDate.keys(),
     ...staffRecallRunsByDate.keys(),
     ...wrongNoteArchivesByDate.keys(),
+    ...answerEventsByDate.keys(),
   ]);
   for (const date of dates) {
     days[date] = {
@@ -110,6 +122,7 @@ export function buildBackupSnapshot(
       reviews: reviewsByDate.get(date) ?? [],
       staffRecallRuns: staffRecallRunsByDate.get(date) ?? [],
       staffGameWrongNoteArchives: wrongNoteArchivesByDate.get(date) ?? [],
+      answerEvents: answerEventsByDate.get(date) ?? [],
     };
   }
 
@@ -126,12 +139,14 @@ export function buildBackupSnapshot(
         sessions,
         reviews,
         staffRecallRuns,
-        wrongNoteArchives
+        wrongNoteArchives,
+        answerEvents
       ),
       lastBackupAt: backupAt,
       lastReviewId: latestReview(reviews)?.id,
       lastStaffRecallRunId: latestStaffRecallRun(staffRecallRuns)?.id,
       lastStaffGameWrongNoteArchiveRunId: latestWrongNoteArchiveRun(wrongNoteArchives)?.runId,
+      lastAnswerEventId: answerEvents.at(-1)?.id,
       dates: [...dates].sort((a, b) => a.localeCompare(b)),
     },
     days,

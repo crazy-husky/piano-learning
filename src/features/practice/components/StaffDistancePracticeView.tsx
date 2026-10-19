@@ -18,6 +18,7 @@ import { getNotesForSelection, getStaffSelectedPitchIds } from "../../../domain/
 import { validateStaffDistancePractice } from "../../../domain/staffDistancePractice";
 import type {
   AppSettings,
+  PitchId,
   PracticeMode,
   PracticeSessionRecord,
   PromptNoteDuration,
@@ -417,10 +418,32 @@ export function StaffDistancePracticeView({
     finalSession: PracticeSessionRecord,
     showSummary: boolean
   ): Promise<void> => {
-    const hasResults = Boolean(finalSession.staffDistance?.questionResults.length);
+    const answerEvents = await db.answerEvents.where("sessionId").equals(finalSession.id).toArray();
+    const questionResults = answerEvents.flatMap((event) =>
+      event.staffDistance
+        ? [
+            {
+              distance: event.staffDistance.distance,
+              direction: event.staffDistance.direction,
+              firstTryCorrect: event.isCorrectFirstTry === true,
+              responseMs: event.rawResponseTimeMs ?? 0,
+              wrongAttempts: event.wrongAttempts,
+              usedHint: event.staffDistance.usedHint ?? false,
+              targetPitchId: event.targetNoteId?.split("-")[0] as PitchId | undefined,
+            },
+          ]
+        : []
+    );
+    const hasResults = questionResults.length > 0;
+    const storedSession = finalSession.staffDistance
+      ? { ...finalSession, staffDistance: { ...finalSession.staffDistance, questionResults: [] } }
+      : finalSession;
+    const summary = finalSession.staffDistance
+      ? { ...finalSession, staffDistance: { ...finalSession.staffDistance, questionResults } }
+      : finalSession;
     try {
       if (hasResults) {
-        await db.practiceSessions.put(finalSession);
+        await db.practiceSessions.put(storedSession);
         await writeBackupNow().catch(() => undefined);
         await onDataChanged();
       } else {
@@ -432,7 +455,7 @@ export function StaffDistancePracticeView({
       );
     }
     setRunSession(null);
-    setSummarySession(showSummary && hasResults ? finalSession : null);
+    setSummarySession(showSummary && hasResults ? summary : null);
     if (showSummary && hasResults) onPracticeFinished();
     onRunningChange(false);
     microphone.stop();

@@ -1,5 +1,10 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
-import { db, deletePracticeSessionWithReviews, saveReview } from "../../../data/db";
+import { db, deletePracticeSessionWithReviews, saveAnswerEvents } from "../../../data/db";
+import {
+  answerDeviceInfo,
+  answerInputMode,
+  currentMicrophoneContext,
+} from "../../../data/answerEvents";
 import { writeBackupNow } from "../../../data/backup";
 import { createUuid } from "../../../domain/id";
 import {
@@ -9,6 +14,8 @@ import {
 import { isCompletedReview } from "../../../domain/reviews";
 import type { AdaptiveNoteScheduler } from "../../../domain/scheduler";
 import type {
+  AnswerEvent,
+  AnswerAttempt,
   FocusLoss,
   InterruptReason,
   PracticeSessionRecord,
@@ -16,12 +23,16 @@ import type {
   TargetNote,
   WrongAnswer,
 } from "../../../domain/types";
+import { getTargetMidiNoteNumber } from "../../../domain/answerInput";
+import { estimateStaffGameSystemDelayMs } from "../../staff-game/logic/staffGameProficiency";
+import { practiceMicrophoneDebugParametersForSensitivityLevel } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
 import type { GeneratedStaffPageRhythm } from "../logic/staffPageNotation";
 import type { PracticePromptTimerState, PracticeTimers } from "./usePracticeTimers";
 
 export interface PracticePromptRuntime extends PracticePromptTimerState {
   note: TargetNote;
   startedAt: string;
+  answerAttempts: AnswerAttempt[];
   wrongAnswers: WrongAnswer[];
   replayCount: number;
   focusLosses: FocusLoss[];
@@ -127,7 +138,67 @@ export function usePracticeSessionLifecycle({
       runtime.promptRef.current = null;
       runtime.lastTargetNoteIdRef.current = prompt.note.id;
       if (!ignored) {
-        await saveReview(review);
+        const sessionAnswerMode =
+          "answerPitchMode" in session ? session.answerPitchMode : undefined;
+        const inputMode =
+          prompt.answerAttempts.at(-1)?.inputMode ?? answerInputMode(sessionAnswerMode);
+        const microphoneContext = currentMicrophoneContext();
+        const microphoneAlgorithm =
+          prompt.answerAttempts.at(-1)?.microphoneAlgorithm ??
+          microphoneContext.microphoneAlgorithm;
+        const estimatedSystemDelayMs =
+          inputMode === "microphone"
+            ? estimateStaffGameSystemDelayMs(
+                "microphone",
+                practiceMicrophoneDebugParametersForSensitivityLevel(
+                  microphoneAlgorithm ?? "swiftf0",
+                  microphoneContext.sensitivityLevel ?? 3
+                ),
+                microphoneAlgorithm ?? "swiftf0"
+              )
+            : 0;
+        const attempts: AnswerAttempt[] = prompt.answerAttempts;
+        const finalAttempt = attempts.at(-1);
+        const event: AnswerEvent = {
+          id: review.id,
+          dataSetId: "",
+          sessionId: session.id,
+          eventIndex: runtime.sessionReviewsRef.current.length,
+          occurredAt: review.endedAt,
+          promptStartedAt: review.startedAt,
+          promptEndedAt: review.endedAt,
+          mode: "free-practice",
+          inputMode,
+          deviceInfo: answerDeviceInfo(),
+          ...(inputMode === "microphone" ? { ...microphoneContext, microphoneAlgorithm } : {}),
+          targetMidi: getTargetMidiNoteNumber(prompt.note),
+          targetNoteId: prompt.note.id,
+          targetGroupId: prompt.note.groupId,
+          targetNoteName: prompt.note.noteName,
+          targetOctave: prompt.note.octave,
+          recognizedMidi: finalAttempt?.midi,
+          confidence: finalAttempt?.confidence,
+          attempts,
+          isCorrectFirstTry: attempts[0]?.isCorrect ?? null,
+          isCorrectFinal: review.answeredCorrectly ? true : attempts.length > 0 ? false : null,
+          rawResponseTimeMs: review.answeredCorrectly ? activeMs : null,
+          estimatedSystemDelayMs,
+          responseTimeMs: review.answeredCorrectly
+            ? Math.max(0, activeMs - estimatedSystemDelayMs)
+            : null,
+          activeMs,
+          wrongAttempts: review.wrongAnswers.length,
+          isExtraNote: false,
+          isMissed: false,
+          wasInterrupted: review.interrupted,
+        };
+        await saveAnswerEvents([event]);
+        await db.transaction("rw", db.settings, async () => {
+          const settings = await db.settings.get("default");
+          if (settings && !settings.firstReviewAt) {
+            await db.settings.put({ ...settings, firstReviewAt: review.startedAt });
+          }
+        });
       }
       runtime.adaptiveSchedulerRef.current?.appendReview(review);
       runtime.sessionReviewsRef.current = [...runtime.sessionReviewsRef.current, review];

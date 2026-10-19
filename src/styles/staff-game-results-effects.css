@@ -520,6 +520,20 @@
   padding: 3px 14px;
 }
 
+.staff-game-proficiency-summary,
+.staff-game-fast-playing-hint {
+  margin: 4px 0 8px;
+  color: #477785;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.staff-game-fast-playing-hint {
+  margin-top: 0;
+  color: #8a5b23;
+}
+
 .staff-game-result-stats > div {
   display: grid;
   min-height: 42px;

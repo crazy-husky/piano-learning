@@ -8,6 +8,7 @@ import {
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import { STAFF_GAME_SONGS } from "../data/staffGameSongs";
 import {
+  BUBBLE_FADE_IN_MS,
   COMBO_BONUS_MAX_STEPS,
   ERROR_FLASH_DURATION_MS,
   PITCH_NAMES,
@@ -48,6 +49,9 @@ export interface StaffGameWrongAnswerRecord {
   token: number;
   expectedNote: string;
   recognizedNote: string;
+  midi: number;
+  confidence?: number;
+  clipping?: boolean;
 }
 
 interface StaffGameModeAudioSettings {
@@ -319,6 +323,25 @@ export function useStaffGameScoring({
         settingsRef.current.inputMode === "virtual"
           ? ((midi % 12) + 12) % 12 === ((currentTarget.midi % 12) + 12) % 12
           : midi === currentTarget.midi;
+      const gameNowAtInput =
+        elapsedBeforeRunRef.current + (performance.now() - runSegmentStartedAtRef.current);
+      const targetOutcomeAtInput = roundMetricsRef.current.firstInputByToken.get(
+        currentTarget.token
+      );
+      targetOutcomeAtInput?.attempts?.push({
+        midi,
+        noteName: answer.noteName,
+        atMs: Math.max(0, gameNowAtInput - currentTarget.spawnAt),
+        confidence: answer.confidence,
+        inputMode:
+          settingsRef.current.inputMode === "physical"
+            ? "microphone"
+            : settingsRef.current.inputMode === "midi"
+              ? "midi"
+              : "virtual-keyboard",
+        isCorrect,
+        clipping: answer.clipping ?? false,
+      });
       if (answer.source === "microphone") {
         appendStaffGameMicrophoneDebugEvent("answer", {
           answer: {
@@ -345,6 +368,19 @@ export function useStaffGameScoring({
       if (isCorrect) {
         triggerHitHaptic();
         const isSongMode = gameModeRef.current === "songs";
+        const metrics = roundMetricsRef.current;
+        const gameNow =
+          elapsedBeforeRunRef.current + (performance.now() - runSegmentStartedAtRef.current);
+        const reactionMs = staffGameReactionMs(gameNow, currentTarget.spawnAt);
+        const targetOutcome = metrics.firstInputByToken.get(currentTarget.token);
+        if (targetOutcome && targetOutcome.proficiencyResponseMs === undefined && reactionMs >= 0) {
+          // Measure from the bubble's fully visible point, not the start of its entrance.
+          targetOutcome.proficiencyResponseMs = Math.max(0, reactionMs - BUBBLE_FADE_IN_MS);
+        }
+        if (targetOutcome) {
+          targetOutcome.correctConfidence = answer.confidence;
+          targetOutcome.correctClipping = answer.clipping;
+        }
         const activeSong = isSongMode
           ? STAFF_GAME_SONGS.find((item) => item.id === selectedSongIdRef.current)
           : undefined;
@@ -358,10 +394,6 @@ export function useStaffGameScoring({
           setSongNotesCompleted(songTargetIndexRef.current);
         }
         if (!isSongMode) {
-          const metrics = roundMetricsRef.current;
-          const gameNow =
-            elapsedBeforeRunRef.current + (performance.now() - runSegmentStartedAtRef.current);
-          const reactionMs = staffGameReactionMs(gameNow, currentTarget.spawnAt);
           metrics.correctBubbleCount += 1;
           if (reactionMs > 0) {
             metrics.responseTotalMs += reactionMs;
@@ -487,6 +519,9 @@ export function useStaffGameScoring({
           token: currentTarget.token,
           expectedNote: noteLabel(currentTarget),
           recognizedNote: `${heardPitch}${Math.floor(midi / 12) - 1}`,
+          midi,
+          confidence: answer.confidence,
+          clipping: answer.clipping,
         });
       }
       triggerMascotReaction("sad");

@@ -14,6 +14,7 @@ import { normalizeCurrentPracticeGroupIds, normalizeEnabledPitchIds } from "../d
 import { normalizeAnswerKeyboardScale, normalizePianoVolume } from "../domain/settings";
 import type {
   AppSettings,
+  AnswerEvent,
   BackupDayFile,
   BackupDayFileMetadata,
   BackupManifest,
@@ -58,6 +59,7 @@ interface BrowserData {
   reviews: ReviewRecord[];
   staffRecallRuns: StaffRecallRunRecord[];
   staffGameWrongNoteArchives: StaffGameWrongNoteArchive[];
+  answerEvents: AnswerEvent[];
 }
 
 interface BackupBrowserFacts {
@@ -65,6 +67,7 @@ interface BackupBrowserFacts {
   hasRecords: boolean;
   hasPracticeRecords: boolean;
   latestReviewPresent: boolean;
+  latestAnswerEventPresent: boolean;
   latestStaffRecallRunPresent: boolean;
   latestStaffGameWrongNoteArchiveRunPresent: boolean;
   vocalAudioBackupDigest: string;
@@ -167,11 +170,15 @@ function conflictDetailsMissing(state: BackupState): boolean {
 }
 
 function hasBrowserData(
-  data: Pick<BrowserData, "sessions" | "reviews" | "staffRecallRuns" | "staffGameWrongNoteArchives">
+  data: Pick<
+    BrowserData,
+    "sessions" | "reviews" | "answerEvents" | "staffRecallRuns" | "staffGameWrongNoteArchives"
+  >
 ): boolean {
   return (
     data.sessions.length > 0 ||
     data.reviews.length > 0 ||
+    data.answerEvents.length > 0 ||
     data.staffRecallRuns.length > 0 ||
     data.staffGameWrongNoteArchives.some((archive) => archive.runs.length > 0)
   );
@@ -195,7 +202,8 @@ function summarizeData(
   reviews: ReviewRecord[],
   staffRecallRuns: StaffRecallRunRecord[],
   vocalAudioCounts: VocalAudioCounts = { materialCount: 0, recordingCount: 0, uploadCount: 0 },
-  wrongNoteArchives: StaffGameWrongNoteArchive[] = []
+  wrongNoteArchives: StaffGameWrongNoteArchive[] = [],
+  answerEvents: AnswerEvent[] = []
 ): DataSummary {
   const times = [
     ...reviews.flatMap((review) => [review.startedAt, review.answeredAt, review.endedAt]),
@@ -203,16 +211,17 @@ function summarizeData(
     ...wrongNoteArchives.flatMap((archive) =>
       archive.runs.flatMap((run) => [run.startedAt, run.endedAt])
     ),
+    ...answerEvents.map((event) => event.occurredAt),
   ].filter((time): time is string => Boolean(time));
   const sortedTimes = [...times].sort((a, b) => a.localeCompare(b));
   return {
     firstDataAt: sortedTimes[0],
     lastDataAt: sortedTimes[sortedTimes.length - 1],
     recordCount:
-      reviews.length +
+      (answerEvents.length > 0 ? answerEvents.length : reviews.length) +
       staffRecallRuns.length +
       wrongNoteArchives.reduce((count, archive) => count + archive.runs.length, 0),
-    reviewCount: reviews.length,
+    reviewCount: answerEvents.length > 0 ? answerEvents.length : reviews.length,
     staffRecallRunCount: staffRecallRuns.length,
     vocalAudioCounts,
   };
@@ -345,6 +354,7 @@ function backupDataConsistent(
     getBackupManifestVersion(manifest) === state.lastSeenBackupVersion &&
     browser.hasPracticeRecords === manifest.dates.length > 0 &&
     browser.latestReviewPresent &&
+    browser.latestAnswerEventPresent &&
     browser.latestStaffRecallRunPresent &&
     browser.latestStaffGameWrongNoteArchiveRunPresent &&
     vocalAudioBackupUnchanged(state, manifest, browser)
@@ -362,6 +372,7 @@ function getBackupBrowserFacts(
   hasLocallyChangedVocalAudio: boolean
 ): BackupBrowserFacts {
   const lastReviewId = manifest?.lastReviewId;
+  const lastAnswerEventId = manifest?.lastAnswerEventId;
   const lastStaffRecallRunId = manifest?.lastStaffRecallRunId;
   const lastWrongNoteArchiveRunId = manifest?.lastStaffGameWrongNoteArchiveRunId;
   return {
@@ -373,6 +384,8 @@ function getBackupBrowserFacts(
       hasLocallyChangedVocalAudio,
     hasPracticeRecords: hasBrowserData(data),
     latestReviewPresent: !lastReviewId || data.reviews.some((review) => review.id === lastReviewId),
+    latestAnswerEventPresent:
+      !lastAnswerEventId || data.answerEvents.some((event) => event.id === lastAnswerEventId),
     latestStaffRecallRunPresent:
       !lastStaffRecallRunId || data.staffRecallRuns.some((run) => run.id === lastStaffRecallRunId),
     latestStaffGameWrongNoteArchiveRunPresent:
@@ -487,7 +500,8 @@ async function getBrowserLearningDataDigest(data: BrowserData): Promise<string> 
     data.reviews,
     undefined,
     data.staffRecallRuns,
-    data.staffGameWrongNoteArchives
+    data.staffGameWrongNoteArchives,
+    data.answerEvents
   );
   const { dayFileDigests } = await serializeBackupDays(snapshot.days);
   return getLearningDataDigest(snapshot.manifest, dayFileDigests);
@@ -699,17 +713,20 @@ async function readReadyBackupManifest(
     settings,
     sessionCount,
     reviewCount,
+    answerEventCount,
     staffRecallRunCount,
     vocalAudioMaterialCount,
     vocalAudioLibraryDigest,
     vocalAudioBackup,
     latestReview,
+    latestAnswerEvent,
     latestStaffRecallRun,
     wrongNoteArchives,
   ] = await Promise.all([
     ensureSettings(),
     db.practiceSessions.count(),
     db.reviews.count(),
+    db.answerEvents.count(),
     db.staffRecallRuns.count(),
     db.vocalAudioMaterials.count(),
     getVocalAudioLibraryDigest(),
@@ -718,7 +735,13 @@ async function readReadyBackupManifest(
       state.lastSeenVocalAudioFileMetadata,
       !state.lastSeenVocalAudioFileMetadata
     ),
-    manifest.lastReviewId ? db.reviews.get(manifest.lastReviewId) : undefined,
+    manifest.lastReviewId
+      ? Promise.all([
+          db.reviews.get(manifest.lastReviewId),
+          db.answerEvents.get(manifest.lastReviewId),
+        ]).then(([review, event]) => review ?? event)
+      : undefined,
+    manifest.lastAnswerEventId ? db.answerEvents.get(manifest.lastAnswerEventId) : undefined,
     manifest.lastStaffRecallRunId
       ? db.staffRecallRuns.get(manifest.lastStaffRecallRunId)
       : undefined,
@@ -727,6 +750,7 @@ async function readReadyBackupManifest(
   const hasBrowserRecords =
     sessionCount > 0 ||
     reviewCount > 0 ||
+    answerEventCount > 0 ||
     staffRecallRunCount > 0 ||
     wrongNoteArchives.some((archive) => archive.runs.length > 0) ||
     vocalAudioMaterialCount > 0;
@@ -737,10 +761,12 @@ async function readReadyBackupManifest(
       hasPracticeRecords:
         sessionCount > 0 ||
         reviewCount > 0 ||
+        answerEventCount > 0 ||
         staffRecallRunCount > 0 ||
         wrongNoteArchives.some((archive) => archive.runs.length > 0),
       hasVocalAudioMaterials: vocalAudioMaterialCount > 0,
       latestReviewPresent: !manifest.lastReviewId || Boolean(latestReview),
+      latestAnswerEventPresent: !manifest.lastAnswerEventId || Boolean(latestAnswerEvent),
       latestStaffRecallRunPresent: !manifest.lastStaffRecallRunId || Boolean(latestStaffRecallRun),
       latestStaffGameWrongNoteArchiveRunPresent:
         !manifest.lastStaffGameWrongNoteArchiveRunId ||
@@ -779,14 +805,16 @@ async function inspectBackupStatus(
     data.sessions,
     data.reviews,
     data.staffRecallRuns,
-    data.staffGameWrongNoteArchives
+    data.staffGameWrongNoteArchives,
+    data.answerEvents
   );
   const backupModifiedAt = getManifestDataModifiedAt(manifest);
   const browserSummary = summarizeData(
     data.reviews,
     data.staffRecallRuns,
     summarizeVocalAudio(vocalAudioMaterials),
-    data.staffGameWrongNoteArchives
+    data.staffGameWrongNoteArchives,
+    data.answerEvents
   );
   const browserFacts = getBackupBrowserFacts(
     data,
@@ -815,7 +843,8 @@ async function inspectBackupStatus(
         backupSnapshot.reviews,
         backupSnapshot.staffRecallRuns,
         vocalAudioBackup.counts,
-        backupSnapshot.staffGameWrongNoteArchives
+        backupSnapshot.staffGameWrongNoteArchives,
+        backupSnapshot.answerEvents
       )
     : undefined;
   return {
@@ -934,7 +963,9 @@ async function saveDivergedBackupState(
       ? summarizeData(
           backupSnapshot.reviews,
           backupSnapshot.staffRecallRuns,
-          inspection.backupVocalAudioCounts
+          inspection.backupVocalAudioCounts,
+          backupSnapshot.staffGameWrongNoteArchives,
+          backupSnapshot.answerEvents
         )
       : undefined);
   await db.backupStates.put({
@@ -1004,7 +1035,8 @@ async function writeBrowserSnapshotToDirectory(
     data.reviews,
     backupAt ?? nextBackupAt,
     data.staffRecallRuns,
-    data.staffGameWrongNoteArchives
+    data.staffGameWrongNoteArchives,
+    data.answerEvents
   );
   const manifest = await writeBackupSnapshot(directory, snapshot, {
     deferManifestWrite: true,
@@ -1065,6 +1097,7 @@ function collectDayRecords(
     reviews: dayFiles.flatMap((day) => day.reviews),
     staffRecallRuns: dayFiles.flatMap((day) => day.staffRecallRuns ?? []),
     staffGameWrongNoteArchives: dayFiles.flatMap((day) => day.staffGameWrongNoteArchives ?? []),
+    answerEvents: dayFiles.flatMap((day) => day.answerEvents ?? []),
   };
 }
 
@@ -1093,7 +1126,8 @@ async function getBrowserSnapshotMatchingLastSeen(
     data.reviews,
     backupAt,
     data.staffRecallRuns,
-    data.staffGameWrongNoteArchives
+    data.staffGameWrongNoteArchives,
+    data.answerEvents
   );
   const browserDates = browserSnapshot.manifest.dates;
   if (!hasCompleteDayFileDigests(browserDates, previousDayFileDigests)) {
@@ -1154,6 +1188,7 @@ async function tryImportDirectoryIncrementally(
   const changes = {
     sessions: diffRecords(currentRecords.sessions, incomingRecords.sessions),
     reviews: diffRecords(currentRecords.reviews, incomingRecords.reviews),
+    answerEvents: diffRecords(currentRecords.answerEvents, incomingRecords.answerEvents),
     staffRecallRuns: diffRecords(currentRecords.staffRecallRuns, incomingRecords.staffRecallRuns),
     staffGameWrongNoteArchives: incomingRecords.staffGameWrongNoteArchives,
   };
@@ -1162,6 +1197,8 @@ async function tryImportDirectoryIncrementally(
     changes.sessions.puts.length +
     changes.reviews.deletes.length +
     changes.reviews.puts.length +
+    changes.answerEvents.deletes.length +
+    changes.answerEvents.puts.length +
     changes.staffRecallRuns.deletes.length +
     changes.staffRecallRuns.puts.length +
     changes.staffGameWrongNoteArchives.reduce((count, archive) => count + archive.runs.length, 0);
@@ -1211,7 +1248,8 @@ async function importDirectorySnapshot(
     snapshot.reviews,
     snapshot.staffRecallRuns,
     vocalAudioMaterials,
-    mergedWrongNoteArchives
+    mergedWrongNoteArchives,
+    snapshot.answerEvents
   );
   const backupState = await saveReadyBackupState(state, directory, snapshot.manifest);
   return {
@@ -1220,6 +1258,7 @@ async function importDirectorySnapshot(
     reviews: snapshot.reviews,
     staffRecallRuns: snapshot.staffRecallRuns,
     staffGameWrongNoteArchives: mergedWrongNoteArchives,
+    answerEvents: snapshot.answerEvents,
     backupState,
   };
 }
@@ -1265,7 +1304,8 @@ async function applyBackupDomainSources(
       backupLearningData.reviews,
       backupLearningData.staffRecallRuns,
       backupVocalMaterials,
-      backupLearningData.staffGameWrongNoteArchives
+      backupLearningData.staffGameWrongNoteArchives,
+      backupLearningData.answerEvents
     );
   } else if (backupLearningData) {
     await replaceAllData(
@@ -1274,7 +1314,8 @@ async function applyBackupDomainSources(
       backupLearningData.reviews,
       backupLearningData.staffRecallRuns,
       undefined,
-      backupLearningData.staffGameWrongNoteArchives
+      backupLearningData.staffGameWrongNoteArchives,
+      backupLearningData.answerEvents
     );
   } else if (backupVocalMaterials) {
     await replaceVocalAudioMaterials(backupVocalMaterials);
@@ -1726,6 +1767,12 @@ function buildBrowserDataFromDays(
     staffGameWrongNoteArchives: mergeStaffGameWrongNoteArchives(
       ...dayFiles.map((day) => day.staffGameWrongNoteArchives ?? [])
     ),
+    answerEvents: dayFiles
+      .flatMap((day) => day.answerEvents ?? [])
+      .sort(
+        (left, right) =>
+          left.occurredAt.localeCompare(right.occurredAt) || left.id.localeCompare(right.id)
+      ),
   };
 }
 

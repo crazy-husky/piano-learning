@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_VOCAL_PITCH_CONFIG, type VocalAudioMaterial } from "../domain/vocalPitch";
 import { makeReview } from "../domain/testFactories";
 import type {
+  AnswerEvent,
   StaffGameWrongNoteArchive,
   PracticeSessionRecordV1,
   StaffGameWrongNoteArchiveRun,
@@ -13,9 +14,12 @@ import {
   AppDatabase,
   db,
   clearStaffGameWrongNoteArchives,
+  clearLearningRecordsPreservingConfiguration,
+  deletePracticeSessionWithReviews,
   deleteStaffGameWrongNoteArchiveRuns,
   enqueuePendingStaffGameWrongNoteArchiveRun,
   makeDefaultSettings,
+  loadPracticeHistory,
   normalizeAppSettings,
   retryPendingStaffGameWrongNoteArchives,
   replaceAllData,
@@ -429,6 +433,27 @@ describe("wrong note archive backup merge", () => {
         runs: [makeRun("review-delete")],
       },
     ]);
+    const makeAnswerEvent = (sessionId: string): AnswerEvent => ({
+      id: `event-${sessionId}`,
+      dataSetId: "dataset",
+      sessionId,
+      eventIndex: 0,
+      occurredAt: "2026-10-15T10:01:00.000Z",
+      mode: "staff-game",
+      inputMode: "virtual-keyboard",
+      deviceInfo: "Mac",
+      attempts: [],
+      isCorrectFirstTry: true,
+      isCorrectFinal: true,
+      wrongAttempts: 0,
+      isExtraNote: false,
+      isMissed: false,
+    });
+    await db.answerEvents.bulkPut([
+      makeAnswerEvent("challenge-keep"),
+      makeAnswerEvent("challenge-delete"),
+      makeAnswerEvent("review-delete"),
+    ]);
 
     const remaining = await deleteStaffGameWrongNoteArchiveRuns([
       "challenge-delete",
@@ -443,6 +468,7 @@ describe("wrong note archive backup merge", () => {
       },
     ]);
     expect(await db.staffGameWrongNoteArchives.get("2026-10-14")).toBeUndefined();
+    expect(await db.answerEvents.toArray()).toEqual([makeAnswerEvent("challenge-keep")]);
     await Promise.all(db.tables.map((table) => table.clear()));
   });
 });
@@ -656,5 +682,93 @@ describe("pending wrong note archive retry", () => {
     await expect(
       enqueuePendingStaffGameWrongNoteArchiveRun(makeRun("storage-fails"))
     ).resolves.toBe(false);
+  });
+
+  it("loads practice history from answer events and removes its events with the session", async () => {
+    const event: AnswerEvent = {
+      id: "answer-event-practice-history",
+      dataSetId: "dataset-1",
+      sessionId: "practice-session-1",
+      eventIndex: 0,
+      occurredAt: "2026-10-19T10:00:02.000Z",
+      promptStartedAt: "2026-10-19T10:00:00.000Z",
+      mode: "free-practice",
+      inputMode: "midi",
+      deviceInfo: "Mac",
+      targetMidi: 60,
+      targetNoteId: "C4",
+      targetGroupId: "G3-F4",
+      targetNoteName: "C",
+      targetOctave: 4,
+      attempts: [{ midi: 60, atMs: 2000, isCorrect: true, clipping: false }],
+      isCorrectFirstTry: true,
+      isCorrectFinal: true,
+      rawResponseTimeMs: 2000,
+      responseTimeMs: 2000,
+      activeMs: 2000,
+      wrongAttempts: 0,
+      isExtraNote: false,
+      isMissed: false,
+    };
+    await db.reviews.clear();
+    await db.answerEvents.clear();
+    await db.answerEvents.put(event);
+
+    const history = await loadPracticeHistory();
+    expect(history.reviews).toHaveLength(1);
+    expect(history.reviews[0]).toMatchObject({
+      id: event.id,
+      sessionId: event.sessionId,
+      targetNoteId: event.targetNoteId,
+      answeredCorrectly: true,
+    });
+
+    await deletePracticeSessionWithReviews(event.sessionId, history.reviews);
+    expect(await db.answerEvents.count()).toBe(0);
+  });
+
+  it("clears learning records while retaining settings and blocks silent backup restore", async () => {
+    const localStorage = makeMemoryLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    localStorage.setItem("anki-note.practicePagePreferences", "saved-config");
+    localStorage.setItem("anki-note.staffGameProgress.v5", "saved-progress");
+    await db.settings.put({ ...makeDefaultSettings(), firstReviewAt: "2026-10-19T10:00:00.000Z" });
+    await db.backupStates.put({
+      id: "default",
+      schemaVersion: 1,
+      directoryName: "piano-backup",
+      lastSeenBackupVersion: "snapshot:existing-backup",
+      lastBackupAt: "2026-10-19T10:00:00.000Z",
+    });
+    await db.answerEvents.clear();
+    await db.answerEvents.put({
+      id: "clearable-answer-event",
+      dataSetId: "dataset-1",
+      sessionId: "session-1",
+      eventIndex: 0,
+      occurredAt: "2026-10-19T10:00:00.000Z",
+      mode: "free-practice",
+      inputMode: "midi",
+      deviceInfo: "Mac",
+      attempts: [],
+      isCorrectFirstTry: true,
+      isCorrectFinal: true,
+      wrongAttempts: 0,
+      isExtraNote: false,
+      isMissed: false,
+    });
+
+    await clearLearningRecordsPreservingConfiguration();
+
+    expect(await db.answerEvents.count()).toBe(0);
+    expect((await db.settings.get("default"))?.firstReviewAt).toBeUndefined();
+    expect((await db.settings.get("default"))?.dataSetId).toBeDefined();
+    expect(await db.backupStates.get("default")).toMatchObject({
+      directoryName: "piano-backup",
+      dataConflictBeforeBackup: true,
+      syncRequiredBeforeBackup: true,
+    });
+    expect(localStorage.getItem("anki-note.practicePagePreferences")).toBe("saved-config");
+    expect(localStorage.getItem("anki-note.staffGameProgress.v5")).toBeNull();
   });
 });

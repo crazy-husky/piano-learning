@@ -22,7 +22,7 @@ import type {
 export const STATS_TABS = ["overview", "notes", "progress", "wrong-notes"] as const;
 export type StatsTab = (typeof STATS_TABS)[number];
 export type WrongNoteStatsTab = "trend" | "note" | "manage";
-export type StatsNoteMetric = "speed" | "errors";
+export type StatsNoteMetric = "speed" | "errors" | "proficiency";
 
 export type StatsNoteScopePreferences = Pick<
   AppSettings,
@@ -244,7 +244,10 @@ export function parseStatsUiPreferences(
       ? value.recognitionTimeValueMode
       : fallback.recognitionTimeValueMode,
     noteScope: parseNoteScope(value.noteScope),
-    noteMetric: value.noteMetric === "errors" ? "errors" : "speed",
+    noteMetric:
+      value.noteMetric === "errors" || value.noteMetric === "proficiency"
+        ? value.noteMetric
+        : "speed",
     wrongNoteTab: isWrongNoteStatsTab(value.wrongNoteTab)
       ? value.wrongNoteTab
       : fallback.wrongNoteTab,

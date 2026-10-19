@@ -988,6 +988,7 @@ export function PracticeView({
         activeBaseMs: 0,
         activeStartedAt: startsPaused ? null : now,
         lastInputAt: now,
+        answerAttempts: [],
         wrongAnswers: [],
         replayCount: 0,
         focusLosses: [],

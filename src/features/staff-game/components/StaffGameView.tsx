@@ -17,6 +17,8 @@ import type {
   PianoKeyName,
   StaffGameWrongNoteArchive,
   StaffGameWrongNoteArchiveRun,
+  StaffGameProficiencySample,
+  StaffGameProficiencySampleDraft,
 } from "../../../domain/types";
 import { createUuid } from "../../../domain/id";
 import {
@@ -39,7 +41,9 @@ import {
   enqueuePendingStaffGameWrongNoteArchiveRun,
   removePendingStaffGameWrongNoteArchiveRun,
   retryPendingStaffGameWrongNoteArchives,
+  saveStaffGameProficiencySamples,
 } from "../../../data/db";
+import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import type { MidiAccessStatus } from "../../../midi/midiInput";
@@ -47,7 +51,11 @@ import type {
   PracticeMicrophoneDiagnostics,
   usePracticeMicrophoneInput,
 } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
-import type { PracticeMicrophoneAlgorithm } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
+import type {
+  PracticeMicrophoneAlgorithm,
+  PracticeMicrophonePreferences,
+} from "../../vocal-pitch/logic/practiceMicrophonePreferences";
+import { practiceMicrophoneDebugParametersForSensitivityLevel } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
 import { B6SwiftF0ReminderDialog } from "../../vocal-pitch/components/B6SwiftF0ReminderDialog";
 import {
   readStaffGameSongProgress,
@@ -139,6 +147,11 @@ import {
   appendStaffGameMicrophoneDebugEvent,
   resetStaffGameMicrophoneDebug,
 } from "../logic/staffGameMicrophoneDebug";
+import {
+  correctedStaffGameResponseTimeMs,
+  estimateStaffGameSystemDelayMs,
+  shouldShowFastPlayingHint,
+} from "../logic/staffGameProficiency";
 import type { GameDifficulty } from "../logic/staffGameRules";
 
 function nextWrongNoteRunUpdatedAt(run: StaffGameWrongNoteArchiveRun): string {
@@ -161,8 +174,6 @@ function makeTrendOnlyWrongNoteRun(
         wrong: 0,
         missed: 0,
         confusions: {},
-        totalResponseMs: note.totalResponseMs ?? 0,
-        responseSampleCount: note.responseSampleCount ?? 0,
       },
     ])
   );
@@ -335,6 +346,7 @@ interface StaffGameViewProps {
   isSongPlayRoute: boolean;
   microphone: MicrophoneController;
   microphoneAlgorithm: PracticeMicrophoneAlgorithm;
+  microphonePreferences: PracticeMicrophonePreferences;
   midi: MidiInputController;
   onModeChange: (mode: StaffGameMode) => void;
   onSongStart: (songId: string) => void;
@@ -823,6 +835,7 @@ export function StaffGameView({
   isSongPlayRoute,
   microphone,
   microphoneAlgorithm,
+  microphonePreferences,
   midi,
   onModeChange,
   onSongStart,
@@ -900,6 +913,10 @@ export function StaffGameView({
   const [summaryScoreCount, setSummaryScoreCount] = useState(0);
   const [summaryComboCount, setSummaryComboCount] = useState(0);
   const [summaryAccuracy, setSummaryAccuracy] = useState(0);
+  const [summaryAveragePlayerResponseMs, setSummaryAveragePlayerResponseMs] = useState<
+    number | null
+  >(null);
+  const [summaryFastPlayingHint, setSummaryFastPlayingHint] = useState(false);
   const [summaryWrongAnswerRecords, setSummaryWrongAnswerRecords] = useState<
     StaffGameWrongAnswerRecord[]
   >([]);
@@ -1724,16 +1741,101 @@ export function StaffGameView({
       }
 
       const roundPurpose = roundPurposeRef.current;
-      if (gameModeRef.current === "songs") return;
       const source = roundPurpose === "level" ? "challenge" : "review";
       const endedAt = new Date().toISOString();
+      const runId = createUuid();
+      const inputMode: StaffGameProficiencySample["inputMode"] =
+        settingsRef.current.inputMode === "physical"
+          ? "microphone"
+          : settingsRef.current.inputMode === "virtual"
+            ? "virtual-keyboard"
+            : "midi";
+      const sensitivityLevel = microphonePreferences.sensitivityLevel;
+      const microphoneAlgorithmAtAnswer = microphone.diagnostics?.algorithm ?? microphoneAlgorithm;
+      const microphoneContext = currentMicrophoneContext();
+      const configuredLatencyParameters = microphonePreferences.debugMode
+        ? microphonePreferences.debugParameters
+        : practiceMicrophoneDebugParametersForSensitivityLevel(
+            microphoneAlgorithmAtAnswer,
+            sensitivityLevel
+          );
+      const latencyParameters =
+        microphoneAlgorithmAtAnswer === "yin" && microphonePreferences.algorithm !== "yin"
+          ? {
+              ...configuredLatencyParameters,
+              frameIntervalMs: 30 as const,
+              requiredStableFrames: 4 as const,
+              requiredStableMs: 80 as const,
+            }
+          : configuredLatencyParameters;
+      const estimatedSystemDelayMs = estimateStaffGameSystemDelayMs(
+        inputMode,
+        latencyParameters,
+        microphoneAlgorithmAtAnswer
+      );
+      const proficiencySamples: StaffGameProficiencySampleDraft[] = outcomes.map((outcome) => {
+        const rawResponseTimeMs = outcome.proficiencyResponseMs ?? null;
+        return {
+          id: `${runId}:${outcome.token}`,
+          runId,
+          date: localDateKey(endedAt),
+          startedAt: roundStartedAtRef.current,
+          endedAt,
+          midi: outcome.midi,
+          note: outcome.note,
+          inputMode,
+          deviceInfo: answerDeviceInfo(),
+          inputGain: inputMode === "microphone" ? microphoneContext.inputGain : undefined,
+          mode: gameModeRef.current === "songs" ? "song" : "staff-game",
+          levelId:
+            gameModeRef.current === "songs" || roundPurpose === "wrong-note-review"
+              ? undefined
+              : String(levelRef.current),
+          songId: gameModeRef.current === "songs" ? selectedSongIdRef.current : undefined,
+          difficulty: settingsRef.current.difficulty,
+          staffGameSource: source,
+          attempts: outcome.attempts ?? [],
+          sensitivityLevel,
+          ...(inputMode === "microphone"
+            ? { microphoneAlgorithm: microphoneAlgorithmAtAnswer }
+            : {}),
+          rawResponseTimeMs,
+          estimatedSystemDelayMs,
+          playerResponseTimeMs: correctedStaffGameResponseTimeMs(
+            rawResponseTimeMs,
+            estimatedSystemDelayMs
+          ),
+          firstInputCorrect: outcome.firstInputCorrect,
+          missed: outcome.missed || outcome.firstInputCorrect === null,
+        };
+      });
+      const validPlayerResponses = proficiencySamples
+        .map((sample) => sample.playerResponseTimeMs)
+        .filter((response): response is number => response !== null);
+      setSummaryAveragePlayerResponseMs(
+        validPlayerResponses.length
+          ? validPlayerResponses.reduce((sum, response) => sum + response, 0) /
+              validPlayerResponses.length
+          : null
+      );
+      const isMacDesktop =
+        typeof navigator !== "undefined" &&
+        /Mac/i.test(navigator.platform) &&
+        navigator.maxTouchPoints <= 1;
+      setSummaryFastPlayingHint(
+        inputMode === "microphone" && isMacDesktop && shouldShowFastPlayingHint(proficiencySamples)
+      );
+      void saveStaffGameProficiencySamples(proficiencySamples).catch(() => {
+        toast.error("本局熟练度数据保存失败；本局判分和错题记录不受影响。");
+      });
+      if (gameModeRef.current === "songs") return;
       const { notes, firstTryCorrect } = summarizeStaffGameWrongNoteOutcomes(
         outcomes,
         wrongAnswerRecords,
         endedAt
       );
       const run: StaffGameWrongNoteArchiveRun = {
-        runId: createUuid(),
+        runId,
         source,
         level: roundPurpose === "level" ? levelRef.current : null,
         difficulty: settingsRef.current.difficulty,
@@ -1747,7 +1849,6 @@ export function StaffGameView({
         totalTargets: outcomes.length,
         firstTryCorrect,
         lowSample: source !== "challenge" && outcomes.length < 10,
-        responseTimeBasis: "first-correct",
         notes,
       };
       if (source === "review") setSummaryArchiveRun(run);
@@ -1779,7 +1880,16 @@ export function StaffGameView({
         setWrongNoteArchiveRetryQueued(false);
       }
     },
-    [archiveWrongNoteRun, gameModeRef, levelRef, roundPurposeRef, settingsRef]
+    [
+      archiveWrongNoteRun,
+      gameModeRef,
+      levelRef,
+      microphone.diagnostics,
+      microphoneAlgorithm,
+      microphonePreferences,
+      roundPurposeRef,
+      settingsRef,
+    ]
   );
 
   const playComboFeedback = useCallback(
@@ -2135,6 +2245,8 @@ export function StaffGameView({
     setEarnedStars(0);
     setSummaryScoreCount(0);
     setSummaryComboCount(0);
+    setSummaryAveragePlayerResponseMs(null);
+    setSummaryFastPlayingHint(false);
     setSummaryWrongAnswerRecords([]);
     setSummaryWeakNoteOutcomes([]);
     setSummaryIsWrongNoteReview(false);
@@ -3596,6 +3708,7 @@ export function StaffGameView({
           {phase === "summary" && typeof document !== "undefined" ? (
             <StaffGameSummaryDialog
               accuracy={summaryAccuracy}
+              averagePlayerResponseMs={summaryAveragePlayerResponseMs}
               mode={summaryIsWrongNoteReview ? "review" : isSongMode ? "song" : "challenge"}
               ariaLabel={
                 summaryIsWrongNoteReview
@@ -3666,6 +3779,8 @@ export function StaffGameView({
               }
               wrongAnswerRecords={summaryWrongAnswerRecords}
               weakNoteOutcomes={summaryWeakNoteOutcomes}
+              inputMode={settings.inputMode}
+              showFastPlayingHint={summaryFastPlayingHint}
               wrongNoteStatisticsEnabled={settings.wrongNoteStatisticsEnabled}
               songTitle={selectedSong.title}
               starImage={starParticleArt}

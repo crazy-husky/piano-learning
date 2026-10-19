@@ -2,6 +2,12 @@ import { ArrowLeft, AudioLines, Check, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
+import type { AnswerAttempt } from "../../../domain/types";
+import { createUuid } from "../../../domain/id";
+import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
+import { saveAnswerEvents } from "../../../data/db";
+import { estimateStaffGameSystemDelayMs } from "../../staff-game/logic/staffGameProficiency";
+import { practiceMicrophoneDebugParametersForSensitivityLevel } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
 import type {
   Octave,
   PianoKeyName,
@@ -288,10 +294,20 @@ export function SongPracticeView({
   const pendingWrongFeedbackRef = useRef<AnswerFeedback | null>(null);
   const isWrongFeedbackVisibleRef = useRef(false);
   const heldMidiNumbersRef = useRef(new Set<number>());
-  const microphoneSubmitRef = useRef<(midiNoteNumber: number) => void>(() => {});
+  const microphoneSubmitRef = useRef<
+    (
+      midiNoteNumber: number,
+      confidence?: number,
+      clipping?: boolean,
+      microphoneAlgorithm?: "swiftf0" | "yin"
+    ) => void
+  >(() => {});
   const playbackRowRef = useRef<number | null>(null);
   const ignoreMicrophoneUntilRef = useRef(0);
   const sessionStartedAtRef = useRef<number | null>(null);
+  const songSessionIdRef = useRef("");
+  const targetStartedAtRef = useRef(performance.now());
+  const targetAttemptsRef = useRef<AnswerAttempt[]>([]);
   const sessionCompletedRef = useRef(false);
   const restartPendingRef = useRef(false);
   const {
@@ -314,6 +330,7 @@ export function SongPracticeView({
   midiErrorRef.current = midi.errorMessage;
   const beginProgressSession = useCallback((): void => {
     sessionStartedAtRef.current = Date.now();
+    songSessionIdRef.current = createUuid();
     sessionCompletedRef.current = false;
     restartPendingRef.current = false;
     recordSongPracticeSessionStarted(selection.songId, selection.keyVersion);
@@ -464,6 +481,10 @@ export function SongPracticeView({
   currentIndexRef.current = currentIndex;
   const isFinished = hasStarted && currentIndex >= arrangement.targets.length;
   const meter = selection.score.meter;
+  useEffect(() => {
+    targetStartedAtRef.current = performance.now();
+    targetAttemptsRef.current = [];
+  }, [currentIndex, activeHandMode, arrangement]);
   const tempoBpm = selection.score.tempoBpm;
   const pageStarts = useMemo(() => {
     if (arrangement.targets.length === 0) return [0];
@@ -761,11 +782,78 @@ export function SongPracticeView({
   }, []);
 
   const finishAttempt = useCallback(
-    (correct: boolean, noteName: PianoKeyName, octave: number): void => {
+    (
+      correct: boolean,
+      noteName: PianoKeyName,
+      octave: number,
+      metadata: {
+        confidence?: number;
+        clipping?: boolean;
+        microphoneAlgorithm?: "swiftf0" | "yin";
+      } = {}
+    ): void => {
       if (!currentTarget || answerLockedRef.current) return;
       answerLockedRef.current = true;
+      const inputMode = activeInputModeRef.current === "midi" ? "midi" : "microphone";
+      const atMs = Math.max(0, performance.now() - targetStartedAtRef.current);
+      const midi = midiPitchForKey(noteName, octave);
+      targetAttemptsRef.current.push({
+        midi,
+        noteName: noteName.replace("#", "") as never,
+        atMs,
+        inputMode,
+        isCorrect: correct,
+        confidence: metadata.confidence,
+        clipping: metadata.clipping ?? false,
+        microphoneAlgorithm: metadata.microphoneAlgorithm,
+      });
       recordSongPracticeAttempt(selection.songId, selection.keyVersion, activeHandMode, correct);
       if (correct) {
+        const microphoneContext = currentMicrophoneContext();
+        const microphoneAlgorithm =
+          metadata.microphoneAlgorithm ?? microphoneContext.microphoneAlgorithm;
+        const estimatedSystemDelayMs =
+          inputMode === "microphone"
+            ? estimateStaffGameSystemDelayMs(
+                "microphone",
+                practiceMicrophoneDebugParametersForSensitivityLevel(
+                  microphoneAlgorithm ?? "swiftf0",
+                  microphoneContext.sensitivityLevel ?? 3
+                ),
+                microphoneAlgorithm ?? "swiftf0"
+              )
+            : 0;
+        const rawResponseTimeMs = atMs;
+        void saveAnswerEvents([
+          {
+            id: `${songSessionIdRef.current}:${currentIndex}`,
+            dataSetId: "",
+            sessionId: songSessionIdRef.current,
+            eventIndex: currentIndex,
+            occurredAt: new Date().toISOString(),
+            promptStartedAt: new Date(Date.now() - rawResponseTimeMs).toISOString(),
+            promptEndedAt: new Date().toISOString(),
+            mode: "song",
+            inputMode,
+            deviceInfo: answerDeviceInfo(),
+            ...(inputMode === "microphone" ? { ...microphoneContext, microphoneAlgorithm } : {}),
+            targetMidi: currentTarget.notes[0]?.midiPitch,
+            recognizedMidi: midi,
+            confidence: targetAttemptsRef.current.at(-1)?.confidence,
+            attempts: targetAttemptsRef.current,
+            isCorrectFirstTry: targetAttemptsRef.current.length === 1,
+            isCorrectFinal: true,
+            rawResponseTimeMs,
+            estimatedSystemDelayMs,
+            responseTimeMs: Math.max(0, rawResponseTimeMs - estimatedSystemDelayMs),
+            activeMs: rawResponseTimeMs,
+            wrongAttempts: targetAttemptsRef.current.filter((attempt) => !attempt.isCorrect).length,
+            isExtraNote: false,
+            isMissed: false,
+            songId: selection.songId,
+            difficulty: selection.keyVersion,
+          },
+        ]).catch(() => undefined);
         clearFeedbackTimer();
         const completedIndex = currentIndexRef.current;
         const targetCount = arrangementTargetCountRef.current;
@@ -825,7 +913,14 @@ export function SongPracticeView({
         answerUnlockTimerRef.current = undefined;
       }, WRONG_INPUT_LOCK_MS);
     },
-    [activeHandMode, clearFeedbackTimer, currentTarget, selection.keyVersion, selection.songId]
+    [
+      activeHandMode,
+      clearFeedbackTimer,
+      currentIndex,
+      currentTarget,
+      selection.keyVersion,
+      selection.songId,
+    ]
   );
 
   const submitPitch = useCallback(
@@ -854,7 +949,12 @@ export function SongPracticeView({
   );
 
   const submitMidiPitch = useCallback(
-    (midiNoteNumber: number): void => {
+    (
+      midiNoteNumber: number,
+      confidence?: number,
+      clipping?: boolean,
+      microphoneAlgorithm?: "swiftf0" | "yin"
+    ): void => {
       const answerKey = resolvePianoKeyFromMidi(midiNoteNumber);
       if (
         !answerKey ||
@@ -870,7 +970,8 @@ export function SongPracticeView({
       finishAttempt(
         requiredMidiNumbers.length === 1 && requiredMidiNumbers[0] === midiNoteNumber,
         answerKey.noteName,
-        answerKey.octave
+        answerKey.octave,
+        { confidence, clipping, microphoneAlgorithm }
       );
     },
     [currentTarget, finishAttempt, hasStarted]
@@ -924,9 +1025,19 @@ export function SongPracticeView({
       return;
     }
     if (answer.midiNoteNumber !== undefined) {
-      microphoneSubmitRef.current(answer.midiNoteNumber);
+      microphoneSubmitRef.current(
+        answer.midiNoteNumber,
+        answer.confidence,
+        answer.clipping,
+        answer.microphoneAlgorithm
+      );
     } else if (answer.octave !== undefined) {
-      microphoneSubmitRef.current(midiPitchForKey(answer.noteName, answer.octave));
+      microphoneSubmitRef.current(
+        midiPitchForKey(answer.noteName, answer.octave),
+        answer.confidence,
+        answer.clipping,
+        answer.microphoneAlgorithm
+      );
     }
   }, []);
 

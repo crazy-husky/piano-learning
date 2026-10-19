@@ -1,5 +1,6 @@
 import { writeBackupNow } from "../data/backup";
 import { db, getBackupState } from "../data/db";
+import { answerEventToReview } from "../data/answerEvents";
 import { isCompletedReview, isStatisticalReview } from "../domain/reviews";
 import type { PracticeSessionRecord, ReviewRecord } from "../domain/types";
 import { isSingleNoteNameDrill } from "../domain/practiceSession";
@@ -97,10 +98,19 @@ function makeCandidate(
 }
 
 export async function listEmptySessions(): Promise<EmptySessionReport> {
-  const [sessions, reviews] = await Promise.all([
+  const [sessions, storedReviews, answerEvents] = await Promise.all([
     db.practiceSessions.orderBy("startedAt").toArray(),
     db.reviews.orderBy("startedAt").toArray(),
+    db.answerEvents.orderBy("occurredAt").toArray(),
   ]);
+  const reviewsById = new Map(storedReviews.map((review) => [review.id, review]));
+  answerEvents
+    .map(answerEventToReview)
+    .filter((review): review is ReviewRecord => !!review)
+    .forEach((review) => reviewsById.set(review.id, review));
+  const reviews = [...reviewsById.values()].sort((left, right) =>
+    left.startedAt.localeCompare(right.startedAt)
+  );
   const reviewsBySession = groupReviewsBySession(reviews);
   const candidates = sessions
     .filter((session) => isEmptyPersistedSession(session, reviewsBySession.get(session.id) ?? []))
@@ -153,34 +163,52 @@ export async function deleteEmptySessions(
   const deletedReviewIds = await db.reviews
     .filter((review) => sessionIds.has(review.sessionId))
     .primaryKeys();
+  const deletedAnswerEventIds = await db.answerEvents
+    .filter((event) => sessionIds.has(event.sessionId))
+    .primaryKeys();
 
-  await db.transaction("rw", db.settings, db.practiceSessions, db.reviews, async () => {
-    await db.practiceSessions.bulkDelete([...sessionIds]);
-    await db.reviews.bulkDelete(deletedReviewIds);
+  await db.transaction(
+    "rw",
+    db.settings,
+    db.practiceSessions,
+    db.reviews,
+    db.answerEvents,
+    async () => {
+      await db.practiceSessions.bulkDelete([...sessionIds]);
+      await db.reviews.bulkDelete(deletedReviewIds);
+      await db.answerEvents.bulkDelete(deletedAnswerEventIds);
 
-    const settings = await db.settings.get("default");
-    if (!settings) {
-      return;
+      const settings = await db.settings.get("default");
+      if (!settings) {
+        return;
+      }
+
+      const [firstEventReview] = (await db.answerEvents.orderBy("occurredAt").toArray())
+        .map(answerEventToReview)
+        .filter((review): review is ReviewRecord => !!review && !review.ignored)
+        .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+      const [legacyFirstReview] = await db.reviews
+        .filter((review) => !review.ignored)
+        .sortBy("startedAt");
+      const nextSettings = { ...settings };
+      const firstReviewAt = [firstEventReview?.startedAt, legacyFirstReview?.startedAt]
+        .filter((value): value is string => !!value)
+        .sort((left, right) => left.localeCompare(right))[0];
+      if (firstReviewAt) {
+        nextSettings.firstReviewAt = firstReviewAt;
+      } else {
+        delete nextSettings.firstReviewAt;
+      }
+      await db.settings.put(nextSettings);
     }
-
-    const [firstRemainingReview] = await db.reviews
-      .filter((review) => !review.ignored)
-      .sortBy("startedAt");
-    const nextSettings = { ...settings };
-    if (firstRemainingReview) {
-      nextSettings.firstReviewAt = firstRemainingReview.startedAt;
-    } else {
-      delete nextSettings.firstReviewAt;
-    }
-    await db.settings.put(nextSettings);
-  });
+  );
 
   const backup = await writeBackupIfAlreadyPermitted(options.writeBackup ?? true);
 
   return {
     report,
     deletedSessionCount: sessionIds.size,
-    deletedReviewCount: deletedReviewIds.length,
+    deletedReviewCount: deletedReviewIds.length + deletedAnswerEventIds.length,
     backup,
   };
 }

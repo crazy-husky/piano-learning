@@ -371,6 +371,7 @@ export function usePracticeMicrophoneInput(
   const recognizedNoteSuppressionWindowsRef = useRef<RecognizedNoteSuppressionWindow[]>([]);
   const sampleBufferRef = useRef(new Float32Array(0));
   const captureFramesRef = useRef<PracticeMicrophoneCaptureFrame[]>([]);
+  const latestAnalysisClippedSampleRatioRef = useRef<number | undefined>(undefined);
   const captureAudioLoopFrameCountRef = useRef(0);
   const latestInputRmsRef = useRef(0);
   const captureMetadataRef = useRef<PracticeMicrophoneCaptureMetadata | null>(null);
@@ -458,6 +459,8 @@ export function usePracticeMicrophoneInput(
       analysisRms = rms,
       gain: PracticeMicrophoneAnalysisGain = 1
     ): void => {
+      const analysisSignal = summarizePracticeMicrophoneSamples(analysisSamples, analysisRms);
+      latestAnalysisClippedSampleRatioRef.current = analysisSignal.clippedSampleRatio;
       if (!captureRecordingRef.current) return;
       const frames = captureFramesRef.current;
       const shouldCapturePcmWindow =
@@ -465,7 +468,6 @@ export function usePracticeMicrophoneInput(
         timeMs - lastPcmCaptureAtRef.current >= PRACTICE_MICROPHONE_PCM_CAPTURE_INTERVAL_MS;
       if (shouldCapturePcmWindow) lastPcmCaptureAtRef.current = timeMs;
       const signal = summarizePracticeMicrophoneSamples(samples, rms);
-      const analysisSignal = summarizePracticeMicrophoneSamples(analysisSamples, analysisRms);
       frames.push({
         ...signal,
         analysisClippedSampleRatio: analysisSignal.clippedSampleRatio,
@@ -673,6 +675,12 @@ export function usePracticeMicrophoneInput(
       }
       if (recognized) {
         callbacksRef.current.onAnswer({
+          clipping:
+            latestAnalysisClippedSampleRatioRef.current === undefined
+              ? undefined
+              : latestAnalysisClippedSampleRatioRef.current > 0,
+          confidence,
+          microphoneAlgorithm: activeAlgorithmRef.current,
           midiNoteNumber: recognized.midiNoteNumber,
           noteName: recognized.noteName[0] as PracticeAnswerInput["noteName"],
           octave: recognized.octave,
@@ -1093,10 +1101,8 @@ export function usePracticeMicrophoneInput(
       const gain = activeConfigurationRef.current.analysisGain;
       const analysisSamples = applyPracticeMicrophoneAnalysisGain(samples, gain);
       const analysisRms = gain === 1 ? rms : calculateRms(analysisSamples);
-      if (captureRecordingRef.current) {
-        captureAudioLoopFrameCountRef.current += 1;
-        recordInputFrame(samples, rms, now, analysisSamples, analysisRms, gain);
-      }
+      if (captureRecordingRef.current) captureAudioLoopFrameCountRef.current += 1;
+      recordInputFrame(samples, rms, now, analysisSamples, analysisRms, gain);
       if (activeAlgorithmRef.current === "swiftf0") {
         postAnalysisFrame(
           analysisSamples,

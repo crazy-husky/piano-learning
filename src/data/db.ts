@@ -15,6 +15,7 @@ import {
 } from "../domain/settings";
 import type {
   AppSettings,
+  AnswerEvent,
   BackupState,
   NoteName,
   PracticeQueueStrategy,
@@ -23,6 +24,8 @@ import type {
   StaffRecallRunRecord,
   StaffGameWrongNoteArchive,
   StaffGameWrongNoteArchiveRun,
+  StaffGameProficiencySample,
+  StaffGameProficiencySampleDraft,
   StoredAppSettings,
   StaffNotationMode,
   StaffRangeSelection,
@@ -33,6 +36,12 @@ import {
   mergeStaffGameWrongNoteArchives,
 } from "../domain/staffGameWrongNoteArchives";
 import type { VocalAudioMaterial } from "../domain/vocalPitch";
+import {
+  answerDeviceInfo,
+  answerEventToReview,
+  boundedAnswerEvent,
+  currentMicrophoneContext,
+} from "./answerEvents";
 
 const PENDING_STAFF_GAME_ARCHIVES_KEY = "anki-note.pendingArchive";
 const STAFF_GAME_ARCHIVE_MUTATION_LOCK_NAME = "anki-note.staff-game-archive-mutations";
@@ -170,6 +179,8 @@ export class AppDatabase extends Dexie {
   backupStates!: Table<BackupState, string>;
   vocalAudioMaterials!: Table<VocalAudioMaterial, string>;
   staffGameWrongNoteArchives!: Table<StaffGameWrongNoteArchive, string>;
+  staffGameProficiencySamples!: Table<StaffGameProficiencySample, string>;
+  answerEvents!: Table<AnswerEvent, string>;
 
   constructor(name = "anki-note") {
     super(name);
@@ -227,10 +238,139 @@ export class AppDatabase extends Dexie {
           }
         }
       });
+    this.version(6).stores({
+      settings: "id",
+      practiceSessions: "id, startedAt, mode, endReason",
+      reviews: "id, sessionId, targetNoteId, groupId, startedAt, answeredCorrectly, interrupted",
+      staffRecallRuns: "id, answerSetKey, endedAt",
+      backupStates: "id",
+      vocalAudioMaterials: "id, createdAt, updatedAt, name",
+      staffGameWrongNoteArchives: "id, date",
+      staffGameProficiencySamples:
+        "id, runId, date, endedAt, midi, inputMode, sensitivityLevel, [midi+inputMode+sensitivityLevel]",
+    });
+    this.version(7).stores({
+      settings: "id",
+      practiceSessions: "id, startedAt, mode, endReason",
+      reviews: "id, sessionId, targetNoteId, groupId, startedAt, answeredCorrectly, interrupted",
+      answerEvents:
+        "id, sessionId, eventIndex, occurredAt, mode, inputMode, sensitivityLevel, targetMidi, songId, levelId",
+      staffRecallRuns: "id, answerSetKey, endedAt",
+      backupStates: "id",
+      vocalAudioMaterials: "id, createdAt, updatedAt, name",
+      staffGameWrongNoteArchives: "id, date",
+      staffGameProficiencySamples:
+        "id, runId, date, endedAt, midi, inputMode, sensitivityLevel, [midi+inputMode+sensitivityLevel]",
+    });
   }
 }
 
 export const db = new AppDatabase();
+
+export const ANSWER_EVENTS_RESET_KEY = "anki-note.answerEventsReset.v1";
+
+/** Destructively resets pre-answerEvents learning data once, before the app opens the DB. */
+export async function resetLegacyDatabaseForAnswerEvents(): Promise<boolean> {
+  if (typeof window === "undefined" || typeof indexedDB === "undefined") return true;
+  if (window.localStorage.getItem(ANSWER_EVENTS_RESET_KEY) === "done") return true;
+  db.close();
+  const removed = await new Promise<boolean>((resolve) => {
+    const request = indexedDB.deleteDatabase("anki-note");
+    request.onsuccess = () => resolve(true);
+    request.onerror = () => resolve(false);
+    request.onblocked = () => resolve(false);
+  });
+  if (removed) window.localStorage.setItem(ANSWER_EVENTS_RESET_KEY, "done");
+  return removed;
+}
+
+export function saveAnswerEvents(events: readonly AnswerEvent[]): Promise<void> {
+  if (events.length === 0) return Promise.resolve();
+  return ensureSettings().then((settings) =>
+    db.answerEvents
+      .bulkPut(
+        events.map((event) => boundedAnswerEvent({ ...event, dataSetId: settings.dataSetId }))
+      )
+      .then(() => undefined)
+  );
+}
+
+const LOCAL_LEARNING_PROGRESS_KEYS = [
+  "anki-note.staffGameProgress.v2",
+  "anki-note.staffGameProgress.v3",
+  "anki-note.staffGameProgress.v4",
+  "anki-note.staffGameProgress.v5",
+  "anki-note.staffGameWeakNoteHistory.v2",
+  "anki-note.staffGameWeakNoteHistory.v1",
+  "anki-note.staffGameSongProgress.v1",
+  "anki-note.staffGameSongProgress.v2",
+  "piano-learning.song-practice-progress.v1",
+  PENDING_STAFF_GAME_ARCHIVES_KEY,
+];
+
+export async function clearLearningRecordsPreservingConfiguration(): Promise<void> {
+  await db.transaction(
+    "rw",
+    [
+      db.answerEvents,
+      db.reviews,
+      db.practiceSessions,
+      db.staffRecallRuns,
+      db.staffGameWrongNoteArchives,
+      db.staffGameProficiencySamples,
+      db.backupStates,
+      db.settings,
+    ],
+    async () => {
+      await Promise.all([
+        db.answerEvents.clear(),
+        db.reviews.clear(),
+        db.practiceSessions.clear(),
+        db.staffRecallRuns.clear(),
+        db.staffGameWrongNoteArchives.clear(),
+        db.staffGameProficiencySamples.clear(),
+      ]);
+      const settings = await db.settings.get("default");
+      if (settings?.firstReviewAt) {
+        const nextSettings = { ...settings };
+        delete nextSettings.firstReviewAt;
+        await db.settings.put(nextSettings);
+      }
+      const backupState = await db.backupStates.get("default");
+      if (backupState) {
+        const hasKnownBackupSnapshot = Boolean(
+          backupState.lastSeenBackupVersion || backupState.lastBackupAt
+        );
+        await db.backupStates.put({
+          id: "default",
+          schemaVersion: 1,
+          directoryHandle: backupState.directoryHandle,
+          directoryName: backupState.directoryName,
+          // Never silently restore the records the user just cleared from this device.
+          dataConflictBeforeBackup: hasKnownBackupSnapshot,
+          syncRequiredBeforeBackup: hasKnownBackupSnapshot,
+          lastSeenBackupDayFileDigests: undefined,
+          lastSeenBackupDayFileMetadata: undefined,
+          lastSeenBackupVersion: undefined,
+          lastSeenBackupDataSetId: undefined,
+          lastSeenLearningDataDigest: undefined,
+          lastBackupAt: undefined,
+          lastBackupReviewId: undefined,
+          backupDataModifiedAt: undefined,
+        });
+      }
+    }
+  );
+  for (const key of LOCAL_LEARNING_PROGRESS_KEYS) window.localStorage.removeItem(key);
+}
+
+export async function deleteAllApplicationData(): Promise<void> {
+  db.close();
+  await db.delete();
+  window.localStorage.clear();
+  window.localStorage.setItem(ANSWER_EVENTS_RESET_KEY, "done");
+  await db.open();
+}
 
 export function resolveQueueStrategy(settings: {
   queueStrategy?: PracticeQueueStrategy;
@@ -436,32 +576,47 @@ export async function deletePracticeSessionWithReviews(
   reviews: ReviewRecord[]
 ): Promise<void> {
   const reviewIds = reviews.filter((review) => !review.ignored).map((review) => review.id);
-  await db.transaction("rw", db.settings, db.practiceSessions, db.reviews, async () => {
-    await db.practiceSessions.delete(sessionId);
-    if (reviewIds.length > 0) {
-      await db.reviews.bulkDelete(reviewIds);
-    }
+  await db.transaction(
+    "rw",
+    db.settings,
+    db.practiceSessions,
+    db.reviews,
+    db.answerEvents,
+    async () => {
+      await db.practiceSessions.delete(sessionId);
+      if (reviewIds.length > 0) {
+        await db.reviews.bulkDelete(reviewIds);
+      }
+      const eventIds = await db.answerEvents.where("sessionId").equals(sessionId).primaryKeys();
+      await db.answerEvents.bulkDelete(eventIds);
 
-    const settings = await db.settings.get("default");
-    if (!settings) {
-      return;
-    }
-    const [firstRemainingReview] = await db.reviews
-      .filter((review) => !review.ignored)
-      .sortBy("startedAt");
-    const nextFirstReviewAt = firstRemainingReview?.startedAt;
-    if (settings.firstReviewAt === nextFirstReviewAt) {
-      return;
-    }
+      const settings = await db.settings.get("default");
+      if (!settings) {
+        return;
+      }
+      const [firstRemainingReview] = (await db.answerEvents.orderBy("occurredAt").toArray())
+        .map(answerEventToReview)
+        .filter((review): review is ReviewRecord => !!review && !review.ignored)
+        .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+      const [legacyFirstReview] = await db.reviews
+        .filter((review) => !review.ignored)
+        .sortBy("startedAt");
+      const nextFirstReviewAt = [firstRemainingReview?.startedAt, legacyFirstReview?.startedAt]
+        .filter((value): value is string => !!value)
+        .sort((left, right) => left.localeCompare(right))[0];
+      if (settings.firstReviewAt === nextFirstReviewAt) {
+        return;
+      }
 
-    const nextSettings = { ...settings };
-    if (nextFirstReviewAt) {
-      nextSettings.firstReviewAt = nextFirstReviewAt;
-    } else {
-      delete nextSettings.firstReviewAt;
+      const nextSettings = { ...settings };
+      if (nextFirstReviewAt) {
+        nextSettings.firstReviewAt = nextFirstReviewAt;
+      } else {
+        delete nextSettings.firstReviewAt;
+      }
+      await db.settings.put(nextSettings);
     }
-    await db.settings.put(nextSettings);
-  });
+  );
 }
 
 export async function replaceAllData(
@@ -470,7 +625,8 @@ export async function replaceAllData(
   reviews: ReviewRecord[],
   staffRecallRuns: StaffRecallRunRecord[] = [],
   vocalAudioMaterials?: VocalAudioMaterial[],
-  staffGameWrongNoteArchives: StaffGameWrongNoteArchive[] = []
+  staffGameWrongNoteArchives: StaffGameWrongNoteArchive[] = [],
+  answerEvents: AnswerEvent[] = []
 ): Promise<void> {
   await db.transaction(
     "rw",
@@ -481,15 +637,18 @@ export async function replaceAllData(
       db.staffRecallRuns,
       db.vocalAudioMaterials,
       db.staffGameWrongNoteArchives,
+      db.answerEvents,
     ],
     async () => {
       await db.settings.clear();
       await db.practiceSessions.clear();
       await db.reviews.clear();
+      await db.answerEvents.clear();
       await db.staffRecallRuns.clear();
       await db.settings.put(settings);
       await db.practiceSessions.bulkPut(sessions);
       await db.reviews.bulkPut(reviews);
+      await db.answerEvents.bulkPut(answerEvents.map(boundedAnswerEvent));
       await db.staffRecallRuns.bulkPut(staffRecallRuns);
       const existingWrongNoteArchives = await db.staffGameWrongNoteArchives.toArray();
       const mergedWrongNoteArchives = mergeStaffGameWrongNoteArchives(
@@ -513,6 +672,7 @@ export async function applyBackupDataChanges(
     reviews: { deletes: string[]; puts: ReviewRecord[] };
     staffRecallRuns: { deletes: string[]; puts: StaffRecallRunRecord[] };
     staffGameWrongNoteArchives?: StaffGameWrongNoteArchive[];
+    answerEvents?: { deletes: string[]; puts: AnswerEvent[] };
   }
 ): Promise<void> {
   await db.transaction(
@@ -523,6 +683,7 @@ export async function applyBackupDataChanges(
       db.reviews,
       db.staffRecallRuns,
       db.staffGameWrongNoteArchives,
+      db.answerEvents,
     ],
     async () => {
       await db.settings.put(settings);
@@ -531,6 +692,10 @@ export async function applyBackupDataChanges(
       await db.staffRecallRuns.bulkDelete(changes.staffRecallRuns.deletes);
       await db.practiceSessions.bulkPut(changes.sessions.puts);
       await db.reviews.bulkPut(changes.reviews.puts);
+      if (changes.answerEvents) {
+        await db.answerEvents.bulkDelete(changes.answerEvents.deletes);
+        await db.answerEvents.bulkPut(changes.answerEvents.puts.map(boundedAnswerEvent));
+      }
       await db.staffRecallRuns.bulkPut(changes.staffRecallRuns.puts);
       if (changes.staffGameWrongNoteArchives?.length) {
         const existing = await db.staffGameWrongNoteArchives.toArray();
@@ -546,17 +711,71 @@ export async function loadAllData(): Promise<{
   settings: AppSettings;
   sessions: PracticeSessionRecord[];
   reviews: ReviewRecord[];
+  answerEvents: AnswerEvent[];
   staffRecallRuns: StaffRecallRunRecord[];
   staffGameWrongNoteArchives: StaffGameWrongNoteArchive[];
 }> {
   const settings = await ensureSettings();
-  const [sessions, reviews, staffRecallRuns, staffGameWrongNoteArchives] = await Promise.all([
-    db.practiceSessions.orderBy("startedAt").toArray(),
-    db.reviews.orderBy("startedAt").toArray(),
-    db.staffRecallRuns.orderBy("endedAt").toArray(),
-    db.staffGameWrongNoteArchives.orderBy("date").toArray(),
-  ]);
-  return { settings, sessions, reviews, staffRecallRuns, staffGameWrongNoteArchives };
+  const [sessions, answerEvents, storedReviews, staffRecallRuns, staffGameWrongNoteArchives] =
+    await Promise.all([
+      db.practiceSessions.orderBy("startedAt").toArray(),
+      db.answerEvents.orderBy("occurredAt").toArray(),
+      db.reviews.orderBy("startedAt").toArray(),
+      db.staffRecallRuns.orderBy("endedAt").toArray(),
+      db.staffGameWrongNoteArchives.orderBy("date").toArray(),
+    ]);
+  const reviewsById = new Map(storedReviews.map((review) => [review.id, review]));
+  answerEvents
+    .map(answerEventToReview)
+    .filter((review): review is ReviewRecord => !!review)
+    .forEach((review) => reviewsById.set(review.id, review));
+  const reviews = [...reviewsById.values()].sort((left, right) =>
+    left.startedAt.localeCompare(right.startedAt)
+  );
+  return { settings, sessions, reviews, answerEvents, staffRecallRuns, staffGameWrongNoteArchives };
+}
+
+export async function saveStaffGameProficiencySamples(
+  samples: readonly StaffGameProficiencySampleDraft[]
+): Promise<void> {
+  if (samples.length === 0) return;
+  const microphoneContext = currentMicrophoneContext();
+  await saveAnswerEvents(
+    samples.map((sample, eventIndex) => ({
+      id: sample.id,
+      dataSetId: "",
+      sessionId: sample.runId,
+      eventIndex,
+      occurredAt: sample.endedAt,
+      promptStartedAt: sample.startedAt,
+      promptEndedAt: sample.endedAt,
+      mode: sample.mode ?? "staff-game",
+      inputMode: sample.inputMode,
+      deviceInfo: sample.deviceInfo ?? answerDeviceInfo(),
+      ...(sample.inputMode === "microphone"
+        ? { inputGain: sample.inputGain ?? microphoneContext.inputGain }
+        : {}),
+      ...(sample.inputMode === "microphone" ? { sensitivityLevel: sample.sensitivityLevel } : {}),
+      microphoneAlgorithm: sample.microphoneAlgorithm,
+      difficulty: sample.difficulty,
+      timeLimitMs: sample.timeLimitMs,
+      levelId: sample.levelId,
+      songId: sample.songId,
+      staffGameSource: sample.staffGameSource,
+      targetMidi: sample.midi,
+      confidence: sample.attempts?.at(-1)?.confidence,
+      recognizedMidi: sample.missed ? sample.attempts?.at(-1)?.midi : sample.midi,
+      attempts: sample.attempts ?? [],
+      isCorrectFirstTry: sample.firstInputCorrect,
+      isCorrectFinal: sample.missed ? false : true,
+      rawResponseTimeMs: sample.rawResponseTimeMs,
+      estimatedSystemDelayMs: sample.estimatedSystemDelayMs,
+      responseTimeMs: sample.playerResponseTimeMs,
+      wrongAttempts: (sample.attempts ?? []).filter((attempt) => !attempt.isCorrect).length,
+      isExtraNote: (sample.attempts ?? []).some((attempt) => attempt.isExtraNote),
+      isMissed: sample.missed,
+    }))
+  );
 }
 
 export async function archiveStaffGameWrongNoteRun(
@@ -668,30 +887,40 @@ export async function deleteStaffGameWrongNoteArchiveRuns(
   return withStaffGameArchiveMutationLock(async () => {
     let pendingRunsToDelete: StaffGameWrongNoteArchiveRun[] = [];
     try {
-      return await db.transaction("rw", db.staffGameWrongNoteArchives, async () => {
-        await db.staffGameWrongNoteArchives.count();
-        const pendingRuns = readPendingStaffGameArchiveRuns();
-        pendingRunsToDelete = pendingRuns.filter((run) => idsToDelete.has(run.runId));
-        if (
-          pendingRunsToDelete.length > 0 &&
-          !writePendingStaffGameArchiveRuns(
-            pendingRuns.filter((run) => !idsToDelete.has(run.runId))
-          )
-        ) {
-          throw new Error("Could not remove pending wrong note archives");
-        }
-        const archives = await db.staffGameWrongNoteArchives.toArray();
-        for (const archive of archives) {
-          const runs = archive.runs.filter((run) => !idsToDelete.has(run.runId));
-          if (runs.length === archive.runs.length) continue;
-          if (runs.length === 0) {
-            await db.staffGameWrongNoteArchives.delete(archive.id);
-          } else {
-            await db.staffGameWrongNoteArchives.put({ ...archive, runs });
+      return await db.transaction(
+        "rw",
+        db.staffGameWrongNoteArchives,
+        db.answerEvents,
+        async () => {
+          await db.staffGameWrongNoteArchives.count();
+          const pendingRuns = readPendingStaffGameArchiveRuns();
+          pendingRunsToDelete = pendingRuns.filter((run) => idsToDelete.has(run.runId));
+          if (
+            pendingRunsToDelete.length > 0 &&
+            !writePendingStaffGameArchiveRuns(
+              pendingRuns.filter((run) => !idsToDelete.has(run.runId))
+            )
+          ) {
+            throw new Error("Could not remove pending wrong note archives");
           }
+          const archives = await db.staffGameWrongNoteArchives.toArray();
+          for (const archive of archives) {
+            const runs = archive.runs.filter((run) => !idsToDelete.has(run.runId));
+            if (runs.length === archive.runs.length) continue;
+            if (runs.length === 0) {
+              await db.staffGameWrongNoteArchives.delete(archive.id);
+            } else {
+              await db.staffGameWrongNoteArchives.put({ ...archive, runs });
+            }
+          }
+          const eventIds = await db.answerEvents
+            .where("sessionId")
+            .anyOf([...idsToDelete])
+            .primaryKeys();
+          await db.answerEvents.bulkDelete(eventIds);
+          return db.staffGameWrongNoteArchives.orderBy("date").toArray();
         }
-        return db.staffGameWrongNoteArchives.orderBy("date").toArray();
-      });
+      );
     } catch (error) {
       await restorePendingStaffGameArchiveRuns(pendingRunsToDelete);
       throw error;
@@ -703,10 +932,19 @@ export async function loadPracticeHistory(): Promise<{
   sessions: PracticeSessionRecord[];
   reviews: ReviewRecord[];
 }> {
-  const [sessions, reviews] = await Promise.all([
+  const [sessions, storedReviews, answerEvents] = await Promise.all([
     db.practiceSessions.orderBy("startedAt").toArray(),
     db.reviews.orderBy("startedAt").toArray(),
+    db.answerEvents.orderBy("occurredAt").toArray(),
   ]);
+  const reviewsById = new Map(storedReviews.map((review) => [review.id, review]));
+  answerEvents
+    .map(answerEventToReview)
+    .filter((review): review is ReviewRecord => !!review)
+    .forEach((review) => reviewsById.set(review.id, review));
+  const reviews = [...reviewsById.values()].sort((left, right) =>
+    left.startedAt.localeCompare(right.startedAt)
+  );
   return { sessions, reviews };
 }
 

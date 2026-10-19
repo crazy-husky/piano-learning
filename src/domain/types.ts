@@ -65,6 +65,10 @@ export interface WrongAnswer {
   noteName: NoteName;
   atActiveMs: number;
   midiNoteNumber?: number;
+  confidence?: number;
+  clipping?: boolean;
+  inputMode?: AnswerInputMode;
+  microphoneAlgorithm?: "swiftf0" | "yin";
 }
 
 export interface FocusLoss {
@@ -91,6 +95,68 @@ export interface ReviewRecord {
   replayCount: number;
   focusLosses: FocusLoss[];
   ignored?: boolean;
+}
+
+export type AnswerEventMode = "free-practice" | "staff-game" | "song" | "staff-distance";
+export type AnswerInputMode = "microphone" | "midi" | "virtual-keyboard" | "computer-keyboard";
+
+/** Canonical per-prompt answer record. Attempts are capped by the writer. */
+export interface AnswerEvent {
+  id: string;
+  dataSetId: string;
+  sessionId: string;
+  eventIndex: number;
+  occurredAt: string;
+  promptStartedAt?: string;
+  promptEndedAt?: string;
+  mode: AnswerEventMode;
+  inputMode: AnswerInputMode;
+  deviceInfo: "Mac" | "iPad" | "iPhone" | "other";
+  inputGain?: number;
+  sensitivityLevel?: 1 | 2 | 3 | 4 | 5;
+  microphoneAlgorithm?: "swiftf0" | "yin";
+  difficulty?: string;
+  targetMidi?: number;
+  targetNoteId?: string;
+  targetGroupId?: PracticeGroupId;
+  targetNoteName?: NoteName;
+  targetOctave?: Octave;
+  recognizedMidi?: number;
+  confidence?: number;
+  attempts: AnswerAttempt[];
+  isCorrectFirstTry: boolean | null;
+  isCorrectFinal: boolean | null;
+  rawResponseTimeMs?: number | null;
+  estimatedSystemDelayMs?: number;
+  responseTimeMs?: number | null;
+  activeMs?: number;
+  timeLimitMs?: number;
+  wrongAttempts: number;
+  isExtraNote: boolean;
+  isMissed: boolean;
+  wasInterrupted?: boolean;
+  wasSkipped?: boolean;
+  songId?: string;
+  levelId?: string;
+  staffDistance?: {
+    distance: number;
+    direction: StaffDistanceDirection;
+    maxDistance?: number;
+    trainingMode?: StaffDistanceTrainingMode;
+    usedHint?: boolean;
+  };
+}
+
+export interface AnswerAttempt {
+  midi?: number;
+  noteName?: NoteName;
+  atMs: number;
+  confidence?: number;
+  inputMode?: AnswerInputMode;
+  microphoneAlgorithm?: "swiftf0" | "yin";
+  isCorrect: boolean;
+  isExtraNote?: boolean;
+  clipping?: boolean;
 }
 
 interface PracticeSessionRecordBase {
@@ -287,6 +353,37 @@ export interface StaffGameWrongNoteArchive {
   runs: StaffGameWrongNoteArchiveRun[];
 }
 
+/** Independent per-target reaction sample; never merged into wrong-note archives. */
+export interface StaffGameProficiencySample {
+  id: string;
+  dataSetId: string;
+  runId: string;
+  date: string;
+  startedAt: string;
+  endedAt: string;
+  midi: number;
+  note: string;
+  inputMode: "microphone" | "midi" | "virtual-keyboard";
+  sensitivityLevel: 1 | 2 | 3 | 4 | 5;
+  microphoneAlgorithm?: "swiftf0" | "yin";
+  rawResponseTimeMs: number | null;
+  estimatedSystemDelayMs: number;
+  playerResponseTimeMs: number | null;
+  firstInputCorrect: boolean | null;
+  missed: boolean;
+  inputGain?: number;
+  deviceInfo?: AnswerEvent["deviceInfo"];
+  mode?: "staff-game" | "song";
+  levelId?: string;
+  songId?: string;
+  attempts?: AnswerAttempt[];
+  difficulty?: string;
+  timeLimitMs?: number;
+  staffGameSource?: "challenge" | "review";
+}
+
+export type StaffGameProficiencySampleDraft = Omit<StaffGameProficiencySample, "dataSetId">;
+
 interface AppSettingsBase {
   id: "default";
   dataSetId: string;
@@ -398,6 +495,7 @@ export interface BackupManifest {
   lastReviewId?: string;
   lastStaffRecallRunId?: string;
   lastStaffGameWrongNoteArchiveRunId?: string;
+  lastAnswerEventId?: string;
   dayFileDigests?: Record<string, string>;
   learningDataDigest?: string;
   vocalAudioLibraryDigest?: string;
@@ -409,6 +507,7 @@ export interface BackupDayFile {
   date: string;
   sessions: PracticeSessionRecord[];
   reviews: ReviewRecord[];
+  answerEvents?: AnswerEvent[];
   staffRecallRuns?: StaffRecallRunRecord[];
   staffGameWrongNoteArchives?: StaffGameWrongNoteArchive[];
 }

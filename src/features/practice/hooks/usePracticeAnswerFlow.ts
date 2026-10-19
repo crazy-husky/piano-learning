@@ -9,9 +9,11 @@ import {
 import {
   isPracticeAnswerCorrect,
   isPracticeAnswerSourceAllowed,
+  getTargetMidiNoteNumber,
   type PracticeAnswerInput,
 } from "../../../domain/answerInput";
 import type {
+  AnswerAttempt,
   InterruptReason,
   NoteName,
   Octave,
@@ -186,11 +188,46 @@ export function usePracticeAnswerFlow({
       }
       const answeredCorrectly = isPracticeAnswerCorrect(answer, prompt.note, answerPitchMode);
       markMidiLatencyStage(diagnosticSampleId, "verdict");
+      const inputMode: AnswerAttempt["inputMode"] =
+        answer.source === "microphone"
+          ? "microphone"
+          : answer.source === "midi"
+            ? "midi"
+            : answer.source === "screen-keyboard"
+              ? "virtual-keyboard"
+              : "computer-keyboard";
+      const atActiveMs = getPromptActiveMs();
+      const answerOctave = answer.octave;
+      const answerMidi =
+        answer.midiNoteNumber ??
+        (answerOctave !== undefined &&
+        Number.isInteger(answerOctave) &&
+        answerOctave >= 1 &&
+        answerOctave <= 6
+          ? getTargetMidiNoteNumber({
+              noteName: answer.noteName,
+              octave: answerOctave as 1 | 2 | 3 | 4 | 5 | 6,
+            })
+          : undefined);
+      prompt.answerAttempts.push({
+        midi: answerMidi,
+        noteName: answer.noteName,
+        atMs: atActiveMs,
+        confidence: answer.confidence,
+        inputMode,
+        microphoneAlgorithm: answer.microphoneAlgorithm,
+        isCorrect: answeredCorrectly,
+        clipping: answer.clipping ?? false,
+      });
       if (!answeredCorrectly) {
         completeMidiLatencySample(diagnosticSampleId, "wrong");
         prompt.wrongAnswers.push({
           noteName: answer.noteName,
-          atActiveMs: getPromptActiveMs(),
+          atActiveMs,
+          confidence: answer.confidence,
+          clipping: answer.clipping,
+          inputMode,
+          microphoneAlgorithm: answer.microphoneAlgorithm,
           midiNoteNumber: answer.midiNoteNumber,
         });
         setWrongAnswerCount((count) => count + 1);

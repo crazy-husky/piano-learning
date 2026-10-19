@@ -54,8 +54,6 @@ export function summarizeStaffGameWrongNoteOutcomes(
       wrong: 0,
       missed: 0,
       confusions: {},
-      totalResponseMs: 0,
-      responseSampleCount: 0,
     };
     note.appear += 1;
     if (outcome.firstInputCorrect === true) {
@@ -78,14 +76,6 @@ export function summarizeStaffGameWrongNoteOutcomes(
           Number.isFinite(currentErrorAt) ? Math.max(currentErrorAt, errorAt) : errorAt
         ).toISOString();
       }
-    }
-    if (
-      outcome.firstInputCorrect === true &&
-      outcome.responseMs !== undefined &&
-      outcome.responseMs > 0
-    ) {
-      note.totalResponseMs = (note.totalResponseMs ?? 0) + outcome.responseMs;
-      note.responseSampleCount = (note.responseSampleCount ?? 0) + 1;
     }
     notes[key] = note;
   }

@@ -39,6 +39,9 @@ export interface StaffGameSummaryDialogProps {
   wrongNoteComparison: StaffGameWrongNoteComparison | null;
   reviewPerformance: StaffGameWrongNoteRunPerformance | null;
   accuracy: number;
+  averagePlayerResponseMs: number | null;
+  inputMode: "physical" | "midi" | "virtual";
+  showFastPlayingHint: boolean;
   isNewComboRecord: boolean;
   isNewScoreRecord: boolean;
   hasNextSong: boolean;
@@ -83,6 +86,9 @@ export function StaffGameSummaryDialog({
   wrongNoteComparison,
   reviewPerformance,
   accuracy,
+  averagePlayerResponseMs,
+  inputMode,
+  showFastPlayingHint,
   isNewComboRecord,
   isNewScoreRecord,
   hasNextSong,
@@ -353,6 +359,21 @@ export function StaffGameSummaryDialog({
                     </div>
                   ) : null}
                 </div>
+                {generatedNoteCount > 0 ? (
+                  <p className="staff-game-proficiency-summary">
+                    {!isSongMode
+                      ? `首次正确率 ${Math.round((100 * (generatedNoteCount - weakNoteCount)) / generatedNoteCount)}% · `
+                      : ""}
+                    {averagePlayerResponseMs === null
+                      ? "暂无有效反应时间样本"
+                      : `平均反应 ${(averagePlayerResponseMs / 1000).toFixed(1)}s${inputMode === "physical" ? "（已扣除麦克风延迟）" : ""}`}
+                  </p>
+                ) : null}
+                {showFastPlayingHint && inputMode === "physical" ? (
+                  <p className="staff-game-fast-playing-hint">
+                    检测到您正在快速演奏，若识别准确率低，建议使用 MIDI 键盘或虚拟键盘。
+                  </p>
+                ) : null}
                 {wrongNoteArchiveStatus !== "idle" && wrongNoteArchiveMode ? (
                   <div
                     className={`staff-game-wrong-note-archive-status is-${wrongNoteArchiveStatus}`}

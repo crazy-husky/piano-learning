@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppSettings, PracticeSessionRecord, ReviewRecord } from "../../../domain/types";
+import type { StaffGameProficiencySample } from "../../../domain/types";
+import { db } from "../../../data/db";
+import { answerEventToStaffGameProficiencySample } from "../../../data/answerEvents";
 import { formatTargetNoteLabel } from "../../../domain/notes";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
 import { resolveHistoryLimit } from "../../../shared/components/HistoryLimitControl";
@@ -9,6 +12,7 @@ import {
   SESSION_PROGRESS_UI_PREFERENCES_KEY,
 } from "../../../shared/preferences/sessionProgressPreferences";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
+import { useNightMode } from "../../../shared/appearance/pageAppearance";
 import { PracticeHeatmap } from "./PracticeHeatmap";
 import { RecognitionTrendCard } from "./RecognitionTrendCard";
 import {
@@ -23,7 +27,21 @@ import { SessionProgressCard } from "./SessionProgressCard";
 import { SongPracticeStatsPanel } from "./SongPracticeStatsPanel";
 import { StatsRangeStaff } from "./StatsRangeStaff";
 import { STATS_COLORS } from "./statsColors";
-import { parseStatsRangeDays, STATS_RANGE_PRESETS, type StatsRange } from "./statsRange";
+import {
+  getStatsRangeCutoff,
+  parseStatsRangeDays,
+  STATS_RANGE_PRESETS,
+  type StatsRange,
+} from "./statsRange";
+import {
+  PRACTICE_MICROPHONE_PREFERENCES_KEY,
+  parsePracticeMicrophonePreferences,
+  type PracticeMicrophoneAlgorithm,
+} from "../../vocal-pitch/logic/practiceMicrophonePreferences";
+import {
+  aggregateStaffGameProficiencySamples,
+  type StaffGameProficiencyNoteStats,
+} from "../../staff-game/logic/staffGameProficiency";
 import {
   DEFAULT_STATS_UI_PREFERENCES,
   parseStatsUiPreferences,
@@ -52,6 +70,7 @@ const STATS_TAB_LABELS: Record<StatsTab, string> = {
 const STATS_TAB_TRANSITION_MS = 180;
 
 const EMPTY_SESSIONS: PracticeSessionRecord[] = [];
+type ProficiencyInputMode = StaffGameProficiencySample["inputMode"];
 
 function LegendSwatch({ color }: { color: string }): JSX.Element {
   return <i className="legend-swatch" style={{ backgroundColor: color }} />;
@@ -77,6 +96,7 @@ export function StatsView({
   reviews,
   sessions = EMPTY_SESSIONS,
 }: StatsViewProps): JSX.Element {
+  const isNightMode = useNightMode();
   const [statsUiPreferences, setStatsUiPreferences] = useLocalStorageState(
     STATS_UI_PREFERENCES_KEY,
     DEFAULT_STATS_UI_PREFERENCES,
@@ -95,6 +115,34 @@ export function StatsView({
     setArchives,
   } = useStaffGameWrongNoteArchives();
   const [primaryContentReady, setPrimaryContentReady] = useState(false);
+  const [proficiencySamples, setProficiencySamples] = useState<StaffGameProficiencySample[]>([]);
+  const [proficiencyInputMode, setProficiencyInputMode] =
+    useState<ProficiencyInputMode>("microphone");
+  const [proficiencyAlgorithm, setProficiencyAlgorithm] = useState<PracticeMicrophoneAlgorithm>(
+    () => {
+      try {
+        if (typeof localStorage === "undefined") return "swiftf0";
+        return parsePracticeMicrophonePreferences(
+          JSON.parse(localStorage.getItem(PRACTICE_MICROPHONE_PREFERENCES_KEY) ?? "null")
+        ).algorithm;
+      } catch {
+        return "swiftf0";
+      }
+    }
+  );
+  const [proficiencySensitivityLevel, setProficiencySensitivityLevel] = useState<1 | 2 | 3 | 4 | 5>(
+    () => {
+      try {
+        if (typeof localStorage === "undefined") return 3;
+        return parsePracticeMicrophonePreferences(
+          JSON.parse(localStorage.getItem(PRACTICE_MICROPHONE_PREFERENCES_KEY) ?? "null")
+        ).sensitivityLevel;
+      } catch {
+        return 3;
+      }
+    }
+  );
+  const [weakNoteSortMode, setWeakNoteSortMode] = useState<"errors" | "response">("errors");
   const [customRangeDraft, setCustomRangeDraft] = useState(() =>
     String(statsUiPreferences.customRangeDays)
   );
@@ -125,6 +173,24 @@ export function StatsView({
     return () => {
       window.cancelAnimationFrame(firstFrame);
       window.cancelAnimationFrame(secondFrame);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void db.answerEvents
+      .toArray()
+      .then((events) => {
+        const samples = events
+          .map(answerEventToStaffGameProficiencySample)
+          .filter((sample): sample is NonNullable<typeof sample> => !!sample);
+        if (active) setProficiencySamples(samples);
+      })
+      .catch(() => {
+        if (active) setProficiencySamples([]);
+      });
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -190,6 +256,7 @@ export function StatsView({
   const sessionProgressStatsReady = primaryContentReady && visitedTabs.has("progress");
   const noteRangeStatsReady = primaryContentReady && visitedTabs.has("notes");
   const {
+    activeNotes,
     dailyStats,
     errorStaffNotes,
     errorTertileThresholds,
@@ -212,6 +279,68 @@ export function StatsView({
     sessionProgressEffectiveHistoryLimit,
     sessionProgressMode,
   });
+  const proficiencySamplesInRange = useMemo(() => {
+    const cutoff = getStatsRangeCutoff(range);
+    return proficiencySamples.filter(
+      (sample) =>
+        sample.dataSetId === settings.dataSetId && (!cutoff || new Date(sample.endedAt) >= cutoff)
+    );
+  }, [proficiencySamples, range, settings.dataSetId]);
+  const proficiencyNoteStats = useMemo(
+    () =>
+      aggregateStaffGameProficiencySamples(
+        proficiencySamplesInRange,
+        proficiencyInputMode,
+        proficiencySensitivityLevel,
+        proficiencyAlgorithm
+      ),
+    [
+      proficiencyAlgorithm,
+      proficiencyInputMode,
+      proficiencySamplesInRange,
+      proficiencySensitivityLevel,
+    ]
+  );
+  const proficiencyStatsByMidi = useMemo(
+    () =>
+      new Map<number, StaffGameProficiencyNoteStats>(
+        proficiencyNoteStats.map((item) => [item.midi, item])
+      ),
+    [proficiencyNoteStats]
+  );
+  const proficiencyStaffNotes = useMemo(
+    () =>
+      statsRangeSettings.enabledGroupIds.length
+        ? activeNotes.map((note) => {
+            const pitchClass = [
+              "C",
+              "C#",
+              "D",
+              "D#",
+              "E",
+              "F",
+              "F#",
+              "G",
+              "G#",
+              "A",
+              "A#",
+              "B",
+            ].indexOf(note.noteName);
+            const accidental =
+              note.accidental === "sharp" ? 1 : note.accidental === "flat" ? -1 : 0;
+            const stat = proficiencyStatsByMidi.get(
+              (note.octave + 1) * 12 + pitchClass + accidental
+            );
+            return {
+              note,
+              value: stat?.appearanceCount ?? 0,
+              diagnosticStatus: stat?.status ?? "insufficient",
+              durations: { medianMs: stat?.meanResponseTimeMs ?? undefined },
+            };
+          })
+        : [],
+    [activeNotes, proficiencyStatsByMidi, statsRangeSettings.enabledGroupIds.length]
+  );
 
   const setSessionProgressMode = (mode: typeof sessionProgressMode): void => {
     setSessionProgressPreferences((current) => ({ ...current, mode }));
@@ -283,15 +412,62 @@ export function StatsView({
     </div>
   );
   const currentNoteNotes =
-    statsUiPreferences.noteMetric === "speed" ? timeStaffNotes : errorStaffNotes;
-  const sortedWeakNotes = errorStaffNotes
-    .filter((item) => (item.value ?? 0) > 0)
-    .sort((left, right) => (right.value ?? 0) - (left.value ?? 0))
-    .slice(0, 8);
+    statsUiPreferences.noteMetric === "proficiency"
+      ? proficiencyStaffNotes
+      : statsUiPreferences.noteMetric === "speed"
+        ? timeStaffNotes
+        : errorStaffNotes;
+  const weakNoteRows =
+    weakNoteSortMode === "response"
+      ? proficiencyNoteStats
+          .filter((item) => item.appearanceCount >= 3 && item.meanResponseTimeMs !== null)
+          .sort((left, right) => right.meanResponseTimeMs! - left.meanResponseTimeMs!)
+          .slice(0, 8)
+          .flatMap((item) => {
+            const note = activeNotes.find((candidate) => {
+              const pitchClass = [
+                "C",
+                "C#",
+                "D",
+                "D#",
+                "E",
+                "F",
+                "F#",
+                "G",
+                "G#",
+                "A",
+                "A#",
+                "B",
+              ].indexOf(candidate.noteName);
+              const accidental =
+                candidate.accidental === "sharp" ? 1 : candidate.accidental === "flat" ? -1 : 0;
+              return (candidate.octave + 1) * 12 + pitchClass + accidental === item.midi;
+            });
+            return note
+              ? [
+                  {
+                    key: note.id,
+                    label: formatTargetNoteLabel(note, new Set([note.id])),
+                    value: `${(item.meanResponseTimeMs! / 1000).toFixed(1)}s`,
+                  },
+                ]
+              : [];
+          })
+      : errorStaffNotes
+          .filter((item) => (item.value ?? 0) > 0)
+          .sort((left, right) => (right.value ?? 0) - (left.value ?? 0))
+          .slice(0, 8)
+          .map((item) => ({
+            key: item.note.id,
+            label: formatTargetNoteLabel(item.note, new Set([item.note.id])),
+            value: `${item.value} 次错音`,
+          }));
   const noteRangeHasMetricData =
-    statsUiPreferences.noteMetric === "errors"
-      ? noteRangeHasData
-      : timeStaffNotes.some((item) => item.value !== undefined);
+    statsUiPreferences.noteMetric === "proficiency"
+      ? proficiencyNoteStats.length > 0
+      : statsUiPreferences.noteMetric === "errors"
+        ? noteRangeHasData
+        : timeStaffNotes.some((item) => item.value !== undefined);
 
   return (
     <section className="stats-shell stats-tabbed-shell">
@@ -438,7 +614,11 @@ export function StatsView({
                   <header className="stats-note-diagnostic-heading">
                     <div>
                       <h2>单音诊断</h2>
-                      <p>按当前统计音域与时间范围汇总</p>
+                      <p>
+                        {statsUiPreferences.noteMetric === "proficiency"
+                          ? "熟练度按输入方式和敏感度档位分别统计"
+                          : "按当前统计音域与时间范围汇总"}
+                      </p>
                     </div>
                     <div aria-label="音域图表指标" className="segmented stats-compact-segmented">
                       <button
@@ -461,8 +641,74 @@ export function StatsView({
                       >
                         错音次数
                       </button>
+                      <button
+                        aria-pressed={statsUiPreferences.noteMetric === "proficiency"}
+                        className={statsUiPreferences.noteMetric === "proficiency" ? "active" : ""}
+                        onClick={() =>
+                          setStatsUiPreferences((current) => ({
+                            ...current,
+                            noteMetric: "proficiency",
+                          }))
+                        }
+                        type="button"
+                      >
+                        熟练度
+                      </button>
                     </div>
                   </header>
+                  {statsUiPreferences.noteMetric === "proficiency" ? (
+                    <div className="stats-proficiency-filters">
+                      <label>
+                        输入方式
+                        <select
+                          aria-label="熟练度输入方式"
+                          onChange={(event) =>
+                            setProficiencyInputMode(event.target.value as ProficiencyInputMode)
+                          }
+                          value={proficiencyInputMode}
+                        >
+                          <option value="microphone">麦克风</option>
+                          <option value="midi">MIDI</option>
+                          <option value="virtual-keyboard">虚拟键盘</option>
+                        </select>
+                      </label>
+                      <label>
+                        敏感度
+                        <select
+                          aria-label="熟练度敏感度档位"
+                          onChange={(event) =>
+                            setProficiencySensitivityLevel(
+                              Number(event.target.value) as 1 | 2 | 3 | 4 | 5
+                            )
+                          }
+                          value={proficiencySensitivityLevel}
+                        >
+                          {[1, 2, 3, 4, 5].map((level) => (
+                            <option key={level} value={level}>
+                              {level} 档
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {proficiencyInputMode === "microphone" ? (
+                        <label>
+                          算法
+                          <select
+                            aria-label="熟练度麦克风算法"
+                            onChange={(event) =>
+                              setProficiencyAlgorithm(
+                                event.target.value as PracticeMicrophoneAlgorithm
+                              )
+                            }
+                            value={proficiencyAlgorithm}
+                          >
+                            <option value="swiftf0">SwiftF0</option>
+                            <option value="yin">YIN / 回退</option>
+                          </select>
+                        </label>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {!primaryContentReady ? (
                     <div className="sr-only" aria-label="正在生成单音诊断" role="status" />
                   ) : !noteRangeHasMetricData ? (
@@ -500,6 +746,30 @@ export function StatsView({
                               </span>
                             </div>
                           </>
+                        ) : statsUiPreferences.noteMetric === "proficiency" ? (
+                          <>
+                            <h3>熟练度诊断</h3>
+                            <div className="range-legend">
+                              <span>
+                                <LegendSwatch color={isNightMode ? "#ed766b" : "#ad3226"} />
+                                有错音 / 漏音
+                              </span>
+                              <span>
+                                <LegendSwatch color={isNightMode ? "#e0bd5b" : "#ad7b12"} />
+                                反应 &gt; 1.5s
+                              </span>
+                              <span>
+                                <LegendSwatch color={isNightMode ? "#55c5b3" : "#2f7d55"} />
+                                反应 &lt; 1.0s
+                              </span>
+                              <span>
+                                <LegendSwatch
+                                  color={isNightMode ? "#bcc6be" : STATS_COLORS.range.neutral}
+                                />
+                                样本不足 / 中间区间
+                              </span>
+                            </div>
+                          </>
                         ) : (
                           <>
                             <h3>错音次数</h3>
@@ -533,7 +803,9 @@ export function StatsView({
                         label={
                           statsUiPreferences.noteMetric === "speed"
                             ? "识别速度音域分布"
-                            : "错音次数音域分布"
+                            : statsUiPreferences.noteMetric === "proficiency"
+                              ? "熟练度音域分布"
+                              : "错音次数音域分布"
                         }
                         notes={currentNoteNotes}
                         staffNotationMode={rangeSettingsScope.staffNotationMode}
@@ -549,21 +821,46 @@ export function StatsView({
                 >
                   <div className="panel-heading">
                     <h2 id="stats-weak-note-title">薄弱音排行</h2>
-                    <small>按错音次数排序</small>
+                    <div className="stats-weak-note-sort">
+                      <label htmlFor="stats-weak-note-sort">排序</label>
+                      <select
+                        id="stats-weak-note-sort"
+                        onChange={(event) =>
+                          setWeakNoteSortMode(event.target.value as "errors" | "response")
+                        }
+                        value={weakNoteSortMode}
+                      >
+                        <option value="errors">错音次数</option>
+                        <option value="response">平均反应耗时</option>
+                      </select>
+                      {weakNoteSortMode === "response" ? (
+                        <small>
+                          {proficiencyInputMode === "microphone"
+                            ? "麦克风"
+                            : proficiencyInputMode === "midi"
+                              ? "MIDI"
+                              : "虚拟键盘"}
+                          · {proficiencySensitivityLevel} 档
+                          {proficiencyInputMode === "microphone"
+                            ? ` · ${proficiencyAlgorithm === "swiftf0" ? "SwiftF0" : "YIN / 回退"}`
+                            : ""}
+                        </small>
+                      ) : null}
+                    </div>
                   </div>
-                  {sortedWeakNotes.length === 0 ? (
+                  {weakNoteRows.length === 0 ? (
                     <p className="stats-inline-empty" role="status">
-                      此时间范围内暂无错音记录
+                      {weakNoteSortMode === "response"
+                        ? "此范围内暂无足够的反应时间样本"
+                        : "此时间范围内暂无错音记录"}
                     </p>
                   ) : (
                     <ol className="stats-weak-note-list">
-                      {sortedWeakNotes.map((item, index) => (
-                        <li key={item.note.id}>
+                      {weakNoteRows.map((item, index) => (
+                        <li key={item.key}>
                           <span className="stats-weak-note-rank">{index + 1}</span>
-                          <strong>
-                            {formatTargetNoteLabel(item.note, new Set([item.note.id]))}
-                          </strong>
-                          <span>{item.value} 次错音</span>
+                          <strong>{item.label}</strong>
+                          <span>{item.value}</span>
                         </li>
                       ))}
                     </ol>

@@ -20,6 +20,7 @@ import { STATS_COLORS, type StatsRangeTone } from "./statsColors";
 export interface StaffHeatNote {
   confusions?: NoteConfusionStat[];
   durations?: StaffHeatDurations;
+  diagnosticStatus?: "insufficient" | "errors" | "slow" | "proficient" | "developing";
   note: TargetNote;
   value?: number;
 }
@@ -76,6 +77,8 @@ interface NoteTooltipState {
 interface StatsNotationPalette {
   heatBlue: Record<1 | 2 | 3, string>;
   heatRed: Record<1 | 2 | 3, string>;
+  heatYellow: string;
+  heatGreen: string;
   ink: string;
   muted: string;
   p10: string;
@@ -114,11 +117,18 @@ function comparePitch(left: StaffHeatNote, right: StaffHeatNote): number {
 }
 
 function heatColor(
+  note: StaffHeatNote,
   value: number | undefined,
   positiveValues: number[],
   tone: StatsRangeTone,
   palette: StatsNotationPalette
 ): string {
+  if (note.diagnosticStatus) {
+    if (note.diagnosticStatus === "errors") return palette.heatRed[3];
+    if (note.diagnosticStatus === "slow") return palette.heatYellow;
+    if (note.diagnosticStatus === "proficient") return palette.heatGreen;
+    return palette.ink;
+  }
   if (value === undefined || value <= 0 || positiveValues.length === 0) {
     return palette.ink;
   }
@@ -138,7 +148,7 @@ function getRangeColumns(
     .sort((a, b) => a - b);
   const coloredNotes = notes.map((note) => ({
     ...note,
-    color: heatColor(note.value, positiveValues, tone, palette),
+    color: heatColor(note, note.value, positiveValues, tone, palette),
   }));
 
   return RANGE_COLUMNS.map((column) => {
@@ -255,6 +265,8 @@ export function StatsRangeStaff({
       heatRed: isNightMode
         ? { 1: "#e9aaa1", 2: "#f08c79", 3: "#ed766b" }
         : { 1: "#e7aaa2", 2: "#d86f63", 3: "#ad3226" },
+      heatYellow: isNightMode ? "#e0bd5b" : "#ad7b12",
+      heatGreen: isNightMode ? "#55c5b3" : "#2f7d55",
       ink: isNightMode ? "#bcc6be" : "#211c18",
       muted: isNightMode ? "#b2beb5" : "#766b5f",
       p10: isNightMode ? "#55c5b3" : "#2f7d74",
@@ -431,6 +443,22 @@ export function StatsRangeStaff({
               },
             ]
           : [];
+        const proficiencyRows = note.diagnosticStatus
+          ? [
+              {
+                label: "诊断",
+                value: {
+                  insufficient: "样本不足",
+                  errors: "存在错音或漏音",
+                  slow: "反应偏慢",
+                  proficient: "熟练",
+                  developing: "继续积累",
+                }[note.diagnosticStatus],
+              },
+              { label: "校正平均反应", value: formatTooltipSeconds(note.durations?.medianMs) },
+              { label: "出现次数", value: String(note.value ?? 0) },
+            ]
+          : [];
         const confusionRows = (note.confusions ?? []).map((confusion) => ({
           label: confusion.noteName,
           labelColor: palette.p90,
@@ -439,11 +467,19 @@ export function StatsRangeStaff({
         const hasDurations =
           note.durations && Object.values(note.durations).some((value) => value !== undefined);
         setNoteTooltip({
-          emptyText: note.durations ? "暂无时长记录" : "暂无混淆记录",
+          emptyText: note.diagnosticStatus
+            ? "暂无熟练度记录"
+            : note.durations
+              ? "暂无时长记录"
+              : "暂无混淆记录",
           label: formatTargetNoteLabel(note.note, effectiveTargetNoteIds),
           left,
-          rows: hasDurations ? durationRows : confusionRows,
-          subtitle: note.durations ? "识别时长" : "常见混淆",
+          rows: note.diagnosticStatus
+            ? proficiencyRows
+            : hasDurations
+              ? durationRows
+              : confusionRows,
+          subtitle: note.diagnosticStatus ? "熟练度诊断" : note.durations ? "识别时长" : "常见混淆",
           top,
         });
       };

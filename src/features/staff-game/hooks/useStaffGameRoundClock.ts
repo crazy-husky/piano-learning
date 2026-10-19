@@ -8,6 +8,7 @@ import {
   type SetStateAction,
 } from "react";
 import type { PianoKeyName } from "../../../domain/types";
+import type { AnswerAttempt } from "../../../domain/types";
 import { STAFF_GAME_SONGS } from "../data/staffGameSongs";
 import {
   drawNextNote,
@@ -41,6 +42,11 @@ export interface StaffGameRoundNoteOutcome {
   errorAt?: number;
   /** Positive milliseconds from fade-in completion to the first input, when that input is correct. */
   responseMs?: number;
+  /** Time to the first correct input, kept separate from the first-try scoring field. */
+  proficiencyResponseMs?: number;
+  correctConfidence?: number;
+  correctClipping?: boolean;
+  attempts?: AnswerAttempt[];
 }
 
 export interface StaffGameLevelRoundMetrics {
@@ -222,6 +228,7 @@ export function useStaffGameRoundClock({
         note: noteLabel(next),
         firstInputCorrect: null,
         missed: false,
+        attempts: [],
       });
       if (gameModeRef.current === "levels") {
         roundMetricsRef.current.generatedBubbleCount += 1;
