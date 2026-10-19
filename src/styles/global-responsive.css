@@ -103,7 +103,10 @@
 
   .app-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .app-shell:not(.app-shell-game-immersive):not(.app-shell-practice-running) {
+    grid-template-rows: auto;
   }
 
   .app-shell-practice-running {

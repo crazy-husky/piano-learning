@@ -1,4 +1,14 @@
-import { Play, RotateCcw } from "lucide-react";
+import {
+  Cable,
+  ChevronDown,
+  CircleHelp,
+  Eye,
+  Mic,
+  Music2,
+  Play,
+  RotateCcw,
+  Settings2,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { writeBackupNow } from "../../../data/backup";
@@ -50,6 +60,7 @@ interface StaffDistancePracticeViewProps {
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   onBeforePracticeStart: () => Promise<{ proceed: boolean; settings?: AppSettings }>;
   onDistanceModeChange: (mode: PracticeDistanceMode, replace?: boolean) => void;
+  onOpenSettings: () => void;
   onDataChanged: () => Promise<void>;
   onMicrophoneAnswerHandlerChange: (
     handler: ((answer: PracticeAnswerInput) => void) | null
@@ -60,13 +71,12 @@ interface StaffDistancePracticeViewProps {
   onRunStageChange: (active: boolean) => void;
   onRunningChange: (running: boolean) => void;
   onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
-  sessions: PracticeSessionRecord[];
   settings: AppSettings;
 }
 
 const STAFF_DISTANCE_PREFERENCES_KEY = "anki-note.staffDistancePracticePreferences";
 const DEFAULT_PREFERENCES: StaffDistancePreferences = {
-  includeUnison: true,
+  includeUnison: false,
   inputMethod: "midi",
   maxDistance: 2,
   fixedCount: 20,
@@ -113,7 +123,7 @@ function normalizePreferences(value: unknown): StaffDistancePreferences {
     savedDurations.includes(option.value)
   ).map((option) => option.value);
   return {
-    includeUnison: typeof record.includeUnison === "boolean" ? record.includeUnison : true,
+    includeUnison: typeof record.includeUnison === "boolean" ? record.includeUnison : false,
     maxDistance: numberInRange(record.maxDistance, 2, 1, 7),
     fixedCount: numberInRange(record.fixedCount, 20, 1, 500),
     fixedDurationSeconds: numberInRange(record.fixedDurationSeconds, 60, 60, 7200),
@@ -127,12 +137,6 @@ function normalizePreferences(value: unknown): StaffDistancePreferences {
     noteDurations: selectedDurations.length > 0 ? selectedDurations : ["quarter"],
     trainingMode: record.trainingMode === "play" ? "play" : "look",
   };
-}
-
-function isStaffDistanceSession(
-  session: PracticeSessionRecord
-): session is PracticeSessionRecord & { practiceType: "staff-distance" } {
-  return session.practiceType === "staff-distance" && Boolean(session.staffDistance);
 }
 
 function median(values: number[]): number | undefined {
@@ -235,6 +239,7 @@ export function StaffDistancePracticeView({
   navigationExitRequest,
   onBeforePracticeStart,
   onDistanceModeChange,
+  onOpenSettings,
   onDataChanged,
   onMicrophoneAnswerHandlerChange,
   onNavigationExit,
@@ -243,7 +248,6 @@ export function StaffDistancePracticeView({
   onRunStageChange,
   onRunningChange,
   onSettingsSaved,
-  sessions,
   settings,
 }: StaffDistancePracticeViewProps): JSX.Element {
   const [preferences, setPreferences] = useLocalStorageState(
@@ -292,11 +296,19 @@ export function StaffDistancePracticeView({
   );
   const validation = validateStaffDistancePractice(notes, selectedPitchIds, intervalSettings);
   const setupDisabledReason = describeValidation(validation, settings.staffNotationMode);
-  const recentSessions = sessions
-    .filter(isStaffDistanceSession)
-    .filter((session) => Boolean(session.endedAt && session.staffDistance?.questionResults.length))
-    .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
-    .slice(0, 5);
+  const isSevenStepRangeInvalid = preferences.maxDistance === 7 && Boolean(setupDisabledReason);
+  const staffLabel =
+    settings.staffNotationMode === "treble-only"
+      ? "高音谱表"
+      : settings.staffNotationMode === "bass-only"
+        ? "低音谱表"
+        : "大谱表";
+  const lengthLabel =
+    preferences.mode === "open-ended"
+      ? "无限"
+      : preferences.mode === "fixed-count"
+        ? `${preferences.fixedCount}题`
+        : `${Math.round(preferences.fixedDurationSeconds / 60)}分钟`;
   const isSessionActive = runSession !== null;
 
   useEffect(() => {
@@ -573,311 +585,383 @@ export function StaffDistancePracticeView({
   }
 
   return (
-    <div className="setup-grid staff-distance-setup-grid">
-      <section className="panel setup-panel staff-distance-setup-panel">
-        <div className="panel-heading">
-          <div>
-            <h1>间距推导</h1>
-            <p className="staff-distance-description">
-              看清当前音与下一个音的距离，练习快速判断并找到下一个琴键。
-            </p>
+    <div className="practice-free-page staff-distance-page">
+      <header className="practice-free-page-header">
+        <div>
+          <h1 id="staff-distance-title">间距推导</h1>
+          <p className="practice-panel-description staff-distance-description">
+            看清当前音与下一个音的距离，练习快速判断并找到下一个琴键。
+          </p>
+        </div>
+        <div className="practice-setup-heading-meta">
+          <div className="practice-midi-heading-status staff-distance-midi-status">
+            <span title={midi.selectedInput?.name}>
+              {midi.isConnected
+                ? `MIDI 已连接${midi.selectedInput?.name ? `：${midi.selectedInput.name}` : ""}`
+                : "MIDI 未连接"}
+            </span>
+            <button onClick={onOpenSettings} type="button">
+              设备设置
+            </button>
           </div>
         </div>
+      </header>
 
+      <section className="practice-free-range-section staff-distance-range-base">
         <GlobalRangeControls
           allowInterStaffLedgerChoice={false}
+          compactSummary
+          rangeControlPart="base"
           settings={settings}
           onSettingsSaved={onSettingsSaved}
         />
-        <p className="staff-distance-field-hint">
-          加练音会低权重穿插；大谱表按 C4/B3
-          分界分别记入高、低音谱，每道间距题仍只比较同一谱表的两个音。
-        </p>
+      </section>
 
-        <div className="control-block">
+      <section
+        aria-label="基础练习设置"
+        className="practice-free-basics-grid staff-distance-basic-settings"
+      >
+        <div className="practice-free-field staff-distance-setting-block staff-distance-training-block">
           <span className="control-label">训练方式</span>
-          <div aria-label="训练方式" className="staff-distance-training-options" role="group">
-            <button
-              aria-pressed={trainingMode === "look"}
-              className={trainingMode === "look" ? "is-selected" : ""}
-              onClick={() => {
-                setStartError(null);
-                setPreferences((current) => ({ ...current, trainingMode: "look" }));
-                onDistanceModeChange("look");
-              }}
-              type="button"
+          <div className="staff-distance-setting-content staff-distance-training-content">
+            <div
+              aria-label="训练方式"
+              className="segmented staff-distance-training-options"
+              role="group"
             >
-              <strong>看间距</strong>
-              <span>看相邻两音，选择相隔几步</span>
-            </button>
-            <button
-              aria-pressed={trainingMode === "play"}
-              className={trainingMode === "play" ? "is-selected" : ""}
-              onClick={() => {
-                setStartError(null);
-                setPreferences((current) => ({ ...current, trainingMode: "play" }));
-                onDistanceModeChange("play");
-              }}
-              type="button"
-            >
-              <strong>弹奏下一个音</strong>
-              <span>根据当前音，弹奏谱面上的下一个音</span>
-            </button>
+              <button
+                aria-pressed={trainingMode === "look"}
+                className={trainingMode === "look" ? "active" : ""}
+                onClick={() => {
+                  setStartError(null);
+                  setPreferences((current) => ({ ...current, trainingMode: "look" }));
+                  onDistanceModeChange("look");
+                }}
+                type="button"
+              >
+                看间距
+              </button>
+              <button
+                aria-pressed={trainingMode === "play"}
+                className={trainingMode === "play" ? "active" : ""}
+                onClick={() => {
+                  setStartError(null);
+                  setPreferences((current) => ({ ...current, trainingMode: "play" }));
+                  onDistanceModeChange("play");
+                }}
+                type="button"
+              >
+                弹奏下一个音
+              </button>
+            </div>
+            {trainingMode === "play" ? (
+              <div className="staff-distance-input-switch">
+                <span>输入</span>
+                <div
+                  aria-label="弹奏输入方式"
+                  className="segmented staff-distance-input-methods"
+                  role="group"
+                >
+                  <button
+                    aria-pressed={preferences.inputMethod === "microphone"}
+                    className={preferences.inputMethod === "microphone" ? "active" : ""}
+                    onClick={() => {
+                      setStartError(null);
+                      setPreferences((current) => ({ ...current, inputMethod: "microphone" }));
+                    }}
+                    type="button"
+                  >
+                    <Mic aria-hidden="true" size={14} /> 麦克风
+                  </button>
+                  <button
+                    aria-pressed={preferences.inputMethod === "midi"}
+                    className={preferences.inputMethod === "midi" ? "active" : ""}
+                    disabled={!midi.isConnected}
+                    onClick={() => {
+                      setStartError(null);
+                      setPreferences((current) => ({ ...current, inputMethod: "midi" }));
+                    }}
+                    type="button"
+                    title={!midi.isConnected ? "连接 MIDI 后可用" : undefined}
+                  >
+                    <Cable aria-hidden="true" size={14} /> MIDI
+                  </button>
+                </div>
+                {preferences.inputMethod === "midi" && !midi.isConnected ? (
+                  <button
+                    className="staff-distance-connect-midi"
+                    onClick={() => void connectMidi()}
+                    type="button"
+                  >
+                    连接
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
 
-        {trainingMode === "play" ? (
-          <div className="control-block staff-distance-input-method-block">
-            <span className="control-label">弹奏输入</span>
-            <div aria-label="弹奏输入方式" className="staff-distance-input-methods" role="group">
+        <div className="practice-free-field staff-distance-setting-block staff-distance-interval-block">
+          <div className="staff-distance-setting-heading">
+            <span className="control-label">最大间距</span>
+            <div aria-label="步数说明" className="staff-distance-rule-summary">
+              <span>C→E = 2 步 · 间距就像手指要移动的格数 · 同音 = 0</span>
+              <details className="staff-distance-rule-help">
+                <summary aria-label="查看步数规则">
+                  <CircleHelp aria-hidden="true" size={16} />
+                </summary>
+                <span role="tooltip">
+                  每跨一个相邻线位或间位算 1 步；上行和下行只比较距离，不区分方向；同音重复算 0 步。
+                </span>
+              </details>
+            </div>
+          </div>
+          <div className="staff-distance-setting-content">
+            <div aria-label="最大间距" className="staff-distance-range-options" role="group">
+              {Array.from({ length: 7 }, (_, index) => index + 1).map((distance) => (
+                <button
+                  aria-pressed={preferences.maxDistance === distance}
+                  className={preferences.maxDistance === distance ? "is-selected" : ""}
+                  key={distance}
+                  onClick={() =>
+                    setPreferences((current) => ({ ...current, maxDistance: distance }))
+                  }
+                  type="button"
+                >
+                  <span className="staff-distance-step-number">{distance}</span>
+                  <span>步</span>
+                </button>
+              ))}
+            </div>
+            {isSevenStepRangeInvalid ? (
+              <p className="staff-distance-setup-error" role="status">
+                {setupDisabledReason}
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="practice-free-field staff-distance-setting-block staff-distance-length-block">
+          <span className="control-label">练习长度</span>
+          <div className="staff-distance-setting-content staff-distance-length-content">
+            <div
+              aria-label="练习长度"
+              className="segmented staff-distance-length-options"
+              role="group"
+            >
               {(
                 [
-                  ["midi", "MIDI 键盘"],
-                  ["microphone", "麦克风"],
+                  ["open-ended", "无限"],
+                  ["fixed-count", "固定题数"],
+                  ["fixed-duration", "固定时长"],
                 ] as const
-              ).map(([inputMethod, label]) => (
+              ).map(([mode, label]) => (
                 <button
-                  aria-pressed={preferences.inputMethod === inputMethod}
-                  className={preferences.inputMethod === inputMethod ? "is-selected" : ""}
-                  key={inputMethod}
-                  onClick={() => {
-                    setStartError(null);
-                    setPreferences((current) => ({ ...current, inputMethod }));
-                  }}
+                  aria-pressed={preferences.mode === mode}
+                  className={preferences.mode === mode ? "active" : ""}
+                  key={mode}
+                  onClick={() => setPreferences((current) => ({ ...current, mode }))}
                   type="button"
                 >
                   {label}
                 </button>
               ))}
             </div>
-            {preferences.inputMethod === "midi" ? (
-              midi.isConnected ? (
-                <p className="staff-distance-field-hint">
-                  已连接 {midi.selectedInput?.name ?? "MIDI 键盘"}；按实际音高和八度判定。
-                </p>
-              ) : (
-                <div className="staff-distance-input-status" role="status">
-                  <span>{midi.errorMessage ?? "连接 MIDI 键盘后即可开始弹奏。"}</span>
-                  <button onClick={() => void connectMidi()} type="button">
-                    连接 MIDI
+            {preferences.mode === "fixed-count" ? (
+              <div aria-label="常用题数" className="staff-distance-count-presets" role="group">
+                {[10, 20, 50, 100].map((count) => (
+                  <button
+                    aria-pressed={preferences.fixedCount === count}
+                    className={preferences.fixedCount === count ? "active" : ""}
+                    key={count}
+                    onClick={() => setPreferences((current) => ({ ...current, fixedCount: count }))}
+                    type="button"
+                  >
+                    {count}
                   </button>
-                </div>
-              )
-            ) : (
-              <p className="staff-distance-field-hint">
-                开始时请求麦克风权限；按识别到的音高和八度判定。
-              </p>
-            )}
-          </div>
-        ) : null}
-
-        <div className="control-block">
-          <span className="control-label">练习长度</span>
-          <div className="segmented">
-            {(
-              [
-                ["open-ended", "无限"],
-                ["fixed-count", "固定题数"],
-                ["fixed-duration", "固定时长"],
-              ] as const
-            ).map(([mode, label]) => (
-              <button
-                className={preferences.mode === mode ? "active" : ""}
-                key={mode}
-                onClick={() => setPreferences((current) => ({ ...current, mode }))}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        {preferences.mode === "fixed-count" ? (
-          <div className="control-block">
-            <span className="control-label">题数</span>
-            <div className="number-row">
-              {[10, 20, 50, 100].map((count) => (
-                <button
-                  className={preferences.fixedCount === count ? "active" : ""}
-                  key={count}
-                  onClick={() => setPreferences((current) => ({ ...current, fixedCount: count }))}
-                  type="button"
-                >
-                  {count}
-                </button>
-              ))}
-              <label className="staff-distance-count-input">
-                <span>自定义</span>
+                ))}
+              </div>
+            ) : null}
+            {preferences.mode === "fixed-duration" ? (
+              <label className="staff-distance-duration-input" htmlFor="staff-distance-duration">
+                <span>时长</span>
                 <input
-                  max={500}
+                  id="staff-distance-duration"
+                  max={120}
                   min={1}
+                  step={1}
                   type="number"
-                  value={preferences.fixedCount}
+                  value={Math.round(preferences.fixedDurationSeconds / 60)}
                   onChange={(event) =>
                     setPreferences((current) => ({
                       ...current,
-                      fixedCount: Math.min(500, Math.max(1, Number(event.target.value) || 1)),
+                      fixedDurationSeconds: Math.min(
+                        7200,
+                        Math.max(60, Number(event.target.value) * 60 || 60)
+                      ),
                     }))
                   }
                 />
+                <span>分钟</span>
               </label>
-            </div>
+            ) : null}
           </div>
-        ) : null}
-        {preferences.mode === "fixed-duration" ? (
-          <div className="control-block">
-            <label className="control-label" htmlFor="staff-distance-duration">
-              时长（分钟）
-            </label>
-            <input
-              id="staff-distance-duration"
-              max={120}
-              min={1}
-              step={1}
-              type="number"
-              value={Math.round(preferences.fixedDurationSeconds / 60)}
-              onChange={(event) =>
-                setPreferences((current) => ({
-                  ...current,
-                  fixedDurationSeconds: Math.min(
-                    7200,
-                    Math.max(60, Number(event.target.value) * 60 || 60)
-                  ),
-                }))
-              }
-            />
-          </div>
-        ) : null}
-
-        <div className="control-block">
-          <span className="control-label">谱面音符时值</span>
-          <div
-            aria-label="谱面音符时值"
-            className="segmented staff-distance-duration-options"
-            role="group"
-          >
-            {NOTE_DURATION_OPTIONS.map((option) => (
-              <button
-                aria-pressed={preferences.noteDurations.includes(option.value)}
-                className={preferences.noteDurations.includes(option.value) ? "active" : ""}
-                disabled={
-                  preferences.noteDurations.length === 1 &&
-                  preferences.noteDurations.includes(option.value)
-                }
-                key={option.value}
-                onClick={() =>
-                  setPreferences((current) => {
-                    const isSelected = current.noteDurations.includes(option.value);
-                    if (isSelected && current.noteDurations.length === 1) return current;
-                    const selected = new Set(current.noteDurations);
-                    if (isSelected) selected.delete(option.value);
-                    else selected.add(option.value);
-                    return {
-                      ...current,
-                      noteDurations: NOTE_DURATION_OPTIONS.filter((item) =>
-                        selected.has(item.value)
-                      ).map((item) => item.value),
-                    };
-                  })
-                }
-                type="button"
-              >
-                <span>{option.label}</span>
-                <span aria-hidden="true">{option.symbol}</span>
-              </button>
-            ))}
-          </div>
-          <p className="staff-distance-field-hint">
-            可多选；按 4/4 拍组合节奏，八分、十六分按拍连梁，不出现休止或空拍。至少保留一种。
-          </p>
-        </div>
-
-        <div className="control-block">
-          <span className="control-label">最大间距</span>
-          <div aria-label="最大间距" className="staff-distance-range-options" role="group">
-            {Array.from({ length: 7 }, (_, index) => index + 1).map((distance) => (
-              <button
-                aria-pressed={preferences.maxDistance === distance}
-                className={preferences.maxDistance === distance ? "is-selected" : ""}
-                key={distance}
-                onClick={() => setPreferences((current) => ({ ...current, maxDistance: distance }))}
-                type="button"
-              >
-                {distance} 步
-              </button>
-            ))}
-          </div>
-          <p className="staff-distance-field-hint">
-            每跨一个相邻的线位或间位，算 1 步。C 到上方 C 是 7 步。
-          </p>
-        </div>
-
-        <div className="control-block">
-          <label className="practice-checkbox-option">
-            <input
-              checked={preferences.includeUnison}
-              type="checkbox"
-              onChange={(event) => toggleUnison(event.target.checked)}
-            />
-            <span>练同音重复（0 步）</span>
-          </label>
-          {preferences.maxDistance === 7 ? (
-            <p className="staff-distance-field-hint">
-              7 步题至少需要两个连续音组；大谱表还需在同一谱表内找到相隔 7
-              步的音对，分属高、低音谱的音不能组成一题。
-            </p>
-          ) : null}
-        </div>
-
-        <div className="staff-distance-definition">
-          <strong>怎么看步数</strong>
-          <span>do → mi 输入 2；fa → 上方 do 输入 4；下行只看距离，同音重复输入 0。</span>
-        </div>
-
-        {setupDisabledReason ? (
-          <p className="staff-distance-setup-error" role="status">
-            {startError ?? setupDisabledReason}
-          </p>
-        ) : null}
-        {startError && !setupDisabledReason ? (
-          <p className="staff-distance-setup-error" role="alert">
-            {startError}
-          </p>
-        ) : null}
-
-        <div className="action-row">
-          <button
-            className="primary"
-            disabled={Boolean(setupDisabledReason) || isStarting}
-            onClick={() => void startSession()}
-            type="button"
-          >
-            <Play size={17} />
-            {isStarting ? "正在准备…" : trainingMode === "look" ? "开始看间距" : "开始弹奏"}
-            <kbd>Enter</kbd>
-          </button>
         </div>
       </section>
 
-      {recentSessions.length > 0 ? (
-        <section aria-label="最近的间距练习" className="panel staff-distance-history-panel">
-          <h2>最近练习</h2>
-          <ul>
-            {recentSessions.map((session) => {
-              const results = session.staffDistance!.questionResults;
-              const correct = results.filter((result) => result.firstTryCorrect).length;
-              return (
-                <li key={session.id}>
-                  <span>{new Date(session.startedAt).toLocaleDateString()}</span>
-                  <span>≤{session.staffDistance!.maxDistance} 步</span>
-                  <strong>{percentage(correct, results.length)}</strong>
-                  <span>{formatMedianResponse(session)}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ) : null}
+      <details className="staff-distance-advanced">
+        <summary className="practice-free-advanced-toggle staff-distance-advanced-toggle">
+          <Settings2 aria-hidden="true" size={16} />
+          <span>更多设置</span>
+          <span className="practice-free-advanced-count">4组</span>
+          <ChevronDown aria-hidden="true" className="staff-distance-advanced-chevron" size={16} />
+        </summary>
+        <div className="staff-distance-advanced-content">
+          <div className="staff-distance-advanced-inner">
+            <section className="staff-distance-advanced-section">
+              <GlobalRangeControls
+                allowInterStaffLedgerChoice={false}
+                rangeControlPart="extensions"
+                settings={settings}
+                onSettingsSaved={onSettingsSaved}
+              />
+              <p className="staff-distance-field-hint">
+                加练音会低权重穿插；大谱表按 C4/B3 分界分别记入对应谱表，不会产生跨谱表音对。
+              </p>
+            </section>
+
+            <section className="staff-distance-advanced-section">
+              <h2>谱面音符时值</h2>
+              <div
+                aria-label="谱面音符时值"
+                className="segmented staff-distance-duration-options"
+                role="group"
+              >
+                {NOTE_DURATION_OPTIONS.map((option) => (
+                  <button
+                    aria-pressed={preferences.noteDurations.includes(option.value)}
+                    className={preferences.noteDurations.includes(option.value) ? "active" : ""}
+                    disabled={
+                      preferences.noteDurations.length === 1 &&
+                      preferences.noteDurations.includes(option.value)
+                    }
+                    key={option.value}
+                    onClick={() =>
+                      setPreferences((current) => {
+                        const isSelected = current.noteDurations.includes(option.value);
+                        if (isSelected && current.noteDurations.length === 1) return current;
+                        const selected = new Set(current.noteDurations);
+                        if (isSelected) selected.delete(option.value);
+                        else selected.add(option.value);
+                        return {
+                          ...current,
+                          noteDurations: NOTE_DURATION_OPTIONS.filter((item) =>
+                            selected.has(item.value)
+                          ).map((item) => item.value),
+                        };
+                      })
+                    }
+                    type="button"
+                  >
+                    <span>{option.label}</span>
+                    <span aria-hidden="true">{option.symbol}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="staff-distance-field-hint">
+                可多选；按 4/4 拍组合，不生成休止符或空拍。至少保留一种。
+              </p>
+            </section>
+
+            <section className="staff-distance-advanced-section staff-distance-advanced-inline">
+              <label className="practice-checkbox-option">
+                <input
+                  checked={preferences.includeUnison}
+                  type="checkbox"
+                  onChange={(event) => toggleUnison(event.target.checked)}
+                />
+                <span>练同音重复（0 步）</span>
+              </label>
+              {preferences.mode === "fixed-count" ? (
+                <label className="staff-distance-count-input">
+                  <span>自定义题数</span>
+                  <input
+                    aria-label="自定义题数"
+                    max={500}
+                    min={1}
+                    type="number"
+                    value={preferences.fixedCount}
+                    onChange={(event) =>
+                      setPreferences((current) => ({
+                        ...current,
+                        fixedCount: Math.min(500, Math.max(1, Number(event.target.value) || 1)),
+                      }))
+                    }
+                  />
+                </label>
+              ) : null}
+            </section>
+          </div>
+        </div>
+      </details>
+
+      <footer aria-label="开始间距练习" className="practice-free-action-dock">
+        <div aria-label="当前配置摘要" className="practice-free-config-summary">
+          <span className="practice-free-summary-label">当前配置</span>
+          <span className="practice-free-summary-chip">{staffLabel}</span>
+          <span className="practice-free-summary-chip">{preferences.maxDistance}步</span>
+          <span className="practice-free-summary-chip">{lengthLabel}</span>
+          {trainingMode === "play" ? (
+            <span className="practice-free-summary-chip">
+              {preferences.inputMethod === "microphone" ? "麦克风" : "MIDI"}
+            </span>
+          ) : null}
+        </div>
+        <div className="practice-free-action-buttons staff-distance-action-controls">
+          {startError ? (
+            <p className="staff-distance-start-error" role="alert">
+              {startError}
+            </p>
+          ) : null}
+          <span
+            className="practice-start-action staff-distance-start-wrap"
+            tabIndex={setupDisabledReason && !isSevenStepRangeInvalid ? 0 : undefined}
+            title={
+              setupDisabledReason && !isSevenStepRangeInvalid ? setupDisabledReason : undefined
+            }
+          >
+            <button
+              aria-keyshortcuts="Enter"
+              className="primary practice-free-start-button staff-distance-start-button"
+              disabled={Boolean(setupDisabledReason) || isStarting}
+              onClick={() => void startSession()}
+              type="button"
+            >
+              {isStarting ? (
+                <Play aria-hidden="true" className="staff-distance-start-icon" size={18} />
+              ) : trainingMode === "look" ? (
+                <Eye
+                  aria-hidden="true"
+                  className="staff-distance-start-icon"
+                  key="look-icon"
+                  size={18}
+                />
+              ) : (
+                <Music2
+                  aria-hidden="true"
+                  className="staff-distance-start-icon"
+                  key="play-icon"
+                  size={18}
+                />
+              )}
+              <span className="staff-distance-start-label" key={trainingMode}>
+                {isStarting ? "正在准备…" : trainingMode === "look" ? "开始看间距" : "开始弹奏"}
+              </span>
+              <kbd>Enter</kbd>
+            </button>
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }

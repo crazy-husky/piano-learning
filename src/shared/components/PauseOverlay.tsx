@@ -6,6 +6,7 @@ import type { RemainingPlaybackState } from "../playback/remainingNotePlayback";
 interface PauseOverlayProps {
   bpm?: number;
   onBpmChange?: (bpm: number) => void;
+  onExit?: () => void;
   onResume: () => void;
   onToggleRemainingPlayback?: () => void;
   playbackState?: RemainingPlaybackState;
@@ -18,6 +19,7 @@ interface PauseOverlayProps {
 export function PauseOverlay({
   bpm,
   onBpmChange,
+  onExit,
   onResume,
   onToggleRemainingPlayback,
   playbackState = "idle",
@@ -62,8 +64,25 @@ export function PauseOverlay({
             resumeMessage ??
             (showKeyboardShortcuts
               ? "按空格或点击空白处继续练习 · 按 Esc 退出练习"
-              : "点击空白处继续练习")}
+              : "点击空白处或下方按钮继续练习")}
         </small>
+        {!showKeyboardShortcuts ? (
+          <div className="pause-overlay-touch-actions">
+            {onExit ? (
+              <button className="pause-overlay-exit" onClick={onExit} type="button">
+                退出练习
+              </button>
+            ) : null}
+            <button
+              className="pause-overlay-resume"
+              disabled={Boolean(resumeBlockedMessage)}
+              onClick={onResume}
+              type="button"
+            >
+              继续练习
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

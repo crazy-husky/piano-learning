@@ -28,7 +28,6 @@ import type { MidiInputController } from "../../../midi/useMidiInput";
 import type { usePracticeMicrophoneInput } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import type { PracticeStaffPageRuntime } from "./usePracticeSessionLifecycle";
 import type { PracticeTimers } from "./usePracticeTimers";
-import type { PracticeMicrophoneAnalysis } from "../../vocal-pitch/logic/practiceMicrophoneAnalysis";
 
 const CROSS_GROUP_NOTE_RATE = 0.08;
 
@@ -93,12 +92,8 @@ interface PracticeSessionStartUi {
   beginSessionState: (session: PracticeSessionRecord) => void;
   drawMelodyNote: (sourceNotes: TargetNote[], remainingCount?: number) => TargetNote;
   resetSessionActiveTimer: PracticeTimers["resetSessionActiveTimer"];
-  setExpandedCandidateSegmentKey: Dispatch<SetStateAction<string | null>>;
-  setIsMicrophoneAnalysisDialogOpen: Dispatch<SetStateAction<boolean>>;
   setIsPaused: Dispatch<SetStateAction<boolean>>;
   setIsStaffPageScrolling: Dispatch<SetStateAction<boolean>>;
-  setMicrophoneCaptureAnalysis: Dispatch<SetStateAction<PracticeMicrophoneAnalysis | null>>;
-  setMicrophoneCaptureNotice: Dispatch<SetStateAction<string | null>>;
   startPrompt: (note: TargetNote) => void;
   startStaffPage: (input: PracticeStaffPageStartInput) => void;
   syncStaffPage: (page: PracticeStaffPageRuntime | null) => void;
@@ -162,12 +157,8 @@ export function usePracticeSessionStart({
     beginSessionState,
     drawMelodyNote,
     resetSessionActiveTimer,
-    setExpandedCandidateSegmentKey,
-    setIsMicrophoneAnalysisDialogOpen,
     setIsPaused,
     setIsStaffPageScrolling,
-    setMicrophoneCaptureAnalysis,
-    setMicrophoneCaptureNotice,
     startPrompt,
     startStaffPage,
     syncStaffPage,
@@ -268,10 +259,6 @@ export function usePracticeSessionStart({
         });
         await db.practiceSessions.put(nextSession);
         resetPracticeMicrophoneCapture();
-        setMicrophoneCaptureAnalysis(null);
-        setMicrophoneCaptureNotice(null);
-        setExpandedCandidateSegmentKey(null);
-        setIsMicrophoneAnalysisDialogOpen(false);
         sessionRef.current = nextSession;
         sessionStartSnapshotRef.current = startSnapshot;
         sessionReviewsRef.current = [];
@@ -353,12 +340,8 @@ export function usePracticeSessionStart({
     sessionRef,
     sessionReviewsRef,
     sessionStartSnapshotRef,
-    setExpandedCandidateSegmentKey,
-    setIsMicrophoneAnalysisDialogOpen,
     setIsPaused,
     setIsStaffPageScrolling,
-    setMicrophoneCaptureAnalysis,
-    setMicrophoneCaptureNotice,
     startPracticeMicrophone,
     stopPracticeMicrophone,
     onBeforePracticeStart,
