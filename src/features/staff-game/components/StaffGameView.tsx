@@ -231,6 +231,9 @@ const LEGACY_GAME_PROGRESS_KEYS = [
 const LEVELS_WITH_CHANGED_PITCH_MAPPING = new Set([32, 33, 34, 35, 58, 59, 60]);
 const GAME_SETTINGS_KEY = "anki-note.staffGameSettings.v1";
 const LOW_FPS_PROMPT_SESSION_KEY = "anki-note.staffGameLowFpsPrompted.v1";
+const NIGHTMARE_LANDSCAPE_PROMPT_SNOOZE_KEY =
+  "anki-note.staffGameNightmareLandscapePromptSnoozedUntil.v1";
+const NIGHTMARE_LANDSCAPE_PROMPT_SNOOZE_MS = 3 * 24 * 60 * 60 * 1000;
 let lowFpsPromptShownThisPage = false;
 const BURST_STAR_COUNT = 14;
 type GameInputMode = "physical" | "virtual" | "midi";
@@ -392,6 +395,38 @@ function prefersTouchGameLayout(): boolean {
   const isTouchIPad = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
   const narrowGameViewport = window.matchMedia("(max-width: 820px)").matches;
   return isTouchIPad || window.matchMedia("(pointer: coarse)").matches || narrowGameViewport;
+}
+
+function isIPadDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPad/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function shouldShowNightmareLandscapePrompt(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const savedSnooze = window.localStorage.getItem(NIGHTMARE_LANDSCAPE_PROMPT_SNOOZE_KEY);
+    if (savedSnooze === null) return true;
+    const snoozedUntil = Number(savedSnooze);
+    return !Number.isFinite(snoozedUntil) || snoozedUntil <= Date.now();
+  } catch {
+    return true;
+  }
+}
+
+function snoozeNightmareLandscapePrompt(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      NIGHTMARE_LANDSCAPE_PROMPT_SNOOZE_KEY,
+      String(Date.now() + NIGHTMARE_LANDSCAPE_PROMPT_SNOOZE_MS)
+    );
+  } catch {
+    // The game should still start when browser storage is unavailable.
+  }
 }
 
 function supportsMidi(status: MidiAccessStatus): boolean {
@@ -902,6 +937,7 @@ export function StaffGameView({
   const [gameError, setGameError] = useState("");
   const [isStarting, setIsStarting] = useState(false);
   const isStartingRef = useRef(false);
+  const isNightmareLandscapePromptPendingRef = useRef(false);
   const startAttemptRef = useRef(0);
   const comboIndicatorRef = useRef<ComboIndicator | null>(null);
   const targetRef = useRef<GameNote | null>(null);
@@ -2672,6 +2708,38 @@ export function StaffGameView({
     void beginRound("wrong-note-review", wrongNoteReviewPlan.notes);
   }, [beginRound, wrongNoteReviewPlan.notes, wrongNoteReviewRange, wrongNoteReviewWeights]);
 
+  const startLevel = useCallback(async (): Promise<void> => {
+    if (isNightmareLandscapePromptPendingRef.current) return;
+    const isIPadPortrait =
+      isIPadDevice() &&
+      typeof window !== "undefined" &&
+      window.matchMedia("(orientation: portrait)").matches;
+    const shouldPrompt =
+      isIPadPortrait &&
+      gameModeRef.current === "levels" &&
+      readyWrongNoteMode === "level" &&
+      settingsRef.current.difficulty === "nightmare" &&
+      shouldShowNightmareLandscapePrompt();
+
+    if (shouldPrompt) {
+      isNightmareLandscapePromptPendingRef.current = true;
+      try {
+        const shouldStart = await confirmDialog({
+          cancelLabel: "暂不开始",
+          confirmLabel: "继续开始",
+          description: "噩梦模式下音符下落较快，横屏游玩更容易看清音符～",
+          title: "噩梦模式提示",
+        });
+        if (!shouldStart) return;
+      } finally {
+        isNightmareLandscapePromptPendingRef.current = false;
+      }
+      snoozeNightmareLandscapePrompt();
+    }
+
+    await beginRound();
+  }, [beginRound, confirmDialog, readyWrongNoteMode]);
+
   const openWrongNoteStudyDialog = useCallback((): void => {
     setWrongNoteStudyRange((current) => current ?? wrongNoteReviewRange);
     setIsWrongNoteStudyDialogOpen(true);
@@ -3478,7 +3546,7 @@ export function StaffGameView({
               onChangeReviewRange={setWrongNoteReviewRange}
               onOpenWrongNoteArchiveManager={openWrongNoteArchiveManager}
               onOpenWrongNoteStudy={openWrongNoteStudyDialog}
-              onStartLevel={() => void beginRound()}
+              onStartLevel={() => void startLevel()}
               onStartReview={startWrongNoteReview}
               onSelectReadyMode={setReadyWrongNoteMode}
               readyMode={readyWrongNoteMode}
