@@ -59,4 +59,48 @@ describe("recognition trend preferences", () => {
       ).recognitionTimeRelativeBaselineMode
     ).toBe("new-range-start");
   });
+
+  it("keeps the active tab and statistics-only note scope in stats preferences", () => {
+    const parsed = parseStatsUiPreferences(
+      {
+        activeTab: "notes",
+        noteMetric: "errors",
+        noteScope: {
+          staffNotationMode: "grand",
+          enabledGroupIds: ["G3-F4", "unknown"],
+          enabledPitchIds: ["C4", "invalid"],
+          crossGroupPitchIds: [],
+          includeInterStaffLedgerSpellings: true,
+          staffRangeProfiles: {
+            grand: {
+              enabledGroupIds: ["G3-F4"],
+              enabledPitchIds: ["C4"],
+              crossGroupPitchIds: [],
+            },
+          },
+        },
+        wrongNoteTab: "manage",
+      },
+      DEFAULT_STATS_UI_PREFERENCES
+    );
+
+    expect(parsed.activeTab).toBe("notes");
+    expect(parsed.noteMetric).toBe("errors");
+    expect(parsed.noteScope).toMatchObject({
+      staffNotationMode: "grand",
+      enabledGroupIds: ["G3-F4"],
+      enabledPitchIds: ["C4"],
+      includeInterStaffLedgerSpellings: true,
+    });
+    expect(parsed.wrongNoteTab).toBe("manage");
+  });
+
+  it("ignores an invalid stats-only note scope", () => {
+    expect(
+      parseStatsUiPreferences(
+        { noteScope: { staffNotationMode: "invalid" } },
+        DEFAULT_STATS_UI_PREFERENCES
+      ).noteScope
+    ).toBeNull();
+  });
 });

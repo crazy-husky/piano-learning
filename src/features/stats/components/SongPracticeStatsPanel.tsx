@@ -60,7 +60,7 @@ export function SongPracticeStatsPanel(): JSX.Element {
       <div className="song-practice-stats-heading">
         <div>
           <h2 id="song-practice-stats-title">歌曲练习</h2>
-          <p>与自由练习分开累计，不受上方日期筛选影响。</p>
+          <p>累计数据（不受日期筛选影响）</p>
         </div>
       </div>
       <div className="song-practice-stats-grid">

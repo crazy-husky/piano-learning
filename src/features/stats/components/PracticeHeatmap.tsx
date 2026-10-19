@@ -195,7 +195,13 @@ export function PracticeHeatmap({
           <strong>{formatPracticeDuration(averageDailyActiveMs)}</strong>
         </p>
       </div>
-      <HeatMap dailyStats={dailyStats} />
+      {dailyStats.length > 0 ? (
+        <HeatMap dailyStats={dailyStats} />
+      ) : (
+        <p className="stats-inline-empty" role="status">
+          此时间范围内暂无练习记录
+        </p>
+      )}
     </div>
   );
 }

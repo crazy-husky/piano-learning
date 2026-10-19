@@ -241,14 +241,23 @@ export function SessionProgressChart({
     let cancelled = false;
     let chart: echarts.ECharts | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    let resizeFrame = 0;
+    const scheduleResize = (): void => {
+      window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = 0;
+        chart?.resize();
+      });
+    };
     void loadECharts()
       .then((echartsModule) => {
         if (cancelled) return;
 
         chart = echartsModule.init(element, undefined, { renderer: "canvas" });
         chartInstanceRef.current = chart;
-        resizeObserver = new ResizeObserver(() => chart?.resize());
+        resizeObserver = new ResizeObserver(scheduleResize);
         resizeObserver.observe(element);
+        scheduleResize();
         setChartLoadState("ready");
       })
       .catch(() => {
@@ -259,6 +268,7 @@ export function SessionProgressChart({
 
     return () => {
       cancelled = true;
+      window.cancelAnimationFrame(resizeFrame);
       resizeObserver?.disconnect();
       chart?.dispose();
       chartInstanceRef.current = null;

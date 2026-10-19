@@ -11,6 +11,28 @@ import {
   type RecognitionTimeValueMode,
 } from "./recognitionTrend";
 import { parseStatsRange, parseStatsRangeDays, type StatsRange } from "./statsRange";
+import type {
+  AppSettings,
+  PracticeGroupId,
+  PitchId,
+  StaffNotationMode,
+  StaffRangeSelection,
+} from "../../../domain/types";
+
+export const STATS_TABS = ["overview", "notes", "progress", "wrong-notes"] as const;
+export type StatsTab = (typeof STATS_TABS)[number];
+export type WrongNoteStatsTab = "trend" | "note" | "manage";
+export type StatsNoteMetric = "speed" | "errors";
+
+export type StatsNoteScopePreferences = Pick<
+  AppSettings,
+  | "staffNotationMode"
+  | "staffRangeProfiles"
+  | "enabledGroupIds"
+  | "enabledPitchIds"
+  | "crossGroupPitchIds"
+  | "includeInterStaffLedgerSpellings"
+>;
 
 export const STATS_CAROUSEL_CARD_IDS = [
   "recognition-time",
@@ -20,6 +42,7 @@ export const STATS_CAROUSEL_CARD_IDS = [
 export type StatsCarouselCardId = (typeof STATS_CAROUSEL_CARD_IDS)[number];
 
 export interface StatsUiPreferences {
+  activeTab: StatsTab;
   carouselCardId: StatsCarouselCardId;
   customRangeDays: number;
   hiddenRecognitionSeries: RecognitionSeriesKey[];
@@ -28,10 +51,14 @@ export interface StatsUiPreferences {
   recognitionTimeMetric: RecognitionTimeMetric;
   recognitionTimeRelativeBaselineMode: RecognitionRelativeBaselineMode;
   recognitionTimeValueMode: RecognitionTimeValueMode;
+  noteScope: StatsNoteScopePreferences | null;
+  noteMetric: StatsNoteMetric;
+  wrongNoteTab: WrongNoteStatsTab;
 }
 
 export const STATS_UI_PREFERENCES_KEY = "anki-note.statsUiPreferences";
 export const DEFAULT_STATS_UI_PREFERENCES: StatsUiPreferences = {
+  activeTab: "overview",
   carouselCardId: STATS_CAROUSEL_CARD_IDS[1],
   customRangeDays: 14,
   hiddenRecognitionSeries: [],
@@ -40,6 +67,9 @@ export const DEFAULT_STATS_UI_PREFERENCES: StatsUiPreferences = {
   recognitionTimeMetric: "duration",
   recognitionTimeRelativeBaselineMode: "previous-range-end",
   recognitionTimeValueMode: "absolute",
+  noteScope: null,
+  noteMetric: "speed",
+  wrongNoteTab: "trend",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -95,6 +125,87 @@ function isStatsCarouselCardId(value: unknown): value is StatsCarouselCardId {
   );
 }
 
+const STAFF_NOTATION_MODES: StaffNotationMode[] = ["treble-only", "bass-only", "grand"];
+const PRACTICE_GROUP_IDS: PracticeGroupId[] = ["F1-F2", "G2-F3", "G3-F4", "G4-F5", "G5-G6"];
+const NOTE_NAMES = ["C", "D", "E", "F", "G", "A", "B"] as const;
+
+function isStatsTab(value: unknown): value is StatsTab {
+  return typeof value === "string" && STATS_TABS.includes(value as StatsTab);
+}
+
+function isWrongNoteStatsTab(value: unknown): value is WrongNoteStatsTab {
+  return value === "trend" || value === "note" || value === "manage";
+}
+
+function parsePitchIds(value: unknown): PitchId[] | undefined {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    return undefined;
+  }
+  return value.filter((item): item is PitchId =>
+    NOTE_NAMES.some((name) => new RegExp(`^${name}[1-6]$`).test(item))
+  );
+}
+
+function parseRangeSelection(value: unknown): StaffRangeSelection | undefined {
+  if (!isRecord(value) || !Array.isArray(value.enabledGroupIds)) return undefined;
+  const enabledGroupIds = value.enabledGroupIds.filter(
+    (group): group is PracticeGroupId =>
+      typeof group === "string" && PRACTICE_GROUP_IDS.includes(group as PracticeGroupId)
+  );
+  const enabledPitchIds =
+    value.enabledPitchIds === undefined ? undefined : parsePitchIds(value.enabledPitchIds);
+  const crossGroupPitchIds =
+    value.crossGroupPitchIds === undefined ? undefined : parsePitchIds(value.crossGroupPitchIds);
+  if (
+    (value.enabledPitchIds !== undefined && enabledPitchIds === undefined) ||
+    (value.crossGroupPitchIds !== undefined && crossGroupPitchIds === undefined)
+  ) {
+    return undefined;
+  }
+  return { enabledGroupIds, enabledPitchIds, crossGroupPitchIds };
+}
+
+function parseNoteScope(value: unknown): StatsNoteScopePreferences | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.staffNotationMode !== "string" ||
+    !STAFF_NOTATION_MODES.includes(value.staffNotationMode as StaffNotationMode) ||
+    !Array.isArray(value.enabledGroupIds) ||
+    typeof value.includeInterStaffLedgerSpellings !== "boolean"
+  ) {
+    return null;
+  }
+  const enabledGroupIds = value.enabledGroupIds.filter(
+    (group): group is PracticeGroupId =>
+      typeof group === "string" && PRACTICE_GROUP_IDS.includes(group as PracticeGroupId)
+  );
+  const enabledPitchIds =
+    value.enabledPitchIds === undefined ? undefined : parsePitchIds(value.enabledPitchIds);
+  const crossGroupPitchIds =
+    value.crossGroupPitchIds === undefined ? undefined : parsePitchIds(value.crossGroupPitchIds);
+  if (
+    (value.enabledPitchIds !== undefined && enabledPitchIds === undefined) ||
+    (value.crossGroupPitchIds !== undefined && crossGroupPitchIds === undefined)
+  ) {
+    return null;
+  }
+  const staffRangeProfiles: Partial<Record<StaffNotationMode, StaffRangeSelection>> = {};
+  if (isRecord(value.staffRangeProfiles)) {
+    for (const mode of STAFF_NOTATION_MODES) {
+      const selection = parseRangeSelection(value.staffRangeProfiles[mode]);
+      if (selection) staffRangeProfiles[mode] = selection;
+    }
+  }
+  return {
+    staffNotationMode: value.staffNotationMode as StaffNotationMode,
+    staffRangeProfiles,
+    enabledGroupIds,
+    enabledPitchIds,
+    crossGroupPitchIds,
+    includeInterStaffLedgerSpellings: value.includeInterStaffLedgerSpellings,
+  };
+}
+
 export function parseStatsUiPreferences(
   value: unknown,
   fallback: StatsUiPreferences
@@ -104,6 +215,7 @@ export function parseStatsUiPreferences(
   }
 
   return {
+    activeTab: isStatsTab(value.activeTab) ? value.activeTab : fallback.activeTab,
     carouselCardId: isStatsCarouselCardId(value.carouselCardId)
       ? value.carouselCardId
       : fallback.carouselCardId,
@@ -131,5 +243,10 @@ export function parseStatsUiPreferences(
     recognitionTimeValueMode: isRecognitionTimeValueMode(value.recognitionTimeValueMode)
       ? value.recognitionTimeValueMode
       : fallback.recognitionTimeValueMode,
+    noteScope: parseNoteScope(value.noteScope),
+    noteMetric: value.noteMetric === "errors" ? "errors" : "speed",
+    wrongNoteTab: isWrongNoteStatsTab(value.wrongNoteTab)
+      ? value.wrongNoteTab
+      : fallback.wrongNoteTab,
   };
 }

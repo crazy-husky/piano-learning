@@ -724,11 +724,16 @@ export function RecognitionTrendCard({
           </div>
         </div>
       </div>
-      <div className="chart-box">
+      <div
+        className={
+          data.length === 0 || coverage.coveredNoteCount === 0
+            ? "chart-box stats-empty-chart-box"
+            : "chart-box"
+        }
+      >
         {coverage.coveredNoteCount === 0 ? (
-          <div className="empty-state">
-            数据正在积累：0/{coverage.totalNoteCount} 个音已完成至少 20
-            次有效练习。再练习几次，回来看看整体进步吧。
+          <div className="stats-inline-empty" role="status">
+            此时间范围内暂无音符记录
           </div>
         ) : data.length === 0 ? (
           <div className="empty-state">所选时间范围内暂无趋势点</div>

@@ -160,7 +160,7 @@ export function SessionProgressCard({
   return (
     <div className="panel chart-panel stats-carousel-card">
       <div className="panel-heading session-progress-card-heading">
-        <h2>答对进度</h2>
+        <h2>累计完成题数趋势</h2>
         <div className="chart-panel-actions">
           <SessionProgressControls
             allHistory={allHistory}
@@ -207,7 +207,7 @@ export function SessionProgressCard({
           </span>
         </div>
       ) : null}
-      <div className="chart-box">
+      <div className={hasSeries ? "chart-box" : "chart-box stats-empty-chart-box"}>
         {!hasSeries ? (
           <div className="empty-state">暂无记录</div>
         ) : (

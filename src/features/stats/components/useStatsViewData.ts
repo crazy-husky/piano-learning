@@ -40,6 +40,7 @@ export interface StatsViewDataModel {
   dailyStats: ReturnType<typeof buildDailyStats>;
   errorStaffNotes: StaffHeatNote[];
   errorTertileThresholds: ReturnType<typeof positiveTertileThresholds>;
+  noteRangeHasData: boolean;
   recognitionCoverage: { coveredNoteCount: number; totalNoteCount: number };
   recognitionTimeStats: RecognitionTimeChartStat[];
   sessionProgressComparison: SessionProgressComparisonModel;
@@ -282,6 +283,7 @@ export function useStatsViewData({
     dailyStats,
     errorStaffNotes,
     errorTertileThresholds,
+    noteRangeHasData: noteRangeReviews.length > 0,
     recognitionCoverage,
     recognitionTimeStats,
     sessionProgressComparison,

@@ -483,13 +483,20 @@ main {
 }
 
 .global-range-group-partial {
+  position: relative;
   border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
   background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface));
+  padding-inline-end: 28px;
 }
 
 .global-range-partial-label {
+  position: absolute;
+  right: 7px;
+  bottom: 4px;
   color: var(--accent-strong);
   font-size: 10px;
+  line-height: 1;
+  pointer-events: none;
   white-space: nowrap;
 }
 

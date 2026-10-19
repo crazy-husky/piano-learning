@@ -89,6 +89,7 @@ export function StaffGameWrongNoteTrendChart({
     const element = chartElementRef.current;
     if (!element) return undefined;
 
+    let resizeFrame = 0;
     const updateSize = () => {
       const { height, width } = element.getBoundingClientRect();
       const nextSize = {
@@ -99,10 +100,20 @@ export function StaffGameWrongNoteTrendChart({
         current.width === nextSize.width && current.height === nextSize.height ? current : nextSize
       );
     };
-    const observer = new ResizeObserver(updateSize);
+    const scheduleUpdateSize = (): void => {
+      if (resizeFrame !== 0) return;
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = 0;
+        updateSize();
+      });
+    };
+    const observer = new ResizeObserver(scheduleUpdateSize);
     observer.observe(element);
     updateSize();
-    return () => observer.disconnect();
+    return () => {
+      window.cancelAnimationFrame(resizeFrame);
+      observer.disconnect();
+    };
   }, []);
 
   const chartData = useMemo(() => {

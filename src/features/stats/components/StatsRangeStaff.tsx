@@ -275,20 +275,28 @@ export function StatsRangeStaff({
       return;
     }
 
+    let resizeFrame = 0;
+    let lastRenderedWidth = 0;
+
     function render(): void {
       if (!frame || !rendererTarget) {
         return;
       }
 
-      rendererTarget.innerHTML = "";
       const measuredWidth =
         frame.getBoundingClientRect().width ||
         frame.clientWidth ||
         frame.parentElement?.clientWidth ||
         1;
+      const renderWidth = Math.max(1, Math.floor(measuredWidth));
+      if (rendererTarget.childNodes.length > 0 && renderWidth === lastRenderedWidth) {
+        return;
+      }
+      lastRenderedWidth = renderWidth;
+      rendererTarget.innerHTML = "";
       const surface = createStaffRenderSurface(
         rendererTarget,
-        Math.floor(measuredWidth),
+        renderWidth,
         STATS_RANGE_STAFF_LAYOUT.vertical.viewHeightPx,
         STATS_RANGE_STAFF_LAYOUT.notationScale
       );
@@ -466,10 +474,23 @@ export function StatsRangeStaff({
       });
     }
 
+    const scheduleRender = (): void => {
+      if (resizeFrame !== 0) {
+        return;
+      }
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = 0;
+        render();
+      });
+    };
+
     render();
-    const observer = new ResizeObserver(render);
+    const observer = new ResizeObserver(scheduleRender);
     observer.observe(frame);
-    return () => observer.disconnect();
+    return () => {
+      window.cancelAnimationFrame(resizeFrame);
+      observer.disconnect();
+    };
   }, [columns, effectiveTargetNoteIds, palette, staffNotationMode, useLedgerGap]);
 
   return (

@@ -19,10 +19,12 @@ export function StaffGameWrongNoteNoteDiagnosticPanel({
   archives,
   onChangeRange,
   range,
+  showRangeControl = true,
 }: {
   archives: readonly StaffGameWrongNoteArchive[];
   range: StaffGameWrongNoteRange;
   onChangeRange: (range: StaffGameWrongNoteRange) => void;
+  showRangeControl?: boolean;
 }): JSX.Element {
   const diagnostics = useMemo(
     () => calculateStaffGameWrongNoteNoteDiagnostics(archives, range),
@@ -31,28 +33,30 @@ export function StaffGameWrongNoteNoteDiagnosticPanel({
 
   return (
     <div className="staff-game-archive-note-panel">
-      <div className="staff-game-archive-note-toolbar">
-        <label>
-          <span>记录时间</span>
-          <select
-            aria-label="单音诊断时间范围"
-            onChange={(event) =>
-              onChangeRange(
-                event.target.value === "all"
-                  ? "all"
-                  : (Number(event.target.value) as 3 | 7 | 15 | 30)
-              )
-            }
-            value={range}
-          >
-            <option value={3}>近 3 天</option>
-            <option value={7}>近 7 天</option>
-            <option value={15}>近 15 天</option>
-            <option value={30}>近 30 天</option>
-            <option value="all">全部</option>
-          </select>
-        </label>
-      </div>
+      {showRangeControl ? (
+        <div className="staff-game-archive-note-toolbar">
+          <label>
+            <span>记录时间</span>
+            <select
+              aria-label="单音诊断时间范围"
+              onChange={(event) =>
+                onChangeRange(
+                  event.target.value === "all"
+                    ? "all"
+                    : (Number(event.target.value) as 3 | 7 | 15 | 30)
+                )
+              }
+              value={range}
+            >
+              <option value={3}>近 3 天</option>
+              <option value={7}>近 7 天</option>
+              <option value={15}>近 15 天</option>
+              <option value={30}>近 30 天</option>
+              <option value="all">全部</option>
+            </select>
+          </label>
+        </div>
+      ) : null}
 
       <div className="staff-game-archive-note-list" aria-label="单音诊断列表" role="list">
         {diagnostics.length === 0 ? (
