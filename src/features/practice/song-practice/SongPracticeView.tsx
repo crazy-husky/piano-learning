@@ -1471,6 +1471,7 @@ export function SongPracticeView({
                 notes={pageNotes}
                 noteGroups={pageNoteGroups}
                 notesPerRow={NOTES_PER_ROW}
+                useInvisibleGapRests
                 onToggleRowPlayback={toggleRowPlayback}
                 playingRowIndex={playingRowIndex}
                 playbackProgressIndex={

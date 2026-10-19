@@ -288,7 +288,6 @@ function preloadGameBackgroundMusic(
     audio.addEventListener("error", handleError, { once: true });
     signal.addEventListener("abort", handleAbort, { once: true });
     audio.preload = "auto";
-    audio.volume = 0.06;
     audio.src = gameBackgroundMusic;
     audio.load();
     if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) settle();

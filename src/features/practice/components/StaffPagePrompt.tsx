@@ -76,6 +76,7 @@ interface StaffPagePromptProps {
   visibleRowCount?: number;
   breakBeamsAtStaffChange?: boolean;
   monophonicGrandStaff?: boolean;
+  useInvisibleGapRests?: boolean;
   showGrandStaffRightConnector?: boolean;
   onToggleRowPlayback?: (rowIndex: number) => void;
   playingRowIndex?: number | null;
@@ -387,7 +388,8 @@ function expandTiedDurations(
   noteOnsets?: readonly number[],
   beatsPerMeasure?: number,
   staff: Staff = "treble",
-  monophonicGrandStaff = false
+  monophonicGrandStaff = false,
+  useInvisibleGapRests = false
 ): { ties: StaveTie[]; tickables: StaffPageTickable[] } {
   const tickables: StaffPageTickable[] = [];
   const ties: StaveTie[] = [];
@@ -400,20 +402,21 @@ function expandTiedDurations(
     const noteOnset = noteOnsets?.[slotIndex];
     if (noteOnsets && noteGroup.length === 0 && !monophonicGrandStaff) return;
     if (noteOnsets && noteOnset !== undefined && noteOnset > cursorBeat + 0.001) {
-      const gapFillers = monophonicGrandStaff
-        ? makeStaffGhostsForGap(
-            noteOnset - cursorBeat,
-            cursorBeat,
-            beatsPerMeasure,
-            primary.getStave()!
-          )
-        : makeStaveRestsForGap(
-            noteOnset - cursorBeat,
-            cursorBeat,
-            beatsPerMeasure,
-            staff,
-            primary.getStave()!
-          );
+      const gapFillers =
+        monophonicGrandStaff || useInvisibleGapRests
+          ? makeStaffGhostsForGap(
+              noteOnset - cursorBeat,
+              cursorBeat,
+              beatsPerMeasure,
+              primary.getStave()!
+            )
+          : makeStaveRestsForGap(
+              noteOnset - cursorBeat,
+              cursorBeat,
+              beatsPerMeasure,
+              staff,
+              primary.getStave()!
+            );
       tickables.push(...gapFillers);
     }
     tickables.push(primary);
@@ -825,6 +828,7 @@ export function StaffPagePrompt({
   visibleRowCount = layout.multirow.rows,
   breakBeamsAtStaffChange = false,
   monophonicGrandStaff = false,
+  useInvisibleGapRests = false,
   showGrandStaffRightConnector = true,
   onToggleRowPlayback,
   playingRowIndex = null,
@@ -1056,7 +1060,8 @@ export function StaffPagePrompt({
                 rowOnsets,
                 beatsPerMeasure,
                 staff,
-                monophonicGrandStaff
+                monophonicGrandStaff,
+                useInvisibleGapRests
               );
               const compactIndices = indices.filter(
                 (slotIndex) => laneGroups[slotIndex]!.length > 0
@@ -1117,7 +1122,7 @@ export function StaffPagePrompt({
               index < trebleLanes.length ? treble : bass,
               rowOnsets,
               beatsPerMeasure,
-              monophonicGrandStaff
+              monophonicGrandStaff || useInvisibleGapRests
             )
           );
           const voiceOptions = createVoiceOptions(alignedTickableGroups);
@@ -1182,7 +1187,10 @@ export function StaffPagePrompt({
                 palette
               ),
             rowOnsets,
-            beatsPerMeasure
+            beatsPerMeasure,
+            staffNotationMode === "bass-only" ? "bass" : "treble",
+            false,
+            useInvisibleGapRests
           );
           ties = expanded.ties;
           tuplets = makeStaffPageTuplets(
@@ -1346,6 +1354,7 @@ export function StaffPagePrompt({
     staffNotationMode,
     breakBeamsAtStaffChange,
     monophonicGrandStaff,
+    useInvisibleGapRests,
     showGrandStaffRightConnector,
     useLedgerGap,
     visibleRowCount,

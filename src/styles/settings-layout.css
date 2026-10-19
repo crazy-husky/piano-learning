@@ -102,11 +102,11 @@
   opacity: 0.55;
 }
 
-.settings-category-card .volume-control {
+.settings-category-card .settings-range-control {
   min-width: 220px;
 }
 
-.settings-category-card .volume-control input[type="range"] {
+.settings-category-card .settings-range-control input[type="range"] {
   width: 160px;
 }
 
@@ -398,7 +398,7 @@
     align-self: flex-end;
   }
 
-  .settings-category-card .volume-control {
+  .settings-category-card .settings-range-control {
     min-width: 0;
     width: 100%;
   }

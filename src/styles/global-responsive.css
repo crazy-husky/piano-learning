@@ -505,11 +505,11 @@
     flex-direction: column;
   }
 
-  .volume-control {
+  .settings-range-control {
     width: 100%;
   }
 
-  .volume-control input[type="range"] {
+  .settings-range-control input[type="range"] {
     flex: 1 1 auto;
     width: auto;
   }

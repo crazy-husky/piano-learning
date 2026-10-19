@@ -591,12 +591,29 @@
   text-align: center;
 }
 
-.staff-distance-question-example {
-  margin: -8px 0 0;
+.staff-distance-question-hints {
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface-soft);
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
-  text-align: center;
+  text-align: left;
+}
+
+.staff-distance-question-hints-title {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.staff-distance-question-hints p {
+  display: grid;
+  grid-template-columns: 3em minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
 }
 
 .staff-distance-play-input-status {
@@ -1086,7 +1103,8 @@
     font-size: 18px;
   }
 
-  .staff-distance-question-example {
+  .staff-distance-question-hints {
+    padding: 8px 10px;
     font-size: 12px;
   }
 

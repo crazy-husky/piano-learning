@@ -35,15 +35,17 @@ const soundSources: Record<
   SampledStaffGameSound,
   { url: string; volumeDb: number; label: string }
 > = {
-  bubblePop: { url: bubblePopUrl, volumeDb: -13, label: "泡泡破裂音效" },
-  comboAmazing: { url: comboAmazingUrl, volumeDb: -8, label: "连击 Amazing 音效" },
-  comboExcellent: { url: comboExcellentUrl, volumeDb: -8, label: "连击 Excellent 音效" },
-  comboStreak: { url: comboStreakUrl, volumeDb: -20, label: "连击 Streak 音效" },
-  comboUnbelievable: { url: comboUnbelievableUrl, volumeDb: -8, label: "连击 Unbelievable 音效" },
-  levelClear: { url: levelClearUrl, volumeDb: -13, label: "关卡完成音效" },
-  menuClick: { url: menuClickUrl, volumeDb: -14, label: "菜单点击音效" },
-  noteMissed: { url: noteMissedRubberyUrl, volumeDb: -6, label: "答错音效" },
-  noteMissedUnpitched: { url: noteMissedRubberyUrl, volumeDb: -6, label: "答错音效（无音高）" },
+  // Gains use measured source RMS to keep answer, combo, and level-clear cues close;
+  // the short bubble/menu sounds and Streak cue remain intentionally quieter.
+  bubblePop: { url: bubblePopUrl, volumeDb: -7, label: "泡泡破裂音效" },
+  comboAmazing: { url: comboAmazingUrl, volumeDb: -13, label: "连击 Amazing 音效" },
+  comboExcellent: { url: comboExcellentUrl, volumeDb: -14, label: "连击 Excellent 音效" },
+  comboStreak: { url: comboStreakUrl, volumeDb: -27, label: "连击 Streak 音效" },
+  comboUnbelievable: { url: comboUnbelievableUrl, volumeDb: -12, label: "连击 Unbelievable 音效" },
+  levelClear: { url: levelClearUrl, volumeDb: -18, label: "关卡完成音效" },
+  menuClick: { url: menuClickUrl, volumeDb: -22, label: "菜单点击音效" },
+  noteMissed: { url: noteMissedRubberyUrl, volumeDb: -8, label: "答错音效" },
+  noteMissedUnpitched: { url: noteMissedRubberyUrl, volumeDb: -8, label: "答错音效（无音高）" },
 };
 
 export const STAFF_GAME_SOUND_RESOURCES = (

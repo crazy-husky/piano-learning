@@ -93,6 +93,7 @@ import { LoadingActivityIndicator } from "../../../shared/components/LoadingActi
 import { StaffGameSummaryDialog } from "./StaffGameSummaryDialog";
 import { StaffGameWrongNoteStudyDialog } from "./StaffGameWrongNoteStudyDialog";
 import { StaffGameWrongNoteArchiveManagerDialog } from "./StaffGameWrongNoteArchiveManagerDialog";
+import { disconnectStaffGameBackgroundAudio } from "../audio/staffGameBackgroundAudio";
 import {
   StaffGameMascot,
   StaffGameParticles,
@@ -1309,6 +1310,7 @@ export function StaffGameView({
       if (retryTimer !== null) window.clearTimeout(retryTimer);
       backgroundMusicPreloadController.abort();
       backgroundMusic.pause();
+      disconnectStaffGameBackgroundAudio(backgroundMusic);
       backgroundMusic.removeAttribute("src");
       backgroundMusic.load();
       if (backgroundMusicRef.current === backgroundMusic) backgroundMusicRef.current = null;

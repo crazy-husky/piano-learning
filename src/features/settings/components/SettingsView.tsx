@@ -31,7 +31,7 @@ import {
   getBackupState,
 } from "../../../data/db";
 import { backupText, formatBackupConflictDetail } from "../../../domain/backupText";
-import { normalizeAnswerKeyboardScale, normalizePianoVolume } from "../../../domain/settings";
+import { normalizeAnswerKeyboardScale } from "../../../domain/settings";
 import type { AppSettings, BackupState } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import type { PageAppearancePreferences } from "../../../shared/appearance/pageAppearance";
@@ -73,7 +73,6 @@ import { MicrophoneParameterBenchmarkDialog } from "./MicrophoneParameterBenchma
 type StoredBackupState = BackupState & { restoreRequiredBeforeBackup?: boolean };
 type SettingsActionFeedback = { description?: string; kind?: "danger"; title: string };
 type SettingsDataClearFeedback = { kind: "success" | "error"; message: string };
-const PIANO_VOLUME_STEP = 0.05;
 const ANSWER_KEYBOARD_SCALE_STEP = 0.05;
 const SLIDER_SAVE_DEBOUNCE_MS = 450;
 
@@ -230,9 +229,6 @@ export function SettingsView({
       setBusy(false);
     }
   }
-  const [pianoVolumeDraft, setPianoVolumeDraft] = useState(() =>
-    normalizePianoVolume(settings.pianoVolume)
-  );
   const [answerKeyboardScaleDraft, setAnswerKeyboardScaleDraft] = useState(() =>
     normalizeAnswerKeyboardScale(settings.answerKeyboardScale)
   );
@@ -241,7 +237,6 @@ export function SettingsView({
     DEFAULT_STAFF_PAGE_UI_PREFERENCES,
     { parse: parseStaffPageUiPreferences }
   );
-  const pianoVolumeRef = useRef(pianoVolumeDraft);
   const answerKeyboardScaleRef = useRef(answerKeyboardScaleDraft);
   const pendingSliderSettingsRef = useRef<Partial<AppSettings> | null>(null);
   const sliderSaveTimerRef = useRef<number | null>(null);
@@ -249,7 +244,6 @@ export function SettingsView({
   const settingsRef = useRef(settings);
   onSettingsSavedRef.current = onSettingsSaved;
   settingsRef.current = settings;
-  const pianoVolumeControlRef = useRef<HTMLLabelElement>(null);
   const answerKeyboardScaleControlRef = useRef<HTMLLabelElement>(null);
   const storedBackupState = backupState as StoredBackupState;
   const backupBlockedUntilSync = Boolean(
@@ -258,7 +252,6 @@ export function SettingsView({
     storedBackupState.restoreRequiredBeforeBackup
   );
   const hasBackupSnapshot = Boolean(backupBlockedUntilSync || backupState.lastSeenBackupVersion);
-  const pianoVolumePercent = Math.round(pianoVolumeDraft * 100);
   const answerKeyboardScalePercent = Math.round(answerKeyboardScaleDraft * 100);
 
   useEffect(
@@ -274,12 +267,6 @@ export function SettingsView({
     },
     []
   );
-
-  useEffect(() => {
-    const nextPianoVolume = normalizePianoVolume(settings.pianoVolume);
-    pianoVolumeRef.current = nextPianoVolume;
-    setPianoVolumeDraft(nextPianoVolume);
-  }, [settings.pianoVolume]);
 
   useEffect(() => {
     const nextScale = normalizeAnswerKeyboardScale(settings.answerKeyboardScale);
@@ -342,16 +329,6 @@ export function SettingsView({
     }
   }
 
-  function savePianoVolume(nextVolume: number): void {
-    const normalizedVolume = normalizePianoVolume(nextVolume);
-    if (normalizedVolume === pianoVolumeRef.current) {
-      return;
-    }
-    pianoVolumeRef.current = normalizedVolume;
-    setPianoVolumeDraft(normalizedVolume);
-    scheduleSliderSettingsSave({ pianoVolume: normalizedVolume });
-  }
-
   function saveAnswerKeyboardScale(nextScale: number): void {
     const normalizedScale = normalizeAnswerKeyboardScale(nextScale);
     if (normalizedScale === answerKeyboardScaleRef.current) {
@@ -362,9 +339,6 @@ export function SettingsView({
     scheduleSliderSettingsSave({ answerKeyboardScale: normalizedScale });
   }
 
-  useWheelSteps(pianoVolumeControlRef, (direction) => {
-    savePianoVolume(pianoVolumeRef.current + direction * PIANO_VOLUME_STEP);
-  });
   useWheelSteps(answerKeyboardScaleControlRef, (direction) => {
     saveAnswerKeyboardScale(
       answerKeyboardScaleRef.current + direction * ANSWER_KEYBOARD_SCALE_STEP
@@ -727,24 +701,6 @@ export function SettingsView({
                   : "请按下一个琴键"}
               </p>
             ) : null}
-            <div className="setting-row">
-              <div>
-                <strong>音量</strong>
-                <span>控制目标音与键盘预览音量</span>
-              </div>
-              <label className="volume-control" ref={pianoVolumeControlRef}>
-                <input
-                  aria-label="音量"
-                  max={100}
-                  min={0}
-                  step={5}
-                  type="range"
-                  value={pianoVolumePercent}
-                  onChange={(event) => savePianoVolume(Number(event.target.value) / 100)}
-                />
-                <span>{pianoVolumePercent}%</span>
-              </label>
-            </div>
           </section>
 
           <section className="panel settings-panel settings-category-card keyboard-settings-panel">
@@ -756,7 +712,7 @@ export function SettingsView({
                 <strong>琴键大小</strong>
                 <span className="settings-helper">调整虚拟键盘的显示比例及预览音区（C4-C5）。</span>
               </div>
-              <label className="volume-control" ref={answerKeyboardScaleControlRef}>
+              <label className="settings-range-control" ref={answerKeyboardScaleControlRef}>
                 <input
                   aria-label="琴键大小"
                   max={150}

@@ -273,7 +273,7 @@ export function StaffDistanceRun({
   const sequenceRhythmRef = useRef(sequenceRhythm);
   const breakIndicesRef = useRef(new Set(initialSequence.breakIndices));
   const [questionIndex, setQuestionIndex] = useState(0);
-  const [completedTargetIndices, setCompletedTargetIndices] = useState<number[]>([]);
+  const [completedNoteIndices, setCompletedNoteIndices] = useState<number[]>([]);
   const [hasPlayedStartingNote, setHasPlayedStartingNote] = useState(() => trainingMode !== "play");
   const hasPlayedStartingNoteRef = useRef(trainingMode !== "play");
   const [startingNoteWrong, setStartingNoteWrong] = useState(false);
@@ -329,7 +329,7 @@ export function StaffDistanceRun({
   const pageStartIndex = activeScorePage.startIndex;
   const pageEndIndex = activeScorePage.endIndex;
   const notesOnPage = sequence.slice(pageStartIndex, pageEndIndex);
-  const completedNoteIndicesOnPage = completedTargetIndices
+  const completedNoteIndicesOnPage = completedNoteIndices
     .filter((noteIndex) => noteIndex >= pageStartIndex && noteIndex < pageEndIndex)
     .map((noteIndex) => noteIndex - pageStartIndex);
   const pageSize = notesOnPage.length;
@@ -595,8 +595,9 @@ export function StaffDistanceRun({
         console.error("Failed to save staff-distance answer event", error);
       });
       resultsRef.current = nextResults;
-      setCompletedTargetIndices((current) =>
-        current.includes(questionIndex + 1) ? current : [...current, questionIndex + 1]
+      const completedNoteIndex = trainingMode === "look" ? questionIndex : questionIndex + 1;
+      setCompletedNoteIndices((current) =>
+        current.includes(completedNoteIndex) ? current : [...current, completedNoteIndex]
       );
       setFeedback({ type: "correct", distance: targetDistance });
       pendingAdvanceRef.current = () => {
@@ -656,7 +657,7 @@ export function StaffDistanceRun({
         setHasPlayedStartingNote(true);
         setStartingNoteWrong(false);
         setInputError(null);
-        setCompletedTargetIndices((current) => (current.includes(0) ? current : [...current, 0]));
+        setCompletedNoteIndices((current) => (current.includes(0) ? current : [...current, 0]));
         firstResponseRef.current = null;
         wrongAttemptsRef.current = 0;
         usedHintRef.current = false;
@@ -957,13 +958,6 @@ export function StaffDistanceRun({
                 : "请先弹奏谱面上的第一个音。"}
       </p>
       {trainingMode === "look" ? (
-        <p className="staff-distance-question-example">
-          举例：Do 到 Mi 相隔 2 步，手指从 Do 向右移动 2 格即可到
-          Mi；这里的“步数”就是手指移动的格数。
-        </p>
-      ) : null}
-
-      {trainingMode === "look" ? (
         <div aria-label="间距答案" className="staff-distance-answer-row" role="group">
           {answerRows.map((row, rowIndex) => (
             <div className="staff-distance-answer-line" key={rowIndex}>
@@ -999,6 +993,21 @@ export function StaffDistanceRun({
           )}
         </div>
       )}
+      {trainingMode === "look" ? (
+        <aside aria-label="读谱提示" className="staff-distance-question-hints">
+          <strong className="staff-distance-question-hints-title">读谱提示</strong>
+          <p>
+            <span>举例</span>
+            <span>Do 到 Mi 相隔 2 步；这里的“步数”就是五线谱上相邻线位或间位的个数。</span>
+          </p>
+          <p>
+            <span>规律</span>
+            <span>
+              两个音都在线上或间内，相隔偶数步（0、2、4、6）；一个在线上、一个在间内，相隔奇数步（1、3、5、7）。
+            </span>
+          </p>
+        </aside>
+      ) : null}
 
       {wrongAttemptsRef.current > 0 && feedback?.type !== "correct" ? (
         <button className="staff-distance-hint-trigger" onClick={toggleHint} type="button">

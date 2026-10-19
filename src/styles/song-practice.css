@@ -271,6 +271,15 @@
   border-color: var(--line);
 }
 
+.song-practice-topline .practice-return-home,
+.song-practice-heading-row > .song-connect-midi {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 8px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
 .song-selection-footer {
   position: fixed;
   z-index: 30;

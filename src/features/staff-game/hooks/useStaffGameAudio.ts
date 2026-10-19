@@ -1,5 +1,7 @@
 import { useEffect, type MutableRefObject } from "react";
 import { playPianoNote, unlockAudio } from "../../../audio/piano";
+import { STAFF_GAME_BACKGROUND_MUSIC_VOLUME } from "../audio/staffGameAudioConfig";
+import { connectStaffGameBackgroundAudio } from "../audio/staffGameBackgroundAudio";
 import {
   playStaffGameSound,
   playStaffGameStarReveal,
@@ -45,7 +47,12 @@ export function useStaffGameAudio({
   useEffect(() => {
     const audio = backgroundMusicRef.current;
     if (!audio) return undefined;
-    audio.volume = 0.06;
+    try {
+      connectStaffGameBackgroundAudio(audio);
+    } catch {
+      // Keep playback available in browsers without a usable Web Audio context.
+      audio.volume = STAFF_GAME_BACKGROUND_MUSIC_VOLUME;
+    }
     const shouldPlay =
       resourceLoadState === "ready" &&
       phase === "running" &&
