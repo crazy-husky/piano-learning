@@ -13,9 +13,18 @@ import {
 export const MAX_ANSWER_EVENT_ATTEMPTS = 10;
 
 export function boundedAnswerEvent(event: AnswerEvent): AnswerEvent {
+  const lateAttempts = event.attempts
+    .filter((attempt) => attempt.isLateForPrevious)
+    .slice(0, MAX_ANSWER_EVENT_ATTEMPTS);
+  const regularAttempts = event.attempts
+    .filter((attempt) => !attempt.isLateForPrevious)
+    .slice(0, MAX_ANSWER_EVENT_ATTEMPTS - lateAttempts.length);
+  const attempts = [...regularAttempts, ...lateAttempts].sort(
+    (left, right) => left.atMs - right.atMs
+  );
   return {
     ...event,
-    attempts: event.attempts.slice(0, MAX_ANSWER_EVENT_ATTEMPTS).map((attempt) => ({
+    attempts: attempts.map((attempt) => ({
       ...attempt,
       clipping: attempt.clipping ?? false,
     })),
@@ -78,7 +87,7 @@ export function answerEventToReview(event: AnswerEvent): ReviewRecord | null {
       Date.parse(event.occurredAt) - Math.max(0, event.activeMs ?? event.rawResponseTimeMs ?? 0)
     ).toISOString();
   const wrongAnswers = event.attempts
-    .filter((attempt) => !attempt.isCorrect)
+    .filter((attempt) => !attempt.isCorrect && !attempt.isLateForPrevious)
     .map((attempt) => ({
       noteName: attempt.noteName ?? event.targetNoteName!,
       atActiveMs: attempt.atMs,

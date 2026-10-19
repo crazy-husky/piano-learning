@@ -478,7 +478,11 @@ export function StaffDistanceRun({
   }, []);
 
   const submitAnswer = useCallback(
-    async (isCorrect: boolean, answer?: PracticeAnswerInput): Promise<void> => {
+    async (
+      isCorrect: boolean,
+      answer?: PracticeAnswerInput,
+      selectedDistance?: number
+    ): Promise<void> => {
       if (isPausedRef.current || endingRef.current || feedback?.type === "correct") return;
       if (!currentFrom || !currentTo) return;
       const { distance: targetDistance } = summarizeStaffDistancePair(currentFrom, currentTo);
@@ -497,6 +501,7 @@ export function StaffDistanceRun({
         inputMode: answer ? answerInputMode(answer.source) : undefined,
         microphoneAlgorithm: answer?.microphoneAlgorithm,
         isCorrect,
+        ...(selectedDistance === undefined ? {} : { staffDistanceAnswer: selectedDistance }),
         clipping: answer?.clipping ?? false,
       });
       if (!isCorrect) {
@@ -620,7 +625,11 @@ export function StaffDistanceRun({
   const answerDistance = useCallback(
     (distance: number): void => {
       if (trainingMode !== "look" || !currentFrom || !currentTo) return;
-      void submitAnswer(distance === summarizeStaffDistancePair(currentFrom, currentTo).distance);
+      void submitAnswer(
+        distance === summarizeStaffDistancePair(currentFrom, currentTo).distance,
+        undefined,
+        distance
+      );
     },
     [currentFrom, currentTo, submitAnswer, trainingMode]
   );

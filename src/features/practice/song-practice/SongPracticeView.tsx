@@ -847,7 +847,9 @@ export function SongPracticeView({
             estimatedSystemDelayMs,
             responseTimeMs: Math.max(0, rawResponseTimeMs - estimatedSystemDelayMs),
             activeMs: rawResponseTimeMs,
-            wrongAttempts: targetAttemptsRef.current.filter((attempt) => !attempt.isCorrect).length,
+            wrongAttempts: targetAttemptsRef.current.filter(
+              (attempt) => !attempt.isCorrect && !attempt.isLateForPrevious
+            ).length,
             isExtraNote: false,
             isMissed: false,
             songId: selection.songId,

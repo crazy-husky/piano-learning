@@ -11,6 +11,7 @@ import {
   BUBBLE_FADE_IN_MS,
   COMBO_BONUS_MAX_STEPS,
   ERROR_FLASH_DURATION_MS,
+  LATE_PREVIOUS_INPUT_WINDOW_MS,
   PITCH_NAMES,
   RUSH_MODE_COMBO_THRESHOLD,
   RUSH_SCORE_MULTIPLIER,
@@ -325,6 +326,18 @@ export function useStaffGameScoring({
           : midi === currentTarget.midi;
       const gameNowAtInput =
         elapsedBeforeRunRef.current + (performance.now() - runSegmentStartedAtRef.current);
+      const lateInputShield = roundMetricsRef.current.lateInputShield;
+      const matchesLateInputShield =
+        lateInputShield !== null &&
+        (settingsRef.current.inputMode === "virtual"
+          ? ((midi % 12) + 12) % 12 === ((lateInputShield.midi % 12) + 12) % 12
+          : lateInputShield.midi === midi);
+      const currentTargetReadyAt = currentTarget.spawnAt + BUBBLE_FADE_IN_MS;
+      const isLateForPrevious =
+        lateInputShield?.targetToken === currentTarget.token &&
+        matchesLateInputShield &&
+        gameNowAtInput >= currentTargetReadyAt &&
+        gameNowAtInput - currentTargetReadyAt <= LATE_PREVIOUS_INPUT_WINDOW_MS;
       const targetOutcomeAtInput = roundMetricsRef.current.firstInputByToken.get(
         currentTarget.token
       );
@@ -339,9 +352,11 @@ export function useStaffGameScoring({
             : settingsRef.current.inputMode === "midi"
               ? "midi"
               : "virtual-keyboard",
-        isCorrect,
+        isCorrect: isLateForPrevious ? false : isCorrect,
+        ...(isLateForPrevious ? { isLateForPrevious: true } : {}),
         clipping: answer.clipping ?? false,
       });
+      if (isLateForPrevious) return;
       if (answer.source === "microphone") {
         appendStaffGameMicrophoneDebugEvent("answer", {
           answer: {

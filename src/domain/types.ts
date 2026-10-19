@@ -155,6 +155,8 @@ export interface AnswerAttempt {
   inputMode?: AnswerInputMode;
   microphoneAlgorithm?: "swiftf0" | "yin";
   isCorrect: boolean;
+  staffDistanceAnswer?: number;
+  isLateForPrevious?: boolean;
   isExtraNote?: boolean;
   clipping?: boolean;
 }
@@ -371,6 +373,7 @@ export interface StaffGameProficiencySample {
   playerResponseTimeMs: number | null;
   firstInputCorrect: boolean | null;
   missed: boolean;
+  wasInterrupted?: boolean;
   inputGain?: number;
   deviceInfo?: AnswerEvent["deviceInfo"];
   mode?: "staff-game" | "song";

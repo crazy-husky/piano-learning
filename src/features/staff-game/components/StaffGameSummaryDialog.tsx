@@ -366,7 +366,7 @@ export function StaffGameSummaryDialog({
                       : ""}
                     {averagePlayerResponseMs === null
                       ? "暂无有效反应时间样本"
-                      : `平均反应 ${(averagePlayerResponseMs / 1000).toFixed(1)}s${inputMode === "physical" ? "（已扣除麦克风延迟）" : ""}`}
+                      : `平均反应 ${(averagePlayerResponseMs / 1000).toFixed(1)}s${inputMode === "physical" ? "（已校准）" : ""}`}
                   </p>
                 ) : null}
                 {showFastPlayingHint && inputMode === "physical" ? (

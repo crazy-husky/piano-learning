@@ -741,40 +741,50 @@ export async function saveStaffGameProficiencySamples(
   if (samples.length === 0) return;
   const microphoneContext = currentMicrophoneContext();
   await saveAnswerEvents(
-    samples.map((sample, eventIndex) => ({
-      id: sample.id,
-      dataSetId: "",
-      sessionId: sample.runId,
-      eventIndex,
-      occurredAt: sample.endedAt,
-      promptStartedAt: sample.startedAt,
-      promptEndedAt: sample.endedAt,
-      mode: sample.mode ?? "staff-game",
-      inputMode: sample.inputMode,
-      deviceInfo: sample.deviceInfo ?? answerDeviceInfo(),
-      ...(sample.inputMode === "microphone"
-        ? { inputGain: sample.inputGain ?? microphoneContext.inputGain }
-        : {}),
-      ...(sample.inputMode === "microphone" ? { sensitivityLevel: sample.sensitivityLevel } : {}),
-      microphoneAlgorithm: sample.microphoneAlgorithm,
-      difficulty: sample.difficulty,
-      timeLimitMs: sample.timeLimitMs,
-      levelId: sample.levelId,
-      songId: sample.songId,
-      staffGameSource: sample.staffGameSource,
-      targetMidi: sample.midi,
-      confidence: sample.attempts?.at(-1)?.confidence,
-      recognizedMidi: sample.missed ? sample.attempts?.at(-1)?.midi : sample.midi,
-      attempts: sample.attempts ?? [],
-      isCorrectFirstTry: sample.firstInputCorrect,
-      isCorrectFinal: sample.missed ? false : true,
-      rawResponseTimeMs: sample.rawResponseTimeMs,
-      estimatedSystemDelayMs: sample.estimatedSystemDelayMs,
-      responseTimeMs: sample.playerResponseTimeMs,
-      wrongAttempts: (sample.attempts ?? []).filter((attempt) => !attempt.isCorrect).length,
-      isExtraNote: (sample.attempts ?? []).some((attempt) => attempt.isExtraNote),
-      isMissed: sample.missed,
-    }))
+    samples.map((sample, eventIndex) => {
+      const scoredAttempts = (sample.attempts ?? []).filter(
+        (attempt) => !attempt.isLateForPrevious
+      );
+      return {
+        id: sample.id,
+        dataSetId: "",
+        sessionId: sample.runId,
+        eventIndex,
+        occurredAt: sample.endedAt,
+        promptStartedAt: sample.startedAt,
+        promptEndedAt: sample.endedAt,
+        mode: sample.mode ?? "staff-game",
+        inputMode: sample.inputMode,
+        deviceInfo: sample.deviceInfo ?? answerDeviceInfo(),
+        ...(sample.inputMode === "microphone"
+          ? { inputGain: sample.inputGain ?? microphoneContext.inputGain }
+          : {}),
+        ...(sample.inputMode === "microphone" ? { sensitivityLevel: sample.sensitivityLevel } : {}),
+        microphoneAlgorithm: sample.microphoneAlgorithm,
+        difficulty: sample.difficulty,
+        timeLimitMs: sample.timeLimitMs,
+        levelId: sample.levelId,
+        songId: sample.songId,
+        staffGameSource: sample.staffGameSource,
+        targetMidi: sample.midi,
+        confidence: scoredAttempts.at(-1)?.confidence,
+        recognizedMidi: sample.wasInterrupted
+          ? undefined
+          : sample.missed
+            ? scoredAttempts.at(-1)?.midi
+            : sample.midi,
+        attempts: sample.attempts ?? [],
+        isCorrectFirstTry: sample.firstInputCorrect,
+        isCorrectFinal: sample.wasInterrupted ? null : sample.missed ? false : true,
+        rawResponseTimeMs: sample.rawResponseTimeMs,
+        estimatedSystemDelayMs: sample.estimatedSystemDelayMs,
+        responseTimeMs: sample.playerResponseTimeMs,
+        wrongAttempts: scoredAttempts.filter((attempt) => !attempt.isCorrect).length,
+        isExtraNote: scoredAttempts.some((attempt) => attempt.isExtraNote),
+        isMissed: sample.missed,
+        wasInterrupted: sample.wasInterrupted,
+      };
+    })
   );
 }
 

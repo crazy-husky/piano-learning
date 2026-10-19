@@ -13,6 +13,7 @@ export interface StaffGamePitch {
 
 export const GAME_LEVEL_COUNT = 60;
 export const BUBBLE_FADE_IN_MS = 200;
+export const LATE_PREVIOUS_INPUT_WINDOW_MS = 400;
 export const ACCURACY_STAR_THRESHOLDS = [60, 75, 90] as const;
 export const RUSH_MODE_COMBO_THRESHOLD = 5;
 export const COMBO_BONUS_MAX_STEPS = 5;

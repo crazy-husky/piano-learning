@@ -38,6 +38,7 @@ export interface StaffGameRoundNoteOutcome {
   note: string;
   firstInputCorrect: boolean | null;
   missed: boolean;
+  wasInterrupted?: boolean;
   /** Wall-clock time of the most recent wrong input or bubble expiry. */
   errorAt?: number;
   /** Positive milliseconds from fade-in completion to the first input, when that input is correct. */
@@ -56,6 +57,8 @@ export interface StaffGameLevelRoundMetrics {
   responseTotalMs: number;
   responseSampleCount: number;
   firstInputByToken: Map<number, StaffGameRoundNoteOutcome>;
+  pendingLateInputMidi: number | null;
+  lateInputShield: { targetToken: number; midi: number } | null;
 }
 
 type StaffGameMode = "levels" | "songs";
@@ -222,6 +225,12 @@ export function useStaffGameRoundClock({
         centerX: randomBubbleCenterX(playfieldRef.current),
         spawnAt: atGameMs,
       };
+      const pendingLateInputMidi = roundMetricsRef.current.pendingLateInputMidi;
+      roundMetricsRef.current.lateInputShield =
+        pendingLateInputMidi === null
+          ? null
+          : { targetToken: next.token, midi: pendingLateInputMidi };
+      roundMetricsRef.current.pendingLateInputMidi = null;
       roundMetricsRef.current.firstInputByToken.set(next.token, {
         token: next.token,
         midi: next.midi,
@@ -308,7 +317,12 @@ export function useStaffGameRoundClock({
         if (activeTarget && !targetPoppedRef.current) {
           const outcome = roundMetricsRef.current.firstInputByToken.get(activeTarget.token);
           if (outcome && outcome.firstInputCorrect === null && !outcome.missed) {
-            roundMetricsRef.current.firstInputByToken.delete(activeTarget.token);
+            const attempts = outcome.attempts ?? [];
+            if (attempts.length > 0 && attempts.every((attempt) => attempt.isLateForPrevious)) {
+              outcome.wasInterrupted = true;
+            } else {
+              roundMetricsRef.current.firstInputByToken.delete(activeTarget.token);
+            }
           }
         }
         finishRound();
@@ -322,6 +336,8 @@ export function useStaffGameRoundClock({
         const missedTarget = targetRef.current;
         targetRef.current = null;
         if (missedTarget) {
+          roundMetricsRef.current.pendingLateInputMidi = missedTarget.midi;
+          roundMetricsRef.current.lateInputShield = null;
           const outcome = roundMetricsRef.current.firstInputByToken.get(missedTarget.token);
           if (outcome) {
             outcome.missed = true;

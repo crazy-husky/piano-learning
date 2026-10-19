@@ -381,6 +381,8 @@ function createRoundMetrics(): StaffGameLevelRoundMetrics {
     responseTotalMs: 0,
     responseSampleCount: 0,
     firstInputByToken: new Map(),
+    pendingLateInputMidi: null,
+    lateInputShield: null,
   };
 }
 
@@ -1725,7 +1727,8 @@ export function StaffGameView({
       outcomes: StaffGameRoundNoteOutcome[],
       wrongAnswerRecords: StaffGameWrongAnswerRecord[]
     ): void => {
-      setSummaryWeakNoteOutcomes(outcomes);
+      const scoredOutcomes = outcomes.filter((outcome) => !outcome.wasInterrupted);
+      setSummaryWeakNoteOutcomes(scoredOutcomes);
       setSummaryArchiveRunId(null);
       setSummaryArchiveRun(null);
       summaryArchiveRunIdRef.current = null;
@@ -1735,7 +1738,7 @@ export function StaffGameView({
       setWrongNoteArchiveRetryQueued(false);
 
       if (roundPurposeRef.current !== "wrong-note-review") {
-        const nextWeights = updateStaffGameWeakNoteWeights(outcomes);
+        const nextWeights = updateStaffGameWeakNoteWeights(scoredOutcomes);
         weakNoteWeightsRef.current = nextWeights;
         setWeakNoteWeights(nextWeights);
       }
@@ -1806,7 +1809,8 @@ export function StaffGameView({
             estimatedSystemDelayMs
           ),
           firstInputCorrect: outcome.firstInputCorrect,
-          missed: outcome.missed || outcome.firstInputCorrect === null,
+          missed: outcome.missed || (outcome.firstInputCorrect === null && !outcome.wasInterrupted),
+          wasInterrupted: outcome.wasInterrupted,
         };
       });
       const validPlayerResponses = proficiencySamples
@@ -1830,7 +1834,7 @@ export function StaffGameView({
       });
       if (gameModeRef.current === "songs") return;
       const { notes, firstTryCorrect } = summarizeStaffGameWrongNoteOutcomes(
-        outcomes,
+        scoredOutcomes,
         wrongAnswerRecords,
         endedAt
       );
@@ -1846,9 +1850,9 @@ export function StaffGameView({
         reviewRange: source === "review" ? roundReviewRangeRef.current : null,
         notePoolScope: roundNotePoolScopeRef.current ?? null,
         noteSchedulingStrategy: roundNoteSchedulingStrategyRef.current,
-        totalTargets: outcomes.length,
+        totalTargets: scoredOutcomes.length,
         firstTryCorrect,
-        lowSample: source !== "challenge" && outcomes.length < 10,
+        lowSample: source !== "challenge" && scoredOutcomes.length < 10,
         notes,
       };
       if (source === "review") setSummaryArchiveRun(run);
@@ -2771,7 +2775,12 @@ export function StaffGameView({
     if (activeTarget && !targetPoppedRef.current) {
       const outcome = roundMetricsRef.current.firstInputByToken.get(activeTarget.token);
       if (outcome && outcome.firstInputCorrect === null && !outcome.missed) {
-        roundMetricsRef.current.firstInputByToken.delete(activeTarget.token);
+        const attempts = outcome.attempts ?? [];
+        if (attempts.length > 0 && attempts.every((attempt) => attempt.isLateForPrevious)) {
+          outcome.wasInterrupted = true;
+        } else {
+          roundMetricsRef.current.firstInputByToken.delete(activeTarget.token);
+        }
       }
     }
 
