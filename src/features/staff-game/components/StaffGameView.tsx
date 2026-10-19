@@ -74,6 +74,7 @@ import {
 import { useStaffGameScoring } from "../hooks/useStaffGameScoring";
 import { triggerStaffGameHitHaptic } from "../logic/staffGameHaptics";
 import { useStaffGameAudio } from "../hooks/useStaffGameAudio";
+import type { StaffGameSoundPlaybackTiming } from "../audio/staffGameSounds";
 import { resolveStaffGameInputMode } from "../logic/staffGameSettings";
 import {
   staffGamePromptSuppressedMidiNotes,
@@ -455,7 +456,7 @@ function defaultGameSettings(): StaffGameSettings {
     notePoolScope: "all-history",
     noteSchedulingStrategy: "system",
     wrongNoteStatisticsEnabled: true,
-    autoArchiveWrongNotesEnabled: false,
+    autoArchiveWrongNotesEnabled: true,
     audioByMode: {
       levels: { soundEffectsEnabled: true, backgroundMusicEnabled: true, pianoSoundEnabled: false },
       songs: { soundEffectsEnabled: false, backgroundMusicEnabled: false, pianoSoundEnabled: true },
@@ -1896,6 +1897,26 @@ export function StaffGameView({
     ]
   );
 
+  const registerComboSoundSuppressionWindow = useCallback(
+    (
+      suppressedMidiNotes: readonly number[],
+      { startedAtMs, durationMs }: StaffGameSoundPlaybackTiming
+    ): void => {
+      if (suppressedMidiNotes.length === 0) return;
+      const endAtMs = startedAtMs + durationMs + STAFF_GAME_PROMPT_RECOGNITION_TAIL_MS;
+      promptSuppressionWindowsRef.current = [
+        ...promptSuppressionWindowsRef.current.filter((window) => window.endAtMs > startedAtMs),
+        {
+          endAtMs,
+          midiNotes: new Set(suppressedMidiNotes),
+          startAtMs: startedAtMs,
+        },
+      ];
+      suppressRecognizedNotes(suppressedMidiNotes, startedAtMs, endAtMs);
+    },
+    [suppressRecognizedNotes]
+  );
+
   const playComboFeedback = useCallback(
     (nextCombo: number): void => {
       const promptSound =
@@ -1913,25 +1934,26 @@ export function StaffGameView({
         const suppressedMidiNotes = isMicrophoneInput
           ? staffGamePromptSuppressedMidiNotes(promptSound, microphoneAlgorithm)
           : [];
-        playGameSound(promptSound, ({ startedAtMs, durationMs }) => {
-          if (suppressedMidiNotes.length === 0) return;
-          const endAtMs = startedAtMs + durationMs + STAFF_GAME_PROMPT_RECOGNITION_TAIL_MS;
-          promptSuppressionWindowsRef.current = [
-            ...promptSuppressionWindowsRef.current.filter((window) => window.endAtMs > startedAtMs),
-            {
-              endAtMs,
-              midiNotes: new Set(suppressedMidiNotes),
-              startAtMs: startedAtMs,
-            },
-          ];
-          suppressRecognizedNotes(suppressedMidiNotes, startedAtMs, endAtMs);
-        });
+        playGameSound(promptSound, (timing) =>
+          registerComboSoundSuppressionWindow(suppressedMidiNotes, timing)
+        );
       }
       if (nextCombo >= 3 && nextCombo % 3 === 0 && !isNearComboVoiceMilestone(nextCombo)) {
-        playGameSound("comboStreak");
+        const suppressedMidiNotes = isMicrophoneInput
+          ? staffGamePromptSuppressedMidiNotes("comboStreak", microphoneAlgorithm)
+          : [];
+        playGameSound("comboStreak", (timing) =>
+          registerComboSoundSuppressionWindow(suppressedMidiNotes, timing)
+        );
       }
     },
-    [gameModeRef, microphoneAlgorithm, playGameSound, settingsRef, suppressRecognizedNotes]
+    [
+      gameModeRef,
+      microphoneAlgorithm,
+      playGameSound,
+      registerComboSoundSuppressionWindow,
+      settingsRef,
+    ]
   );
 
   const getPromptSuppressionWindow = useCallback(() => {
