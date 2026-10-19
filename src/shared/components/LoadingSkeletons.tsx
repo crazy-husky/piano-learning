@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LoadingActivityText } from "./LoadingActivity";
 
 const LOADING_SKELETON_DELAY_MS = 150;
 
@@ -21,7 +22,9 @@ export function AppStartupSkeleton(): JSX.Element {
           ♫
         </span>
         <strong>识谱视奏</strong>
-        <span className="app-startup-message">正在准备练习空间</span>
+        <span className="app-startup-message">
+          <LoadingActivityText kind="dots">正在准备练习空间</LoadingActivityText>
+        </span>
         <div aria-hidden="true" className="app-startup-skeleton">
           <div className="app-startup-skeleton-choice-row">
             <i />

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type LoadingActivityKind = "music" | "spinner";
+export type LoadingActivityKind = "dots" | "spinner";
 
 interface LoadingActivityIndicatorProps {
   kind: LoadingActivityKind;
@@ -22,21 +22,11 @@ export function LoadingActivityIndicator({
   }
 
   return (
-    <svg aria-hidden="true" className={className} focusable="false" viewBox="0 0 64 36">
-      <path className="loading-activity-staff" d="M2 5h60M2 11.5h60M2 18h60M2 24.5h60M2 31h60" />
-      <g className="loading-activity-note loading-activity-note--first">
-        <ellipse cx="15" cy="27" rx="5.4" ry="3.6" />
-        <path d="M20 27V11" />
-      </g>
-      <g className="loading-activity-note loading-activity-note--second">
-        <ellipse cx="32" cy="20.5" rx="5.4" ry="3.6" />
-        <path d="M37 20.5V8" />
-      </g>
-      <g className="loading-activity-note loading-activity-note--third">
-        <ellipse cx="49" cy="14" rx="5.4" ry="3.6" />
-        <path d="M54 14V4" />
-      </g>
-    </svg>
+    <span aria-hidden="true" className={className}>
+      <i className="loading-activity-dot" />
+      <i className="loading-activity-dot" />
+      <i className="loading-activity-dot" />
+    </span>
   );
 }
 
@@ -46,9 +36,10 @@ export function LoadingActivityText({
   size = "compact",
 }: LoadingActivityTextProps): JSX.Element {
   return (
-    <span className="loading-activity-text">
-      <LoadingActivityIndicator kind={kind} size={size} />
+    <span className={`loading-activity-text loading-activity-text--${kind}`}>
+      {kind === "spinner" ? <LoadingActivityIndicator kind={kind} size={size} /> : null}
       <span>{children}</span>
+      {kind === "dots" ? <LoadingActivityIndicator kind={kind} size={size} /> : null}
     </span>
   );
 }

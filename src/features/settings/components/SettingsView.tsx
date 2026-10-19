@@ -56,7 +56,10 @@ import {
   STAFF_PAGE_UI_PREFERENCES_KEY,
 } from "../../../shared/preferences/staffPageUiPreferences";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
-import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
+import {
+  LoadingActivityIndicator,
+  LoadingActivityText,
+} from "../../../shared/components/LoadingActivity";
 import {
   clearGlobalDebugEvents,
   GLOBAL_DEBUG_ENABLED_KEY,
@@ -929,7 +932,7 @@ export function SettingsView({
               {appUpdateStatus === "checking" ? (
                 <LoadingActivityText kind="spinner">正在检查…</LoadingActivityText>
               ) : appUpdateStatus === "preparing" ? (
-                <LoadingActivityText kind="spinner">正在准备…</LoadingActivityText>
+                <LoadingActivityText kind="dots">正在准备</LoadingActivityText>
               ) : appUpdateStatus === "reloading" ? (
                 <LoadingActivityText kind="spinner">正在刷新…</LoadingActivityText>
               ) : appUpdateStatus === "up-to-date" || hasUpdateAvailable ? (
@@ -944,7 +947,13 @@ export function SettingsView({
               aria-live="polite"
               className={`status-line${appUpdateStatus === "error" ? " danger" : ""}`}
             >
-              {appUpdateMessage}
+              {appUpdateStatus === "preparing" ? (
+                <>
+                  {appUpdateMessage} <LoadingActivityIndicator kind="dots" />
+                </>
+              ) : (
+                appUpdateMessage
+              )}
             </p>
           ) : null}
           {hasUpdateAvailable ? (

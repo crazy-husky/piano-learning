@@ -1751,9 +1751,9 @@ export function PracticeView({
               `正在监听麦克风 · ${practiceMicrophoneAlgorithmLabel(practiceMicrophone.activeAlgorithm)}`
             ) : practiceMicrophone.status === "requesting" ? (
               <LoadingActivityText
-                kind={practiceMicrophone.isPreparingSwiftF0 ? "music" : "spinner"}
+                kind={practiceMicrophone.isPreparingSwiftF0 ? "dots" : "spinner"}
               >
-                {practiceMicrophone.isPreparingSwiftF0 ? "正在准备识别模型…" : "正在连接麦克风…"}
+                {practiceMicrophone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风…"}
               </LoadingActivityText>
             ) : (
               (practiceMicrophone.error ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))

@@ -1141,7 +1141,7 @@ export function MicrophoneParameterBenchmarkDialog({
               type="button"
             >
               {isPreparingAlgorithm ? (
-                <LoadingActivityText kind="music">正在准备识别模型…</LoadingActivityText>
+                <LoadingActivityText kind="dots">正在准备识别模型</LoadingActivityText>
               ) : isScanning ? (
                 "正在扫描…"
               ) : (

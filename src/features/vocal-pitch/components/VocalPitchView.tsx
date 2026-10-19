@@ -832,7 +832,7 @@ export function VocalPitchView({
       : ((backupPreflightPending ? "正在检查备份状态…" : inlineMessage) ??
         analysisMessage ??
         recorder.captureNotice ??
-        (playback.isPreparing ? "正在准备回放音量…" : null) ??
+        (playback.isPreparing ? "正在准备回放音量" : null) ??
         (analysisStale ? "参数已更改，请重新分析" : null));
   const controlStatusActivity: LoadingActivityKind | null =
     modelDownloadProgress !== null
@@ -844,7 +844,7 @@ export function VocalPitchView({
             inlineMessage == null &&
             analysisMessage == null &&
             recorder.captureNotice == null
-          ? "music"
+          ? "dots"
           : null;
   return (
     <div ref={workspaceRef} className="vocal-workspace">

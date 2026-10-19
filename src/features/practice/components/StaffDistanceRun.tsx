@@ -991,8 +991,8 @@ export function StaffDistanceRun({
           ) : microphone.status === "listening" ? (
             `麦克风已连接，请弹奏${hasPlayedStartingNote ? "下一个音" : "谱面上的第一个音"}`
           ) : microphone.status === "requesting" ? (
-            <LoadingActivityText kind={microphone.isPreparingSwiftF0 ? "music" : "spinner"}>
-              {microphone.isPreparingSwiftF0 ? "正在准备识别模型…" : "正在连接麦克风…"}
+            <LoadingActivityText kind={microphone.isPreparingSwiftF0 ? "dots" : "spinner"}>
+              {microphone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风…"}
             </LoadingActivityText>
           ) : (
             (microphone.error ?? "麦克风未连接")

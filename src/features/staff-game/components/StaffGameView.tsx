@@ -3250,7 +3250,7 @@ export function StaffGameView({
     ? "麦克风已连接，可以开始听音"
     : microphone.status === "requesting"
       ? microphone.isPreparingSwiftF0
-        ? "正在准备识别模型…"
+        ? "正在准备识别模型"
         : "正在连接麦克风…"
       : microphone.error
         ? "麦克风权限或设备需要处理"
@@ -3278,7 +3278,7 @@ export function StaffGameView({
   const gameInputStatusActivity =
     settings.inputMode === "physical" && microphone.status === "requesting"
       ? microphone.isPreparingSwiftF0
-        ? ("music" as const)
+        ? ("dots" as const)
         : ("spinner" as const)
       : settings.inputMode === "midi" && midi.status === "requesting"
         ? ("spinner" as const)
@@ -3318,7 +3318,7 @@ export function StaffGameView({
           role={resourceLoadState === "error" ? "alert" : undefined}
         >
           {resourceLoadState === "loading" ? (
-            <LoadingActivityIndicator kind="music" size="prominent" />
+            <LoadingActivityIndicator kind="dots" size="prominent" />
           ) : null}
           <strong>
             {resourceLoadState === "loading" ? "正在加载游戏素材" : "部分游戏素材未能加载"}

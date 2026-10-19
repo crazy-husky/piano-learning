@@ -619,7 +619,7 @@ export function useAppUpdateNotice(): AppUpdateController {
 
     preparingBuildIdRef.current = buildId;
     setStatus("preparing");
-    setMessage("发现新版本，正在后台准备…");
+    setMessage("发现新版本，正在后台准备");
 
     void stageServiceWorkerUpdate(buildId)
       .then((result): void => {
@@ -713,7 +713,7 @@ export function useAppUpdateNotice(): AppUpdateController {
 
       if (preparingBuildIdRef.current === buildId) {
         setStatus("preparing");
-        setMessage("发现新版本，正在后台准备…");
+        setMessage("发现新版本，正在后台准备");
         return;
       }
 

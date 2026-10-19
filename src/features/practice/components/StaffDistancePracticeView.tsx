@@ -978,7 +978,7 @@ export function StaffDistancePracticeView({
               )}
               <span className="staff-distance-start-label" key={trainingMode}>
                 {isStarting ? (
-                  <LoadingActivityText kind="music">正在准备…</LoadingActivityText>
+                  <LoadingActivityText kind="dots">正在准备</LoadingActivityText>
                 ) : trainingMode === "look" ? (
                   "开始看间距"
                 ) : (

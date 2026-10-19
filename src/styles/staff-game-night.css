@@ -852,7 +852,7 @@
   color: #332b1b;
 }
 
-:root[data-app-theme="dark"] .staff-game-loading-card > .loading-activity-indicator--music {
+:root[data-app-theme="dark"] .staff-game-loading-card > .loading-activity-indicator--dots {
   color: var(--staff-game-night-mint);
 }
 

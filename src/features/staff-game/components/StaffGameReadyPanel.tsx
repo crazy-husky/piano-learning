@@ -181,8 +181,8 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
           type="button"
         >
           {props.isStarting ? (
-            <LoadingActivityText kind="music">
-              {props.isPreparingMicrophone ? "正在准备识别模型…" : "正在准备…"}
+            <LoadingActivityText kind="dots">
+              {props.isPreparingMicrophone ? "正在准备识别模型" : "正在准备"}
             </LoadingActivityText>
           ) : (
             <>
@@ -249,8 +249,8 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
           type="button"
         >
           {props.isStarting ? (
-            <LoadingActivityText kind="music">
-              {props.isPreparingMicrophone ? "正在准备识别模型…" : "正在准备…"}
+            <LoadingActivityText kind="dots">
+              {props.isPreparingMicrophone ? "正在准备识别模型" : "正在准备"}
             </LoadingActivityText>
           ) : (
             <>
@@ -391,8 +391,8 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             type="button"
           >
             {props.isStarting ? (
-              <LoadingActivityText kind="music">
-                {props.isPreparingMicrophone ? "正在准备识别模型…" : "正在准备…"}
+              <LoadingActivityText kind="dots">
+                {props.isPreparingMicrophone ? "正在准备识别模型" : "正在准备"}
               </LoadingActivityText>
             ) : (
               <>
