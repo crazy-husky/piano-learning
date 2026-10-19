@@ -1,4 +1,12 @@
-import { AlertTriangle, DatabaseBackup, FolderOpen, RotateCcw, Trash2, Upload } from "lucide-react";
+import {
+  AlertTriangle,
+  DatabaseBackup,
+  FolderOpen,
+  RotateCcw,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import {
   type Dispatch,
@@ -60,6 +68,7 @@ import { MicrophoneParameterBenchmarkDialog } from "./MicrophoneParameterBenchma
 
 type StoredBackupState = BackupState & { restoreRequiredBeforeBackup?: boolean };
 type SettingsActionFeedback = { description?: string; kind?: "danger"; title: string };
+type SettingsDataClearFeedback = { kind: "success" | "error"; message: string };
 const PIANO_VOLUME_STEP = 0.05;
 const ANSWER_KEYBOARD_SCALE_STEP = 0.05;
 const SLIDER_SAVE_DEBOUNCE_MS = 450;
@@ -145,7 +154,9 @@ export function SettingsView({
   const confirmDialog = useConfirmDialog();
   const [busy, setBusy] = useState(false);
   const [isDataClearDialogOpen, setIsDataClearDialogOpen] = useState(false);
-  const [dataClearConfirmation, setDataClearConfirmation] = useState("");
+  const [dataClearFeedback, setDataClearFeedback] = useState<SettingsDataClearFeedback | null>(
+    null
+  );
   const [isRestoringConfiguration, setIsRestoringConfiguration] = useState(false);
   const [globalDebugEnabled, setGlobalDebugEnabledState] = useState(isGlobalDebugEnabled);
   const handledAudioInputSectionRequestRef = useRef(0);
@@ -195,17 +206,22 @@ export function SettingsView({
   const [isMicrophoneBenchmarkOpen, setIsMicrophoneBenchmarkOpen] = useState(false);
 
   async function clearApplicationData(clearConfiguration: boolean): Promise<void> {
-    if (dataClearConfirmation !== "DELETE" || busy) return;
+    if (busy) return;
     setBusy(true);
     try {
       if (clearConfiguration) await deleteAllApplicationData();
       else await clearLearningRecordsPreservingConfiguration();
-      setIsDataClearDialogOpen(false);
-      toast.success(clearConfiguration ? "所有应用数据已清除" : "学习记录已清除，配置已保留");
-      window.location.reload();
+      setDataClearFeedback({
+        kind: "success",
+        message: clearConfiguration
+          ? "所有应用数据已清除，正在重新加载…"
+          : "学习记录已清除，配置已保留，正在重新加载…",
+      });
+      window.setTimeout(() => window.location.reload(), 1800);
     } catch (error) {
-      toast.error("清理失败", {
-        description: error instanceof Error ? error.message : String(error),
+      setDataClearFeedback({
+        kind: "error",
+        message: `清理失败：${error instanceof Error ? error.message : String(error)}`,
       });
       setBusy(false);
     }
@@ -848,7 +864,7 @@ export function SettingsView({
                 className="settings-data-clear-trigger"
                 disabled={busy}
                 onClick={() => {
-                  setDataClearConfirmation("");
+                  setDataClearFeedback(null);
                   setIsDataClearDialogOpen(true);
                 }}
                 type="button"
@@ -970,38 +986,42 @@ export function SettingsView({
       <AlertDialog.Root
         onOpenChange={(open) => {
           setIsDataClearDialogOpen(open);
-          if (!open) setDataClearConfirmation("");
+          if (!open) setDataClearFeedback(null);
         }}
         open={isDataClearDialogOpen}
       >
         <AlertDialog.Portal>
           <AlertDialog.Overlay className="ui-confirm-overlay" />
           <AlertDialog.Content className="ui-confirm-content settings-data-clear-dialog">
+            <AlertDialog.Cancel asChild>
+              <button
+                aria-label="关闭清空数据对话框"
+                className="settings-data-clear-close"
+                disabled={busy}
+                type="button"
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </AlertDialog.Cancel>
             <AlertDialog.Title className="ui-confirm-title">
               <AlertTriangle aria-hidden="true" className="settings-data-clear-icon" size={20} />
               清空本机数据？
             </AlertDialog.Title>
             <AlertDialog.Description className="ui-confirm-description">
-              此操作不可逆。输入 DELETE 后选择清理范围；浏览器备份目录中的文件不会被删除。
+              此操作不可逆。选择清理范围；浏览器备份目录中的文件不会被删除。
             </AlertDialog.Description>
-            <label className="settings-data-clear-confirmation">
-              输入 DELETE 以继续
-              <input
-                autoComplete="off"
-                onChange={(event) => setDataClearConfirmation(event.target.value)}
-                spellCheck={false}
-                value={dataClearConfirmation}
-              />
-            </label>
+            {dataClearFeedback && (
+              <p
+                className={`settings-data-clear-feedback is-${dataClearFeedback.kind}`}
+                role={dataClearFeedback.kind === "error" ? "alert" : "status"}
+              >
+                {dataClearFeedback.message}
+              </p>
+            )}
             <div className="ui-confirm-actions settings-data-clear-actions">
-              <AlertDialog.Cancel asChild>
-                <button className="button-secondary" disabled={busy} type="button">
-                  取消
-                </button>
-              </AlertDialog.Cancel>
               <button
                 className="button-secondary"
-                disabled={busy || dataClearConfirmation !== "DELETE"}
+                disabled={busy}
                 onClick={() => void clearApplicationData(false)}
                 type="button"
               >
@@ -1009,7 +1029,7 @@ export function SettingsView({
               </button>
               <button
                 className="ui-confirm-action is-destructive"
-                disabled={busy || dataClearConfirmation !== "DELETE"}
+                disabled={busy}
                 onClick={() => void clearApplicationData(true)}
                 type="button"
               >

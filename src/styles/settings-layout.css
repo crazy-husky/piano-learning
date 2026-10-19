@@ -195,6 +195,21 @@
   align-items: center;
   display: flex;
   gap: 8px;
+  padding-right: 36px;
+}
+
+.settings-data-clear-dialog .settings-data-clear-close {
+  align-items: center;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 36px;
 }
 
 .settings-data-clear-icon {
@@ -202,24 +217,32 @@
   flex: 0 0 auto;
 }
 
-.settings-data-clear-confirmation {
+.settings-data-clear-actions {
   display: grid;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.settings-data-clear-confirmation input {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  min-height: 42px;
-  padding: 8px 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .settings-data-clear-actions button {
-  min-width: 110px;
+  min-width: 0;
+}
+
+.settings-data-clear-feedback {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.settings-data-clear-feedback.is-success {
+  background: color-mix(in srgb, var(--success, #2f8f68) 12%, var(--surface));
+  color: var(--success, #2f8f68);
+}
+
+.settings-data-clear-feedback.is-error {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--danger);
 }
 
 .backup-settings-actions button {
