@@ -1900,19 +1900,19 @@ export function StaffGameView({
   const registerComboSoundSuppressionWindow = useCallback(
     (
       suppressedMidiNotes: readonly number[],
-      { startedAtMs, durationMs }: StaffGameSoundPlaybackTiming
+      { startAtMs, durationMs }: StaffGameSoundPlaybackTiming
     ): void => {
       if (suppressedMidiNotes.length === 0) return;
-      const endAtMs = startedAtMs + durationMs + STAFF_GAME_PROMPT_RECOGNITION_TAIL_MS;
+      const endAtMs = startAtMs + durationMs + STAFF_GAME_PROMPT_RECOGNITION_TAIL_MS;
       promptSuppressionWindowsRef.current = [
-        ...promptSuppressionWindowsRef.current.filter((window) => window.endAtMs > startedAtMs),
+        ...promptSuppressionWindowsRef.current.filter((window) => window.endAtMs > startAtMs),
         {
           endAtMs,
           midiNotes: new Set(suppressedMidiNotes),
-          startAtMs: startedAtMs,
+          startAtMs,
         },
       ];
-      suppressRecognizedNotes(suppressedMidiNotes, startedAtMs, endAtMs);
+      suppressRecognizedNotes(suppressedMidiNotes, startAtMs, endAtMs);
     },
     [suppressRecognizedNotes]
   );

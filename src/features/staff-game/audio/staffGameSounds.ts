@@ -27,7 +27,7 @@ interface SoundPlayer {
 }
 
 export interface StaffGameSoundPlaybackTiming {
-  startedAtMs: number;
+  startAtMs: number;
   durationMs: number;
 }
 
@@ -172,10 +172,10 @@ export function playStaffGameSound(
     .then(() => ready)
     .then(() => {
       if (!canPlayAudio(sound)) return;
-      const startedAtMs = performance.now();
+      const startAtMs = performance.now();
       player.start();
       onPlaybackStart?.({
-        startedAtMs,
+        startAtMs,
         durationMs: Math.max(0, player.buffer.duration * 1_000),
       });
     })
