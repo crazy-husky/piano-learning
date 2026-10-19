@@ -1,4 +1,4 @@
-import { Renderer, Stave, StaveConnector, Stem, type StaveNote } from "vexflow";
+import { BarlineType, Renderer, Stave, StaveConnector, Stem, type StaveNote } from "vexflow";
 import { staffForSingleClefMode } from "../../domain/staffNotation";
 import type { NoteName, Staff, StaffNotationMode, TargetNote } from "../../domain/types";
 import { getPageThemeColor } from "../appearance/pageAppearance";
@@ -196,6 +196,10 @@ export function drawGrandStaff(
   const yOffset = options.yOffset ?? 0;
   const treble = new Stave(frame.x, yOffset + anchors.trebleY, frame.staveWidth).addClef("treble");
   const bass = new Stave(frame.x, yOffset + anchors.bassY, frame.staveWidth).addClef("bass");
+  // Grand staves use one shared right connector. Per-stave end bars create
+  // duplicate verticals or extend beyond the combined connector on narrow layouts.
+  treble.setEndBarType(BarlineType.NONE);
+  bass.setEndBarType(BarlineType.NONE);
   if (options.timeSignature) {
     treble.addTimeSignature(options.timeSignature);
     bass.addTimeSignature(options.timeSignature);
@@ -217,9 +221,12 @@ export function drawSingleStaff(
   frame: StaffFrame,
   staff: "treble" | "bass",
   y: number,
-  options: { timeSignature?: string; yOffset?: number } = {}
+  options: { showRightBarline?: boolean; timeSignature?: string; yOffset?: number } = {}
 ): DrawnSingleStaff {
   const stave = new Stave(frame.x, (options.yOffset ?? 0) + y, frame.staveWidth).addClef(staff);
+  if (options.showRightBarline === false) {
+    stave.setEndBarType(BarlineType.NONE);
+  }
   if (options.timeSignature) stave.addTimeSignature(options.timeSignature);
   stave.setContext(context).draw();
   return { staff: stave };
@@ -237,6 +244,7 @@ export function drawStaffSystem({
   vertical,
   timeSignature,
   showGrandStaffRightConnector = true,
+  showSingleStaffRightBarline = true,
   yOffset = 0,
 }: {
   brace?: boolean;
@@ -249,6 +257,7 @@ export function drawStaffSystem({
   scale: number;
   useLedgerGap: boolean;
   showGrandStaffRightConnector?: boolean;
+  showSingleStaffRightBarline?: boolean;
   timeSignature?: string;
   vertical: StaffVerticalProfile;
   yOffset?: number;
@@ -277,6 +286,7 @@ export function drawStaffSystem({
   const staff = staffForSingleClefMode(mode);
   const yPx = staff === "treble" ? vertical.trebleOnlyYPx : vertical.bassOnlyYPx;
   const stave = drawSingleStaff(context, frame, staff, logicalPx(yPx, scale), {
+    showRightBarline: showSingleStaffRightBarline,
     timeSignature,
     yOffset,
   }).staff;

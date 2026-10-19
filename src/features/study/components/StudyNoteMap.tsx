@@ -1,35 +1,37 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Formatter, Renderer, StaveNote, Voice } from "vexflow";
+import { Formatter, Renderer, Stave, StaveNote, Voice } from "vexflow";
 import { formatTargetNoteLabel, noteToVexKey } from "../../../domain/notes";
+import { staffForSingleClefMode } from "../../../domain/staffNotation";
 import type { NoteName, Staff, StaffNotationMode, TargetNote } from "../../../domain/types";
 import type { NoteNameColumn } from "../../../domain/staffRecall";
 import { STUDY_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
+import { FIXED_DO_SOLFEGE } from "../../../shared/staff/fixedDoSolfege";
 import {
   alignStaveNotesToCenters,
   createStaffRenderSurface,
   drawStaffSystem,
   getEvenlySpacedCenters,
   getResponsiveStaffFrame,
+  getGrandStaffAnchors,
   logicalPx,
   staveNoteCenterX,
+  type StaffSystem,
   type StaffRenderSurface,
 } from "../../../shared/staff/staffGeometry";
-import { useNightMode } from "../../../shared/appearance/pageAppearance";
+import { getPageThemeColor, useNightMode } from "../../../shared/appearance/pageAppearance";
 
 const NOTE_DURATION = "w";
 const NEUTRAL_COLOR = "#211c18";
 const MUTED_COLOR = "#766b5f";
 const ACTIVE_COLOR = "#2f8f5f";
-const ACTIVE_FILL = "rgba(47, 143, 95, 0.16)";
 const TRANSPARENT_NOTE_COLOR = "rgba(0, 0, 0, 0)";
-const MOBILE_STUDY_STAFF_VERTICAL = {
-  centerYPx: 160,
-  gapPx: 110,
-  ledgerGapPx: 180,
-  trebleOnlyYPx: 160,
-  bassOnlyYPx: 160,
-  viewHeightPx: 460,
-} as const;
+
+function getStudyMapHeight(staffNotationMode: StaffNotationMode, useLedgerGap: boolean): number {
+  if (staffNotationMode === "grand") {
+    return useLedgerGap ? 440 : 360;
+  }
+  return 260;
+}
 
 interface StudyNoteMapProps {
   columns: NoteNameColumn[];
@@ -38,6 +40,7 @@ interface StudyNoteMapProps {
   staffNotationMode: StaffNotationMode;
   useLedgerGap: boolean;
   label: string;
+  instructions?: string;
   onPlayColumn: (noteName: NoteName) => void;
   onPlayNote: (note: TargetNote) => void;
   showLabels: boolean;
@@ -45,25 +48,38 @@ interface StudyNoteMapProps {
 
 interface StudyNotationColors {
   active: string;
-  activeFill: string;
   ink: string;
   muted: string;
+  staff: string;
 }
 
 interface StudyMapMetrics {
   fixedDoNumberY: number;
-  height: number;
   labelHitHeight: number;
   labelHitTop: number;
-  staveWidth: number;
   noteNameY: number;
-  width: number;
+  solfegeY: number;
+  staveWidth: number;
   x: number;
 }
 
 interface StudyColumnLayout {
   centerX: number;
   highlightWidth: number;
+}
+
+export function isStudyNoteNameHighlighted(
+  noteName: NoteName,
+  highlightedNoteNames: ReadonlySet<NoteName> | undefined
+): boolean {
+  return highlightedNoteNames?.has(noteName) ?? false;
+}
+
+export function isStudyNoteHighlighted(
+  noteId: string,
+  highlightedNoteId: string | undefined
+): boolean {
+  return highlightedNoteId === noteId;
 }
 
 function makeChord(
@@ -73,7 +89,9 @@ function makeChord(
   highlightedNoteId: string | undefined,
   colors: StudyNotationColors
 ): StaveNote {
-  const columnHighlighted = notes.some((note) => highlightedNoteNames?.has(note.noteName) ?? false);
+  const columnHighlighted = notes.some((note) =>
+    isStudyNoteNameHighlighted(note.noteName, highlightedNoteNames)
+  );
   const hasNotes = notes.length > 0;
   const chord = new StaveNote({
     clef: staff,
@@ -87,9 +105,9 @@ function makeChord(
     : TRANSPARENT_NOTE_COLOR;
   chord.setStyle({ fillStyle: baseColor, strokeStyle: baseColor });
   chord.setLedgerLineStyle({ fillStyle: baseColor, strokeStyle: baseColor });
-  if (hasNotes && !columnHighlighted && highlightedNoteId) {
+  if (!columnHighlighted && highlightedNoteId) {
     notes.forEach((note, index) => {
-      if (note.id === highlightedNoteId) {
+      if (isStudyNoteHighlighted(note.id, highlightedNoteId)) {
         chord.setKeyStyle(index, { fillStyle: colors.active, strokeStyle: colors.active });
       }
     });
@@ -116,10 +134,15 @@ function noteHeadHitRadius(chord: StaveNote, index: number): number {
   return chord.noteHeads[index]?.getWidth() ?? chord.getGlyphWidth();
 }
 
-function getStudyMapMetrics(surface: StaffRenderSurface, columnCount: number): StudyMapMetrics {
+function getStudyMapMetrics(
+  surface: StaffRenderSurface,
+  columnCount: number,
+  noteNameY: number
+): StudyMapMetrics {
   const frame = getResponsiveStaffFrame(surface, columnCount, STUDY_STAFF_LAYOUT.horizontal);
-  const noteNameY = logicalPx(STUDY_STAFF_LAYOUT.labels.noteNameYPx, surface.scale);
-  const fixedDoNumberY = noteNameY + logicalPx(STUDY_STAFF_LAYOUT.labels.lineGapPx, surface.scale);
+  const lineGap = logicalPx(STUDY_STAFF_LAYOUT.labels.lineGapPx, surface.scale);
+  const solfegeY = noteNameY + lineGap;
+  const fixedDoNumberY = solfegeY + lineGap;
   const labelHitTop =
     noteNameY -
     logicalPx(
@@ -128,7 +151,6 @@ function getStudyMapMetrics(surface: StaffRenderSurface, columnCount: number): S
     );
   return {
     fixedDoNumberY,
-    height: surface.height,
     labelHitHeight:
       fixedDoNumberY -
       labelHitTop +
@@ -137,11 +159,99 @@ function getStudyMapMetrics(surface: StaffRenderSurface, columnCount: number): S
         surface.scale
       ),
     labelHitTop,
-    staveWidth: frame.staveWidth,
     noteNameY,
-    width: surface.width,
+    solfegeY,
+    staveWidth: frame.staveWidth,
     x: frame.x,
   };
+}
+
+function getStudyLabelOffset(
+  columns: NoteNameColumn[],
+  staffNotationMode: StaffNotationMode,
+  useLedgerGap: boolean,
+  scale: number
+): number {
+  const vertical = STUDY_STAFF_LAYOUT.vertical;
+  const staves =
+    staffNotationMode === "grand"
+      ? getGrandStaffAnchors(
+          scale,
+          vertical.centerYPx,
+          useLedgerGap ? vertical.ledgerGapPx : vertical.gapPx
+        )
+      : undefined;
+  const selectedStaff =
+    staffNotationMode === "grand" ? undefined : staffForSingleClefMode(staffNotationMode);
+  const notes = columns.flatMap((column) =>
+    staffNotationMode === "grand"
+      ? [...column.trebleNotes, ...column.bassNotes]
+      : selectedStaff === "treble"
+        ? column.trebleNotes
+        : column.bassNotes
+  );
+  if (notes.length === 0) {
+    return 0;
+  }
+
+  const highestNoteCenter = Math.min(
+    ...notes.map((note) => {
+      const staff = selectedStaff ?? note.staff;
+      const y =
+        staves?.[staff === "treble" ? "trebleY" : "bassY"] ??
+        logicalPx(staff === "treble" ? vertical.trebleOnlyYPx : vertical.bassOnlyYPx, scale);
+      const stave = new Stave(0, y, 100).addClef(staff);
+      const noteHead = new StaveNote({
+        clef: staff,
+        duration: NOTE_DURATION,
+        keys: [noteToVexKey(note)],
+      });
+      return stave.getYForNote(noteHead.getLineNumber());
+    })
+  );
+  const labelsBottomPx =
+    STUDY_STAFF_LAYOUT.labels.noteNameYPx +
+    STUDY_STAFF_LAYOUT.labels.lineGapPx * 2 +
+    STUDY_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx * 0.4;
+  const noteHeadAndBreathingRoomPx = 12;
+  return Math.max(
+    0,
+    logicalPx(labelsBottomPx + noteHeadAndBreathingRoomPx, scale) - highestNoteCenter
+  );
+}
+
+function extendStudySurfaceForNotation(surface: StaffRenderSurface, lowestContentY: number): void {
+  const bottomPadding = logicalPx(18, surface.scale);
+  const requiredHeight = lowestContentY + bottomPadding;
+  const extraHeight = Math.max(0, requiredHeight - surface.height);
+  if (extraHeight === 0) {
+    return;
+  }
+
+  const viewBox = surface.svg.viewBox.baseVal;
+  const nextViewBoxHeight = viewBox.height + extraHeight;
+  surface.svg.setAttribute("viewBox", `0 0 ${viewBox.width} ${nextViewBoxHeight}`);
+  surface.svg.setAttribute("height", String(Math.ceil(nextViewBoxHeight * surface.scale)));
+}
+
+function addStudyStaffRightBorder(
+  svg: SVGSVGElement,
+  system: StaffSystem,
+  rightEdgeX: number,
+  stroke: string
+): void {
+  const topStave = system.mode === "grand" ? system.treble : system.stave;
+  const bottomStave = system.mode === "grand" ? system.bass : system.stave;
+  const rightBorder = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  rightBorder.setAttribute("aria-hidden", "true");
+  rightBorder.setAttribute("class", "study-staff-right-border");
+  rightBorder.setAttribute("x1", String(rightEdgeX));
+  rightBorder.setAttribute("x2", String(rightEdgeX));
+  rightBorder.setAttribute("y1", String(topStave.getYForLine(0)));
+  rightBorder.setAttribute("y2", String(bottomStave.getYForLine(4)));
+  rightBorder.setAttribute("stroke", stroke);
+  rightBorder.setAttribute("stroke-width", "1.25");
+  svg.appendChild(rightBorder);
 }
 
 function getStudyColumnLayouts(tickables: StaveNote[], scale: number): StudyColumnLayout[] {
@@ -162,35 +272,6 @@ function getStudyColumnLayouts(tickables: StaveNote[], scale: number): StudyColu
   });
 }
 
-function addColumnHighlight(
-  svg: SVGSVGElement,
-  layout: StudyColumnLayout,
-  metrics: StudyMapMetrics,
-  colors: StudyNotationColors
-): void {
-  const highlight = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  highlight.setAttribute("class", "study-column-highlight");
-  highlight.setAttribute("x", String(layout.centerX - layout.highlightWidth / 2));
-  highlight.setAttribute("y", String(metrics.labelHitTop));
-  highlight.setAttribute("width", String(layout.highlightWidth));
-  highlight.setAttribute(
-    "height",
-    String(
-      metrics.height -
-        metrics.labelHitTop -
-        logicalPx(
-          STUDY_STAFF_LAYOUT.columnHighlight.bottomPaddingPx,
-          STUDY_STAFF_LAYOUT.notationScale
-        )
-    )
-  );
-  highlight.setAttribute("rx", "8");
-  highlight.setAttribute("fill", colors.activeFill);
-  highlight.setAttribute("stroke", colors.active);
-  highlight.setAttribute("stroke-width", "1");
-  svg.insertBefore(highlight, svg.firstChild);
-}
-
 function addLabelHotspot({
   layout,
   metrics,
@@ -206,6 +287,7 @@ function addLabelHotspot({
 }): void {
   const hotspot = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   hotspot.setAttribute("class", "study-label-hotspot");
+  hotspot.setAttribute("data-study-hotspot-id", `column:${noteName}`);
   hotspot.setAttribute("x", String(layout.centerX - layout.highlightWidth / 2));
   hotspot.setAttribute("y", String(metrics.labelHitTop));
   hotspot.setAttribute("width", String(layout.highlightWidth));
@@ -247,6 +329,7 @@ function addNoteHotspot({
 }): void {
   const hotspot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
   hotspot.setAttribute("class", showHitArea ? "study-note-hotspot active" : "study-note-hotspot");
+  hotspot.setAttribute("data-study-hotspot-id", `note:${note.id}`);
   hotspot.setAttribute("cx", String(x));
   hotspot.setAttribute("cy", String(y));
   hotspot.setAttribute("r", String(radius));
@@ -307,6 +390,7 @@ export function StudyNoteMap({
   highlightedNoteNames,
   staffNotationMode,
   label,
+  instructions,
   onPlayColumn,
   onPlayNote,
   showLabels,
@@ -318,9 +402,9 @@ export function StudyNoteMap({
   const colors = useMemo<StudyNotationColors>(
     () => ({
       active: isNightMode ? "#80cbb4" : ACTIVE_COLOR,
-      activeFill: isNightMode ? "rgba(128, 203, 180, 0.18)" : ACTIVE_FILL,
       ink: isNightMode ? "#bcc6be" : NEUTRAL_COLOR,
       muted: isNightMode ? "#b2beb5" : MUTED_COLOR,
+      staff: getPageThemeColor("--notation-staff", isNightMode ? "#9aa99f" : "#766b5f"),
     }),
     [isNightMode]
   );
@@ -341,23 +425,57 @@ export function StudyNoteMap({
         return;
       }
 
+      const focusedHotspot = document.activeElement;
+      const focusedHotspotId =
+        focusedHotspot && rendererTarget.contains(focusedHotspot)
+          ? focusedHotspot.getAttribute("data-study-hotspot-id")
+          : null;
+      const hasExistingRender = rendererTarget.childNodes.length > 0;
+      const previousPageScroll = hasExistingRender
+        ? { left: window.scrollX, top: window.scrollY }
+        : undefined;
+      const previousMapScroll = hasExistingRender ? frame.scrollLeft : undefined;
       rendererTarget.innerHTML = "";
+      const frameStyles = window.getComputedStyle(frame);
+      const horizontalPadding =
+        (Number.parseFloat(frameStyles.paddingLeft) || 0) +
+        (Number.parseFloat(frameStyles.paddingRight) || 0);
+      const horizontalBorder =
+        (Number.parseFloat(frameStyles.borderLeftWidth) || 0) +
+        (Number.parseFloat(frameStyles.borderRightWidth) || 0);
+      const clientWidth = frame.clientWidth;
       const measuredWidth =
-        frame.getBoundingClientRect().width ||
-        frame.clientWidth ||
-        frame.parentElement?.clientWidth ||
-        1;
-      const containerWidth = Math.max(1, Math.floor(measuredWidth));
-      const vertical =
-        containerWidth < 520 ? MOBILE_STUDY_STAFF_VERTICAL : STUDY_STAFF_LAYOUT.vertical;
+        clientWidth || frame.getBoundingClientRect().width || frame.parentElement?.clientWidth || 1;
+      const containerWidth = Math.max(
+        1,
+        Math.floor(measuredWidth - horizontalPadding - (clientWidth ? 0 : horizontalBorder))
+      );
+      const renderWidth = containerWidth;
+      rendererTarget.style.setProperty("--study-render-width", `${renderWidth}px`);
+      const vertical = {
+        ...STUDY_STAFF_LAYOUT.vertical,
+        viewHeightPx: getStudyMapHeight(staffNotationMode, useLedgerGap),
+      };
+      const labelOffset = showLabels
+        ? getStudyLabelOffset(
+            columns,
+            staffNotationMode,
+            useLedgerGap,
+            STUDY_STAFF_LAYOUT.notationScale
+          )
+        : 0;
       const surface = createStaffRenderSurface(
         rendererTarget,
-        containerWidth,
+        renderWidth,
         vertical.viewHeightPx,
         STUDY_STAFF_LAYOUT.notationScale
       );
-      const metrics = getStudyMapMetrics(surface, columns.length);
+      const metrics = getStudyMapMetrics(surface, columns.length, 0);
       const { context, svg } = surface;
+      frame.classList.toggle("has-horizontal-overflow", renderWidth > containerWidth + 1);
+      if (renderWidth <= containerWidth + 1) {
+        frame.classList.remove("is-scroll-at-end");
+      }
       const system = drawStaffSystem({
         brace: true,
         columnCount: columns.length,
@@ -366,8 +484,11 @@ export function StudyNoteMap({
         horizontal: STUDY_STAFF_LAYOUT.horizontal,
         mode: staffNotationMode,
         scale: surface.scale,
+        showGrandStaffRightConnector: false,
+        showSingleStaffRightBarline: false,
         useLedgerGap,
         vertical,
+        yOffset: labelOffset,
       });
       const { noteArea } = system;
       const trebleTickables: StaveNote[] = [];
@@ -433,14 +554,30 @@ export function StudyNoteMap({
         layoutTickables = tickables;
       }
       const columnLayouts = getStudyColumnLayouts(layoutTickables, surface.scale);
-
-      if (svg && highlightedNoteNames && highlightedNoteNames.size > 0) {
-        columns.forEach((column, index) => {
-          if (highlightedNoteNames.has(column.noteName)) {
-            addColumnHighlight(svg, columnLayouts[index], metrics, colors);
-          }
-        });
-      }
+      const visibleNoteBottomYs = columns.flatMap((column, index) => [
+        ...(column.trebleNotes.length > 0
+          ? (trebleTickables[index]?.noteHeads.map((noteHead) => {
+              const bounds = noteHead.getBoundingBox();
+              return bounds.getY() + bounds.getH();
+            }) ?? [])
+          : []),
+        ...(column.bassNotes.length > 0
+          ? (bassTickables[index]?.noteHeads.map((noteHead) => {
+              const bounds = noteHead.getBoundingBox();
+              return bounds.getY() + bounds.getH();
+            }) ?? [])
+          : []),
+      ]);
+      const lowestVisibleNoteBottomY =
+        visibleNoteBottomYs.length > 0 ? Math.max(...visibleNoteBottomYs) : 0;
+      const staffBottomY =
+        system.mode === "grand" ? system.bass.getBottomLineY() : system.stave.getBottomLineY();
+      extendStudySurfaceForNotation(surface, Math.max(lowestVisibleNoteBottomY, staffBottomY));
+      const labelMetrics = getStudyMapMetrics(
+        surface,
+        columns.length,
+        logicalPx(STUDY_STAFF_LAYOUT.labels.noteNameYPx, surface.scale)
+      );
 
       if (showLabels) {
         context
@@ -452,7 +589,37 @@ export function StudyNoteMap({
           .setFillStyle(colors.ink);
         columns.forEach((column, index) => {
           const centerX = columnLayouts[index].centerX;
-          drawCenteredText(context, column.noteName, centerX, metrics.noteNameY);
+          const columnHighlighted = isStudyNoteNameHighlighted(
+            column.noteName,
+            highlightedNoteNames
+          );
+          context.setFillStyle(columnHighlighted ? colors.active : colors.ink);
+          drawCenteredText(context, column.noteName, centerX, labelMetrics.noteNameY);
+        });
+        context
+          .setFont(
+            "FredokaSystemDigits, Inter",
+            logicalPx(
+              STUDY_STAFF_LAYOUT.labels.solfegeFontSizePx ??
+                STUDY_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx,
+              surface.scale
+            ),
+            700
+          )
+          .setFillStyle(colors.muted);
+        columns.forEach((column, index) => {
+          const centerX = columnLayouts[index].centerX;
+          const columnHighlighted = isStudyNoteNameHighlighted(
+            column.noteName,
+            highlightedNoteNames
+          );
+          context.setFillStyle(columnHighlighted ? colors.active : colors.muted);
+          drawCenteredText(
+            context,
+            FIXED_DO_SOLFEGE[column.noteName],
+            centerX,
+            labelMetrics.solfegeY
+          );
         });
         context
           .setFont(
@@ -463,17 +630,25 @@ export function StudyNoteMap({
           .setFillStyle(colors.muted);
         columns.forEach((column, index) => {
           const centerX = columnLayouts[index].centerX;
-          drawCenteredText(context, column.answerNumber, centerX, metrics.fixedDoNumberY);
+          const columnHighlighted = isStudyNoteNameHighlighted(
+            column.noteName,
+            highlightedNoteNames
+          );
+          context.setFillStyle(columnHighlighted ? colors.active : colors.muted);
+          drawCenteredText(context, column.answerNumber, centerX, labelMetrics.fixedDoNumberY);
         });
       }
 
       if (!svg) {
         return;
       }
+      // Tickable formatting narrows each VexFlow stave after it has drawn the staff lines.
+      // Keep the closing edge tied to the responsive frame used for the original staff render.
+      addStudyStaffRightBorder(svg, system, metrics.x + metrics.staveWidth - 0.75, colors.staff);
       columns.forEach((column, index) => {
         addLabelHotspot({
           layout: columnLayouts[index],
-          metrics,
+          metrics: labelMetrics,
           noteName: column.noteName,
           onPlayColumn,
           svg,
@@ -501,12 +676,46 @@ export function StudyNoteMap({
           });
         }
       });
+      if (focusedHotspotId) {
+        const replacementHotspot = Array.from(
+          svg.querySelectorAll<SVGElement>("[data-study-hotspot-id]")
+        ).find((hotspot) => hotspot.getAttribute("data-study-hotspot-id") === focusedHotspotId);
+        replacementHotspot?.focus({ preventScroll: true });
+      }
+      if (previousMapScroll !== undefined) {
+        frame.scrollLeft = previousMapScroll;
+      }
+      if (
+        previousPageScroll &&
+        (window.scrollX !== previousPageScroll.left || window.scrollY !== previousPageScroll.top)
+      ) {
+        window.scrollTo(previousPageScroll.left, previousPageScroll.top);
+      }
+      updateScrollHint();
     }
 
+    function updateScrollHint(): void {
+      const scrollFrame = frameRef.current;
+      if (!scrollFrame) {
+        return;
+      }
+      const hasOverflow = scrollFrame.scrollWidth > scrollFrame.clientWidth + 1;
+      scrollFrame.classList.toggle("has-horizontal-overflow", hasOverflow);
+      scrollFrame.classList.toggle(
+        "is-scroll-at-end",
+        !hasOverflow ||
+          scrollFrame.scrollLeft + scrollFrame.clientWidth >= scrollFrame.scrollWidth - 2
+      );
+    }
+
+    frame.addEventListener("scroll", updateScrollHint, { passive: true });
     render();
     const observer = new ResizeObserver(render);
     observer.observe(frame);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      frame.removeEventListener("scroll", updateScrollHint);
+    };
   }, [
     columns,
     colors,
@@ -522,6 +731,7 @@ export function StudyNoteMap({
 
   return (
     <div ref={frameRef} className="study-map" aria-label={label}>
+      {instructions ? <p className="study-map-instructions">{instructions}</p> : null}
       <div ref={rendererTargetRef} className="study-map-renderer" />
     </div>
   );

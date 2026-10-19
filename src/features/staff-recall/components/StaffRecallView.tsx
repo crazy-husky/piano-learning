@@ -10,16 +10,14 @@ import {
   buildStaffRecallTargetNoteIds,
   columnDefinitionsForNoteNames,
   comparableStaffRecallRuns,
-  formatStaffRecallDeltaMs,
   formatStaffRecallPerNoteDeltaMs,
-  formatStaffRecallPerNoteMs,
   shuffleNoteNames,
   sortNoteNamesByActiveMs,
   totalStaffRecallActiveMs,
 } from "../../../domain/staffRecall";
 import { applicableLedgerSetting } from "../../../domain/staffNotation";
 import { buildTargetNoteSetKey } from "../../../domain/targetNoteSet";
-import { formatMs, percentile } from "../../../domain/stats";
+import { percentile } from "../../../domain/stats";
 import type {
   AppSettings,
   NoteName,
@@ -48,6 +46,7 @@ import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState
 
 interface StaffRecallViewProps {
   onDataChanged: () => void | Promise<void>;
+  onExit?: () => void;
   onFinished?: () => void;
   onRangeLockedChange: (locked: boolean) => void;
   runs: StaffRecallRunRecord[];
@@ -99,8 +98,27 @@ function medianColumnActiveMs(
   };
 }
 
+function formatSeconds(milliseconds: number, fractionDigits = 1): string {
+  return `${(Math.max(0, milliseconds) / 1000).toFixed(fractionDigits)}秒`;
+}
+
+function formatDeltaSeconds(
+  deltaMs: number,
+  fractionDigits = 1
+): { direction: "faster" | "slower"; text: string } | undefined {
+  const deltaSeconds = Number((deltaMs / 1000).toFixed(fractionDigits));
+  if (deltaSeconds === 0) {
+    return undefined;
+  }
+  return {
+    direction: deltaSeconds < 0 ? "faster" : "slower",
+    text: `（${deltaSeconds < 0 ? "−" : "+"}${Math.abs(deltaSeconds).toFixed(fractionDigits)}秒）`,
+  };
+}
+
 export function StaffRecallView({
   onDataChanged,
+  onExit,
   onFinished,
   onRangeLockedChange,
   runs,
@@ -115,11 +133,18 @@ export function StaffRecallView({
   const [columnStates, setColumnStates] =
     useState<Record<NoteName, StaffRecallColumnState>>(createColumnStates);
   const [activeNoteName, setActiveNoteName] = useState<NoteName | undefined>();
+  const [blockedColumnAttempt, setBlockedColumnAttempt] = useState(false);
   const [completedRun, setCompletedRun] = useState<StaffRecallRunRecord | undefined>();
   const [localRuns, setLocalRuns] = useState(runs);
   const [saveError, setSaveError] = useState<string | undefined>();
   const [isPaused, setIsPaused] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      (navigator.maxTouchPoints > 0 || window.matchMedia?.("(pointer: coarse)").matches === true)
+  );
   const [runVersion, setRunVersion] = useState(0);
+  const [revealedNoteName, setRevealedNoteName] = useState<NoteName | undefined>();
   const columnStatesRef = useRef(columnStates);
   const activeNoteNameRef = useRef<NoteName | undefined>();
   const activeStartedAtRef = useRef<number | undefined>();
@@ -128,22 +153,37 @@ export function StaffRecallView({
   const savingRef = useRef(false);
   const isPausedRef = useRef(false);
   const mapFrameRef = useRef<HTMLDivElement | null>(null);
+  const answerRevealTimeoutRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    const pointerQuery = window.matchMedia?.("(pointer: coarse)");
+    if (!pointerQuery) {
+      return;
+    }
+    const updateTouchDevice = (): void =>
+      setIsTouchDevice(navigator.maxTouchPoints > 0 || pointerQuery.matches);
+    pointerQuery.addEventListener("change", updateTouchDevice);
+    return () => pointerQuery.removeEventListener("change", updateTouchDevice);
+  }, []);
 
   const staffNotationMode = settings.staffNotationMode;
+  // Grand staff already assigns each pitch to one staff by the C4/B3 split.
+  const includeInterStaffLedgerSpellings =
+    staffNotationMode !== "grand" && settings.includeInterStaffLedgerSpellings;
   const inputNotes = useMemo(
     () =>
       getNotesForSelection(
         settings.enabledGroupIds,
         settings.enabledPitchIds,
         settings.crossGroupPitchIds,
-        settings.includeInterStaffLedgerSpellings,
+        includeInterStaffLedgerSpellings,
         staffNotationMode
       ),
     [
       settings.enabledGroupIds,
       settings.enabledPitchIds,
       settings.crossGroupPitchIds,
-      settings.includeInterStaffLedgerSpellings,
+      includeInterStaffLedgerSpellings,
       staffNotationMode,
     ]
   );
@@ -233,6 +273,11 @@ export function StaffRecallView({
   }, [pauseActiveTimer]);
 
   const resetRun = useCallback((): void => {
+    if (answerRevealTimeoutRef.current !== undefined) {
+      window.clearTimeout(answerRevealTimeoutRef.current);
+      answerRevealTimeoutRef.current = undefined;
+    }
+    setRevealedNoteName(undefined);
     pauseActiveTimer();
     activeNoteNameRef.current = undefined;
     activeStartedAtRef.current = undefined;
@@ -248,6 +293,29 @@ export function StaffRecallView({
     setSaveError(undefined);
     onRangeLockedChange(false);
   }, [onRangeLockedChange, pauseActiveTimer, setStates]);
+
+  const revealCurrentAnswer = useCallback((): void => {
+    if (!activeNoteName || isPaused || completedRun) {
+      return;
+    }
+    if (answerRevealTimeoutRef.current !== undefined) {
+      window.clearTimeout(answerRevealTimeoutRef.current);
+    }
+    setRevealedNoteName(activeNoteName);
+    answerRevealTimeoutRef.current = window.setTimeout(() => {
+      setRevealedNoteName(undefined);
+      answerRevealTimeoutRef.current = undefined;
+    }, 1800);
+  }, [activeNoteName, completedRun, isPaused]);
+
+  useEffect(
+    () => () => {
+      if (answerRevealTimeoutRef.current !== undefined) {
+        window.clearTimeout(answerRevealTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   const restartRun = useCallback((): void => {
     resetRun();
@@ -397,14 +465,45 @@ export function StaffRecallView({
     [onRangeLockedChange, resumeActiveTimer]
   );
 
-  const handlePlacement = useCallback(
-    (columnNoteName: NoteName, note: TargetNote): void => {
+  const selectColumn = useCallback(
+    (columnNoteName: NoteName): boolean => {
       if (
         isPausedRef.current ||
         completedRun ||
-        columnStatesRef.current[columnNoteName].activeMs !== undefined ||
-        !startColumn(columnNoteName)
+        columnStatesRef.current[columnNoteName].activeMs !== undefined
       ) {
+        return false;
+      }
+
+      const currentActiveNoteName = activeNoteNameRef.current;
+      if (currentActiveNoteName && currentActiveNoteName !== columnNoteName) {
+        const currentActiveColumn = columnStatesRef.current[currentActiveNoteName];
+        const hasMarkedNotes =
+          currentActiveColumn.correctNoteIds.length > 0 ||
+          currentActiveColumn.wrongNoteId !== undefined;
+        if (hasMarkedNotes) {
+          setBlockedColumnAttempt(true);
+          return false;
+        }
+        pauseActiveTimer();
+        activeNoteNameRef.current = undefined;
+        activeStartedAtRef.current = undefined;
+        activeAccumulatedMsRef.current = 0;
+        setActiveNoteName(undefined);
+      }
+
+      if (!startColumn(columnNoteName)) {
+        return false;
+      }
+      setBlockedColumnAttempt(false);
+      return true;
+    },
+    [completedRun, pauseActiveTimer, startColumn]
+  );
+
+  const handlePlacement = useCallback(
+    (columnNoteName: NoteName, note: TargetNote): void => {
+      if (!selectColumn(columnNoteName)) {
         return;
       }
       void playTargetNote(note).catch(() => undefined);
@@ -413,10 +512,13 @@ export function StaffRecallView({
       const currentColumn = currentStates[columnNoteName];
       let nextColumn: StaffRecallColumnState;
       if (note.noteName !== columnNoteName) {
-        nextColumn = { ...currentColumn, wrongNoteId: note.id };
+        nextColumn = {
+          ...currentColumn,
+          wrongNoteId: currentColumn.wrongNoteId === note.id ? undefined : note.id,
+        };
       } else {
         const correctNoteIds = currentColumn.correctNoteIds.includes(note.id)
-          ? currentColumn.correctNoteIds
+          ? currentColumn.correctNoteIds.filter((id) => id !== note.id)
           : [...currentColumn.correctNoteIds, note.id];
         nextColumn = { ...currentColumn, correctNoteIds, wrongNoteId: undefined };
       }
@@ -444,7 +546,7 @@ export function StaffRecallView({
         void persistCompletedRun(nextStates);
       }
     },
-    [columns, completedRun, finishActiveTimer, persistCompletedRun, setStates, startColumn]
+    [columns, finishActiveTimer, persistCompletedRun, setStates, selectColumn]
   );
 
   const completedComparableRuns = completedRun
@@ -460,10 +562,21 @@ export function StaffRecallView({
       ? currentTotalMs - comparisonMedianTotalMs
       : undefined;
   const totalDelta =
-    totalDifferenceMs !== undefined ? formatStaffRecallDeltaMs(totalDifferenceMs) : undefined;
-  const perNoteDelta =
+    totalDifferenceMs !== undefined ? formatDeltaSeconds(totalDifferenceMs) : undefined;
+  const roundedPerNoteDelta =
     totalDifferenceMs !== undefined
       ? formatStaffRecallPerNoteDeltaMs(totalDifferenceMs, targetNoteIds.length)
+      : undefined;
+  const perNoteDelta =
+    totalDifferenceMs !== undefined && roundedPerNoteDelta
+      ? {
+          direction: roundedPerNoteDelta.direction,
+          text: `（${totalDifferenceMs < 0 ? "−" : "+"}${(
+            Math.abs(totalDifferenceMs) /
+            targetNoteIds.length /
+            1000
+          ).toFixed(3)}秒）`,
+        }
       : undefined;
   const bestTotalMs =
     completedComparableRuns.length > 0
@@ -497,33 +610,39 @@ export function StaffRecallView({
           label="默写显示设置"
           showLabels
         />
-        <span className="staff-recall-hint">
-          {inputNotes.length === 0
-            ? "请至少启用一个音域组"
-            : activeNoteName
-              ? `正在默写 ${activeNoteName}，完成后可选择下一列`
-              : completedRun
-                ? "本轮已完成"
-                : "选择任一列开始默写"}
-        </span>
       </div>
 
       <div className="study-map-frame staff-recall-map-frame" ref={mapFrameRef}>
         <figure className="study-figure staff-recall-figure">
           {inputNotes.length > 0 ? (
-            <StaffRecallMap
-              key={runVersion}
-              activeNoteName={activeNoteName}
-              columnStates={columnStates}
-              columns={columns}
-              inputNotes={inputNotes}
-              onPlacement={handlePlacement}
-              comparisonMedianMsByNoteName={comparisonColumnMedianMs}
-              runCompleted={completedRun !== undefined}
-              staffNotationMode={staffNotationMode}
-            />
+            <>
+              <p aria-live="polite" className="staff-recall-instructions">
+                {activeNoteName
+                  ? blockedColumnAttempt
+                    ? `请先完成高亮列 ${activeNoteName} 的所有默写，再选择其他列。`
+                    : `默写所有 ${activeNoteName} 音：依次点击这一列每个音符的位置；答对会变绿，完成后手动点击下一列。`
+                  : completedRun
+                    ? "本轮已完成"
+                    : "点击任意列中的一个音符开始，再找出该列显示的所有音符；答对变绿，整列完成后手动点击下一列。"}
+              </p>
+              <StaffRecallMap
+                key={runVersion}
+                activeNoteName={activeNoteName}
+                answerDisabled={isPaused || Boolean(completedRun)}
+                columnStates={columnStates}
+                columns={columns}
+                inputNotes={inputNotes}
+                onColumnSelect={selectColumn}
+                onPlacement={handlePlacement}
+                onRevealAnswer={revealCurrentAnswer}
+                comparisonMedianMsByNoteName={comparisonColumnMedianMs}
+                revealedNoteName={revealedNoteName}
+                runCompleted={completedRun !== undefined}
+                staffNotationMode={staffNotationMode}
+              />
+            </>
           ) : (
-            <div className="staff-notation-empty">请选择音域后开始默写</div>
+            <div className="staff-notation-empty">请选择至少一个音域组后开始默写</div>
           )}
         </figure>
       </div>
@@ -536,13 +655,12 @@ export function StaffRecallView({
               <div className="metric">
                 <span>本次总时间</span>
                 <strong>
-                  {formatMs(currentTotalMs)}
+                  {formatSeconds(currentTotalMs)}
                   {totalDelta ? (
                     <small className={totalDelta.direction}>{totalDelta.text}</small>
                   ) : null}
                   <small className="staff-recall-summary-per-note">
-                    每音用时{" "}
-                    <b>{formatStaffRecallPerNoteMs(currentTotalMs, targetNoteIds.length)}</b>
+                    每音用时 <b>{formatSeconds(currentTotalMs / targetNoteIds.length, 2)}</b>
                     {perNoteDelta ? (
                       <span className={perNoteDelta.direction}>{perNoteDelta.text}</span>
                     ) : null}
@@ -555,11 +673,10 @@ export function StaffRecallView({
                   {isNewBest ? <small className="new-record-label">新纪录！</small> : null}
                 </span>
                 <strong className={isNewBest ? "new-best" : undefined}>
-                  {formatMs(bestTotalMs)}
+                  {bestTotalMs === undefined ? "-" : formatSeconds(bestTotalMs)}
                   {bestTotalMs !== undefined ? (
                     <small className="staff-recall-summary-per-note">
-                      每音用时{" "}
-                      <b>{formatStaffRecallPerNoteMs(bestTotalMs, targetNoteIds.length)}</b>
+                      每音用时 <b>{formatSeconds(bestTotalMs / targetNoteIds.length, 2)}</b>
                     </small>
                   ) : null}
                 </strong>
@@ -597,7 +714,13 @@ export function StaffRecallView({
           )}
         </section>
       ) : null}
-      {isPaused ? <PauseOverlay onResume={resumeRecall} /> : null}
+      {isPaused ? (
+        <PauseOverlay
+          onExit={onExit}
+          onResume={resumeRecall}
+          showKeyboardShortcuts={!isTouchDevice}
+        />
+      ) : null}
     </>
   );
 }

@@ -36,10 +36,12 @@ export interface StaffVerticalProfile {
 export interface StaffLabelsProfile {
   /** 第一行固定调音名 C–B 的基线位置。 */
   noteNameYPx: number;
-  /** 第一行与第二行基线之间的距离。 */
+  /** 相邻标签行基线之间的距离。 */
   lineGapPx: number;
   /** 第一行固定调音名字号。 */
   noteNameFontSizePx: number;
+  /** 固定调唱名字号；未设置时沿用固定调数字唱名字号。 */
+  solfegeFontSizePx?: number;
   /** 第二行固定调数字唱名字号；数字始终 1=C、4=F，不随调号变化。 */
   fixedDoNumberFontSizePx: number;
 }
@@ -91,18 +93,19 @@ export const STUDY_STAFF_LAYOUT = {
     minNoteAreaSidePaddingPx: 40,
   },
   vertical: {
-    centerYPx: 190,
+    centerYPx: 80,
     gapPx: 120,
     ledgerGapPx: 200,
-    trebleOnlyYPx: 190,
-    bassOnlyYPx: 190,
-    viewHeightPx: 540,
+    trebleOnlyYPx: 66,
+    bassOnlyYPx: 66,
+    viewHeightPx: 260,
   },
   labels: {
-    // 使用启用“谱表间加线”时较高的现有位置，并固定不再随 gap 变化。
-    noteNameYPx: 30,
+    // StudyNoteMap 将音名、固定调唱名和简谱固定放在谱表上方。
+    noteNameYPx: 48,
     lineGapPx: 22,
     noteNameFontSizePx: 18,
+    solfegeFontSizePx: 13,
     fixedDoNumberFontSizePx: 12,
   },
   // 两行 Label 点击热区在文字外额外扩展的距离。
@@ -143,9 +146,9 @@ export const STATS_RANGE_STAFF_LAYOUT = {
   },
 } as const satisfies ResponsiveLabeledStaffLayoutProfile;
 
-// 学习页“默写模式”的可点击大谱表。
+// 学习页“默写模式”的可点击谱表。
 export const STAFF_RECALL_LAYOUT = {
-  notationScale: 2,
+  notationScale: 1.5,
   horizontal: {
     clefReservePx: 144,
     preferredColumnGapPx: 72,
@@ -154,31 +157,30 @@ export const STAFF_RECALL_LAYOUT = {
     minNoteAreaSidePaddingPx: 36,
   },
   vertical: {
-    centerYPx: 240,
-    gapPx: 144,
-    ledgerGapPx: 260,
-    trebleOnlyYPx: 240,
-    bassOnlyYPx: 240,
-    viewHeightPx: 730,
+    centerYPx: 165,
+    gapPx: 120,
+    ledgerGapPx: 200,
+    trebleOnlyYPx: 96,
+    bassOnlyYPx: 96,
+    viewHeightPx: 500,
   },
   labels: {
-    noteNameYPx: 52,
-    lineGapPx: 24,
+    noteNameYPx: 30,
+    lineGapPx: 22,
     noteNameFontSizePx: 18,
+    solfegeFontSizePx: 13,
     fixedDoNumberFontSizePx: 12,
   },
-  // 每列底部三行计时状态；最后一行从 viewport 底部向上定位。
+  // 默写状态显示在谱面下方，按音符实际高度定位。
   status: {
     lineGapPx: 22,
-    bottomLineOffsetPx: 30,
     fontSizePx: 17.334,
     labelFontSizePx: 16,
     valueFontSizePx: 20,
   },
-  // 非当前列遮罩覆盖范围。
+  // 非当前列遮罩和当前列高亮只覆盖实际谱面区域。
   overlay: {
-    maskTopPx: 124,
-    maskBottomPx: 824,
+    staffPaddingPx: 8,
   },
   // 默写辅助加线的半宽。
   ledgerGuideHalfWidthPx: 20,

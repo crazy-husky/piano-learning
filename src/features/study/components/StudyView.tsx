@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { getNotesForSelection } from "../../../domain/notes";
 import {
   buildNoteNameColumns,
@@ -42,6 +49,65 @@ const DEFAULT_STUDY_UI_PREFERENCES: StudyUiPreferences = {
 
 interface StudyMapContentProps {
   settings: AppSettings;
+  setStudyUiPreferences: Dispatch<SetStateAction<StudyUiPreferences>>;
+  studyUiPreferences: StudyUiPreferences;
+}
+
+function renderAdvancedSettings(
+  settings: AppSettings,
+  onSettingsSaved: (settings: AppSettings) => void | Promise<void>,
+  studyUiPreferences: StudyUiPreferences,
+  setStudyUiPreferences: Dispatch<SetStateAction<StudyUiPreferences>>,
+  includeStudyDisplaySettings: boolean,
+  disabled = false
+): JSX.Element {
+  return (
+    <details className="study-advanced-settings">
+      <summary>
+        <span aria-hidden="true" className="study-advanced-settings-icon">
+          ⚙
+        </span>
+        <span>更多范围设置</span>
+      </summary>
+      <div className="study-advanced-settings-content">
+        <GlobalRangeControls
+          disabled={disabled}
+          rangeControlPart="extensions"
+          settings={settings}
+          onSettingsSaved={onSettingsSaved}
+        />
+        {includeStudyDisplaySettings ? (
+          <div className="study-advanced-display-options">
+            <div className="study-control-block">
+              <span className="control-label">按键播放</span>
+              <div className="segmented study-playback-options">
+                <button
+                  aria-pressed={studyUiPreferences.playbackMode === "single"}
+                  className={studyUiPreferences.playbackMode === "single" ? "active" : ""}
+                  type="button"
+                  onClick={() =>
+                    setStudyUiPreferences((current) => ({ ...current, playbackMode: "single" }))
+                  }
+                >
+                  单音
+                </button>
+                <button
+                  aria-pressed={studyUiPreferences.playbackMode === "octaves"}
+                  className={studyUiPreferences.playbackMode === "octaves" ? "active" : ""}
+                  type="button"
+                  onClick={() =>
+                    setStudyUiPreferences((current) => ({ ...current, playbackMode: "octaves" }))
+                  }
+                >
+                  八度
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
 }
 
 export interface StaffRecallStartPreflightResult {
@@ -120,12 +186,11 @@ function getStudyColumnDefinitions(
   });
 }
 
-function StudyMapContent({ settings }: StudyMapContentProps): JSX.Element {
-  const [studyUiPreferences, setStudyUiPreferences] = useLocalStorageState(
-    STUDY_UI_PREFERENCES_KEY,
-    DEFAULT_STUDY_UI_PREFERENCES,
-    { parse: parseStudyUiPreferences }
-  );
+function StudyMapContent({
+  settings,
+  setStudyUiPreferences,
+  studyUiPreferences,
+}: StudyMapContentProps): JSX.Element {
   const [randomAnswerNumbers, setRandomAnswerNumbers] = useState(() => shuffleStudyAnswerNumbers());
   const columnOrderId = studyUiPreferences.columnOrderId;
   const isColumnOrderReversed = studyUiPreferences.isColumnOrderReversed;
@@ -143,31 +208,27 @@ function StudyMapContent({ settings }: StudyMapContentProps): JSX.Element {
       isColumnOrderReversed: nextIsColumnOrderReversed,
     }));
   };
-  const setPlaybackMode = (nextPlaybackMode: StudyPlaybackMode): void => {
-    setStudyUiPreferences((current) => ({ ...current, playbackMode: nextPlaybackMode }));
-  };
-  const setShowLabels = (nextShowLabels: boolean): void => {
-    setStudyUiPreferences((current) => ({ ...current, showLabels: nextShowLabels }));
-  };
   const columnDefinitions = useMemo(
     () => getStudyColumnDefinitions(columnOrderId, isColumnOrderReversed, randomAnswerNumbers),
     [columnOrderId, isColumnOrderReversed, randomAnswerNumbers]
   );
   const staffNotationMode = settings.staffNotationMode;
+  const includeInterStaffLedgerSpellings =
+    staffNotationMode !== "grand" && settings.includeInterStaffLedgerSpellings;
   const studyNotes = useMemo(
     () =>
       getNotesForSelection(
         settings.enabledGroupIds,
         settings.enabledPitchIds,
         settings.crossGroupPitchIds,
-        settings.includeInterStaffLedgerSpellings,
+        includeInterStaffLedgerSpellings,
         staffNotationMode
       ),
     [
       settings.enabledGroupIds,
       settings.enabledPitchIds,
       settings.crossGroupPitchIds,
-      settings.includeInterStaffLedgerSpellings,
+      includeInterStaffLedgerSpellings,
       staffNotationMode,
     ]
   );
@@ -177,6 +238,17 @@ function StudyMapContent({ settings }: StudyMapContentProps): JSX.Element {
     [columnDefinitions, studyNotes]
   );
   const showInterStaffLedger = studyNotes.some((note) => note.isInterStaffLedgerSpelling);
+  const staffRenderKey = [
+    staffNotationMode,
+    showInterStaffLedger ? "ledger-gap" : "standard-gap",
+    showLabels ? "labels" : "no-labels",
+    ...columns.map(
+      (column) =>
+        `${column.noteName}:${column.answerNumber}:${column.trebleNotes
+          .map((note) => note.id)
+          .join(",")}/${column.bassNotes.map((note) => note.id).join(",")}`
+    ),
+  ].join("|");
 
   const {
     highlightedNoteId,
@@ -188,54 +260,42 @@ function StudyMapContent({ settings }: StudyMapContentProps): JSX.Element {
 
   return (
     <>
-      <StudyDisplayControls
-        columnOrderId={columnOrderId}
-        isColumnOrderReversed={isColumnOrderReversed}
-        label="学习页设置"
-        onColumnOrderChange={setColumnOrderId}
-        onColumnOrderReversedChange={setIsColumnOrderReversed}
-        onShowLabelsChange={setShowLabels}
-        showLabels={showLabels}
-      />
-      <div className="study-playback-row">
-        <div className="study-control-block">
-          <span className="control-label">按键播放</span>
-          <div className="segmented study-playback-options">
-            <button
-              className={playbackMode === "single" ? "active" : ""}
-              onClick={() => setPlaybackMode("single")}
-              type="button"
-            >
-              单音
-            </button>
-            <button
-              className={playbackMode === "octaves" ? "active" : ""}
-              onClick={() => setPlaybackMode("octaves")}
-              type="button"
-            >
-              八度
-            </button>
-          </div>
+      <div className="study-learning-strategy">
+        <StudyDisplayControls
+          columnOrderId={columnOrderId}
+          isColumnOrderReversed={isColumnOrderReversed}
+          label="学习顺序"
+          onColumnOrderChange={setColumnOrderId}
+          onColumnOrderReversedChange={setIsColumnOrderReversed}
+          onShowLabelsChange={(showLabels) =>
+            setStudyUiPreferences((current) => ({ ...current, showLabels }))
+          }
+          showLabelsControl
+          showLabels={showLabels}
+        />
+        <div className="study-strategy-help">
+          <p aria-live="polite" className="study-listening-hint">
+            {listeningSelfCheckStarted ? (
+              <>
+                按键盘数字 <kbd>0</kbd> 听音，按其它键作答。未作答或答对后会换音
+              </>
+            ) : (
+              <>
+                按键盘数字 <kbd>0</kbd> 开始听音自测
+              </>
+            )}
+          </p>
         </div>
-        <p aria-live="polite" className="study-listening-hint">
-          {listeningSelfCheckStarted ? (
-            <>
-              按<kbd>0</kbd>听音，按其它键作答。未作答/答对后会换音
-            </>
-          ) : (
-            <>
-              按 <kbd>0</kbd> 开始听音自测
-            </>
-          )}
-        </p>
       </div>
       <div className="study-map-frame" aria-label="学习页音位图">
         <figure className="study-figure">
           {studyNotes.length > 0 ? (
             <StudyNoteMap
+              key={staffRenderKey}
               columns={columns}
               highlightedNoteId={highlightedNoteId}
               highlightedNoteNames={highlightedNoteNames}
+              instructions="认读音符位置，记住字母音名和唱名；点击音符可试听。"
               label="F1-G6 音符位置"
               onPlayColumn={playColumn}
               onPlayNote={playNote}
@@ -261,6 +321,11 @@ export function StudyView({
   staffRecallRuns,
 }: StudyViewProps): JSX.Element {
   const [mode, setMode] = useState<"study" | "staff-recall">("study");
+  const [studyUiPreferences, setStudyUiPreferences] = useLocalStorageState(
+    STUDY_UI_PREFERENCES_KEY,
+    DEFAULT_STUDY_UI_PREFERENCES,
+    { parse: parseStudyUiPreferences }
+  );
   const { isBusyVisible: showEnteringStaffRecallStatus, run: runStaffRecallEntry } =
     useDelayedBusy();
   const [staffRecallRangeLocked, setStaffRecallRangeLocked] = useState(false);
@@ -296,13 +361,17 @@ export function StudyView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [enterStudy, mode]);
 
+  const advancedSettings = renderAdvancedSettings(
+    settings,
+    onSettingsSaved,
+    studyUiPreferences,
+    setStudyUiPreferences,
+    mode === "study",
+    mode === "staff-recall" && staffRecallRangeLocked
+  );
+
   return (
-    <section className="study-shell">
-      <GlobalRangeControls
-        disabled={mode === "staff-recall" && staffRecallRangeLocked}
-        settings={settings}
-        onSettingsSaved={onSettingsSaved}
-      />
+    <section className={`study-shell study-shell--${mode}`}>
       <div className="study-header">
         <h1 className="sr-only">学习</h1>
         <div className="segmented study-mode-options" aria-label="学习模式">
@@ -328,11 +397,25 @@ export function StudyView({
           <span className="study-range-lock-hint">完成本轮或切回学习后可调整音域</span>
         ) : null}
       </div>
+      <GlobalRangeControls
+        allowInterStaffLedgerChoice={false}
+        compactSummary
+        disabled={mode === "staff-recall" && staffRecallRangeLocked}
+        rangeControlPart="base"
+        settings={settings}
+        summaryAction={advancedSettings}
+        onSettingsSaved={onSettingsSaved}
+      />
       {mode === "study" ? (
-        <StudyMapContent settings={settings} />
+        <StudyMapContent
+          setStudyUiPreferences={setStudyUiPreferences}
+          settings={settings}
+          studyUiPreferences={studyUiPreferences}
+        />
       ) : (
         <StaffRecallView
           onDataChanged={onDataChanged}
+          onExit={enterStudy}
           onFinished={onStaffRecallFinished}
           onRangeLockedChange={setStaffRecallRangeLocked}
           runs={staffRecallRuns}

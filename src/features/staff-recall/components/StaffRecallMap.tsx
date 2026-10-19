@@ -4,17 +4,17 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Formatter, Renderer, type Stave, StaveNote, Voice } from "vexflow";
+import { Eye } from "lucide-react";
+import { Formatter, Renderer, Stave, StaveNote, Voice } from "vexflow";
 import { noteToVexKey } from "../../../domain/notes";
+import { staffForSingleClefMode } from "../../../domain/staffNotation";
 import {
   compareTargetNotePitch,
   formatStaffRecallDeltaMs,
   type NoteNameColumn,
 } from "../../../domain/staffRecall";
-import { formatMs } from "../../../domain/stats";
 import type {
   NoteName,
   Staff,
@@ -23,7 +23,8 @@ import type {
   TargetNoteId,
 } from "../../../domain/types";
 import { STAFF_RECALL_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
-import { useNightMode } from "../../../shared/appearance/pageAppearance";
+import { getPageThemeColor, useNightMode } from "../../../shared/appearance/pageAppearance";
+import { FIXED_DO_SOLFEGE } from "../../../shared/staff/fixedDoSolfege";
 import {
   alignStaveNotesToCenters,
   createStaffRenderSurface,
@@ -41,11 +42,15 @@ export interface StaffRecallColumnState {
 
 interface StaffRecallMapProps {
   activeNoteName?: NoteName;
+  answerDisabled?: boolean;
   columnStates: Record<NoteName, StaffRecallColumnState>;
   columns: NoteNameColumn[];
   comparisonMedianMsByNoteName: Record<NoteName, number | undefined>;
   inputNotes: TargetNote[];
+  onColumnSelect: (columnNoteName: NoteName) => void;
   onPlacement: (columnNoteName: NoteName, note: TargetNote) => void;
+  onRevealAnswer?: () => void;
+  revealedNoteName?: NoteName;
   runCompleted: boolean;
   staffNotationMode: StaffNotationMode;
 }
@@ -80,24 +85,15 @@ const CORRECT_COLOR = "#2f8f5f";
 const WRONG_COLOR = "#c84c3d";
 const HOVER_COLOR = "rgba(37, 111, 103, 0.42)";
 interface StaffRecallPalette {
+  answer: string;
   correct: string;
   hover: string;
   ink: string;
   muted: string;
   wrong: string;
 }
-function getStatusLineY(lineIndex: 0 | 1 | 2): number {
-  const lastLineY = logicalPx(
-    STAFF_RECALL_LAYOUT.vertical.viewHeightPx - STAFF_RECALL_LAYOUT.status.bottomLineOffsetPx,
-    STAFF_RECALL_LAYOUT.notationScale
-  );
-  return (
-    lastLineY -
-    logicalPx(
-      (2 - lineIndex) * STAFF_RECALL_LAYOUT.status.lineGapPx,
-      STAFF_RECALL_LAYOUT.notationScale
-    )
-  );
+function getStatusLineY(lineIndex: 0 | 1 | 2, firstLineY: number, scale: number): number {
+  return firstLineY + logicalPx(lineIndex * STAFF_RECALL_LAYOUT.status.lineGapPx, scale);
 }
 
 function makeChord(notes: readonly TargetNote[], staff: Staff, noteColor: string): StaveNote {
@@ -240,17 +236,15 @@ function addLedgerGuides(
   parent: SVGElement,
   centers: readonly number[],
   notes: readonly TargetNote[],
-  stave: Stave
+  stave: Stave,
+  scale: number
 ): void {
   const ledgerLines = getLedgerLines(notes);
   centers.forEach((centerX) => {
     ledgerLines.forEach((line) => {
       const guide = document.createElementNS("http://www.w3.org/2000/svg", "line");
       guide.setAttribute("class", "staff-recall-ledger-guide");
-      const halfWidth = logicalPx(
-        STAFF_RECALL_LAYOUT.ledgerGuideHalfWidthPx,
-        STAFF_RECALL_LAYOUT.notationScale
-      );
+      const halfWidth = logicalPx(STAFF_RECALL_LAYOUT.ledgerGuideHalfWidthPx, scale);
       guide.setAttribute("x1", String(centerX - halfWidth));
       guide.setAttribute("x2", String(centerX + halfWidth));
       guide.setAttribute("y1", String(stave.getYForNote(line)));
@@ -265,12 +259,16 @@ function addStatusText({
   centerX,
   comparisonMedianMs,
   parent,
+  scale,
+  firstLineY,
   state,
 }: {
   active: boolean;
   centerX: number;
   comparisonMedianMs?: number;
   parent: SVGElement;
+  scale: number;
+  firstLineY: number;
   state: StaffRecallColumnState;
 }): void {
   const status = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -278,10 +276,10 @@ function addStatusText({
   status.setAttribute("x", String(centerX));
   status.setAttribute("text-anchor", "middle");
 
-  const addLine = (text: string, lineIndex: 0 | 1 | 2, className?: string): void => {
+  const addLine = (text: string, lineIndex: 0 | 1 | 2, className?: string, offsetY = 0): void => {
     const line = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
     line.setAttribute("x", String(centerX));
-    line.setAttribute("y", String(getStatusLineY(lineIndex)));
+    line.setAttribute("y", String(getStatusLineY(lineIndex, firstLineY, scale) + offsetY));
     if (className) {
       line.setAttribute("class", className);
     }
@@ -290,8 +288,8 @@ function addStatusText({
   };
 
   if (state.activeMs !== undefined) {
-    addLine("本次", 0, "status-label");
-    addLine(formatMs(state.activeMs), 1, "status-value");
+    addLine("用时", 0, "status-label");
+    addLine(formatRecallSeconds(state.activeMs), 1, "status-value");
     if (comparisonMedianMs !== undefined) {
       const delta = formatStaffRecallDeltaMs(state.activeMs - comparisonMedianMs);
       if (delta) {
@@ -299,12 +297,82 @@ function addStatusText({
       }
     }
   } else if (active) {
-    addLine("计时中", 1, "status-value");
+    addLine("计时中", 0, "status-value", logicalPx(6, scale));
   } else if (comparisonMedianMs !== undefined) {
     addLine("中位", 0, "status-label");
-    addLine(formatMs(comparisonMedianMs), 1, "status-value");
+    addLine(formatRecallSeconds(comparisonMedianMs), 1, "status-value");
   }
   parent.appendChild(status);
+}
+
+function formatRecallSeconds(milliseconds: number): string {
+  return `${(Math.max(0, milliseconds) / 1000).toFixed(1)}秒`;
+}
+
+function getRecallLabelClearanceOffset(
+  notes: readonly TargetNote[],
+  staff: Staff,
+  scale: number
+): number {
+  const staffTopY = logicalPx(
+    staff === "treble"
+      ? STAFF_RECALL_LAYOUT.vertical.trebleOnlyYPx
+      : STAFF_RECALL_LAYOUT.vertical.bassOnlyYPx,
+    scale
+  );
+  const stave = new Stave(0, staffTopY, 100).addClef(staff);
+  const highestNoteY = Math.min(
+    ...notes.map((note) => {
+      const noteHead = new StaveNote({
+        clef: staff,
+        duration: NOTE_DURATION,
+        keys: [noteToVexKey(note)],
+      });
+      return stave.getYForNote(noteHead.getLineNumber());
+    })
+  );
+  const labelsBottomY = logicalPx(
+    STAFF_RECALL_LAYOUT.labels.noteNameYPx +
+      STAFF_RECALL_LAYOUT.labels.lineGapPx * 2 +
+      STAFF_RECALL_LAYOUT.labels.fixedDoNumberFontSizePx * 0.4,
+    scale
+  );
+  const noteGap = logicalPx(12, scale);
+  return Number.isFinite(highestNoteY) ? Math.max(0, labelsBottomY + noteGap - highestNoteY) : 0;
+}
+
+function fitStaffRecallSurfaceHeight(
+  rendererTarget: HTMLDivElement,
+  surface: ReturnType<typeof createStaffRenderSurface>,
+  contentHeight: number
+): number {
+  const logicalHeight = contentHeight / surface.scale;
+  const viewBox = surface.svg.viewBox.baseVal;
+  surface.svg.setAttribute("viewBox", `0 0 ${viewBox.width} ${logicalHeight}`);
+  surface.svg.setAttribute("height", String(contentHeight));
+  rendererTarget.style.height = `${contentHeight}px`;
+  return logicalHeight;
+}
+
+function addStaffRecallRightBorder(
+  svg: SVGSVGElement,
+  topStave: Stave,
+  bottomStave: Stave,
+  rightEdgeX: number,
+  stroke: string
+): void {
+  const border = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  border.setAttribute("aria-hidden", "true");
+  border.setAttribute("class", "staff-recall-grand-staff-right-border");
+  border.setAttribute("x1", String(rightEdgeX));
+  border.setAttribute("x2", String(rightEdgeX));
+  border.setAttribute("y1", String(topStave.getYForLine(0)));
+  border.setAttribute("y2", String(bottomStave.getYForLine(4)));
+  border.setAttribute("stroke", stroke);
+  border.setAttribute("stroke-width", "1.25");
+  border.setAttribute("vector-effect", "non-scaling-stroke");
+  border.setAttribute("pointer-events", "none");
+  svg.appendChild(border);
 }
 
 function noteById(
@@ -331,17 +399,23 @@ function isColumnMasked(
 
 export function StaffRecallMap({
   activeNoteName,
+  answerDisabled = false,
   columnStates,
   columns,
   comparisonMedianMsByNoteName,
   inputNotes,
+  onColumnSelect,
   onPlacement,
+  onRevealAnswer,
+  revealedNoteName,
   runCompleted,
   staffNotationMode,
 }: StaffRecallMapProps): JSX.Element {
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const answerButtonRef = useRef<HTMLButtonElement | null>(null);
   const rendererTargetRef = useRef<HTMLDivElement | null>(null);
   const geometryRef = useRef<MapGeometry | null>(null);
+  const activePointerRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const [hovered, setHovered] = useState<{
     columnNoteName: NoteName;
     targetNoteId: TargetNoteId;
@@ -349,6 +423,7 @@ export function StaffRecallMap({
   const isNightMode = useNightMode();
   const palette = useMemo<StaffRecallPalette>(
     () => ({
+      answer: isNightMode ? "#5cc8ff" : "#1769aa",
       correct: isNightMode ? "#78c994" : CORRECT_COLOR,
       hover: isNightMode ? "rgba(128, 203, 180, 0.42)" : HOVER_COLOR,
       ink: isNightMode ? "#bcc6be" : NEUTRAL_COLOR,
@@ -374,8 +449,8 @@ export function StaffRecallMap({
         Math.floor(frame.clientWidth || frame.parentElement?.clientWidth || 1)
       );
       const displayHeight = STAFF_RECALL_LAYOUT.vertical.viewHeightPx;
-      // 悬浮音改变时会重画 SVG；先固定容器高度，避免清空节点触发页面滚动锚定。
-      rendererTarget.style.height = `${displayHeight}px`;
+      // 重画时沿用当前高度，避免 SVG 清空或重绘导致页面滚动锚定跳动。
+      rendererTarget.style.height ||= `${displayHeight}px`;
       rendererTarget.innerHTML = "";
       const surface = createStaffRenderSurface(
         rendererTarget,
@@ -403,6 +478,14 @@ export function StaffRecallMap({
       );
       const includeInterStaffLedgerSpellings =
         staffNotationMode === "grand" && inputNotes.some((note) => note.isInterStaffLedgerSpelling);
+      const labelClearanceOffset =
+        staffNotationMode === "grand"
+          ? 0
+          : getRecallLabelClearanceOffset(
+              inputNotes,
+              staffForSingleClefMode(staffNotationMode),
+              surface.scale
+            );
       const trebleInputNotes = inputNotes
         .filter((note) => note.staff === "treble")
         .sort(compareTargetNotePitch);
@@ -417,8 +500,11 @@ export function StaffRecallMap({
         horizontal: STAFF_RECALL_LAYOUT.horizontal,
         mode: staffNotationMode,
         scale: surface.scale,
+        showGrandStaffRightConnector: false,
+        showSingleStaffRightBarline: false,
         useLedgerGap: includeInterStaffLedgerSpellings,
         vertical: STAFF_RECALL_LAYOUT.vertical,
+        yOffset: labelClearanceOffset,
       });
       const { noteArea } = system;
       const treble = system.mode === "grand" ? system.treble : undefined;
@@ -427,10 +513,10 @@ export function StaffRecallMap({
       const singleStaff = system.mode === "grand" ? undefined : system.staff;
       const centers = getEvenlySpacedCenters(columns.length, noteArea.left, noteArea.right);
       if (treble && bass) {
-        addLedgerGuides(svg, centers, trebleInputNotes, treble);
-        addLedgerGuides(svg, centers, bassInputNotes, bass);
+        addLedgerGuides(svg, centers, trebleInputNotes, treble, surface.scale);
+        addLedgerGuides(svg, centers, bassInputNotes, bass, surface.scale);
       } else if (singleStave) {
-        addLedgerGuides(svg, centers, inputNotes, singleStave);
+        addLedgerGuides(svg, centers, inputNotes, singleStave, surface.scale);
       }
 
       const drawLayer = (
@@ -469,15 +555,24 @@ export function StaffRecallMap({
         });
       };
 
+      const isRevealedAnswerPitch = (column: NoteNameColumn, note: TargetNote): boolean =>
+        column.noteName === revealedNoteName &&
+        column.notes.some(
+          (answerNote) => answerNote.staff === note.staff && answerNote.pitchId === note.pitchId
+        );
+
       const correctNotesForColumn = (column: NoteNameColumn, staff: Staff): TargetNote[] => {
         const correctIds = new Set(columnStates[column.noteName].correctNoteIds);
-        return column.notes.filter((note) => note.staff === staff && correctIds.has(note.id));
+        return column.notes.filter(
+          (note) =>
+            note.staff === staff && correctIds.has(note.id) && !isRevealedAnswerPitch(column, note)
+        );
       };
       drawLayer(correctNotesForColumn, palette.correct);
 
       const wrongNoteForColumn = (column: NoteNameColumn, staff: Staff): TargetNote[] => {
         const note = noteById(inputNotes, columnStates[column.noteName].wrongNoteId);
-        return note?.staff === staff ? [note] : [];
+        return note?.staff === staff && !isRevealedAnswerPitch(column, note) ? [note] : [];
       };
       drawLayer(wrongNoteForColumn, palette.wrong);
 
@@ -489,7 +584,8 @@ export function StaffRecallMap({
         if (
           !note ||
           note.staff !== staff ||
-          columnStates[column.noteName].correctNoteIds.includes(note.id)
+          columnStates[column.noteName].correctNoteIds.includes(note.id) ||
+          isRevealedAnswerPitch(column, note)
         ) {
           return [];
         }
@@ -497,11 +593,45 @@ export function StaffRecallMap({
       };
       drawLayer(hoverNoteForColumn, palette.hover);
 
+      if (revealedNoteName) {
+        context.openGroup("staff-recall-answer-reveal");
+        drawLayer(
+          (column, staff) =>
+            column.noteName === revealedNoteName
+              ? column.notes.filter((note) => note.staff === staff)
+              : [],
+          palette.answer
+        );
+        context.closeGroup();
+      }
+
+      const topStaff = system.mode === "grand" ? system.treble : system.stave;
+      const bottomStaff = system.mode === "grand" ? system.bass : system.stave;
+      addStaffRecallRightBorder(
+        svg,
+        topStaff,
+        bottomStaff,
+        frameMetrics.x + frameMetrics.staveWidth - logicalPx(0.75, surface.scale),
+        getPageThemeColor("--notation-staff", "#766b5f")
+      );
+
       const placements = [
         ...(treble ? getPlacements(trebleInputNotes, treble) : []),
         ...(bass ? getPlacements(bassInputNotes, bass) : []),
         ...(singleStave ? getPlacements(inputNotes, singleStave) : []),
       ];
+      const scoreBottomY = Math.max(
+        (system.mode === "grand" ? system.bass : system.stave).getBottomLineY(),
+        ...placements.map((placement) => placement.y + logicalPx(8, surface.scale))
+      );
+      const scoreTopY = Math.min(
+        (system.mode === "grand" ? system.treble : system.stave).getYForLine(0),
+        ...placements.map((placement) => placement.y - logicalPx(8, surface.scale))
+      );
+      const overlayPadding = logicalPx(STAFF_RECALL_LAYOUT.overlay.staffPaddingPx, surface.scale);
+      const overlayTopY = scoreTopY - overlayPadding;
+      const overlayHeight = scoreBottomY - scoreTopY + 2 * overlayPadding;
+      const statusFirstLineY = scoreBottomY + logicalPx(30, surface.scale);
       const columnGeometry = columns.map((column, index): ColumnGeometry => {
         const { left, right } = getColumnBounds(centers, index, surface.width);
         return {
@@ -520,41 +650,43 @@ export function StaffRecallMap({
           const mask = document.createElementNS("http://www.w3.org/2000/svg", "rect");
           mask.setAttribute("class", "staff-recall-column-mask");
           mask.setAttribute("x", String(geometry.left));
-          mask.setAttribute(
-            "y",
-            String(logicalPx(STAFF_RECALL_LAYOUT.overlay.maskTopPx, surface.scale))
-          );
+          mask.setAttribute("y", String(overlayTopY));
           mask.setAttribute("width", String(Math.max(1, geometry.right - geometry.left)));
-          mask.setAttribute(
-            "height",
-            String(
-              logicalPx(
-                STAFF_RECALL_LAYOUT.overlay.maskBottomPx - STAFF_RECALL_LAYOUT.overlay.maskTopPx,
-                surface.scale
-              )
-            )
-          );
+          mask.setAttribute("height", String(overlayHeight));
           svg.appendChild(mask);
         } else if (activeNoteName === column.noteName) {
-          const active = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-          active.setAttribute("class", "staff-recall-column-active");
-          active.setAttribute("x", String(geometry.left + 4));
-          active.setAttribute(
-            "y",
-            String(logicalPx(STAFF_RECALL_LAYOUT.overlay.maskTopPx, surface.scale))
-          );
-          active.setAttribute("width", String(Math.max(1, geometry.right - geometry.left - 8)));
-          active.setAttribute(
-            "height",
-            String(
-              logicalPx(
-                STAFF_RECALL_LAYOUT.overlay.maskBottomPx - STAFF_RECALL_LAYOUT.overlay.maskTopPx,
-                surface.scale
-              )
-            )
-          );
-          active.setAttribute("rx", "8");
-          svg.insertBefore(active, svg.firstChild);
+          const activeColumn = columns[index];
+          const activeStaves =
+            system.mode === "grand"
+              ? [
+                  { notes: activeColumn.trebleNotes, stave: system.treble },
+                  { notes: activeColumn.bassNotes, stave: system.bass },
+                ]
+              : [{ notes: activeColumn.notes, stave: system.stave }];
+          activeStaves.forEach(({ notes, stave }) => {
+            if (notes.length === 0) {
+              return;
+            }
+            const activePlacements = placements.filter((placement) =>
+              notes.some((note) => note.id === placement.note.id)
+            );
+            const activeTopY = Math.min(
+              stave.getYForLine(0),
+              ...activePlacements.map((placement) => placement.y - logicalPx(8, surface.scale))
+            );
+            const activeBottomY = Math.max(
+              stave.getBottomLineY(),
+              ...activePlacements.map((placement) => placement.y + logicalPx(8, surface.scale))
+            );
+            const active = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            active.setAttribute("class", "staff-recall-column-active");
+            active.setAttribute("x", String(geometry.left + 4));
+            active.setAttribute("y", String(activeTopY));
+            active.setAttribute("width", String(Math.max(1, geometry.right - geometry.left - 8)));
+            active.setAttribute("height", String(activeBottomY - activeTopY));
+            active.setAttribute("rx", "8");
+            svg.insertBefore(active, svg.firstChild);
+          });
         }
       });
 
@@ -567,6 +699,8 @@ export function StaffRecallMap({
           centerX: geometry.centerX,
           comparisonMedianMs: comparisonMedianMsByNoteName[column.noteName],
           parent: uiGroup,
+          scale: surface.scale,
+          firstLineY: statusFirstLineY,
           state,
         });
       });
@@ -588,6 +722,28 @@ export function StaffRecallMap({
       context
         .setFont(
           "FredokaSystemDigits, Inter",
+          logicalPx(
+            STAFF_RECALL_LAYOUT.labels.solfegeFontSizePx ??
+              STAFF_RECALL_LAYOUT.labels.fixedDoNumberFontSizePx,
+            surface.scale
+          ),
+          700
+        )
+        .setFillStyle(palette.muted);
+      columnGeometry.forEach((geometry, index) => {
+        drawCenteredText(
+          context,
+          FIXED_DO_SOLFEGE[columns[index].noteName],
+          geometry.centerX,
+          logicalPx(
+            STAFF_RECALL_LAYOUT.labels.noteNameYPx + STAFF_RECALL_LAYOUT.labels.lineGapPx,
+            surface.scale
+          )
+        );
+      });
+      context
+        .setFont(
+          "FredokaSystemDigits, Inter",
           logicalPx(STAFF_RECALL_LAYOUT.labels.fixedDoNumberFontSizePx, surface.scale),
           700
         )
@@ -598,16 +754,26 @@ export function StaffRecallMap({
           columns[index].answerNumber,
           geometry.centerX,
           logicalPx(
-            STAFF_RECALL_LAYOUT.labels.noteNameYPx + STAFF_RECALL_LAYOUT.labels.lineGapPx,
+            STAFF_RECALL_LAYOUT.labels.noteNameYPx + STAFF_RECALL_LAYOUT.labels.lineGapPx * 2,
             surface.scale
           )
         );
       });
       context.closeGroup();
 
+      const statusHeight =
+        2 * logicalPx(STAFF_RECALL_LAYOUT.status.lineGapPx, surface.scale) +
+        logicalPx(STAFF_RECALL_LAYOUT.status.valueFontSizePx + 12, surface.scale);
+      const contentHeight = Math.ceil((statusFirstLineY + statusHeight) * surface.scale);
+      const fittedSurfaceHeight = fitStaffRecallSurfaceHeight(
+        rendererTarget,
+        surface,
+        contentHeight
+      );
+
       geometryRef.current = {
         columns: columnGeometry,
-        height: surface.height,
+        height: fittedSurfaceHeight,
         placementHitRadius:
           ((treble ?? singleStave)?.getSpacingBetweenLines() ?? 0) *
           STAFF_RECALL_LAYOUT.placementHitRadiusInStaffSpaces,
@@ -615,6 +781,10 @@ export function StaffRecallMap({
         x: 0,
         y: 0,
       };
+      const answerColumn = columnGeometry.find((column) => column.noteName === activeNoteName);
+      if (answerButtonRef.current && answerColumn) {
+        answerButtonRef.current.style.left = `${(answerColumn.centerX / surface.width) * 100}%`;
+      }
     }
 
     render();
@@ -629,12 +799,17 @@ export function StaffRecallMap({
     hovered,
     inputNotes,
     palette,
+    revealedNoteName,
     runCompleted,
     staffNotationMode,
   ]);
 
   const hitTest = useCallback(
-    (clientX: number, clientY: number): { columnNoteName: NoteName; note: TargetNote } | null => {
+    (
+      clientX: number,
+      clientY: number,
+      includeInactiveColumns = false
+    ): { columnNoteName: NoteName; note: TargetNote } | null => {
       const rendererTarget = rendererTargetRef.current;
       const geometry = geometryRef.current;
       const svg = rendererTarget?.querySelector("svg");
@@ -654,7 +829,11 @@ export function StaffRecallMap({
         return null;
       }
       const state = columnStates[column.noteName];
-      if (isColumnMasked(column.noteName, state, activeNoteName, runCompleted) || runCompleted) {
+      if (
+        (!includeInactiveColumns &&
+          isColumnMasked(column.noteName, state, activeNoteName, runCompleted)) ||
+        runCompleted
+      ) {
         return null;
       }
       const nearest = column.placements.reduce<
@@ -669,6 +848,28 @@ export function StaffRecallMap({
       return { columnNoteName: column.noteName, note: nearest.placement.note };
     },
     [activeNoteName, columnStates, runCompleted]
+  );
+
+  const getColumnAtX = useCallback(
+    (clientX: number): NoteName | undefined => {
+      if (runCompleted) {
+        return undefined;
+      }
+      const geometry = geometryRef.current;
+      const svg = rendererTargetRef.current?.querySelector("svg");
+      const bounds = svg?.getBoundingClientRect();
+      if (!geometry || !bounds || bounds.width <= 0) {
+        return undefined;
+      }
+      const x = geometry.x + ((clientX - bounds.left) / bounds.width) * geometry.width;
+      const columnNoteName = geometry.columns.find(
+        (column) => x >= column.left && x <= column.right
+      )?.noteName;
+      return columns.some((column) => column.noteName === columnNoteName && column.notes.length > 0)
+        ? columnNoteName
+        : undefined;
+    },
+    [columns, runCompleted]
   );
 
   const handlePointerMove = useCallback(
@@ -694,27 +895,94 @@ export function StaffRecallMap({
     [hitTest]
   );
 
-  const handleClick = useCallback(
-    (event: ReactMouseEvent<HTMLDivElement>): void => {
+  const handlePointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>): void => {
+      const start = activePointerRef.current;
+      activePointerRef.current = null;
+      if (
+        !start ||
+        start.pointerId !== event.pointerId ||
+        Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8
+      ) {
+        return;
+      }
+
       const hit = hitTest(event.clientX, event.clientY);
       if (hit) {
         onPlacement(hit.columnNoteName, hit.note);
+        return;
+      }
+
+      const columnNoteName = getColumnAtX(event.clientX);
+      if (columnNoteName && columnNoteName !== activeNoteName) {
+        const inactiveColumnHit = hitTest(event.clientX, event.clientY, true);
+        if (inactiveColumnHit?.columnNoteName === columnNoteName) {
+          onPlacement(inactiveColumnHit.columnNoteName, inactiveColumnHit.note);
+        } else {
+          onColumnSelect(columnNoteName);
+        }
       }
     },
-    [hitTest, onPlacement]
+    [activeNoteName, getColumnAtX, hitTest, onColumnSelect, onPlacement]
   );
+
+  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
+    const target = event.target;
+    if (target instanceof Element && target.closest("button")) {
+      activePointerRef.current = null;
+      return;
+    }
+    activePointerRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  }, []);
+
+  const clearActivePointer = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (activePointerRef.current?.pointerId === event.pointerId) {
+      activePointerRef.current = null;
+    }
+  }, []);
 
   return (
     <div className="staff-recall-scroll">
       <div
         aria-label={staffNotationMode === "grand" ? "默写大谱表" : "默写单谱表"}
-        className="staff-recall-map"
-        onClick={handleClick}
-        onPointerLeave={() => setHovered(null)}
+        className={
+          onRevealAnswer
+            ? "staff-recall-map staff-recall-map--with-answer-action"
+            : "staff-recall-map"
+        }
+        onPointerCancel={clearActivePointer}
+        onPointerDown={handlePointerDown}
+        onPointerLeave={() => {
+          activePointerRef.current = null;
+          setHovered(null);
+        }}
         onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
         ref={frameRef}
       >
         <div className="staff-recall-map-renderer" ref={rendererTargetRef} />
+        {activeNoteName && onRevealAnswer ? (
+          <button
+            aria-label={`查看 ${activeNoteName} 列答案`}
+            className="staff-recall-answer-button staff-recall-answer-button--column"
+            disabled={answerDisabled}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRevealAnswer();
+            }}
+            onPointerUp={(event) => event.stopPropagation()}
+            ref={answerButtonRef}
+            title="让本列答案闪烁高亮约 2 秒"
+            type="button"
+          >
+            <Eye aria-hidden="true" size={16} />
+            查看答案
+          </button>
+        ) : null}
       </div>
     </div>
   );
