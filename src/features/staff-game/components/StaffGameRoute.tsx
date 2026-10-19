@@ -83,7 +83,7 @@ export function StaffGameRoute({
     <StaffGameView
       key={initialMode}
       microphone={microphone}
-      microphoneAlgorithm={microphonePreferences.algorithm}
+      microphoneAlgorithm={microphone.activeAlgorithm}
       midi={midi}
       initialMode={initialMode}
       initialSongSelectionStep={initialSongSelectionStep}

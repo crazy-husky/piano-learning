@@ -167,7 +167,7 @@ export function createPracticeNoteRecognizer(
       continuityReferenceAgeMs >= 0 &&
       continuityReferenceAgeMs <= CONTINUITY_REFERENCE_WINDOW_MS;
     const continuityAnchorMidi = hasRecentContinuityReference ? continuityReferenceMidi : null;
-    // MPM-C can return a neighboring note's octave when the fundamental is weak.
+    // A pitch detector can return a neighboring note's octave when the fundamental is weak.
     // Only use that lower-confidence path near a recently confirmed melody pitch;
     // the ordinary confidence gate still applies to unrelated notes.
     const canUsePitchContinuity =

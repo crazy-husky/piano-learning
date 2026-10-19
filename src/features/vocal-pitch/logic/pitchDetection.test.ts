@@ -5,7 +5,6 @@ import {
   VOCAL_PITCH_MIN_FREQUENCY_HZ,
 } from "../../../domain/vocalPitch";
 import type { ClassifiedPitchFrame } from "./pitchFrameClassifier";
-import { createPitchFrameDetector } from "./pitchFrameDetector";
 import { analyzePitchSamples, postProcessPitchFrames } from "./pitchDetection";
 
 function sineWave(frequencyHz: number, seconds: number, sampleRate: number): Float32Array {
@@ -40,13 +39,6 @@ function addDeterministicNoise(samples: Float32Array, amplitude: number): Float3
   });
 }
 
-function harmonicRichFrame(frequencyHz: number, sampleRate: number): Float32Array {
-  return Float32Array.from({ length: 2048 }, (_, index) => {
-    const phase = (index / sampleRate) * frequencyHz * 2 * Math.PI;
-    return Math.sin(phase) * 0.02 + Math.sin(phase * 2) * 0.1;
-  });
-}
-
 function classifiedFrame(
   frequencyHz: number | null,
   candidateFrequencyHz: number,
@@ -65,7 +57,7 @@ function classifiedFrame(
   };
 }
 
-describe("MPM pitch detection baseline", () => {
+describe("YIN pitch detection baseline", () => {
   it("tracks a stable synthetic tone without octave errors", () => {
     const analysis = analyzePitchSamples(
       sineWave(220, 1, 16_000),
@@ -77,12 +69,12 @@ describe("MPM pitch detection baseline", () => {
     expect(Math.min(...voiced)).toBeGreaterThan(218);
     expect(Math.max(...voiced)).toBeLessThan(222);
     expect(analysis.hopSeconds).toBeCloseTo(0.01);
-    expect(analysis.frames[0].timeSeconds).toBeCloseTo(0.064);
+    expect(analysis.frames[0].timeSeconds).toBeCloseTo(0.128);
     expect(analysis.frames[1].timeSeconds - analysis.frames[0].timeSeconds).toBeCloseTo(
       analysis.hopSeconds
     );
-    expect(analysis.detectorId).toBe("mpm-c");
-    expect(analysis.detectorVersion).toBe(4);
+    expect(analysis.detectorId).toBe("yin");
+    expect(analysis.detectorVersion).toBe(5);
   });
 
   it("tracks a synthetic sweep and a tone with light noise", () => {
@@ -116,13 +108,6 @@ describe("MPM pitch detection baseline", () => {
     expect(
       noisyVoiced.reduce((sum, frequencyHz) => sum + frequencyHz, 0) / noisyVoiced.length
     ).toBeCloseTo(220, 0);
-  });
-
-  it("provides a stronger fundamental candidate for a harmonic-rich frame", () => {
-    const detector = createPitchFrameDetector(2048);
-    const detection = detector.detect(harmonicRichFrame(220, 16_000), 16_000);
-    expect(detection.primary.frequencyHz).toBeCloseTo(220, 0);
-    expect(detection.fallback.frequencyHz).toBeCloseTo(440, 0);
   });
 
   it("repairs only short octave excursions and evidence-backed gaps", () => {

@@ -1,5 +1,5 @@
 import yin from "@audio/pitch-yin";
-import type { PitchFrameCandidate, PitchFrameDetector } from "./pitchFrameDetector";
+import type { PitchFrameCandidate, PitchFrameDetector } from "./pitchFrameTypes";
 
 const TARGET_SAMPLE_RATE_HZ = 12_000;
 const FRAME_PERIODS = 6;

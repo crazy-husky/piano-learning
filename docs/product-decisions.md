@@ -168,24 +168,24 @@
 
 - 日期：2026-10-18
 - 决策：麦克风单音输入自然音识别范围为 F1–B6，与闯关高音端一致；检测器搜索边界须包含识别器允许的 ±45 音分偏差。
-- 理由：闯关已提供 C2–B6 音符；MPM-C、YIN 和 SwiftF0 的合成高音验证均能检测 B6，原 G6 上限来自应用配置而非模型上限。
+- 理由：闯关已提供 C2–B6 音符；保留的主识别和兜底算法应覆盖同一产品音域。
 - 影响文件：`src/features/vocal-pitch/logic/practiceNoteRecognizer.ts`、`src/features/vocal-pitch/logic/practicePitchDetection.worker.ts`、`src/features/vocal-pitch/logic/usePracticeMicrophoneInput.ts`
 - 不要改回：不能因算法搜索上限截掉 A6、A#6 或 B6，也不能在容差允许范围内因估值略偏高而提前拒绝 B6。
 
-### B6 麦克风识别提醒与 SwiftF0 主页预热
+### B6 麦克风识别与 SwiftF0 主页预热
 
 - 日期：2026-10-18
-- 决策：当前识别算法不是 SwiftF0，且用户以麦克风练习 B6 时，每个本地日历日提醒一次；只说明可在「设置 → 麦克风答题 → 识别算法」切换为 SwiftF0，不自动切换算法。
+- 决策：算法已收口为 SwiftF0 主算法和 YIN 初始化失败兜底，不再由用户选择识别算法；因此不再显示“切换到 SwiftF0”的 B6 提醒。
 - 触发：自由练习的有效音符池包含 B6，或闯关进入 B6 关卡，且输入方式为麦克风。
-- 预热：当前算法偏好为 SwiftF0 时，在主页首次显示后、页面处于前台时后台下载模型、创建推理会话并执行一次预热推理；不申请麦克风权限，不运行持续识别。加载失败不阻塞练习，进入练习后的原有准备流程仍可重试。
-- 理由：提醒应发生在目标音已知时，不能依赖其他算法先识别出 B6；主页预热减少开始麦克风练习时的等待。
-- 不要改回：不要在提醒中替用户切算法；不要在 MIDI、虚拟琴键或歌曲练习中弹出 B6 麦克风提醒。
+- 预热：主页首次显示后、页面处于前台时后台下载 SwiftF0 模型、创建推理会话并执行一次预热推理；不申请麦克风权限，不运行持续识别。加载失败不阻塞练习，进入练习后的准备流程会改用 YIN。
+- 理由：统一算法路径减少用户需要理解的设置；主页预热减少开始麦克风练习时的等待。
+- 不要改回：不要暴露底层算法选择或 B6 切换提醒；不要在 MIDI、虚拟琴键或歌曲练习中弹出麦克风状态提醒。
 
 ### 麦克风模式的连击语音避让
 
 - 日期：2026-10-18
-- 决策：连击语音 Amazing、Excellent、Unbelievable 在麦克风闯关/错题复习中，按当前识别算法临时屏蔽已测出的误识别音，并在随机出题时避开这些音。屏蔽窗口从实际播放开始，持续音效时长再加 300ms 输入余量；出题题袋保留被避开的音，若暂时没有安全候选则等屏蔽结束后再出题，不计作已出题。Excellent 当前没有已测到的误识别音，不做音符屏蔽。
-- 音高映射：Amazing 的 MPM-C/YIN 屏蔽 D5，SwiftF0 屏蔽 A3、D5、D♯5；Unbelievable 的 MPM-C/YIN 屏蔽 D♯5，SwiftF0 屏蔽 D♯5、F5。
+- 决策：连击语音 Amazing、Excellent、Unbelievable 在麦克风闯关/错题复习中，按当前活动识别器临时屏蔽已测出的误识别音，并在随机出题时避开这些音。屏蔽窗口从实际播放开始，持续音效时长再加 300ms 输入余量；出题题袋保留被避开的音，若暂时没有安全候选则等屏蔽结束后再出题，不计作已出题。Excellent 当前没有已测到的误识别音，不做音符屏蔽。
+- 音高映射：SwiftF0 的 Amazing 屏蔽 A3、D5、D♯5，Unbelievable 屏蔽 D♯5、F5；YIN 兜底沿用旧 YIN 映射：Amazing 屏蔽 D5，Unbelievable 屏蔽 D♯5。
 - 歌曲模式：麦克风演奏时保留旋律音符顺序，不播放连击语音，避免固定目标音被屏蔽；其他连击视觉反馈和非语音音效照常。
 - 理由：提示音会被麦克风识别为音符；不能通过修改歌曲目标或丢弃随机题袋音来规避误判。
 - 不要改回：只屏蔽所选算法对应的精确 MIDI 音高和实际提示音时段；MIDI、虚拟琴键不受影响。
@@ -245,3 +245,30 @@
 - 理由：混合节奏帮助熟悉真实谱面记号；逐音答题和自动翻行/滚动沿用现有自由练习流程。
 - 影响文件：`src/features/practice/components/PracticeSetupView.tsx`、`src/features/practice/components/PracticeView.tsx`、`src/features/practice/hooks/usePracticeStaffPageFlow.ts`、`src/features/practice/logic/staffPageNotation.ts`
 - 不要改回：全音符、四分、八分、十六分音符可多选；多选时按连续 4/4 节奏谱面展示，带拍号、小节线和拍内连梁，仍逐音答题；谱面按现有宽度自动翻行/滚动，去掉页码提示但保留谱面流转；混选时使用谱页显示，单音答题仍可在只选一种时值后使用。大谱表单音谱面中，另一谱表的空拍用不可见占位保持节奏，不显示休止符，谱尾不画终止线。
+
+### 固定题数提供统一快捷档位
+
+- 日期：2026-10-19
+- 决策：自由练习的固定题数快捷选项统一为 10、20、50 题和自定义；当前可练音符数量不再动态生成题数选项。
+- 理由：题数选项应代表练习长度，而不是随选中的音域变化；音符池大小不限制用户想练的题量。
+- 影响文件：`src/features/practice/components/PracticeSetupView.tsx`
+
+## 麦克风参数基准测试
+
+### 用离线参数扫描建立理论基准，不自动推荐或改系统设置
+
+- 日期：2026-10-18
+- 决策：基准测试入口仅在本地开发模式的「设置 → 麦克风答题」中显示，线上版本不显示。用户分开录制两段基准音序，每段在游戏音域 C2–B6 内从低到高弹完白键，再从低到高弹完黑键，共 60 音；不能把两遍合成一段。保留每段原始录音，并提供原始录音和实际分析 PCM WAV 下载；解码后的 Float32 PCM 交给离线 Worker 扫描。
+- 扫描：保留 SwiftF0、YIN 两种识别算法，可取消部分算法。扫描帧间隔 20/30/40/50 ms、置信度 0.4–0.9、输入 RMS 门槛低/中/高、稳定帧 2/3/4 的组合；每算法全选为 216 组，两算法为 432 组/段，两段合计最多 864 组。相同的四个可扫描维度应用于所选算法；YIN 专属 threshold 沿用当前敏感度上下文固定值，并记录在每段报告里。输入放大倍数固定为各段录音时的系统设置值，不加入扫描维度，并在报告中按录音轮次记录设备、浏览器、采样率、原始 RMS、放大倍数、放大后 RMS 和削波情况。
+- 指标：用固定目标音序评估准确率、错音率、误报率、漏音率和平均识别延迟。起音点先按 RMS 能量变化自动标记，可由用户拖动修正。处理耗时标为 Worker 处理耗时，不解释为真实 CPU 占用。
+- 边界：结果仅为离线 Worker 序列评估的理论参数参考，不代表实时链路的绝对手感；不自动推荐、应用或保存任何系统参数。PESTO 在第一段 Mac 实录的快速评估中最佳准确率为 44/60，低于 SwiftF0 同一录音的 90% 门槛，按止损规则停止后续接入并移除模型和代码。Top 3 实时复核不实现。
+- 理由：通过多设备录音数据为全局默认参数提供依据，避免凭经验设定；离线扫描与实时链路分开，避免测试面板影响练习和闯关。
+- 影响文件：`src/features/settings/components/MicrophoneParameterBenchmarkDialog.tsx`、`src/features/settings/components/MicrophoneBenchmarkResultTable.tsx`、`src/features/settings/components/useMicrophoneParameterBenchmarkRecording.ts`、`src/features/vocal-pitch/logic/microphoneParameterBenchmark.ts`、`src/features/vocal-pitch/logic/microphoneParameterBenchmark.worker.ts`
+
+### 旧算法调试弹窗移除，识别设置收口
+
+- 日期：2026-10-18
+- 决策：移除旧「算法调试」入口及其录音分析弹窗。用户设置不再暴露底层识别算法和阈值；主算法固定为 SwiftF0，模型下载、创建或初始化失败时使用 YIN 兜底。麦克风灵敏度只调输入增益和最低 RMS 门槛。
+- 决策：参数基准测试保留在设置页，但只在本地开发模式可见；测试参数仅用于离线数据收集，不影响练习/闯关识别配置，不自动应用或保存参数。
+- 不要改回：不要恢复旧算法调试弹窗或线上基准测试入口；不要把离线参数扫描与实时识别链路混用。
+- 影响文件：`src/features/settings/components/SettingsView.tsx`、`src/features/settings/components/MicrophoneParameterBenchmarkDialog.tsx`、`src/features/vocal-pitch/logic/practiceMicrophonePreferences.ts`

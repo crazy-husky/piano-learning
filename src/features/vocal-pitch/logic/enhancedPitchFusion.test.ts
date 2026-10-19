@@ -25,7 +25,7 @@ function mpm(midi: readonly (number | null)[]): VocalPitchAnalysis {
     schemaVersion: 1,
     analyzedAt: "2026-08-09T00:00:00.000Z",
     config: DEFAULT_VOCAL_PITCH_CONFIG,
-    detectorId: "mpm-c",
+    detectorId: "yin",
     detectorVersion: 3,
     frames: midi.map((value, index) => ({
       confidence: value === null ? 0 : 1,

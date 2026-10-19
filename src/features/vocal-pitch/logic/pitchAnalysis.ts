@@ -64,7 +64,7 @@ export function startPitchAnalysis(
   sampleRate: number,
   config: VocalPitchAnalysisConfig,
   onProgress: (progress: number) => void,
-  mode: PitchAnalysisMode = "mpm-c",
+  mode: PitchAnalysisMode = "yin",
   modelSamples?: Float32Array
 ): PitchAnalysisTask {
   const worker = new Worker(new URL("./pitch.worker.ts", import.meta.url), { type: "module" });

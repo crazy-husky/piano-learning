@@ -4,7 +4,7 @@ import {
   type VocalPitchAnalysisConfig,
   type VocalPitchFrame,
 } from "../../../domain/vocalPitch";
-import type { PitchFrameCandidate, PitchFrameDetector } from "./pitchFrameDetector";
+import type { PitchFrameCandidate, PitchFrameDetector } from "./pitchFrameTypes";
 
 export interface ClassifiedPitchFrame {
   alternativeCandidate?: PitchFrameCandidate;

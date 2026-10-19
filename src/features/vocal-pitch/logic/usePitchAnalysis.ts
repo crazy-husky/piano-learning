@@ -27,13 +27,13 @@ export function usePitchAnalysis() {
     async (
       decoded: DecodedAudio,
       config: VocalPitchAnalysisConfig,
-      mode: PitchAnalysisMode = "mpm-c"
+      mode: PitchAnalysisMode = "yin"
     ): Promise<VocalPitchAnalysis> => {
       cancel();
       const generation = generationRef.current + 1;
       generationRef.current = generation;
       setProgress(0);
-      setMessage(mode === "enhanced" ? "正在进行增强音高分析…" : "正在使用 MPM-C 分析音高…");
+      setMessage(mode === "enhanced" ? "正在进行增强音高分析…" : "正在使用 YIN 分析音高…");
       const task = startPitchAnalysis(
         decoded.samples,
         decoded.sampleRate,

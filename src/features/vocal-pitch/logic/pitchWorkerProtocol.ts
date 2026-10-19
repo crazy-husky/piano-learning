@@ -1,6 +1,6 @@
 import type { VocalPitchAnalysis, VocalPitchAnalysisConfig } from "../../../domain/vocalPitch";
 
-export type PitchAnalysisMode = "enhanced" | "mpm-c";
+export type PitchAnalysisMode = "enhanced" | "yin";
 
 export interface PitchWorkerAnalyzeRequest {
   config: VocalPitchAnalysisConfig;

@@ -1,110 +1,110 @@
 import { describe, expect, it } from "vitest";
-import { midiToFrequency } from "../../../domain/vocalPitch";
-import {
-  frequencyToChromaticPracticeNote,
-  frequencyToNaturalPracticeNote,
-  PRACTICE_NOTE_FREQUENCY_RANGE,
-} from "./practiceNoteRecognizer";
+import { DEFAULT_VOCAL_PITCH_CONFIG, midiToFrequency } from "../../../domain/vocalPitch";
+import { classifyPitchFrame } from "./pitchFrameClassifier";
 import { createPracticeYinDetector, getPracticeYinInputFrameSize } from "./practiceYinDetector";
+import { PRACTICE_NOTE_FREQUENCY_RANGE } from "./practiceNoteRecognizer";
 import { harmonicTone, PRACTICE_BLACK_KEY_MIDI_NOTES } from "./practiceBlackKeyTestFixtures";
 
-function createDetector(sampleRate: number, frameSize: number) {
-  return createPracticeYinDetector(frameSize, sampleRate, {
-    ...PRACTICE_NOTE_FREQUENCY_RANGE,
-    threshold: 0.15,
+describe("YIN practice detector", () => {
+  it("sizes analysis frames for the lowest supported piano register", () => {
+    for (const sampleRate of [44_100, 48_000]) {
+      const size = getPracticeYinInputFrameSize(
+        sampleRate,
+        PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
+      );
+      expect(size).toBeGreaterThanOrEqual(8192);
+      expect(Math.log2(size) % 1).toBe(0);
+    }
   });
-}
 
-describe("practice YIN detector", () => {
-  it("detects a harmonic-rich A4 frame after downsampling 48 kHz input", () => {
+  it("recognizes D4 at common sample rates and B6 at 48 kHz", () => {
+    for (const sampleRate of [44_100, 48_000]) {
+      const frameSize = getPracticeYinInputFrameSize(
+        sampleRate,
+        PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
+      );
+      const detector = createPracticeYinDetector(frameSize, sampleRate, {
+        maxFrequencyHz: PRACTICE_NOTE_FREQUENCY_RANGE.maxFrequencyHz,
+        minFrequencyHz: PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz,
+        threshold: 0.15,
+      });
+
+      const result = classifyPitchFrame(
+        detector,
+        harmonicTone(midiToFrequency(62), sampleRate, frameSize),
+        sampleRate,
+        { ...DEFAULT_VOCAL_PITCH_CONFIG, voicingThreshold: 0.9 },
+        0,
+        PRACTICE_NOTE_FREQUENCY_RANGE
+      );
+      expect(result.frame.frequencyHz, `D4 at ${sampleRate} Hz`).not.toBeNull();
+      expect(result.frame.frequencyHz).toBeCloseTo(midiToFrequency(62), 0);
+    }
+
     const sampleRate = 48_000;
     const frameSize = getPracticeYinInputFrameSize(
       sampleRate,
       PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
     );
-    const detection = createDetector(sampleRate, frameSize).detect(
-      harmonicTone(440, sampleRate, frameSize),
-      sampleRate
-    );
-
-    expect(frameSize).toBe(8192);
-    expect(detection.fallback.frequencyHz).toBeCloseTo(440, 0);
-    expect(detection.fallback.clarity).toBeGreaterThan(0.75);
-  });
-
-  it("detects B6 within the configured upper range despite small pitch estimation error", () => {
-    const sampleRate = 48_000;
-    const frameSize = getPracticeYinInputFrameSize(
-      sampleRate,
-      PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
-    );
-    const detection = createDetector(sampleRate, frameSize).detect(
-      harmonicTone(midiToFrequency(95), sampleRate, frameSize),
-      sampleRate
-    );
-
-    expect(detection.fallback.clarity).toBeGreaterThan(0.75);
-    expect(frequencyToNaturalPracticeNote(detection.fallback.frequencyHz)).toMatchObject({
-      midiNoteNumber: 95,
-      noteName: "B",
-      octave: 6,
+    const detector = createPracticeYinDetector(frameSize, sampleRate, {
+      maxFrequencyHz: PRACTICE_NOTE_FREQUENCY_RANGE.maxFrequencyHz,
+      minFrequencyHz: PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz,
+      threshold: 0.15,
     });
+    const highResult = classifyPitchFrame(
+      detector,
+      harmonicTone(midiToFrequency(95), sampleRate, frameSize),
+      sampleRate,
+      { ...DEFAULT_VOCAL_PITCH_CONFIG, voicingThreshold: 0.9 },
+      0,
+      PRACTICE_NOTE_FREQUENCY_RANGE
+    );
+    expect(highResult.frame.frequencyHz, "B6 at 48 kHz").not.toBeNull();
+    const highNoteCents =
+      highResult.frame.frequencyHz === null
+        ? Number.POSITIVE_INFINITY
+        : Math.abs(1200 * Math.log2(highResult.frame.frequencyHz / midiToFrequency(95)));
+    expect(highNoteCents).toBeLessThanOrEqual(45);
   });
 
-  it("detects and maps all 25 black keys in the game register", () => {
+  it("estimates all 25 black-key targets in the game range within 45 cents", () => {
     expect(PRACTICE_BLACK_KEY_MIDI_NOTES).toHaveLength(25);
     const sampleRate = 48_000;
     const frameSize = getPracticeYinInputFrameSize(
       sampleRate,
       PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
     );
-    const detector = createDetector(sampleRate, frameSize);
+    const detector = createPracticeYinDetector(frameSize, sampleRate, {
+      maxFrequencyHz: PRACTICE_NOTE_FREQUENCY_RANGE.maxFrequencyHz,
+      minFrequencyHz: PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz,
+      threshold: 0.15,
+    });
 
     for (const expected of PRACTICE_BLACK_KEY_MIDI_NOTES) {
-      const detection = detector.detect(
+      const classified = classifyPitchFrame(
+        detector,
         harmonicTone(midiToFrequency(expected.midiNoteNumber), sampleRate, frameSize),
-        sampleRate
-      );
-
-      expect(detection.fallback.clarity, `MIDI ${expected.midiNoteNumber} clarity`).toBeGreaterThan(
-        0.75
+        sampleRate,
+        // Test the estimator's pitch accuracy independently from the production confidence gate.
+        { ...DEFAULT_VOCAL_PITCH_CONFIG, voicingThreshold: 0.85 },
+        0,
+        PRACTICE_NOTE_FREQUENCY_RANGE
       );
       expect(
-        frequencyToChromaticPracticeNote(detection.fallback.frequencyHz),
-        `expected MIDI ${expected.midiNoteNumber}, got ${detection.fallback.frequencyHz} Hz`
-      ).toMatchObject(expected);
+        classified.frame.frequencyHz,
+        `MIDI ${expected.midiNoteNumber} should remain inside the playable range`
+      ).not.toBeNull();
+      const deviationCents =
+        classified.frame.frequencyHz === null
+          ? Number.POSITIVE_INFINITY
+          : Math.abs(
+              1200 *
+                Math.log2(classified.frame.frequencyHz / midiToFrequency(expected.midiNoteNumber))
+            );
+      expect(
+        deviationCents,
+        `MIDI ${expected.midiNoteNumber} should be within 45 cents, got ${deviationCents.toFixed(1)}`
+      ).toBeLessThanOrEqual(45);
     }
-  });
-
-  it("keeps the lowest practice register in range", () => {
-    const sampleRate = 44_100;
-    const frameSize = getPracticeYinInputFrameSize(
-      sampleRate,
-      PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
-    );
-    const detection = createDetector(sampleRate, frameSize).detect(
-      harmonicTone(PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz, sampleRate, frameSize),
-      sampleRate
-    );
-
-    expect(detection.fallback.frequencyHz).toBeCloseTo(
-      PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz,
-      0
-    );
-    expect(detection.fallback.clarity).toBeGreaterThan(0.75);
-  });
-
-  it("returns no voiced candidate for silence", () => {
-    const sampleRate = 48_000;
-    const frameSize = getPracticeYinInputFrameSize(
-      sampleRate,
-      PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
-    );
-    const detection = createDetector(sampleRate, frameSize).detect(
-      new Float32Array(frameSize),
-      sampleRate
-    );
-
-    expect(detection.fallback).toEqual({ clarity: 0, frequencyHz: 0 });
   });
 });

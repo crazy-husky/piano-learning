@@ -27,6 +27,13 @@ export interface SwiftF0Result {
   inferenceMs: number;
 }
 
+export interface SwiftF0SequenceFrame {
+  confidence: number;
+  frequencyHz: number;
+  rms: number;
+  timeMs: number;
+}
+
 function resampleLinear(samples: Float32Array, sourceRate: number): Float32Array {
   if (sourceRate === SWIFTF0_MODEL_SAMPLE_RATE) return samples;
   const outputLength = Math.max(
@@ -96,6 +103,57 @@ export async function analyzeSwiftF0(
     frequencyHz: lastFrame >= 0 && !silent ? (frequenciesHz[lastFrame] ?? 0) : 0,
     inferenceMs: performance.now() - startedAt,
   };
+}
+
+export async function analyzeSwiftF0Sequence(
+  session: ort.InferenceSession,
+  samples: Float32Array,
+  sampleRate: number
+): Promise<SwiftF0SequenceFrame[]> {
+  const samples16k = resampleLinear(samples, sampleRate);
+  const output = await session.run({
+    [session.inputNames[0]]: new ort.Tensor("float32", samples16k, [1, samples16k.length]),
+    [session.inputNames[1]]: new ort.Tensor(
+      "float32",
+      Float32Array.of(SWIFTF0_MIN_FREQUENCY_HZ),
+      []
+    ),
+    [session.inputNames[2]]: new ort.Tensor(
+      "float32",
+      Float32Array.of(SWIFTF0_MAX_FREQUENCY_HZ),
+      []
+    ),
+  });
+  const frequenciesHz = output[session.outputNames[0]].data as Float64Array;
+  const confidences = output[session.outputNames[1]].data as Float32Array;
+  const lastFrame = frequenciesHz.length - SWIFTF0_LOOKAHEAD_FRAMES - 1;
+  const frames: SwiftF0SequenceFrame[] = [];
+
+  for (let frameIndex = 0; frameIndex <= lastFrame; frameIndex += 1) {
+    const frameStart = frameIndex * 256;
+    let energy = 0;
+    let peak = 0;
+    let count = 0;
+    for (
+      let index = frameStart;
+      index < Math.min(frameStart + 256, samples16k.length);
+      index += 1
+    ) {
+      const sample = samples16k[index];
+      energy += sample * sample;
+      peak = Math.max(peak, Math.abs(sample));
+      count += 1;
+    }
+    const rms = count > 0 ? Math.sqrt(energy / count) : 0;
+    const isSilent = peak < SWIFTF0_SILENCE_PEAK_THRESHOLD;
+    frames.push({
+      confidence: isSilent ? 0 : (confidences[frameIndex] ?? 0),
+      frequencyHz: isSilent ? 0 : (frequenciesHz[frameIndex] ?? 0),
+      rms,
+      timeMs: (frameIndex * 256 * 1000) / SWIFTF0_MODEL_SAMPLE_RATE,
+    });
+  }
+  return frames;
 }
 
 export async function warmSwiftF0Runtime(runtime: SwiftF0Runtime): Promise<void> {

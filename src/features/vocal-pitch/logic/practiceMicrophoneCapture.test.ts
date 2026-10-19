@@ -9,7 +9,7 @@ import {
 } from "./practiceMicrophoneCapture";
 
 const metadata: PracticeMicrophoneCaptureMetadata = {
-  algorithm: "mpm-c",
+  algorithm: "swiftf0",
   analysisGain: 4,
   audioContextSampleRate: 48000,
   audioContextStateAtCaptureStart: "running",
@@ -39,7 +39,6 @@ const metadata: PracticeMicrophoneCaptureMetadata = {
   lifecycleEvents: [],
   noiseSuppression: false,
   pcmCaptureIntervalMs: 50,
-  primaryClarityThreshold: 0.8,
   requiredStableFrames: 4,
   requiredStableMs: 80,
   recordingLimitMs: 30000,

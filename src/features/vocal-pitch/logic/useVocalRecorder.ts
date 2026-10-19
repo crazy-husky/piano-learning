@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { VocalPitchAnalysisConfig, VocalPitchFrame } from "../../../domain/vocalPitch";
-import {
-  createPitchFrameDetector,
-  getPitchFrameSize,
-  type PitchFrameDetector,
-} from "./pitchFrameDetector";
+import { createPracticeYinDetector, getPracticeYinInputFrameSize } from "./practiceYinDetector";
+import type { PitchFrameDetector } from "./pitchFrameTypes";
 import { classifyPitchFrame } from "./pitchFrameClassifier";
 import {
   shouldFinishVocalRecordingWhenHidden,
@@ -240,12 +237,16 @@ export function useVocalRecorder({
 
         const source = context.createMediaStreamSource(stream);
         const analyser = context.createAnalyser();
-        const frameSize = getPitchFrameSize(context.sampleRate);
+        const frameSize = getPracticeYinInputFrameSize(context.sampleRate, config.minFrequencyHz);
         analyser.fftSize = frameSize;
         analyser.smoothingTimeConstant = 0;
         source.connect(analyser);
         liveBufferRef.current = new Float32Array(frameSize);
-        pitchDetectorRef.current = createPitchFrameDetector(frameSize);
+        pitchDetectorRef.current = createPracticeYinDetector(frameSize, context.sampleRate, {
+          maxFrequencyHz: config.maxFrequencyHz,
+          minFrequencyHz: config.minFrequencyHz,
+          threshold: 0.15,
+        });
 
         const mimeType = preferredRecordingMimeType();
         const recorder = new MediaRecorder(stream, {
@@ -311,6 +312,8 @@ export function useVocalRecorder({
       releaseDevices,
       runLiveAnalysis,
       updateStatus,
+      config.maxFrequencyHz,
+      config.minFrequencyHz,
     ]
   );
 

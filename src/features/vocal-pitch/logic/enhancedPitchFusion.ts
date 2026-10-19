@@ -184,7 +184,7 @@ export function createEnhancedPitchAnalysis(
     schemaVersion: 1,
     analyzedAt: new Date().toISOString(),
     config,
-    detectorId: "mpm-c-swiftf0-fcpe",
+    detectorId: "yin-swiftf0-fcpe",
     detectorVersion: 2,
     frames: fuseEnhancedPitchTracks(mpmAnalysis, swiftf0, fcpe, durationSeconds),
     hopSeconds: ENHANCED_HOP_SECONDS,

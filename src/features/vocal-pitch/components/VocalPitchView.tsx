@@ -153,7 +153,9 @@ export function VocalPitchView({
     beginTouchResize,
     finishTouchResize,
     moveTouchResize,
+    nudgeSidebarWidth,
     resetSidebarWidth,
+    sidebarWidth,
     workspaceRef,
   } = useVocalSidebarResize();
   const {
@@ -193,7 +195,7 @@ export function VocalPitchView({
       if (!isEnhancedPitchReminderSuppressedToday() && modelDownloadProgressRef.current === null) {
         setDialog((current) => current ?? { kind: "enhanced-analysis", targetId: target.id });
       }
-      return "mpm-c";
+      return "yin";
     },
     []
   );
@@ -263,13 +265,13 @@ export function VocalPitchView({
           analysis = await runPitchAnalysis(prepared, target.config, mode);
         } catch (error) {
           if (mode !== "enhanced" || isAbortError(error) || fallbackSamples === null) throw error;
-          setAnalysisMessage("增强分析失败，正在回退 MPM-C…");
+          setAnalysisMessage("增强分析失败，正在回退 YIN…");
           analysis = await runPitchAnalysis(
             { ...decoded, samples: fallbackSamples },
             target.config,
-            "mpm-c"
+            "yin"
           );
-          setInlineMessage("增强分析暂不可用，已使用 MPM-C 完成分析");
+          setInlineMessage("增强分析暂不可用，已使用 YIN 完成分析");
         }
         const updated = {
           ...target,
@@ -436,7 +438,7 @@ export function VocalPitchView({
       try {
         setAnalysisMessage("正在解码录音…");
         const decoded = await decodeAudioBlob(next.audioBlob);
-        const analysis = await runPitchAnalysis(decoded, next.config, "mpm-c");
+        const analysis = await runPitchAnalysis(decoded, next.config, "yin");
         setAnalysisMessage("分析完成");
         return {
           ...next,
@@ -876,13 +878,35 @@ export function VocalPitchView({
       {sidebarOpen ? (
         <>
           <div
+            aria-label="调整侧栏宽度"
+            aria-orientation="horizontal"
+            aria-valuemax={520}
+            aria-valuemin={260}
+            aria-valuenow={sidebarWidth}
             className="vocal-sidebar-resizer"
             onDoubleClick={resetSidebarWidth}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                nudgeSidebarWidth(-16);
+              } else if (event.key === "ArrowRight") {
+                event.preventDefault();
+                nudgeSidebarWidth(16);
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                nudgeSidebarWidth(-1000);
+              } else if (event.key === "End") {
+                event.preventDefault();
+                nudgeSidebarWidth(1000);
+              }
+            }}
             onMouseDown={beginMouseResize}
             onPointerCancel={finishTouchResize}
             onPointerDown={beginTouchResize}
             onPointerMove={moveTouchResize}
             onPointerUp={finishTouchResize}
+            role="slider"
+            tabIndex={0}
           />
           <VocalPitchSidebar
             allowBackgroundRecording={allowBackgroundRecording}

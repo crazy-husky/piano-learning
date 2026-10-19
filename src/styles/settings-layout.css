@@ -1,0 +1,328 @@
+.settings-shell .settings-restore-lock {
+  display: block;
+}
+
+.settings-cards {
+  align-items: start;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-cards > .settings-category-card {
+  margin-top: 0;
+}
+
+.settings-category-card,
+.settings-about-panel {
+  min-width: 0;
+  padding: 22px 24px;
+}
+
+.settings-category-card .panel-heading,
+.settings-about-panel .panel-heading {
+  border-bottom: 1px solid var(--line);
+  margin: 0 0 6px;
+  padding: 0 0 14px;
+}
+
+.settings-category-card .panel-heading h2,
+.settings-about-panel .panel-heading h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.settings-category-card .setting-row,
+.settings-about-panel .setting-row,
+.settings-developer-options .setting-row,
+.settings-reset-row {
+  align-items: start;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 68px;
+  padding: 12px 0;
+}
+
+.settings-category-card .setting-row > div:first-child,
+.settings-about-panel .setting-row > div:first-child,
+.settings-developer-options .setting-row > div:first-child,
+.settings-reset-row > div:first-child {
+  min-width: 0;
+}
+
+.settings-shell .settings-category-card select,
+.settings-shell .settings-category-card .setting-number-input,
+.settings-shell .settings-category-card .setting-row > button:not(.ui-switch),
+.settings-shell .settings-about-panel .setting-row > button:not(.ui-switch),
+.settings-shell .settings-developer-options .setting-row > button:not(.ui-switch) {
+  box-sizing: border-box;
+  line-height: 1.2;
+  min-width: 150px;
+  min-height: var(--control-height);
+  width: 150px;
+}
+
+.settings-helper,
+.settings-category-card .setting-row > div > span,
+.settings-about-panel .setting-row > div > span,
+.settings-developer-options .setting-row > div > span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.settings-category-card .setting-row > div > strong,
+.settings-about-panel .setting-row > div > strong,
+.settings-developer-options .setting-row > div > strong,
+.settings-reset-row > div > strong {
+  display: block;
+}
+
+.settings-mode-controls {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  justify-self: end;
+}
+
+.settings-mode-controls select {
+  margin-top: 16px;
+}
+
+.settings-mode-controls select:disabled {
+  opacity: 0.55;
+}
+
+.settings-category-card .volume-control {
+  min-width: 220px;
+}
+
+.settings-category-card .volume-control input[type="range"] {
+  width: 160px;
+}
+
+.settings-category-card .page-appearance-hours-row {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, auto);
+}
+
+.settings-category-card .page-appearance-hours select {
+  min-width: 94px;
+  width: auto;
+}
+
+.settings-category-card .keyboard-settings-description {
+  border-top: 1px solid var(--line);
+  margin: 2px 0 0;
+  padding: 14px 0 0;
+}
+
+.settings-backup-card {
+  grid-column: 1 / -1;
+}
+
+.backup-settings-row {
+  align-items: center;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  padding: 12px 0;
+}
+
+.backup-settings-summary {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.backup-settings-summary > span {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backup-settings-summary small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.backup-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.backup-settings-actions button {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  justify-content: center;
+  min-height: var(--control-height);
+  min-width: 150px;
+}
+
+.settings-developer-options {
+  background: var(--panel-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 24px;
+  padding: 0 20px;
+}
+
+.settings-developer-options > summary {
+  align-items: center;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  font-weight: 650;
+  list-style: none;
+  padding: 17px 0;
+}
+
+.settings-developer-options > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-developer-options > summary::before {
+  border-bottom: 2px solid var(--accent-strong);
+  border-right: 2px solid var(--accent-strong);
+  box-sizing: border-box;
+  content: "";
+  flex: 0 0 8px;
+  height: 8px;
+  margin: -2px 11px 0 2px;
+  transform: rotate(-45deg);
+  transition: transform 0.16s ease;
+  width: 8px;
+}
+
+.settings-developer-options[open] > summary::before {
+  margin-top: -5px;
+  transform: rotate(45deg);
+}
+
+.settings-developer-options > summary:hover {
+  color: var(--text);
+}
+
+.settings-developer-options > summary:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 4px;
+}
+
+.settings-developer-options > summary::marker {
+  content: "";
+}
+
+.settings-developer-content {
+  border-top: 1px solid var(--line);
+}
+
+.settings-developer-content .setting-row:last-child {
+  border-bottom: 0;
+}
+
+.settings-about-panel {
+  margin-top: 24px;
+}
+
+.settings-about-panel .status-line {
+  padding: 8px 0;
+}
+
+.settings-reset-row {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  min-height: 58px;
+  padding-bottom: 0;
+}
+
+.settings-shell .settings-reset-action {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 13px;
+  gap: 7px;
+  justify-content: center;
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.settings-shell .settings-reset-action:hover:not(:disabled) {
+  background: var(--surface-soft);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+@media (max-width: 900px) {
+  .settings-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-backup-card {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .settings-category-card,
+  .settings-about-panel {
+    padding: 18px 16px;
+  }
+
+  .settings-category-card .setting-row,
+  .settings-about-panel .setting-row,
+  .settings-developer-options .setting-row,
+  .settings-reset-row,
+  .settings-category-card .page-appearance-hours-row,
+  .backup-settings-row {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-shell .settings-category-card select,
+  .settings-shell .settings-category-card .setting-number-input,
+  .settings-shell .settings-category-card .setting-row > button:not(.ui-switch),
+  .settings-shell .settings-about-panel .setting-row > button:not(.ui-switch),
+  .settings-shell .settings-developer-options .setting-row > button:not(.ui-switch) {
+    width: 100%;
+  }
+
+  .settings-mode-controls {
+    align-items: stretch;
+    justify-self: stretch;
+  }
+
+  .settings-mode-controls .ui-switch {
+    align-self: flex-end;
+  }
+
+  .settings-category-card .volume-control {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .backup-settings-actions {
+    justify-content: stretch;
+  }
+
+  .backup-settings-actions button {
+    flex: 1 1 140px;
+  }
+
+  .settings-shell .settings-reset-action {
+    justify-self: start;
+  }
+}

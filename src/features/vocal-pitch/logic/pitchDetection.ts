@@ -6,13 +6,12 @@ import {
   type VocalPitchAnalysisConfig,
   type VocalPitchFrame,
 } from "../../../domain/vocalPitch";
+import { createPracticeYinDetector, getPracticeYinInputFrameSize } from "./practiceYinDetector";
 import {
-  createPitchFrameDetector,
-  getPitchFrameSize,
   type PitchFrameCandidate,
   VOCAL_PITCH_DETECTOR_ID,
   VOCAL_PITCH_DETECTOR_VERSION,
-} from "./pitchFrameDetector";
+} from "./pitchFrameTypes";
 import {
   classifyPitchFrame,
   MIN_VOICED_RMS,
@@ -298,9 +297,13 @@ export function analyzePitchSamples(
   onProgress: (progress: number) => void = () => undefined
 ): VocalPitchAnalysis {
   const normalizedConfig = normalizeVocalPitchConfig(config);
-  const frameSize = getPitchFrameSize(sampleRate);
+  const frameSize = getPracticeYinInputFrameSize(sampleRate, VOCAL_PITCH_MIN_FREQUENCY_HZ);
   const hopSize = Math.max(1, Math.round(sampleRate / 100));
-  const detector = createPitchFrameDetector(frameSize);
+  const detector = createPracticeYinDetector(frameSize, sampleRate, {
+    maxFrequencyHz: VOCAL_PITCH_MAX_FREQUENCY_HZ,
+    minFrequencyHz: VOCAL_PITCH_MIN_FREQUENCY_HZ,
+    threshold: 0.15,
+  });
   const frame = new Float32Array(frameSize);
   const classifications: ClassifiedPitchFrame[] = [];
   const frameCount = Math.max(1, Math.ceil(Math.max(0, samples.length - frameSize) / hopSize) + 1);

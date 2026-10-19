@@ -11,7 +11,7 @@ import {
 } from "./practiceMicrophoneAnalysis";
 
 const metadata: PracticeMicrophoneCaptureMetadata = {
-  algorithm: "mpm-c",
+  algorithm: "swiftf0",
   analysisGain: 1,
   audioContextSampleRate: 48000,
   audioContextStateAtCaptureStart: "running",
@@ -35,7 +35,6 @@ const metadata: PracticeMicrophoneCaptureMetadata = {
   lifecycleEvents: [],
   noiseSuppression: false,
   pcmCaptureIntervalMs: 50,
-  primaryClarityThreshold: 0.65,
   requiredStableFrames: 2,
   requiredStableMs: 50,
   recordingLimitMs: 30000,
@@ -134,11 +133,10 @@ describe("practice microphone capture analysis", () => {
       wrong: 0,
     });
     expect(analysis.parameters).toMatchObject({
-      algorithm: "mpm-c",
+      algorithm: "swiftf0",
       analysisGain: 1,
       debugMode: false,
       frameIntervalSelection: 30,
-      primaryClarityThreshold: 0.65,
       requiredStableFrames: 2,
       requiredStableMs: 50,
       sensitivityLevel: 1,

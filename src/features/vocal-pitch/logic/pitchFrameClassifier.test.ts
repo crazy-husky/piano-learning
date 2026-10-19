@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_VOCAL_PITCH_CONFIG, midiToFrequency } from "../../../domain/vocalPitch";
-import type { PitchFrameDetector } from "./pitchFrameDetector";
+import type { PitchFrameDetector } from "./pitchFrameTypes";
 import { classifyPitchFrame } from "./pitchFrameClassifier";
 import { PRACTICE_NOTE_FREQUENCY_RANGE } from "./practiceNoteRecognizer";
 

@@ -75,7 +75,6 @@ export interface PracticeMicrophoneCaptureMetadata {
   lifecycleEvents: PracticeMicrophoneCaptureLifecycleEvent[];
   noiseSuppression: boolean | null;
   pcmCaptureIntervalMs: number;
-  primaryClarityThreshold: number;
   requiredStableFrames: PracticeMicrophoneStableFrameCount;
   requiredStableMs: PracticeMicrophoneStableDuration;
   recordingLimitMs: number;

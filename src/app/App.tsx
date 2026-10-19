@@ -89,8 +89,8 @@ import {
 import {
   DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
   createDefaultPracticeMicrophonePreferences,
-  isTouchPracticeDevice,
-  parsePracticeMicrophonePreferences,
+  defaultPracticeMicrophoneSensitivityForDevice,
+  parseSystemPracticeMicrophonePreferences,
   PRACTICE_MICROPHONE_PREFERENCES_KEY,
 } from "../features/vocal-pitch/logic/practiceMicrophonePreferences";
 
@@ -121,13 +121,11 @@ type SettingsSaveOptions = { feedback?: boolean };
 
 const INITIAL_PRACTICE_MICROPHONE_PREFERENCES = (() => {
   if (typeof navigator === "undefined") return DEFAULT_PRACTICE_MICROPHONE_PREFERENCES;
-  const sensitivityLevel = isTouchPracticeDevice(
+  const sensitivityLevel = defaultPracticeMicrophoneSensitivityForDevice(
     navigator.userAgent,
     navigator.platform,
     navigator.maxTouchPoints
-  )
-    ? 1
-    : 3;
+  );
   return createDefaultPracticeMicrophonePreferences(sensitivityLevel);
 })();
 
@@ -242,7 +240,7 @@ export function App(): JSX.Element {
   const [practiceMicrophonePreferences, setPracticeMicrophonePreferences] = useLocalStorageState(
     PRACTICE_MICROPHONE_PREFERENCES_KEY,
     INITIAL_PRACTICE_MICROPHONE_PREFERENCES,
-    { parse: parsePracticeMicrophonePreferences }
+    { parse: parseSystemPracticeMicrophonePreferences }
   );
   const [practicePagePreferences, setPracticePagePreferences] = useLocalStorageState(
     PRACTICE_PAGE_PREFERENCES_KEY,
@@ -1301,7 +1299,6 @@ export function App(): JSX.Element {
                 <PracticeView
                   midi={midi}
                   practiceMicrophonePreferences={practiceMicrophonePreferences}
-                  onPracticeMicrophonePreferencesChange={setPracticeMicrophonePreferences}
                   practicePagePreferences={practicePagePreferences}
                   settings={data.settings}
                   sessions={data.practiceHistoryLoaded ? data.sessions : []}

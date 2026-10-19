@@ -18,7 +18,8 @@ export interface VocalPitchAnalysisConfig {
 export interface VocalPitchAnalysis {
   analyzedAt: string;
   config: VocalPitchAnalysisConfig;
-  detectorId: "mpm-c" | "mpm-c-swiftf0-fcpe" | "pitchy-mpm";
+  /** String keeps historical detector IDs readable in existing backups. */
+  detectorId: string;
   detectorVersion: number;
   frames: VocalPitchFrame[];
   hopSeconds: number;

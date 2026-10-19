@@ -2,7 +2,6 @@ import { formatMidiNote } from "../../../domain/vocalPitch";
 import {
   createPracticeNoteRecognizer,
   frequencyToNaturalPracticeNote,
-  PRACTICE_NOTE_CONTINUITY_CONFIDENCE,
   PRACTICE_NOTE_MAX_MIDI,
   PRACTICE_NOTE_MIN_MIDI,
 } from "./practiceNoteRecognizer";
@@ -96,7 +95,6 @@ export interface PracticeMicrophoneAnalysis {
     frameCaptureIntervalMs: number;
     frameIntervalSelection: PracticeMicrophoneFrameInterval;
     inputRmsThreshold: number;
-    primaryClarityThreshold: number;
     requiredStableFrames: number;
     requiredStableMs: number;
     sensitivityLevel: PracticeMicrophoneSensitivityLevel;
@@ -358,12 +356,8 @@ export function analyzePracticeMicrophoneCapture(
   frames: readonly PracticeMicrophoneCaptureFrame[],
   expectedSequence: readonly number[] | null
 ): PracticeMicrophoneAnalysis {
-  const continuityConfidence =
-    metadata.algorithm === "mpm-c"
-      ? PRACTICE_NOTE_CONTINUITY_CONFIDENCE
-      : metadata.confidenceThreshold;
   const recognizer = createPracticeNoteRecognizer(metadata.confidenceThreshold, {
-    continuityConfidence,
+    continuityConfidence: metadata.confidenceThreshold,
     requiredFrames: metadata.requiredStableFrames,
     requiredMs: metadata.requiredStableMs,
   });
@@ -381,13 +375,8 @@ export function analyzePracticeMicrophoneCapture(
       frequencyHz !== null &&
       analysisRms >= metadata.inputRmsThreshold &&
       (frame.confidence ?? 0) >= metadata.confidenceThreshold;
-    const canUsePitchContinuity =
-      metadata.algorithm === "mpm-c" &&
-      (frame.confidence ?? 0) >= PRACTICE_NOTE_CONTINUITY_CONFIDENCE;
     const recognizerHasUsableFrequency =
-      frequencyHz !== null &&
-      analysisRms >= metadata.inputRmsThreshold &&
-      (eligible || canUsePitchContinuity);
+      frequencyHz !== null && analysisRms >= metadata.inputRmsThreshold && eligible;
     const recognized = recognizer.process({
       ambiguous: frame.ambiguous,
       confidence: frame.confidence ?? 0,
@@ -472,7 +461,6 @@ export function analyzePracticeMicrophoneCapture(
       frameCaptureIntervalMs: metadata.frameCaptureIntervalMs,
       frameIntervalSelection: metadata.frameIntervalSelection,
       inputRmsThreshold: metadata.inputRmsThreshold,
-      primaryClarityThreshold: metadata.primaryClarityThreshold,
       requiredStableFrames: metadata.requiredStableFrames,
       requiredStableMs: metadata.requiredStableMs,
       sensitivityLevel: metadata.sensitivityLevel,

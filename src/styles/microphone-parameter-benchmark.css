@@ -1,0 +1,861 @@
+.microphone-benchmark-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+  display: grid;
+  gap: 14px;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: min(900px, 92dvh);
+  margin: auto;
+  max-height: calc(100dvh - 20px);
+  max-width: min(1160px, calc(100vw - 24px));
+  min-width: min(700px, calc(100vw - 24px));
+  overflow: hidden;
+  padding: 18px;
+  width: 100%;
+}
+
+.microphone-benchmark-dialog::backdrop {
+  background: var(--modal-overlay);
+}
+
+.microphone-benchmark-header,
+.microphone-benchmark-results-heading,
+.microphone-benchmark-waveform-heading,
+.microphone-benchmark-record-controls,
+.microphone-benchmark-recording-tabs,
+.microphone-benchmark-audio-downloads,
+.microphone-benchmark-scan-controls,
+.microphone-benchmark-marker-controls,
+.microphone-benchmark-algorithm-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.microphone-benchmark-header {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--line);
+  gap: 16px;
+  padding-bottom: 12px;
+}
+
+.microphone-benchmark-header h2,
+.microphone-benchmark-header p,
+.microphone-benchmark-section h3,
+.microphone-benchmark-results-heading p {
+  margin: 0;
+}
+
+.microphone-benchmark-header > div > p:last-child,
+.microphone-benchmark-section > p,
+.microphone-benchmark-results-heading p,
+.microphone-benchmark-note,
+.microphone-benchmark-disclaimer {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 6px;
+}
+
+.microphone-benchmark-eyebrow {
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px !important;
+  text-transform: uppercase;
+}
+
+.microphone-benchmark-close {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.microphone-benchmark-body {
+  display: grid;
+  gap: 18px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 3px 6px 0;
+}
+
+.microphone-benchmark-section {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  padding-bottom: 16px;
+}
+
+.microphone-benchmark-section h3 {
+  font-size: 16px;
+}
+
+.microphone-benchmark-instructions {
+  margin: -3px 0 0 !important;
+}
+
+.microphone-benchmark-record-controls {
+  justify-content: flex-start;
+}
+
+.microphone-benchmark-recording-tabs {
+  justify-content: flex-start;
+}
+
+.microphone-benchmark-recording-tabs button {
+  align-items: center;
+  border: 1px solid var(--border);
+  display: inline-flex;
+  gap: 7px;
+}
+
+.microphone-benchmark-recording-tabs button.is-active {
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
+}
+
+.microphone-benchmark-recording-tabs button span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.microphone-benchmark-record-controls > span,
+.microphone-benchmark-algorithm-row > span,
+.microphone-benchmark-waveform-heading > span,
+.microphone-benchmark-marker-controls > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.microphone-benchmark-record-controls button,
+.microphone-benchmark-audio-downloads button,
+.microphone-benchmark-results-heading button {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+}
+
+.microphone-benchmark-audio-downloads {
+  justify-content: flex-start;
+}
+
+.microphone-benchmark-audio-downloads > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.microphone-benchmark-algorithms {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 10px 12px 12px;
+}
+
+.microphone-benchmark-algorithms legend {
+  font-weight: 650;
+  padding: 0 4px;
+}
+
+.microphone-benchmark-algorithms label {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.microphone-benchmark-environment {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 11px 12px;
+}
+
+.microphone-benchmark-environment span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.microphone-benchmark-environment strong {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.microphone-benchmark-waveform-heading {
+  justify-content: flex-start;
+  margin-top: 2px;
+}
+
+.microphone-benchmark-waveform {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.microphone-benchmark-waveform.is-adding-marker {
+  cursor: crosshair;
+}
+
+.microphone-benchmark-waveform-chart {
+  display: block;
+  height: 116px;
+  overflow: visible;
+  touch-action: none;
+  width: 100%;
+}
+
+.microphone-benchmark-waveform-midline {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.microphone-benchmark-waveform-sample {
+  stroke: var(--accent-strong);
+  stroke-linecap: round;
+  stroke-opacity: 0.72;
+  stroke-width: 1.2;
+}
+
+.microphone-benchmark-waveform-onset {
+  cursor: ew-resize;
+  stroke: var(--warning);
+  stroke-width: 2;
+}
+
+.microphone-benchmark-waveform-onset.is-selected {
+  stroke: var(--danger);
+  stroke-width: 3;
+}
+
+.microphone-benchmark-waveform-onset:focus-visible {
+  outline: none;
+  stroke: var(--accent-strong);
+  stroke-width: 4;
+}
+
+.microphone-benchmark-marker-controls {
+  justify-content: flex-start;
+}
+
+.microphone-benchmark-algorithm-row {
+  justify-content: flex-start;
+}
+
+.microphone-benchmark-algorithm-row label {
+  font-weight: 650;
+}
+
+.microphone-benchmark-algorithm-row select {
+  min-width: 180px;
+}
+
+.microphone-benchmark-options-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.microphone-benchmark-options-grid fieldset {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+  padding: 9px 10px 11px;
+}
+
+.microphone-benchmark-options-grid legend {
+  font-weight: 650;
+  padding: 0 4px;
+}
+
+.microphone-benchmark-options-grid label {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.microphone-benchmark-scan-controls {
+  justify-content: flex-start;
+}
+
+.microphone-benchmark-scan-controls > strong {
+  margin-right: auto;
+}
+
+.microphone-benchmark-progress {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  height: 22px;
+  overflow: hidden;
+  position: relative;
+}
+
+.microphone-benchmark-progress > span {
+  background: var(--accent);
+  display: block;
+  height: 100%;
+  transition: width 120ms linear;
+}
+
+.microphone-benchmark-progress small {
+  color: var(--text);
+  font-size: 11px;
+  inset: 2px 0 auto;
+  line-height: 16px;
+  position: absolute;
+  text-align: center;
+}
+
+.microphone-benchmark-error {
+  background: var(--danger-surface);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  color: var(--danger);
+  line-height: 1.45;
+  margin: 0;
+  padding: 9px 11px;
+}
+
+.microphone-benchmark-results-heading {
+  align-items: flex-start;
+}
+
+.microphone-benchmark-table-scroll {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-height: 380px;
+  overflow: auto;
+}
+
+.microphone-benchmark-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 1000px;
+  width: 100%;
+}
+
+.microphone-benchmark-table th,
+.microphone-benchmark-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 7px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.microphone-benchmark-table th {
+  background: var(--surface-soft);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.microphone-benchmark-table th button {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+}
+
+.microphone-benchmark-table tbody tr:hover {
+  background: var(--surface-soft);
+}
+
+.microphone-benchmark-disclaimer {
+  font-size: 12px;
+  margin: 0;
+}
+
+.microphone-benchmark-note {
+  font-size: 12px;
+  margin: 0;
+}
+
+.microphone-benchmark-setting-row {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 14px;
+}
+
+@media (max-width: 760px) {
+  .microphone-benchmark-dialog {
+    border-radius: 8px;
+    height: 94dvh;
+    max-height: calc(100dvh - 12px);
+    max-width: calc(100vw - 12px);
+    min-width: 0;
+    padding: 12px;
+  }
+
+  .microphone-benchmark-environment {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .microphone-benchmark-options-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .microphone-benchmark-environment,
+  .microphone-benchmark-options-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Compact two-step flow: recording first, parameter scan second. */
+.microphone-benchmark-dialog {
+  gap: 12px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  max-width: min(1000px, calc(100vw - 24px));
+  min-width: min(700px, calc(100vw - 24px));
+  padding: 16px;
+}
+
+.microphone-benchmark-close {
+  box-sizing: border-box;
+  flex: 0 0 36px;
+  height: 36px;
+  line-height: 1;
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0;
+  width: 36px;
+}
+
+.microphone-benchmark-close svg {
+  display: block;
+  flex: 0 0 18px;
+  height: 18px;
+  width: 18px;
+}
+
+.settings-shell .microphone-benchmark-trigger {
+  align-self: center;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  height: 38px;
+  line-height: 1.2;
+  max-height: 38px;
+  min-height: 38px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.microphone-benchmark-header {
+  align-items: center;
+  border: 0;
+  padding: 0;
+}
+
+.microphone-benchmark-header h2 {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.microphone-benchmark-header > div > p:last-child {
+  margin-top: 4px;
+}
+
+.microphone-benchmark-stepper {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  padding: 2px 0 4px;
+}
+
+.microphone-benchmark-step {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.microphone-benchmark-step > span:first-child {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  height: 25px;
+  justify-content: center;
+  width: 25px;
+}
+
+.microphone-benchmark-step strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.microphone-benchmark-step small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.microphone-benchmark-step.is-current,
+.microphone-benchmark-step.is-complete {
+  color: var(--text);
+}
+
+.microphone-benchmark-step.is-current > span:first-child,
+.microphone-benchmark-step.is-complete > span:first-child {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: var(--surface);
+}
+
+.microphone-benchmark-step-connector {
+  background: var(--line);
+  flex: 0 1 72px;
+  height: 1px;
+}
+
+.microphone-benchmark-body {
+  align-content: start;
+  gap: 12px;
+  padding-right: 4px;
+}
+
+.microphone-benchmark-section.microphone-benchmark-wizard-card {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  gap: 12px;
+  padding: 16px;
+}
+
+.microphone-benchmark-card-heading {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.microphone-benchmark-card-heading > div {
+  align-items: baseline;
+  display: flex;
+  gap: 9px;
+}
+
+.microphone-benchmark-card-heading h3 {
+  font-size: 17px;
+}
+
+.microphone-benchmark-step-label {
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.microphone-benchmark-gain-tag,
+.microphone-benchmark-lock-tag {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 4px 8px;
+}
+
+.microphone-benchmark-instructions {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 !important;
+}
+
+.microphone-benchmark-recording-progress {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.microphone-benchmark-recording-progress > span:first-child {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.microphone-benchmark-recording-progress strong {
+  font-size: 15px;
+}
+
+.microphone-benchmark-recording-progress > span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 2px;
+}
+
+.microphone-benchmark-recording-actions {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.microphone-benchmark-recording-actions button {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  display: flex;
+  font-size: 14px;
+  font-weight: 650;
+  gap: 9px;
+  justify-content: center;
+  min-height: 48px;
+  padding: 10px 12px;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.microphone-benchmark-recording-actions button.primary,
+.microphone-benchmark-scan-button {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: var(--surface);
+}
+
+.microphone-benchmark-recording-actions button.primary:not(:disabled):hover,
+.microphone-benchmark-scan-button:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+
+.microphone-benchmark-recording-actions button.is-complete {
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--muted);
+  cursor: default;
+}
+
+.microphone-benchmark-recording-actions button.is-recording {
+  background: var(--danger-surface);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.microphone-benchmark-recording-actions button.is-pending {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.microphone-benchmark-recording-actions button:disabled {
+  opacity: 0.72;
+}
+
+.microphone-benchmark-ready-message {
+  align-items: center;
+  color: var(--accent-strong);
+  display: flex;
+  font-size: 13px;
+  font-weight: 650;
+  gap: 7px;
+  margin: 0;
+}
+
+.microphone-benchmark-details,
+.microphone-benchmark-advanced {
+  border-top: 1px solid var(--line);
+  margin-top: 2px;
+  padding-top: 10px;
+}
+
+.microphone-benchmark-details > summary,
+.microphone-benchmark-advanced > summary {
+  align-items: center;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  gap: 10px;
+  justify-content: space-between;
+  list-style-position: inside;
+}
+
+.microphone-benchmark-details-content {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.microphone-benchmark-details-content > .microphone-benchmark-note {
+  margin: 0;
+}
+
+.microphone-benchmark-retake-button {
+  margin-left: auto;
+}
+
+.microphone-benchmark-scan-card.is-locked {
+  opacity: 0.62;
+}
+
+.microphone-benchmark-lock-tag {
+  white-space: nowrap;
+}
+
+.microphone-benchmark-algorithms {
+  align-items: center;
+  background: var(--surface);
+  border-radius: 8px;
+  gap: 8px 14px;
+  padding: 8px 12px 10px;
+}
+
+.microphone-benchmark-algorithms legend {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.microphone-benchmark-algorithms label {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  gap: 7px;
+  padding: 6px 10px;
+}
+
+.microphone-benchmark-algorithms label:has(input:checked) {
+  background: color-mix(in srgb, var(--accent-strong) 12%, var(--surface));
+  border-color: var(--accent-strong);
+  color: var(--text);
+}
+
+.microphone-benchmark-algorithms label:has(input:disabled) {
+  cursor: default;
+}
+
+.microphone-benchmark-advanced > summary {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  justify-content: flex-start;
+}
+
+.microphone-benchmark-advanced > summary small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: auto;
+}
+
+.microphone-benchmark-advanced.is-locked > summary {
+  cursor: not-allowed;
+}
+
+.microphone-benchmark-advanced > .microphone-benchmark-note {
+  font-size: 11px;
+  margin: 10px 0 0;
+}
+
+.microphone-benchmark-advanced .microphone-benchmark-options-grid {
+  margin-top: 10px;
+}
+
+.microphone-benchmark-options-grid fieldset {
+  background: var(--surface);
+}
+
+.microphone-benchmark-scan-controls {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.microphone-benchmark-scan-button {
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  min-height: 52px;
+  width: 100%;
+}
+
+.microphone-benchmark-scan-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.microphone-benchmark-scan-caption {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  margin: 0;
+  text-align: center;
+}
+
+.microphone-benchmark-progress {
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .microphone-benchmark-dialog {
+    gap: 10px;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .microphone-benchmark-stepper {
+    gap: 8px;
+  }
+
+  .microphone-benchmark-step {
+    gap: 6px;
+  }
+
+  .microphone-benchmark-step strong {
+    font-size: 12px;
+  }
+
+  .microphone-benchmark-section.microphone-benchmark-wizard-card {
+    padding: 12px;
+  }
+
+  .microphone-benchmark-recording-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .microphone-benchmark-retake-button {
+    margin-left: 0;
+  }
+}

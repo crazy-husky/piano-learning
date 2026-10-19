@@ -2,17 +2,16 @@
 
 import { DEFAULT_VOCAL_PITCH_CONFIG } from "../../../domain/vocalPitch";
 import { classifyPitchFrame } from "./pitchFrameClassifier";
-import { createPitchFrameDetector, getPitchFrameSize } from "./pitchFrameDetector";
 import { PRACTICE_NOTE_FREQUENCY_RANGE } from "./practiceNoteRecognizer";
 import { createPracticeYinDetector, getPracticeYinInputFrameSize } from "./practiceYinDetector";
+import type { PitchFrameDetector } from "./pitchFrameTypes";
 
 interface AnalyzeMessage {
-  algorithm: "mpm-c" | "yin";
+  algorithm: "yin";
   confidenceThreshold: number;
   generation: number;
   id: number;
   inputRmsThreshold: number;
-  primaryClarityThreshold: number;
   sampleRate: number;
   samples: ArrayBuffer;
   timeMs: number;
@@ -21,41 +20,25 @@ interface AnalyzeMessage {
 }
 
 interface CachedDetector {
-  detector:
-    ReturnType<typeof createPitchFrameDetector> | ReturnType<typeof createPracticeYinDetector>;
+  detector: ReturnType<typeof createPracticeYinDetector> | PitchFrameDetector;
   key: string;
 }
 
 let cached: CachedDetector | null = null;
 
 function getDetector(message: AnalyzeMessage): CachedDetector["detector"] {
-  const frameSize =
-    message.algorithm === "yin"
-      ? getPracticeYinInputFrameSize(
-          message.sampleRate,
-          PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
-        )
-      : getPitchFrameSize(message.sampleRate, PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz, 6);
-  const key = [
-    message.algorithm,
-    frameSize,
+  const frameSize = getPracticeYinInputFrameSize(
     message.sampleRate,
-    message.primaryClarityThreshold,
-    message.yinThreshold,
-  ].join(":");
+    PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
+  );
+  const key = [message.algorithm, frameSize, message.sampleRate, message.yinThreshold].join(":");
   if (cached?.key === key) return cached.detector;
 
-  const detector =
-    message.algorithm === "yin"
-      ? createPracticeYinDetector(frameSize, message.sampleRate, {
-          maxFrequencyHz: PRACTICE_NOTE_FREQUENCY_RANGE.maxFrequencyHz,
-          minFrequencyHz: PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz,
-          threshold: message.yinThreshold,
-        })
-      : createPitchFrameDetector(frameSize, {
-          fallbackPeakThreshold: Number.EPSILON,
-          primaryPeakThreshold: message.primaryClarityThreshold,
-        });
+  const detector = createPracticeYinDetector(frameSize, message.sampleRate, {
+    maxFrequencyHz: PRACTICE_NOTE_FREQUENCY_RANGE.maxFrequencyHz,
+    minFrequencyHz: PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz,
+    threshold: message.yinThreshold,
+  });
   cached = { detector, key };
   return detector;
 }

@@ -142,12 +142,25 @@ export function useVocalSidebarResize() {
     setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
   }, [setSidebarWidth]);
 
+  const nudgeSidebarWidth = useCallback(
+    (delta: number) => {
+      setSidebarWidth((current) => {
+        const next = clampSidebarWidth(current + delta);
+        workspaceRef.current?.style.setProperty("--vocal-sidebar-width", `${next}px`);
+        return next;
+      });
+    },
+    [setSidebarWidth]
+  );
+
   return {
     beginMouseResize,
     beginTouchResize,
     finishTouchResize,
     moveTouchResize,
+    nudgeSidebarWidth,
     resetSidebarWidth,
+    sidebarWidth,
     workspaceRef,
   };
 }

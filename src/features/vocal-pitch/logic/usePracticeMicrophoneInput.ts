@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_VOCAL_PITCH_CONFIG } from "../../../domain/vocalPitch";
 import { classifyPitchFrame } from "./pitchFrameClassifier";
-import {
-  createPitchFrameDetector,
-  getPitchFrameSize,
-  type PitchFrameDetector,
-} from "./pitchFrameDetector";
+import type { PitchFrameDetector } from "./pitchFrameTypes";
 import { createPracticeYinDetector, getPracticeYinInputFrameSize } from "./practiceYinDetector";
 import { SWIFTF0_INPUT_FRAME_SIZE } from "./swiftF0Config";
 import {
   PRACTICE_NOTE_FREQUENCY_RANGE,
-  PRACTICE_NOTE_CONTINUITY_CONFIDENCE,
   createPracticeNoteRecognizer,
   frequencyToChromaticPracticeNote,
   frequencyToNaturalPracticeNote,
@@ -21,6 +16,7 @@ import {
   resolvePracticeMicrophoneConfiguration,
   resolvePracticeMicrophoneFrameIntervalMs,
   resolvePracticeMicrophoneThresholds,
+  createYinFallbackConfiguration,
   type PracticeMicrophoneAlgorithm,
   type PracticeMicrophoneAnalysisGain,
   type PracticeMicrophoneConfiguration,
@@ -257,7 +253,6 @@ function captureConfigurationMetadata(
     frameCaptureIntervalMs: frameIntervalMs,
     frameIntervalSelection: configuration.frameIntervalMs,
     inputRmsThreshold: configuration.inputRmsThreshold,
-    primaryClarityThreshold: configuration.primaryClarityThreshold,
     requiredStableFrames: configuration.requiredStableFrames,
     requiredStableMs: configuration.requiredStableMs,
     sensitivityLevel: configuration.sensitivityLevel,
@@ -270,12 +265,6 @@ function createDetectorForConfiguration(
   frameSize: number,
   sampleRate: number
 ): PitchFrameDetector | ReturnType<typeof createPracticeYinDetector> | null {
-  if (configuration.algorithm === "mpm-c") {
-    return createPitchFrameDetector(frameSize, {
-      fallbackPeakThreshold: Number.EPSILON,
-      primaryPeakThreshold: configuration.primaryClarityThreshold,
-    });
-  }
   if (configuration.algorithm === "yin") {
     return createPracticeYinDetector(frameSize, sampleRate, {
       maxFrequencyHz: PRACTICE_NOTE_FREQUENCY_RANGE.maxFrequencyHz,
@@ -290,12 +279,8 @@ function createRecognizerForConfiguration(
   configuration: PracticeMicrophoneConfiguration,
   includeAccidentals = false
 ): PracticeNoteRecognizer {
-  const continuityConfidence =
-    configuration.algorithm === "mpm-c"
-      ? PRACTICE_NOTE_CONTINUITY_CONFIDENCE
-      : configuration.confidenceThreshold;
   return createPracticeNoteRecognizer(configuration.confidenceThreshold, {
-    continuityConfidence,
+    continuityConfidence: configuration.confidenceThreshold,
     includeAccidentals,
     requiredFrames: configuration.requiredStableFrames,
     requiredMs: configuration.requiredStableMs,
@@ -630,12 +615,8 @@ export function usePracticeMicrophoneInput(
       const isVoiced =
         analysisRms >= thresholds.inputRmsThreshold && confidence >= thresholds.confidenceThreshold;
       const acceptedFrequency = isVoiced ? frequencyHz : null;
-      const mayUsePitchContinuity =
-        activeAlgorithmRef.current === "mpm-c" && confidence >= PRACTICE_NOTE_CONTINUITY_CONFIDENCE;
       const recognizerFrequency =
-        analysisRms >= thresholds.inputRmsThreshold && (isVoiced || mayUsePitchContinuity)
-          ? frequencyHz
-          : null;
+        analysisRms >= thresholds.inputRmsThreshold && isVoiced ? frequencyHz : null;
       const convertFrequency = includeAccidentalsRef.current
         ? frequencyToChromaticPracticeNote
         : frequencyToNaturalPracticeNote;
@@ -870,9 +851,7 @@ export function usePracticeMicrophoneInput(
         frequencyHz > 0 &&
         alternativeFrequencyHz > 0 &&
         confidence >= activeThresholdsRef.current.confidenceThreshold &&
-        alternativeClarity >=
-          (activeThresholdsRef.current.primaryClarityThreshold ??
-            activeThresholdsRef.current.confidenceThreshold) &&
+        alternativeClarity >= activeThresholdsRef.current.confidenceThreshold &&
         Math.abs(12 * Math.log2(frequencyHz / alternativeFrequencyHz)) >= 1.5
       );
       processObservation(
@@ -1076,7 +1055,6 @@ export function usePracticeMicrophoneInput(
             generation,
             id,
             inputRmsThreshold: configuration.inputRmsThreshold,
-            primaryClarityThreshold: configuration.primaryClarityThreshold,
             sampleRate,
             samples: transferableSamples.buffer,
             timeMs,
@@ -1158,8 +1136,7 @@ export function usePracticeMicrophoneInput(
               candidate.frequencyHz > 0 &&
               alternativeCandidate.frequencyHz > 0 &&
               candidate.clarity >= thresholds.confidenceThreshold &&
-              alternativeCandidate.clarity >=
-                (thresholds.primaryClarityThreshold ?? thresholds.confidenceThreshold) &&
+              alternativeCandidate.clarity >= thresholds.confidenceThreshold &&
               Math.abs(12 * Math.log2(candidate.frequencyHz / alternativeCandidate.frequencyHz)) >=
                 1.5
             );
@@ -1359,12 +1336,10 @@ export function usePracticeMicrophoneInput(
           const frameSize =
             configuration.algorithm === "swiftf0"
               ? SWIFTF0_INPUT_FRAME_SIZE
-              : configuration.algorithm === "yin"
-                ? getPracticeYinInputFrameSize(
-                    sampleRate,
-                    PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
-                  )
-                : getPitchFrameSize(sampleRate, PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz, 6);
+              : getPracticeYinInputFrameSize(
+                  sampleRate,
+                  PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
+                );
           analyser.fftSize = frameSize;
           analyser.smoothingTimeConstant = 0;
           captureMetadataRef.current = {
@@ -1450,7 +1425,57 @@ export function usePracticeMicrophoneInput(
               recoveryDeadlineAt === null
                 ? undefined
                 : Math.max(1, recoveryDeadlineAt - Date.now());
-            await prepare(workerTimeoutMs);
+            try {
+              await prepare(workerTimeoutMs);
+            } catch {
+              configuration = createYinFallbackConfiguration(configuration);
+              thresholds = resolvePracticeMicrophoneThresholds(configuration);
+              frameIntervalMs = resolvePracticeMicrophoneFrameIntervalMs(configuration);
+              activeConfigurationRef.current = configuration;
+              activeAlgorithmRef.current = "yin";
+              activeThresholdsRef.current = thresholds;
+              activeFrameIntervalRef.current = frameIntervalMs;
+              const fallbackFrameSize = getPracticeYinInputFrameSize(
+                sampleRate,
+                PRACTICE_NOTE_FREQUENCY_RANGE.minFrequencyHz
+              );
+              analyser.fftSize = fallbackFrameSize;
+              sampleBufferRef.current = new Float32Array(fallbackFrameSize);
+              detectorRef.current = createDetectorForConfiguration(
+                configuration,
+                fallbackFrameSize,
+                sampleRate
+              );
+              recognizerRef.current = createRecognizerForConfiguration(
+                configuration,
+                includeAccidentalsRef.current
+              );
+              const captureMetadata = captureMetadataRef.current;
+              if (captureMetadata) {
+                captureMetadataRef.current = {
+                  ...captureMetadata,
+                  ...captureConfigurationMetadata(configuration, frameIntervalMs),
+                  frameSize: fallbackFrameSize,
+                };
+              }
+              if (mountedRef.current) {
+                setState((current) => ({
+                  ...current,
+                  diagnostics: current.diagnostics
+                    ? {
+                        ...current.diagnostics,
+                        algorithm: "yin",
+                        confidenceThreshold: thresholds.confidenceThreshold,
+                        inputRmsThreshold: thresholds.inputRmsThreshold,
+                        outcome: "SwiftF0 未能启动，已切换备用识别",
+                        requiredStableFrames: configuration.requiredStableFrames,
+                        requiredStableMs: configuration.requiredStableMs,
+                      }
+                    : current.diagnostics,
+                }));
+              }
+              ensurePitchWorker();
+            }
           } else ensurePitchWorker();
           if (!mountedRef.current || generation !== startGenerationRef.current) return false;
           if (audioContextRef.current?.state !== "running") {
@@ -2060,8 +2085,14 @@ export function usePracticeMicrophoneInput(
     };
   }, [fail, releaseDevices]);
 
+  const activeAlgorithm =
+    state.status === "listening" || state.status === "requesting"
+      ? activeAlgorithmRef.current
+      : initialConfiguration.algorithm;
+
   return {
     ...state,
+    activeAlgorithm,
     analyzeCapture,
     copyDiagnosticSummary,
     isListening: state.status === "listening",

@@ -27,17 +27,10 @@ import { ToggleSwitch } from "../../../shared/components/ui/ToggleSwitch";
 import type { PracticePagePreferences } from "../../../shared/preferences/practicePagePreferences";
 import {
   PRACTICE_MICROPHONE_SENSITIVITY_LEVELS,
-  practiceMicrophoneAlgorithmLabel,
-  practiceMicrophoneDebugParametersForSensitivityLevel,
   practiceMicrophoneSensitivityLevelLabel,
   type PracticeMicrophonePreferences,
-  withPracticeMicrophoneAlgorithm,
 } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
-import {
-  ensureSwiftF0PracticeRuntimeReady,
-  isSwiftF0PracticeRuntimeReady,
-  releaseSwiftF0PracticeRuntime,
-} from "../../vocal-pitch/logic/swiftF0PracticeClient";
+import { releaseSwiftF0PracticeRuntime } from "../../vocal-pitch/logic/swiftF0PracticeClient";
 import { BackupConflictResolver } from "../../../shared/components/BackupConflictResolver";
 import { PausedPlaybackBpmInput } from "../../../shared/components/PausedPlaybackBpmInput";
 import { PlayableKeyboardPreview } from "../../../shared/components/PlayableKeyboardPreview";
@@ -58,11 +51,13 @@ import {
   setGlobalDebugEnabled,
 } from "../../../shared/diagnostics/globalDebug";
 import { LOCAL_STORAGE_PREFERENCES_RESET_EVENT } from "../../../storage/localPreferenceEvents";
+import { MicrophoneParameterBenchmarkDialog } from "./MicrophoneParameterBenchmarkDialog";
 
 type StoredBackupState = BackupState & { restoreRequiredBeforeBackup?: boolean };
 type SettingsActionFeedback = { description?: string; kind?: "danger"; title: string };
 const PIANO_VOLUME_STEP = 0.05;
 const ANSWER_KEYBOARD_SCALE_STEP = 0.05;
+const SLIDER_SAVE_DEBOUNCE_MS = 450;
 
 function useWheelSteps<T extends HTMLElement>(
   elementRef: RefObject<T>,
@@ -170,11 +165,7 @@ export function SettingsView({
       window.removeEventListener("storage", syncFromOtherTab);
     };
   }, []);
-  const [selectedMicrophoneAlgorithm, setSelectedMicrophoneAlgorithm] = useState(
-    practiceMicrophonePreferences.algorithm
-  );
-  const [isLoadingMicrophoneAlgorithm, setIsLoadingMicrophoneAlgorithm] = useState(false);
-  const [microphoneAlgorithmError, setMicrophoneAlgorithmError] = useState<string | null>(null);
+  const [isMicrophoneBenchmarkOpen, setIsMicrophoneBenchmarkOpen] = useState(false);
   const [pianoVolumeDraft, setPianoVolumeDraft] = useState(() =>
     normalizePianoVolume(settings.pianoVolume)
   );
@@ -188,6 +179,12 @@ export function SettingsView({
   );
   const pianoVolumeRef = useRef(pianoVolumeDraft);
   const answerKeyboardScaleRef = useRef(answerKeyboardScaleDraft);
+  const pendingSliderSettingsRef = useRef<Partial<AppSettings> | null>(null);
+  const sliderSaveTimerRef = useRef<number | null>(null);
+  const onSettingsSavedRef = useRef(onSettingsSaved);
+  const settingsRef = useRef(settings);
+  onSettingsSavedRef.current = onSettingsSaved;
+  settingsRef.current = settings;
   const pianoVolumeControlRef = useRef<HTMLLabelElement>(null);
   const answerKeyboardScaleControlRef = useRef<HTMLLabelElement>(null);
   const storedBackupState = backupState as StoredBackupState;
@@ -199,6 +196,20 @@ export function SettingsView({
   const hasBackupSnapshot = Boolean(backupBlockedUntilSync || backupState.lastSeenBackupVersion);
   const pianoVolumePercent = Math.round(pianoVolumeDraft * 100);
   const answerKeyboardScalePercent = Math.round(answerKeyboardScaleDraft * 100);
+
+  useEffect(
+    () => () => {
+      if (sliderSaveTimerRef.current !== null) {
+        window.clearTimeout(sliderSaveTimerRef.current);
+      }
+      const pendingSettings = pendingSliderSettingsRef.current;
+      pendingSliderSettingsRef.current = null;
+      if (pendingSettings) {
+        void onSettingsSavedRef.current({ ...settingsRef.current, ...pendingSettings });
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     const nextPianoVolume = normalizePianoVolume(settings.pianoVolume);
@@ -212,43 +223,38 @@ export function SettingsView({
     setAnswerKeyboardScaleDraft(nextScale);
   }, [settings.answerKeyboardScale]);
 
-  useEffect(() => {
-    setSelectedMicrophoneAlgorithm(practiceMicrophonePreferences.algorithm);
-  }, [practiceMicrophonePreferences.algorithm]);
-
   async function saveSettings(next: AppSettings): Promise<void> {
     await onSettingsSaved(next);
   }
 
-  async function selectMicrophoneAlgorithm(
-    algorithm: PracticeMicrophonePreferences["algorithm"]
-  ): Promise<void> {
-    if (algorithm === practiceMicrophonePreferences.algorithm || isLoadingMicrophoneAlgorithm) {
-      return;
+  function scheduleSliderSettingsSave(update: Partial<AppSettings>): void {
+    pendingSliderSettingsRef.current = {
+      ...pendingSliderSettingsRef.current,
+      ...update,
+    };
+    if (sliderSaveTimerRef.current !== null) {
+      window.clearTimeout(sliderSaveTimerRef.current);
     }
-    setSelectedMicrophoneAlgorithm(algorithm);
-    setMicrophoneAlgorithmError(null);
-
-    if (algorithm === "swiftf0" && !isSwiftF0PracticeRuntimeReady()) {
-      setIsLoadingMicrophoneAlgorithm(true);
-      try {
-        await ensureSwiftF0PracticeRuntimeReady();
-      } catch (error) {
-        setSelectedMicrophoneAlgorithm(practiceMicrophonePreferences.algorithm);
-        setMicrophoneAlgorithmError(
-          `算法资源加载失败：${error instanceof Error ? error.message : String(error)}`
-        );
-        return;
-      } finally {
-        setIsLoadingMicrophoneAlgorithm(false);
+    sliderSaveTimerRef.current = window.setTimeout(() => {
+      const pendingSettings = pendingSliderSettingsRef.current;
+      pendingSliderSettingsRef.current = null;
+      sliderSaveTimerRef.current = null;
+      if (pendingSettings) {
+        void onSettingsSavedRef.current({ ...settingsRef.current, ...pendingSettings });
       }
-    } else if (algorithm !== "swiftf0") {
-      releaseSwiftF0PracticeRuntime();
-    }
+    }, SLIDER_SAVE_DEBOUNCE_MS);
+  }
 
-    onPracticeMicrophonePreferencesChange((current) =>
-      withPracticeMicrophoneAlgorithm(current, algorithm)
-    );
+  async function flushPendingSliderSettingsSave(): Promise<void> {
+    if (sliderSaveTimerRef.current !== null) {
+      window.clearTimeout(sliderSaveTimerRef.current);
+      sliderSaveTimerRef.current = null;
+    }
+    const pendingSettings = pendingSliderSettingsRef.current;
+    pendingSliderSettingsRef.current = null;
+    if (pendingSettings) {
+      await onSettingsSavedRef.current({ ...settingsRef.current, ...pendingSettings });
+    }
   }
 
   async function restoreDefaultConfiguration(): Promise<void> {
@@ -263,6 +269,7 @@ export function SettingsView({
     setBusy(true);
     setIsRestoringConfiguration(true);
     try {
+      await flushPendingSliderSettingsSave();
       releaseSwiftF0PracticeRuntime();
       await onRestoreDefaultConfiguration();
     } finally {
@@ -278,7 +285,7 @@ export function SettingsView({
     }
     pianoVolumeRef.current = normalizedVolume;
     setPianoVolumeDraft(normalizedVolume);
-    void saveSettings({ ...settings, pianoVolume: normalizedVolume });
+    scheduleSliderSettingsSave({ pianoVolume: normalizedVolume });
   }
 
   function saveAnswerKeyboardScale(nextScale: number): void {
@@ -288,7 +295,7 @@ export function SettingsView({
     }
     answerKeyboardScaleRef.current = normalizedScale;
     setAnswerKeyboardScaleDraft(normalizedScale);
-    void saveSettings({ ...settings, answerKeyboardScale: normalizedScale });
+    scheduleSliderSettingsSave({ answerKeyboardScale: normalizedScale });
   }
 
   useWheelSteps(pianoVolumeControlRef, (direction) => {
@@ -361,226 +368,456 @@ export function SettingsView({
       <div className="stats-header">
         <div>
           <h1>设置</h1>
-          <p>全局偏好和备份</p>
+          <p>管理练习、设备与界面偏好</p>
         </div>
         <DatabaseBackup size={24} />
       </div>
 
       <fieldset className="settings-restore-lock" disabled={isRestoringConfiguration}>
-        <div className="panel settings-panel page-appearance-panel">
-          <div className="panel-heading">
-            <h2>页面设置</h2>
-          </div>
-          <div className="setting-row page-appearance-mode-row">
-            <div>
-              <strong>夜间模式</strong>
-              <span>应用于所有页面</span>
+        <div className="settings-cards">
+          <section className="panel settings-panel settings-category-card">
+            <div className="panel-heading">
+              <h2>外观与体验</h2>
             </div>
-            <select
-              aria-label="夜间模式"
-              className="page-appearance-mode"
-              value={pageAppearancePreferences.mode}
-              onChange={(event) =>
-                onPageAppearancePreferencesChange({
-                  ...pageAppearancePreferences,
-                  mode: event.target.value as PageAppearancePreferences["mode"],
-                })
-              }
-            >
-              <option value="off">关闭</option>
-              <option value="on">开启</option>
-              <option value="auto">自动</option>
-            </select>
-          </div>
-          {pageAppearancePreferences.mode === "auto" ? (
-            <div className="setting-row page-appearance-hours-row">
+            <div className="setting-row">
               <div>
-                <strong>自动时段</strong>
-                <span>按设备本地时间启用夜间模式；开始和结束小时相同时全天启用</span>
+                <strong>夜间模式</strong>
+                <span>可始终开启，也可按本地时段自动切换</span>
               </div>
-              <div aria-label="夜间模式自动时段" className="page-appearance-hours">
-                <label>
-                  <span>开始</span>
-                  <select
-                    aria-label="夜间模式开始小时"
-                    value={pageAppearancePreferences.startHour}
-                    onChange={(event) =>
-                      onPageAppearancePreferencesChange({
-                        ...pageAppearancePreferences,
-                        startHour: Number(event.target.value),
-                      })
-                    }
-                  >
-                    {Array.from({ length: 24 }, (_, hour) => (
-                      <option key={hour} value={hour}>
-                        {String(hour).padStart(2, "0")} 时
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>结束</span>
-                  <select
-                    aria-label="夜间模式结束小时"
-                    value={pageAppearancePreferences.endHour}
-                    onChange={(event) =>
-                      onPageAppearancePreferencesChange({
-                        ...pageAppearancePreferences,
-                        endHour: Number(event.target.value),
-                      })
-                    }
-                  >
-                    {Array.from({ length: 24 }, (_, hour) => (
-                      <option key={hour} value={hour}>
-                        {String(hour).padStart(2, "0")} 时
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <div className="settings-mode-controls">
+                <ToggleSwitch
+                  aria-label="夜间模式"
+                  checked={pageAppearancePreferences.mode !== "off"}
+                  onCheckedChange={(enabled) =>
+                    onPageAppearancePreferencesChange({
+                      ...pageAppearancePreferences,
+                      mode: enabled ? "on" : "off",
+                    })
+                  }
+                />
+                <select
+                  aria-label="夜间模式时间方式"
+                  disabled={pageAppearancePreferences.mode === "off"}
+                  value={pageAppearancePreferences.mode === "auto" ? "auto" : "manual"}
+                  onChange={(event) =>
+                    onPageAppearancePreferencesChange({
+                      ...pageAppearancePreferences,
+                      mode: event.target.value === "auto" ? "auto" : "on",
+                    })
+                  }
+                >
+                  <option value="manual">始终开启</option>
+                  <option value="auto">按时段自动</option>
+                </select>
               </div>
             </div>
-          ) : null}
-        </div>
-
-        <div className="panel settings-panel">
-          <div className="setting-row">
-            <div>
-              <strong>练习页面离开多久暂停</strong>
-              <span>切换应用或浏览器标签页后自动暂停</span>
-            </div>
-            <select
-              aria-label="练习页面离开多久暂停"
-              value={practicePagePreferences.focusLossPauseSeconds}
-              onChange={(event) =>
-                onPracticePagePreferencesChange({
-                  ...practicePagePreferences,
-                  focusLossPauseSeconds: Number(
-                    event.target.value
-                  ) as PracticePagePreferences["focusLossPauseSeconds"],
-                })
-              }
-            >
-              <option value={0}>立刻</option>
-              <option value={10}>10 秒</option>
-              <option value={20}>20 秒</option>
-              <option value={30}>30 秒</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="panel settings-panel">
-          <div className="panel-heading">
-            <h2>麦克风答题</h2>
-          </div>
-          <div className="setting-row">
-            <div>
-              <strong>识别算法</strong>
-              <span>仅影响练习中的麦克风答题</span>
-              {isLoadingMicrophoneAlgorithm ? (
-                <span aria-live="polite" role="status">
-                  加载算法所需资源中...
-                </span>
-              ) : null}
-              {microphoneAlgorithmError ? (
-                <span aria-live="assertive" role="alert">
-                  {microphoneAlgorithmError}
-                </span>
-              ) : null}
-            </div>
-            <select
-              aria-label="麦克风识别算法"
-              disabled={isLoadingMicrophoneAlgorithm}
-              value={selectedMicrophoneAlgorithm}
-              onChange={(event) =>
-                void selectMicrophoneAlgorithm(
-                  event.target.value as PracticeMicrophonePreferences["algorithm"]
-                )
-              }
-            >
-              <option value="mpm-c">{practiceMicrophoneAlgorithmLabel("mpm-c")}</option>
-              <option value="swiftf0">{practiceMicrophoneAlgorithmLabel("swiftf0")}</option>
-              <option value="yin">{practiceMicrophoneAlgorithmLabel("yin")}</option>
-            </select>
-          </div>
-          <div className="setting-row settings-switch-row">
-            <div>
-              <strong>麦克风调试</strong>
-              <span>
-                开启后由详细参数接管识别，算法敏感度档位暂时隐藏；关闭后恢复之前选择的档位。详细参数可在练习页的“调试设置”中调整。
-              </span>
-            </div>
-            <div className="settings-switch-control">
+            {pageAppearancePreferences.mode === "auto" ? (
+              <div className="setting-row page-appearance-hours-row">
+                <div>
+                  <strong>自动时段</strong>
+                  <span>按设备本地时间切换；开始和结束相同表示全天</span>
+                </div>
+                <div aria-label="夜间模式自动时段" className="page-appearance-hours">
+                  <label>
+                    <span>开始</span>
+                    <select
+                      aria-label="夜间模式开始小时"
+                      value={pageAppearancePreferences.startHour}
+                      onChange={(event) =>
+                        onPageAppearancePreferencesChange({
+                          ...pageAppearancePreferences,
+                          startHour: Number(event.target.value),
+                        })
+                      }
+                    >
+                      {Array.from({ length: 24 }, (_, hour) => (
+                        <option key={hour} value={hour}>
+                          {String(hour).padStart(2, "0")} 时
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>结束</span>
+                    <select
+                      aria-label="夜间模式结束小时"
+                      value={pageAppearancePreferences.endHour}
+                      onChange={(event) =>
+                        onPageAppearancePreferencesChange({
+                          ...pageAppearancePreferences,
+                          endHour: Number(event.target.value),
+                        })
+                      }
+                    >
+                      {Array.from({ length: 24 }, (_, hour) => (
+                        <option key={hour} value={hour}>
+                          {String(hour).padStart(2, "0")} 时
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
+            ) : null}
+            <div className="setting-row settings-switch-row">
+              <div>
+                <strong>谱页平滑滚动</strong>
+                <span>换行时平滑上移</span>
+              </div>
               <ToggleSwitch
-                aria-label="麦克风调试"
-                checked={practiceMicrophonePreferences.debugMode}
-                disabled={isLoadingMicrophoneAlgorithm}
-                onCheckedChange={(debugMode) =>
-                  onPracticeMicrophonePreferencesChange((current) => ({
+                aria-label="谱页平滑滚动"
+                checked={staffPageUiPreferences.smoothStaffPageScroll}
+                onCheckedChange={(smoothStaffPageScroll) =>
+                  setStaffPageUiPreferences((current) => ({
                     ...current,
-                    debugMode,
+                    smoothStaffPageScroll,
                   }))
                 }
               />
             </div>
-          </div>
-          {!practiceMicrophonePreferences.debugMode ? (
-            <>
-              <div className="setting-row">
-                <div>
-                  <strong>算法敏感度</strong>
-                </div>
-                <select
-                  aria-label="算法敏感度"
-                  value={practiceMicrophonePreferences.sensitivityLevel}
-                  onChange={(event) => {
-                    const sensitivityLevel = Number(
+          </section>
+
+          <section className="panel settings-panel settings-category-card">
+            <div className="panel-heading">
+              <h2>练习与答题</h2>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>正确后延迟</strong>
+                <span>答对后自动进入下一题</span>
+              </div>
+              <select
+                aria-label="正确后延迟"
+                value={settings.correctDelayMs}
+                onChange={(event) =>
+                  void saveSettings({ ...settings, correctDelayMs: Number(event.target.value) })
+                }
+              >
+                {[0, 100, 200, 300, 400, 500, 800].map((delay) => (
+                  <option key={delay} value={delay}>
+                    {delay}ms
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>离开阈值</strong>
+                <span>无输入达到时长后标记中断</span>
+              </div>
+              <select
+                aria-label="离开阈值"
+                value={settings.inactivityThresholdSeconds}
+                onChange={(event) =>
+                  void saveSettings({
+                    ...settings,
+                    inactivityThresholdSeconds: Number(event.target.value),
+                  })
+                }
+              >
+                {settings.inactivityThresholdSeconds !== 10 &&
+                settings.inactivityThresholdSeconds !== 30 &&
+                settings.inactivityThresholdSeconds !== 60 ? (
+                  <option value={settings.inactivityThresholdSeconds}>
+                    {settings.inactivityThresholdSeconds} 秒（当前）
+                  </option>
+                ) : null}
+                <option value={10}>10 秒</option>
+                <option value={30}>30 秒</option>
+                <option value={60}>60 秒</option>
+              </select>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>切换页面后暂停</strong>
+                <span>切换应用或浏览器标签页后自动暂停</span>
+              </div>
+              <select
+                aria-label="切换页面后暂停"
+                value={practicePagePreferences.focusLossPauseSeconds}
+                onChange={(event) =>
+                  onPracticePagePreferencesChange({
+                    ...practicePagePreferences,
+                    focusLossPauseSeconds: Number(
                       event.target.value
-                    ) as PracticeMicrophonePreferences["sensitivityLevel"];
-                    onPracticeMicrophonePreferencesChange((current) => ({
-                      ...current,
-                      sensitivityLevel,
-                      ...(!current.debugMode
-                        ? {
-                            debugParameters: practiceMicrophoneDebugParametersForSensitivityLevel(
-                              current.algorithm,
-                              sensitivityLevel
-                            ),
-                          }
-                        : {}),
-                    }));
-                  }}
+                    ) as PracticePagePreferences["focusLossPauseSeconds"],
+                  })
+                }
+              >
+                <option value={0}>立刻</option>
+                <option value={10}>10 秒</option>
+                <option value={20}>20 秒</option>
+                <option value={30}>30 秒</option>
+              </select>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>播放剩余 BPM</strong>
+                <span>暂停时按谱面时值播放的速度</span>
+              </div>
+              <PausedPlaybackBpmInput
+                className="setting-number-input"
+                value={staffPageUiPreferences.pausedPlaybackBpm}
+                onChange={(pausedPlaybackBpm) =>
+                  setStaffPageUiPreferences((current) => ({
+                    ...current,
+                    pausedPlaybackBpm,
+                  }))
+                }
+              />
+            </div>
+          </section>
+
+          <section className="panel settings-panel settings-category-card">
+            <div className="panel-heading">
+              <h2>音频与输入设备</h2>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>麦克风灵敏度</strong>
+                <span className="settings-helper">
+                  仅调整输入音量门槛。高敏感适合轻声弹奏，抗噪适合嘈杂环境。
+                </span>
+              </div>
+              <select
+                aria-label="麦克风灵敏度"
+                value={practiceMicrophonePreferences.sensitivityLevel}
+                onChange={(event) => {
+                  const sensitivityLevel = Number(
+                    event.target.value
+                  ) as PracticeMicrophonePreferences["sensitivityLevel"];
+                  onPracticeMicrophonePreferencesChange((current) => ({
+                    ...current,
+                    debugMode: false,
+                    sensitivityLevel,
+                    sensitivityScaleVersion: 2,
+                  }));
+                }}
+              >
+                {PRACTICE_MICROPHONE_SENSITIVITY_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {practiceMicrophoneSensitivityLevelLabel(level)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>MIDI 键盘</strong>
+                <span>
+                  {midi.status === "insecure-context"
+                    ? "当前页面不是安全连接，请改用 HTTPS 或本机 localhost"
+                    : midi.status === "unsupported"
+                      ? "当前浏览器不支持 Web MIDI"
+                      : midi.status === "requesting"
+                        ? "正在请求 MIDI 权限…"
+                        : midi.isConnected
+                          ? `已连接：${midi.selectedInput?.name}`
+                          : midi.status === "ready"
+                            ? midi.inputs.length > 0
+                              ? "请选择 MIDI 输入设备"
+                              : "未检测到可用的 MIDI 输入"
+                            : (midi.errorMessage ?? "连接后可选择设备并测试按键")}
+                </span>
+              </div>
+              {midi.status === "ready" && midi.inputs.length > 0 ? (
+                <select
+                  aria-label="MIDI 输入设备"
+                  value={midi.selectedInput ? midi.selectedInputId : ""}
+                  onChange={(event) => midi.selectInput(event.target.value)}
                 >
-                  {PRACTICE_MICROPHONE_SENSITIVITY_LEVELS.map((level) => (
-                    <option key={level} value={level}>
-                      {practiceMicrophoneSensitivityLevelLabel(level)}
+                  {!midi.selectedInput ? (
+                    <option disabled value="">
+                      请选择 MIDI 输入
+                    </option>
+                  ) : null}
+                  {midi.inputs.map((input) => (
+                    <option key={input.id} value={input.id}>
+                      {input.manufacturer ? `${input.manufacturer} · ` : ""}
+                      {input.name}
                     </option>
                   ))}
                 </select>
+              ) : (
+                <button
+                  disabled={
+                    midi.status === "requesting" ||
+                    midi.status === "insecure-context" ||
+                    midi.status === "unsupported"
+                  }
+                  onClick={() => void midi.connect()}
+                  type="button"
+                >
+                  {midi.status === "denied" || midi.status === "error" ? "重新连接" : "连接 MIDI"}
+                </button>
+              )}
+            </div>
+            {midi.isConnected ? (
+              <p className="keyboard-settings-description" aria-live="polite">
+                测试输入：
+                {midi.lastNote
+                  ? `${midi.lastNote.keyName}${midi.lastNote.octave}`
+                  : "请按下一个琴键"}
+              </p>
+            ) : null}
+            <div className="setting-row">
+              <div>
+                <strong>音量</strong>
+                <span>控制目标音与键盘预览音量</span>
               </div>
-              <div className="setting-row">
-                <div className="practice-microphone-sensitivity-warning-wrap">
-                  <p className="practice-microphone-sensitivity-warning">
-                    敏感度越高，越容易识别轻声和短促弹奏；但也更容易把环境噪声误认为音符，增加误报。
-                  </p>
-                </div>
+              <label className="volume-control" ref={pianoVolumeControlRef}>
+                <input
+                  aria-label="音量"
+                  max={100}
+                  min={0}
+                  step={5}
+                  type="range"
+                  value={pianoVolumePercent}
+                  onChange={(event) => savePianoVolume(Number(event.target.value) / 100)}
+                />
+                <span>{pianoVolumePercent}%</span>
+              </label>
+            </div>
+          </section>
+
+          <section className="panel settings-panel settings-category-card keyboard-settings-panel">
+            <div className="panel-heading">
+              <h2>界面显示</h2>
+            </div>
+            <div className="setting-row keyboard-size-row">
+              <div>
+                <strong>琴键大小</strong>
+                <span className="settings-helper">调整虚拟键盘的显示比例及预览音区（C4-C5）。</span>
               </div>
-            </>
-          ) : null}
+              <label className="volume-control" ref={answerKeyboardScaleControlRef}>
+                <input
+                  aria-label="琴键大小"
+                  max={150}
+                  min={70}
+                  step={5}
+                  type="range"
+                  value={answerKeyboardScalePercent}
+                  onChange={(event) => saveAnswerKeyboardScale(Number(event.target.value) / 100)}
+                />
+                <span>{answerKeyboardScalePercent}%</span>
+              </label>
+            </div>
+            <PlayableKeyboardPreview scale={answerKeyboardScaleDraft} />
+          </section>
+
+          <section className="panel settings-panel settings-category-card settings-backup-card">
+            <div className="panel-heading">
+              <h2>数据与备份</h2>
+            </div>
+            <div className="backup-settings-row">
+              <div className="backup-settings-summary">
+                <strong>备份目录</strong>
+                <span title={backupState.directoryName}>
+                  {backupState.directoryName
+                    ? truncateStart(backupState.directoryName)
+                    : backupText.status.unselected}
+                </span>
+                <small>
+                  状态：
+                  {backupState.lastError ??
+                    (backupBlockedUntilSync
+                      ? "需要处理冲突"
+                      : backupState.directoryHandle
+                        ? hasBackupSnapshot
+                          ? "已启用"
+                          : "暂无备份"
+                        : "未选择")}
+                  {" · 更新："}
+                  {backupState.backupDataModifiedAt
+                    ? new Date(backupState.backupDataModifiedAt).toLocaleString()
+                    : "暂无"}
+                </small>
+              </div>
+              <div className="backup-settings-actions">
+                <button
+                  disabled={!supportsFileBackups() || busy}
+                  onClick={() =>
+                    void runBusy(async () => {
+                      const result = await chooseBackupDirectory();
+                      await getBackupState();
+                      return describeDirectorySelection(result);
+                    }, backupText.messages.directorySelected)
+                  }
+                  type="button"
+                >
+                  <FolderOpen size={18} />
+                  {backupText.labels.chooseDirectory}
+                </button>
+                {!backupBlockedUntilSync ? (
+                  <button
+                    disabled={!backupState.directoryHandle || !hasBackupSnapshot || busy}
+                    onClick={async () => {
+                      if (!backupState.directoryHandle) {
+                        return;
+                      }
+                      if (
+                        await confirmDialog({
+                          title: "确定导入备份？",
+                          description: backupText.messages.browserDataWillBeReplaced,
+                          confirmLabel: backupText.labels.importBackup,
+                          destructive: true,
+                        })
+                      ) {
+                        void runBusy(
+                          () => restoreBackupFromDirectory(backupState.directoryHandle!),
+                          backupText.titles.importSuccess
+                        );
+                      }
+                    }}
+                    type="button"
+                  >
+                    <Upload size={18} />
+                    {backupText.labels.importBackup}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            {backupBlockedUntilSync ? (
+              <>
+                <div className="status-line danger">{formatBackupConflictDetail()}</div>
+                <BackupConflictResolver
+                  backupState={backupState}
+                  disabled={busy}
+                  onResolve={resolveConflict}
+                />
+              </>
+            ) : null}
+            {!supportsFileBackups() ? (
+              <div className="status-line">{backupText.status.unsupportedFileSystemAccess}</div>
+            ) : null}
+          </section>
         </div>
 
-        <div className="panel settings-panel">
-          <div className="panel-heading">
-            <h2>全局调试</h2>
-          </div>
-          <div className="setting-row settings-switch-row">
-            <div>
-              <strong>全局调试开关</strong>
-              <span>
-                开启后显示右下角调试入口，可查看页面错误和设备环境信息，并手动导出
-                JSON。信息保留在当前页面会话，不录制麦克风声音，也不会自动上传。
-              </span>
-            </div>
-            <div className="settings-switch-control">
+        <details className="settings-developer-options">
+          <summary>开发者选项</summary>
+          <div className="settings-developer-content">
+            {import.meta.env.DEV ? (
+              <div className="setting-row">
+                <div>
+                  <strong>麦克风参数基准测试</strong>
+                  <span className="settings-helper">录制基准音序并离线比较识别参数。</span>
+                </div>
+                <button
+                  className="microphone-benchmark-trigger"
+                  onClick={() => setIsMicrophoneBenchmarkOpen(true)}
+                  type="button"
+                >
+                  打开基准测试
+                </button>
+              </div>
+            ) : null}
+            <div className="setting-row settings-switch-row">
+              <div>
+                <strong>全局调试开关</strong>
+                <span className="settings-helper">
+                  显示调试入口，可查看并手动导出当前页面错误与设备信息；不会录音或自动上传。
+                </span>
+              </div>
               <ToggleSwitch
                 aria-label="全局调试开关"
                 checked={globalDebugEnabled}
@@ -591,334 +828,80 @@ export function SettingsView({
               />
             </div>
           </div>
-        </div>
+        </details>
 
-        <div className="panel settings-panel">
-          <div className="setting-row">
-            <div>
-              <strong>离开阈值</strong>
-              <span>聚焦但无输入后标记中断</span>
-            </div>
-            <select
-              value={settings.inactivityThresholdSeconds}
-              onChange={(event) =>
-                void saveSettings({
-                  ...settings,
-                  inactivityThresholdSeconds: Number(event.target.value),
-                })
-              }
-            >
-              <option value={15}>15 秒</option>
-              <option value={30}>30 秒</option>
-              <option value={45}>45 秒</option>
-              <option value={60}>60 秒</option>
-            </select>
+        <section className="panel settings-panel settings-about-panel">
+          <div className="panel-heading">
+            <h2>关于</h2>
           </div>
-
           <div className="setting-row">
             <div>
-              <strong>正确后延迟</strong>
-              <span>答对后自动进入下一题</span>
-            </div>
-            <select
-              value={settings.correctDelayMs}
-              onChange={(event) =>
-                void saveSettings({ ...settings, correctDelayMs: Number(event.target.value) })
-              }
-            >
-              <option value={0}>0ms</option>
-              <option value={300}>300ms</option>
-              <option value={400}>400ms</option>
-              <option value={500}>500ms</option>
-              <option value={800}>800ms</option>
-            </select>
-          </div>
-
-          <div className="setting-row">
-            <div>
-              <strong>音量</strong>
-              <span>目标音、学习页和琴键预览播放音量</span>
-            </div>
-            <label className="volume-control" ref={pianoVolumeControlRef}>
-              <input
-                aria-label="音量"
-                max={100}
-                min={0}
-                step={5}
-                type="range"
-                value={pianoVolumePercent}
-                onChange={(event) => savePianoVolume(Number(event.target.value) / 100)}
-              />
-              <span>{pianoVolumePercent}%</span>
-            </label>
-          </div>
-
-          <div className="setting-row">
-            <div>
-              <strong>播放剩余 BPM</strong>
-              <span>暂停时按谱面时值播放的速度</span>
-            </div>
-            <PausedPlaybackBpmInput
-              className="setting-number-input"
-              value={staffPageUiPreferences.pausedPlaybackBpm}
-              onChange={(pausedPlaybackBpm) =>
-                setStaffPageUiPreferences((current) => ({
-                  ...current,
-                  pausedPlaybackBpm,
-                }))
-              }
-            />
-          </div>
-
-          <div className="setting-row">
-            <div>
-              <strong>谱页平滑滚动</strong>
-              <span>换行时平滑上移，过渡时间不计入练习与识别用时</span>
-            </div>
-            <label className="toggle">
-              <input
-                aria-label="谱页平滑滚动"
-                checked={staffPageUiPreferences.smoothStaffPageScroll}
-                type="checkbox"
-                onChange={(event) =>
-                  setStaffPageUiPreferences((current) => ({
-                    ...current,
-                    smoothStaffPageScroll: event.target.checked,
-                  }))
-                }
-              />
-              <span aria-hidden="true" />
-            </label>
-          </div>
-        </div>
-
-        <div className="panel settings-panel keyboard-settings-panel">
-          <div className="setting-row">
-            <div>
-              <strong>MIDI 键盘</strong>
-              <span>
-                {midi.status === "insecure-context"
-                  ? "当前页面不是安全连接，请改用 HTTPS 或本机 localhost"
-                  : midi.status === "unsupported"
-                    ? "当前浏览器不支持 Web MIDI"
-                    : midi.status === "requesting"
-                      ? "正在请求 MIDI 权限…"
-                      : midi.isConnected
-                        ? `已连接：${midi.selectedInput?.name}`
-                        : midi.status === "ready"
-                          ? midi.inputs.length > 0
-                            ? "请选择 MIDI 输入设备"
-                            : "未检测到可用的 MIDI 输入"
-                          : (midi.errorMessage ?? "连接后可选择设备并测试按键")}
+              <strong>当前版本</strong>
+              <span className="settings-helper">
+                {__APP_VERSION__} · 构建于 {formatDateTime(__APP_BUILD_TIME__)}
               </span>
             </div>
-            {midi.status === "ready" && midi.inputs.length > 0 ? (
-              <select
-                aria-label="MIDI 输入设备"
-                value={midi.selectedInput ? midi.selectedInputId : ""}
-                onChange={(event) => midi.selectInput(event.target.value)}
-              >
-                {!midi.selectedInput ? (
-                  <option disabled value="">
-                    请选择 MIDI 输入
-                  </option>
-                ) : null}
-                {midi.inputs.map((input) => (
-                  <option key={input.id} value={input.id}>
-                    {input.manufacturer ? `${input.manufacturer} · ` : ""}
-                    {input.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <button
-                disabled={
-                  midi.status === "requesting" ||
-                  midi.status === "insecure-context" ||
-                  midi.status === "unsupported"
-                }
-                onClick={() => void midi.connect()}
-              >
-                {midi.status === "denied" || midi.status === "error" ? "重新连接" : "连接 MIDI"}
-              </button>
-            )}
+            <button disabled={isAppUpdateBusy} onClick={onCheckForUpdates} type="button">
+              {appUpdateStatus === "checking"
+                ? "正在检查…"
+                : appUpdateStatus === "preparing"
+                  ? "正在准备…"
+                  : appUpdateStatus === "reloading"
+                    ? "正在刷新…"
+                    : appUpdateStatus === "up-to-date" || hasUpdateAvailable
+                      ? "重新检查"
+                      : "检查更新"}
+            </button>
           </div>
-          {midi.isConnected ? (
-            <p className="keyboard-settings-description" aria-live="polite">
-              测试输入：
-              {midi.lastNote ? `${midi.lastNote.keyName}${midi.lastNote.octave}` : "请按下一个琴键"}
+          {appUpdateMessage ? (
+            <p
+              aria-live="polite"
+              className={`status-line${appUpdateStatus === "error" ? " danger" : ""}`}
+            >
+              {appUpdateMessage}
             </p>
           ) : null}
-          <div className="setting-row keyboard-size-row">
-            <div>
-              <strong>琴键大小</strong>
-              <span>练习页以此尺寸为基准</span>
-            </div>
-            <label className="volume-control" ref={answerKeyboardScaleControlRef}>
-              <input
-                aria-label="琴键大小"
-                max={150}
-                min={70}
-                step={5}
-                type="range"
-                value={answerKeyboardScalePercent}
-                onChange={(event) => saveAnswerKeyboardScale(Number(event.target.value) / 100)}
-              />
-              <span>{answerKeyboardScalePercent}%</span>
-            </label>
-          </div>
-          <p className="keyboard-settings-description">
-            预览音区
-            C4–C5，可按住多键试听和弦；练习页仅白键可作答，空间不足时会先缩空白，再缩小琴键。
-          </p>
-          <PlayableKeyboardPreview scale={answerKeyboardScaleDraft} />
-        </div>
-
-        <div className="panel settings-panel">
-          <div className="backup-status">
-            <div>
-              <strong>备份目录</strong>
-              <span title={backupState.directoryName}>
-                {backupState.directoryName
-                  ? truncateStart(backupState.directoryName)
-                  : backupText.status.unselected}
-              </span>
-            </div>
-            <div>
-              <strong>数据更新</strong>
-              <span>
-                {backupState.backupDataModifiedAt
-                  ? new Date(backupState.backupDataModifiedAt).toLocaleString()
-                  : "-"}
-              </span>
-            </div>
-            <div>
-              <strong>状态</strong>
-              <span>{backupState.lastError ?? backupText.status.normal}</span>
-            </div>
-          </div>
-          <div className="action-row">
-            <button
-              disabled={!supportsFileBackups() || busy}
-              onClick={() =>
-                void runBusy(async () => {
-                  const result = await chooseBackupDirectory();
-                  await getBackupState();
-                  return describeDirectorySelection(result);
-                }, backupText.messages.directorySelected)
-              }
-            >
-              <FolderOpen size={18} />
-              {backupText.labels.chooseDirectory}
-            </button>
-            {!backupBlockedUntilSync ? (
+          {hasUpdateAvailable ? (
+            <div className="action-row">
               <button
-                disabled={!backupState.directoryHandle || !hasBackupSnapshot || busy}
-                onClick={async () => {
-                  if (!backupState.directoryHandle) {
-                    return;
-                  }
-                  if (
-                    await confirmDialog({
-                      title: "确定导入备份？",
-                      description: backupText.messages.browserDataWillBeReplaced,
-                      confirmLabel: backupText.labels.importBackup,
-                      destructive: true,
-                    })
-                  ) {
-                    void runBusy(
-                      () => restoreBackupFromDirectory(backupState.directoryHandle!),
-                      backupText.titles.importSuccess
-                    );
-                  }
-                }}
+                className="primary"
+                disabled={isAppUpdateBusy}
+                onClick={onApplyUpdate}
+                type="button"
               >
-                <Upload size={18} />
-                {backupText.labels.importBackup}
+                {appUpdateStatus === "reloading"
+                  ? "正在刷新页面…"
+                  : hasPreparedUpdate
+                    ? "立即使用新版"
+                    : "刷新试试"}
               </button>
-            ) : null}
-          </div>
-          {backupBlockedUntilSync ? (
-            <>
-              <div className="status-line danger">{formatBackupConflictDetail()}</div>
-              <BackupConflictResolver
-                backupState={backupState}
-                disabled={busy}
-                onResolve={resolveConflict}
-              />
-            </>
-          ) : backupState.directoryHandle && !hasBackupSnapshot ? (
-            <div className="status-line">{backupText.messages.emptyBackupDirectory}</div>
-          ) : backupState.directoryHandle ? (
-            <div className="status-line">{backupText.messages.backupEnabled}</div>
+            </div>
           ) : null}
-          {!supportsFileBackups() ? (
-            <div className="status-line">{backupText.status.unsupportedFileSystemAccess}</div>
-          ) : null}
-        </div>
-
-        <div className="panel settings-panel settings-reset-panel">
-          <div>
-            <strong>恢复默认配置</strong>
-            <span>重置所有应用配置和备份目录绑定；学习数据及备份目录中的文件会保留。</span>
-          </div>
-          <button
-            className="danger-action"
-            disabled={busy || isLoadingMicrophoneAlgorithm}
-            onClick={() => void restoreDefaultConfiguration()}
-            type="button"
-          >
-            <RotateCcw size={16} />
-            {isRestoringConfiguration ? "正在恢复..." : "恢复默认配置"}
-          </button>
-        </div>
-      </fieldset>
-
-      <div className="panel settings-panel app-version-panel">
-        <div className="setting-row">
-          <div>
-            <strong>当前版本</strong>
-            <span>
-              版本 {__APP_VERSION__} · 构建时间 {formatDateTime(__APP_BUILD_TIME__)}
-            </span>
-          </div>
-          <button disabled={isAppUpdateBusy} onClick={onCheckForUpdates} type="button">
-            {appUpdateStatus === "checking"
-              ? "正在检查…"
-              : appUpdateStatus === "preparing"
-                ? "正在准备…"
-                : appUpdateStatus === "reloading"
-                  ? "正在刷新…"
-                  : appUpdateStatus === "up-to-date" || hasUpdateAvailable
-                    ? "重新检查"
-                    : "检查更新"}
-          </button>
-        </div>
-        {appUpdateMessage ? (
-          <p
-            aria-live="polite"
-            className={`status-line${appUpdateStatus === "error" ? " danger" : ""}`}
-          >
-            {appUpdateMessage}
-          </p>
-        ) : null}
-        {hasUpdateAvailable ? (
-          <div className="action-row">
+          <div className="settings-reset-row">
+            <div>
+              <strong>恢复默认配置</strong>
+              <span className="settings-helper">学习记录和备份文件会保留。</span>
+            </div>
             <button
-              className="primary"
-              disabled={isAppUpdateBusy}
-              onClick={onApplyUpdate}
+              className="settings-reset-action"
+              disabled={busy}
+              onClick={() => void restoreDefaultConfiguration()}
               type="button"
             >
-              {appUpdateStatus === "reloading"
-                ? "正在刷新页面…"
-                : hasPreparedUpdate
-                  ? "立即使用新版"
-                  : "刷新试试"}
+              <RotateCcw size={15} />
+              {isRestoringConfiguration ? "正在恢复…" : "恢复默认配置"}
             </button>
           </div>
-        ) : null}
-      </div>
+        </section>
+      </fieldset>
+
+      {import.meta.env.DEV ? (
+        <MicrophoneParameterBenchmarkDialog
+          isOpen={isMicrophoneBenchmarkOpen}
+          onClose={() => setIsMicrophoneBenchmarkOpen(false)}
+          preferences={practiceMicrophonePreferences}
+        />
+      ) : null}
     </section>
   );
 }
