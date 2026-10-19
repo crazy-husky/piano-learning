@@ -19,6 +19,10 @@
   padding: 22px 24px;
 }
 
+#settings-audio-input-devices {
+  scroll-margin-top: 16px;
+}
+
 .settings-category-card .panel-heading,
 .settings-about-panel .panel-heading {
   border-bottom: 1px solid var(--line);

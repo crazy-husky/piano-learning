@@ -315,10 +315,12 @@ export function App(): JSX.Element {
   const isStaffGamePage = route.page === "game";
   const [practiceExitRequest, setPracticeExitRequest] =
     useState<PracticeNavigationExitRequest | null>(null);
+  const [audioInputSectionRequest, setAudioInputSectionRequest] = useState(0);
   const [vocalExitRequest, setVocalExitRequest] = useState<PracticeNavigationExitRequest | null>(
     null
   );
   const practiceExitRequestIdRef = useRef(0);
+  const audioInputSectionRequestIdRef = useRef(0);
   const vocalExitRequestIdRef = useRef(0);
 
   useEffect(() => {
@@ -898,6 +900,23 @@ export function App(): JSX.Element {
     [navigateToRoute, practiceExitRequest, practiceRunning, practiceStageActive, route.path, view]
   );
 
+  const openAudioInputSettings = useCallback((): void => {
+    audioInputSectionRequestIdRef.current += 1;
+    setAudioInputSectionRequest(audioInputSectionRequestIdRef.current);
+    selectView("settings");
+  }, [selectView]);
+
+  const handleAudioInputSectionRequestHandled = useCallback((request: number): void => {
+    setAudioInputSectionRequest((current) => (current === request ? 0 : current));
+  }, []);
+
+  useEffect(() => {
+    if (audioInputSectionRequest === 0 || view === "settings" || practiceExitRequest) {
+      return;
+    }
+    setAudioInputSectionRequest(0);
+  }, [audioInputSectionRequest, practiceExitRequest, view]);
+
   const handleNavigationExit = useCallback(
     (targetView: PracticeNavigationExitTarget): void => {
       const returnToSetup = practiceExitRequest?.returnToSetup === true;
@@ -1316,7 +1335,7 @@ export function App(): JSX.Element {
                   onDataChanged={refreshPracticeHistory}
                   onNavigationExit={handleNavigationExit}
                   onOpenStats={() => selectView("stats")}
-                  onOpenSettings={() => selectView("settings")}
+                  onOpenSettings={openAudioInputSettings}
                   onBeforePracticeStart={preflightBeforePracticeStart}
                   onPracticeFinished={showBackupReminderAfterActivity}
                   onRunningChange={setPracticeRunning}
@@ -1388,6 +1407,7 @@ export function App(): JSX.Element {
             ) : null}
             {view === "settings" ? (
               <SettingsView
+                audioInputSectionRequest={audioInputSectionRequest}
                 appUpdateStatus={appUpdateController.status}
                 appUpdateMessage={appUpdateController.message}
                 hasUpdateAvailable={appUpdateController.hasUpdateAvailable}
@@ -1400,6 +1420,7 @@ export function App(): JSX.Element {
                 midi={midi}
                 onCheckForUpdates={appUpdateController.checkForUpdates}
                 onApplyUpdate={appUpdateController.applyUpdate}
+                onAudioInputSectionRequestHandled={handleAudioInputSectionRequestHandled}
                 onDataChanged={refresh}
                 onPageAppearancePreferencesChange={setPageAppearancePreferences}
                 onPracticeMicrophonePreferencesChange={setPracticeMicrophonePreferences}

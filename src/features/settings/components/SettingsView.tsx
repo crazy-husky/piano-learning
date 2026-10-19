@@ -111,6 +111,8 @@ interface SettingsViewProps {
   midi: MidiInputController;
   onCheckForUpdates: () => void;
   onApplyUpdate: () => void;
+  audioInputSectionRequest: number;
+  onAudioInputSectionRequestHandled: (request: number) => void;
 }
 
 export function SettingsView({
@@ -132,15 +134,33 @@ export function SettingsView({
   midi,
   onCheckForUpdates,
   onApplyUpdate,
+  audioInputSectionRequest,
+  onAudioInputSectionRequestHandled,
 }: SettingsViewProps): JSX.Element {
   const confirmDialog = useConfirmDialog();
   const [busy, setBusy] = useState(false);
   const [isRestoringConfiguration, setIsRestoringConfiguration] = useState(false);
   const [globalDebugEnabled, setGlobalDebugEnabledState] = useState(isGlobalDebugEnabled);
+  const handledAudioInputSectionRequestRef = useRef(0);
   const isAppUpdateBusy =
     appUpdateStatus === "checking" ||
     appUpdateStatus === "preparing" ||
     appUpdateStatus === "reloading";
+
+  useEffect(() => {
+    if (
+      audioInputSectionRequest === 0 ||
+      handledAudioInputSectionRequestRef.current === audioInputSectionRequest
+    ) {
+      return;
+    }
+
+    handledAudioInputSectionRequestRef.current = audioInputSectionRequest;
+    document
+      .getElementById("settings-audio-input-devices")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    onAudioInputSectionRequestHandled(audioInputSectionRequest);
+  }, [audioInputSectionRequest, onAudioInputSectionRequestHandled]);
 
   useEffect(() => {
     const syncGlobalDebugEnabled = (event?: Event): void => {
@@ -568,7 +588,10 @@ export function SettingsView({
             </div>
           </section>
 
-          <section className="panel settings-panel settings-category-card">
+          <section
+            className="panel settings-panel settings-category-card"
+            id="settings-audio-input-devices"
+          >
             <div className="panel-heading">
               <h2>音频与输入设备</h2>
             </div>
