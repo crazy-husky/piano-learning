@@ -402,7 +402,7 @@ export function SettingsView({
             <div className="setting-row">
               <div>
                 <strong>夜间模式</strong>
-                <span>可始终开启，也可按本地时段自动切换</span>
+                <span>可手动开启/关闭，也可按本地时段自动开启</span>
               </div>
               <div className="settings-mode-controls">
                 <ToggleSwitch
@@ -426,8 +426,8 @@ export function SettingsView({
                     })
                   }
                 >
-                  <option value="manual">始终开启</option>
-                  <option value="auto">按时段自动</option>
+                  <option value="manual">始终开启/关闭</option>
+                  <option value="auto">自动开启</option>
                 </select>
               </div>
             </div>
@@ -435,7 +435,7 @@ export function SettingsView({
               <div className="setting-row page-appearance-hours-row">
                 <div>
                   <strong>自动时段</strong>
-                  <span>按设备本地时间切换；开始和结束相同表示全天</span>
+                  <span>按设备本地时间自动切换到夜间模式；开始和结束相同表示全天夜间</span>
                 </div>
                 <div aria-label="夜间模式自动时段" className="page-appearance-hours">
                   <label>
@@ -597,13 +597,13 @@ export function SettingsView({
             </div>
             <div className="setting-row">
               <div>
-                <strong>麦克风灵敏度</strong>
+                <strong>算法敏感度</strong>
                 <span className="settings-helper">
-                  仅调整输入音量门槛。高敏感适合轻声弹奏，抗噪适合嘈杂环境。
+                  调整音高识别门槛。档位越高越容易识别弱音；输入增强会按设备单独调整。
                 </span>
               </div>
               <select
-                aria-label="麦克风灵敏度"
+                aria-label="算法敏感度"
                 value={practiceMicrophonePreferences.sensitivityLevel}
                 onChange={(event) => {
                   const sensitivityLevel = Number(
@@ -613,7 +613,7 @@ export function SettingsView({
                     ...current,
                     debugMode: false,
                     sensitivityLevel,
-                    sensitivityScaleVersion: 2,
+                    sensitivityScaleVersion: 3,
                   }));
                 }}
               >
@@ -819,21 +819,21 @@ export function SettingsView({
         <details className="settings-developer-options">
           <summary>开发者选项</summary>
           <div className="settings-developer-content">
-            {import.meta.env.DEV ? (
-              <div className="setting-row">
-                <div>
-                  <strong>麦克风参数基准测试</strong>
-                  <span className="settings-helper">录制基准音序并离线比较识别参数。</span>
-                </div>
-                <button
-                  className="microphone-benchmark-trigger"
-                  onClick={() => setIsMicrophoneBenchmarkOpen(true)}
-                  type="button"
-                >
-                  打开基准测试
-                </button>
+            <div className="setting-row">
+              <div>
+                <strong>麦克风参数基准测试</strong>
+                <span className="settings-helper">
+                  录制音序并在本机比较识别参数，不会自动上传录音。
+                </span>
               </div>
-            ) : null}
+              <button
+                className="microphone-benchmark-trigger"
+                onClick={() => setIsMicrophoneBenchmarkOpen(true)}
+                type="button"
+              >
+                打开基准测试
+              </button>
+            </div>
             <div className="setting-row settings-switch-row">
               <div>
                 <strong>全局调试开关</strong>
@@ -918,13 +918,11 @@ export function SettingsView({
         </section>
       </fieldset>
 
-      {import.meta.env.DEV ? (
-        <MicrophoneParameterBenchmarkDialog
-          isOpen={isMicrophoneBenchmarkOpen}
-          onClose={() => setIsMicrophoneBenchmarkOpen(false)}
-          preferences={practiceMicrophonePreferences}
-        />
-      ) : null}
+      <MicrophoneParameterBenchmarkDialog
+        isOpen={isMicrophoneBenchmarkOpen}
+        onClose={() => setIsMicrophoneBenchmarkOpen(false)}
+        preferences={practiceMicrophonePreferences}
+      />
     </section>
   );
 }
