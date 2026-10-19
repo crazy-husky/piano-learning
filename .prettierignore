@@ -5,3 +5,5 @@ coverage/
 server_monitor/
 pnpm-lock.yaml
 *.tsbuildinfo
+# Preserve byte-for-byte benchmark exports as source evidence.
+docs/research/microphone-benchmarks/**/*.json

@@ -7,21 +7,26 @@ import {
   detectMicrophoneBenchmarkOnsets,
   encodeMicrophoneBenchmarkWav,
   MICROPHONE_BENCHMARK_ALGORITHMS,
+  MICROPHONE_BENCHMARK_STABLE_DURATIONS,
   scoreMicrophoneBenchmarkEvents,
   summarizeMicrophoneBenchmarkSignal,
 } from "./microphoneParameterBenchmark";
 
 describe("microphone parameter benchmark", () => {
-  it("builds the 216 combinations for one algorithm", () => {
+  it("builds the 648 combinations for one algorithm", () => {
     const configurations = createMicrophoneBenchmarkConfigurations("swiftf0", {
       confidenceThresholds: [0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
       frameIntervals: [20, 30, 40, 50],
       inputRmsThresholdIds: ["low", "medium", "high"],
       requiredStableFrames: [2, 3, 4],
+      requiredStableMs: [...MICROPHONE_BENCHMARK_STABLE_DURATIONS],
     });
 
-    expect(configurations).toHaveLength(216);
+    expect(configurations).toHaveLength(648);
     expect(configurations.some((configuration) => configuration.frameIntervalMs === 40)).toBe(true);
+    expect(configurations.some((configuration) => configuration.requiredStableMs === 65)).toBe(
+      true
+    );
   });
 
   it("creates one ascending white-key then black-key pass across the game range", () => {
@@ -44,11 +49,12 @@ describe("microphone parameter benchmark", () => {
         frameIntervals: [20, 30, 40, 50],
         inputRmsThresholdIds: ["low", "medium", "high"],
         requiredStableFrames: [2, 3, 4],
+        requiredStableMs: [...MICROPHONE_BENCHMARK_STABLE_DURATIONS],
       })
     );
 
-    expect(configurationsPerAlgorithm.map((items) => items.length)).toEqual([216, 216]);
-    expect(configurationsPerAlgorithm.reduce((sum, items) => sum + items.length, 0) * 2).toBe(864);
+    expect(configurationsPerAlgorithm.map((items) => items.length)).toEqual([648, 648]);
+    expect(configurationsPerAlgorithm.reduce((sum, items) => sum + items.length, 0) * 2).toBe(2592);
   });
 
   it("encodes gained analysis samples as a mono PCM WAV", async () => {
@@ -87,9 +93,9 @@ describe("microphone parameter benchmark", () => {
     expect(onsets[0]).toBeLessThanOrEqual(1000);
   });
 
-  it("applies frame stability and scores correct-note latency on the recording timeline", () => {
+  it("requires both stable frames and minimum stable duration", () => {
     const midi = 60;
-    const frames = [0, 20, 40].map((timeMs) => ({
+    const frames = [0, 20, 40, 60].map((timeMs) => ({
       confidence: 0.8,
       frequencyHz: midiToFrequency(midi),
       rms: 0.01,
@@ -99,13 +105,14 @@ describe("microphone parameter benchmark", () => {
       confidenceThreshold: 0.6,
       inputRmsThreshold: 0.0018,
       requiredStableFrames: 2,
+      requiredStableMs: 50,
     });
     const score = scoreMicrophoneBenchmarkEvents([midi], events, [0]);
 
-    expect(events).toEqual([{ midi, timeMs: 20 }]);
+    expect(events).toEqual([{ midi, timeMs: 60 }]);
     expect(score.correct).toBe(1);
     expect(score.accuracy).toBe(1);
-    expect(score.meanLatencyMs).toBe(20);
+    expect(score.meanLatencyMs).toBe(60);
   });
 
   it("separates wrong, missed, and extra detections", () => {
@@ -122,7 +129,9 @@ describe("microphone parameter benchmark", () => {
 
     expect(score.correct).toBe(2);
     expect(score.wrong).toBe(1);
+    expect(score.wrongNotes).toEqual([{ expectedMidi: 62, predictedMidi: 63 }]);
     expect(score.missed).toBe(0);
+    expect(score.missedMidi).toEqual([]);
     expect(score.extra).toBe(1);
     expect(score.falsePositiveRate).toBe(0.25);
   });

@@ -1,4 +1,4 @@
-import { Check, Download, FileAudio, Mic, Square, X } from "lucide-react";
+import { Check, Download, Mic, Square, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { applyPracticeMicrophoneAnalysisGain } from "../../vocal-pitch/logic/practiceMicrophoneCapture";
 import {
@@ -18,6 +18,7 @@ import {
   MICROPHONE_BENCHMARK_CONFIDENCE_THRESHOLDS,
   MICROPHONE_BENCHMARK_FRAME_INTERVALS,
   MICROPHONE_BENCHMARK_RMS_THRESHOLDS,
+  MICROPHONE_BENCHMARK_STABLE_DURATIONS,
   MICROPHONE_BENCHMARK_STABLE_FRAME_COUNTS,
   summarizeMicrophoneBenchmarkSignal,
   type MicrophoneBenchmarkAlgorithm,
@@ -86,6 +87,13 @@ function csvCell(value: string | number): string {
   return `"${safeText.replaceAll('"', '""')}"`;
 }
 
+function formatMidiNote(midi: number): string {
+  const noteNames = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+  const noteName = noteNames[((midi % 12) + 12) % 12];
+  const octave = Math.floor(midi / 12) - 1;
+  return `${midi}(${noteName}${octave})`;
+}
+
 function formatElapsed(milliseconds: number): string {
   return `${(milliseconds / 1000).toFixed(1)} 秒`;
 }
@@ -103,6 +111,7 @@ function benchmarkResultKey(
     | "inputRmsThresholdId"
     | "recordingIndex"
     | "requiredStableFrames"
+    | "requiredStableMs"
   >
 ): string {
   return [
@@ -112,6 +121,7 @@ function benchmarkResultKey(
     result.confidenceThreshold,
     result.inputRmsThresholdId,
     result.requiredStableFrames,
+    result.requiredStableMs,
   ].join("|");
 }
 
@@ -145,6 +155,23 @@ function downloadBlob(blob: Blob, filename: string): void {
   anchor.download = filename;
   anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function readBlobAsBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("无法读取录音文件。"));
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      if (typeof dataUrl !== "string") {
+        reject(new Error("无法编码录音文件。"));
+        return;
+      }
+      const separator = dataUrl.indexOf(",");
+      resolve(dataUrl.slice(separator + 1));
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 function toggleSelection<T extends number | string>(
@@ -190,6 +217,9 @@ export function MicrophoneParameterBenchmarkDialog({
   const [selectedStableFrames, setSelectedStableFrames] = useState<number[]>([
     ...MICROPHONE_BENCHMARK_STABLE_FRAME_COUNTS,
   ]);
+  const [selectedStableMs, setSelectedStableMs] = useState<number[]>([
+    ...MICROPHONE_BENCHMARK_STABLE_DURATIONS,
+  ]);
   const [completedRecordings, setCompletedRecordings] = useState<RecordingSlots>([null, null]);
   const [activeRecordingIndex, setActiveRecordingIndex] = useState<RecordingIndex>(1);
   const [results, setResults] = useState<MicrophoneBenchmarkResult[]>([]);
@@ -224,8 +254,9 @@ export function MicrophoneParameterBenchmarkDialog({
       frameIntervals: selectedIntervals,
       inputRmsThresholdIds: selectedRmsIds,
       requiredStableFrames: selectedStableFrames,
+      requiredStableMs: selectedStableMs,
     }),
-    [selectedConfidence, selectedIntervals, selectedRmsIds, selectedStableFrames]
+    [selectedConfidence, selectedIntervals, selectedRmsIds, selectedStableFrames, selectedStableMs]
   );
   const configurationsPerAlgorithm = useMemo(
     () => createMicrophoneBenchmarkConfigurations("swiftf0", selections).length,
@@ -521,33 +552,7 @@ export function MicrophoneParameterBenchmarkDialog({
     setIsScanComplete(false);
   }
 
-  function downloadOriginalRecording(recordingIndex: RecordingIndex): void {
-    const item = completedRecordings[recordingIndex - 1];
-    if (!item) return;
-    downloadBlob(
-      item.take.originalRecording,
-      `microphone-benchmark-take-${recordingIndex}-original.${audioFileExtension(item.take.mimeType)}`
-    );
-  }
-
-  function downloadAnalysisWav(recordingIndex: RecordingIndex): void {
-    const item = completedRecordings[recordingIndex - 1];
-    if (!item) return;
-    const gainedSamples = applyPracticeMicrophoneAnalysisGain(
-      item.take.samples,
-      item.environment.inputGain
-    );
-    downloadBlob(
-      encodeMicrophoneBenchmarkWav(gainedSamples, item.take.sampleRate),
-      `microphone-benchmark-take-${recordingIndex}-analysis.wav`
-    );
-  }
-
-  function exportCsv(
-    rowsToExport: readonly MicrophoneBenchmarkResult[] = results,
-    filenamePrefix = "microphone-benchmark"
-  ): void {
-    if (!isScanComplete || rowsToExport.length === 0) return;
+  function createCsvContent(rowsToExport: readonly MicrophoneBenchmarkResult[] = results): string {
     const usedRecordingIndices = new Set(rowsToExport.map((result) => result.recordingIndex));
     const metadataRows = completedRecordings.flatMap((item, index) => {
       const recordingIndex = (index + 1) as RecordingIndex;
@@ -582,6 +587,7 @@ export function MicrophoneParameterBenchmarkDialog({
       "RMS 档位",
       "RMS 门槛",
       "稳定帧数",
+      "最短稳定时间 ms",
       "准确率",
       "正确数",
       "错音率",
@@ -590,6 +596,8 @@ export function MicrophoneParameterBenchmarkDialog({
       "误报数",
       "漏音率",
       "漏音数",
+      "漏音目标 MIDI（音名）",
+      "错音目标→识别 MIDI（音名）",
       "起音标记数",
       "延迟样本数",
       "延迟覆盖率",
@@ -605,6 +613,7 @@ export function MicrophoneParameterBenchmarkDialog({
       result.inputRmsThresholdLabel,
       result.inputRmsThreshold,
       result.requiredStableFrames,
+      result.requiredStableMs,
       result.score.accuracy,
       result.score.correct,
       result.score.wrongRate,
@@ -613,22 +622,92 @@ export function MicrophoneParameterBenchmarkDialog({
       result.score.extra,
       result.score.missedRate,
       result.score.missed,
+      result.score.missedMidi.map(formatMidiNote).join(";"),
+      result.score.wrongNotes
+        .map(
+          ({ expectedMidi, predictedMidi }) =>
+            `${formatMidiNote(expectedMidi)}→${formatMidiNote(predictedMidi)}`
+        )
+        .join(";"),
       result.score.onsetMarkerCount,
       result.score.latencySampleCount,
       result.score.latencyCoverage,
       result.score.meanLatencyMs ?? "",
       result.workerProcessingMs,
     ]);
-    const csv = [
+    return [
       ...metadataRows.map((row) => row.map((cell) => csvCell(cell)).join(",")),
       "",
       header.map((cell) => csvCell(cell)).join(","),
       ...csvRows.map((row) => row.map((cell) => csvCell(cell)).join(",")),
     ].join("\r\n");
-    downloadBlob(
-      new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }),
-      `${filenamePrefix}-${new Date().toISOString().replaceAll(":", "-")}.csv`
-    );
+  }
+
+  async function exportBenchmarkJsonBundle(): Promise<void> {
+    if (!isScanComplete || results.length === 0) return;
+    const timestamp = new Date().toISOString();
+    try {
+      const recordings = [];
+      for (const [index, item] of completedRecordings.entries()) {
+        if (!item) continue;
+        const recordingIndex = (index + 1) as RecordingIndex;
+        const originalFilename = `microphone-benchmark-take-${recordingIndex}-original.${audioFileExtension(item.take.mimeType)}`;
+        const analysisFilename = `microphone-benchmark-take-${recordingIndex}-analysis.wav`;
+        const gainedSamples = applyPracticeMicrophoneAnalysisGain(
+          item.take.samples,
+          item.environment.inputGain
+        );
+        const analysisWav = encodeMicrophoneBenchmarkWav(gainedSamples, item.take.sampleRate);
+        const originalAudioBase64 = await readBlobAsBase64(item.take.originalRecording);
+        const analysisWavBase64 = await readBlobAsBase64(analysisWav);
+        recordings.push({
+          recordingIndex,
+          environment: item.environment,
+          signal: item.signal,
+          markersMs: item.markersMs,
+          durationMs: item.take.durationMs,
+          decodedSampleRate: item.take.sampleRate,
+          trackSampleRate: item.take.trackSampleRate,
+          originalAudio: {
+            filename: originalFilename,
+            mimeType: item.take.mimeType,
+            encoding: "base64",
+            data: originalAudioBase64,
+          },
+          analysisWav: {
+            filename: analysisFilename,
+            mimeType: analysisWav.type,
+            encoding: "base64",
+            data: analysisWavBase64,
+          },
+        });
+      }
+      const csvContent = createCsvContent(results);
+      const bundle = {
+        schemaVersion: 1,
+        type: "piano-learning-microphone-benchmark",
+        exportedAt: timestamp,
+        scan: {
+          algorithms,
+          selections,
+          results,
+        },
+        csv: {
+          filename: `microphone-benchmark-${timestamp.replaceAll(":", "-")}.csv`,
+          mimeType: "text/csv;charset=utf-8",
+          content: csvContent,
+        },
+        recordings,
+      };
+      downloadBlob(
+        new Blob([JSON.stringify(bundle)], { type: "application/json;charset=utf-8" }),
+        `microphone-benchmark-${timestamp.replaceAll(":", "-")}.json`
+      );
+    } catch (error) {
+      setScanError(
+        error instanceof Error ? `导出 JSON 失败：${error.message}` : "导出 JSON 失败，请重试。"
+      );
+    }
   }
 
   const selectedTakeCount = completedRecordings.filter(Boolean).length;
@@ -693,9 +772,9 @@ export function MicrophoneParameterBenchmarkDialog({
               <h3 id="microphone-benchmark-recording-title">录制标准音序</h3>
             </div>
             <span className="microphone-benchmark-gain-tag">
-              输入放大 · 录音 1{" "}
+              输入放大 · 录音一{" "}
               {completedRecordings[0]?.environment.inputGain ?? systemConfiguration.analysisGain}× ·
-              录音 2{" "}
+              录音二{" "}
               {completedRecordings[1]?.environment.inputGain ?? systemConfiguration.analysisGain}×
             </span>
           </div>
@@ -703,6 +782,12 @@ export function MicrophoneParameterBenchmarkDialog({
             每段先留约 1 秒安静底噪，再从左向右弹完 C2–B6 的白键、再弹黑键，共 {expectedMidi.length}{" "}
             个音。
           </p>
+          <aside aria-label="录音提示" className="microphone-benchmark-take-reminder">
+            <strong>录音提示</strong>
+            <span>
+              两遍都录同一段音序，不限定快慢；如果想比较速度影响，可以尝试用不同速度各录一遍。
+            </span>
+          </aside>
           <div className="microphone-benchmark-recording-progress" role="status">
             <span>当前进度</span>
             <strong>{selectedTakeCount} / 2 段</strong>
@@ -856,18 +941,6 @@ export function MicrophoneParameterBenchmarkDialog({
                       {completedRecording.environment.debugMode ? " · 详细参数覆盖开启" : ""}
                     </span>
                   </div>
-                  <div className="microphone-benchmark-audio-downloads">
-                    <span>录音 {activeRecordingIndex} 音频：</span>
-                    <button
-                      onClick={() => downloadOriginalRecording(activeRecordingIndex)}
-                      type="button"
-                    >
-                      <FileAudio aria-hidden="true" size={15} /> 下载原始录音
-                    </button>
-                    <button onClick={() => downloadAnalysisWav(activeRecordingIndex)} type="button">
-                      <Download aria-hidden="true" size={15} /> 下载分析 WAV
-                    </button>
-                  </div>
                   <div className="microphone-benchmark-waveform-heading">
                     <strong>起音点校正</strong>
                     <span>
@@ -950,19 +1023,14 @@ export function MicrophoneParameterBenchmarkDialog({
             ))}
           </fieldset>
           <details
-            aria-disabled={!allRecordingsComplete}
             className={`microphone-benchmark-advanced${allRecordingsComplete ? "" : " is-locked"}`}
           >
-            <summary
-              onClick={(event) => {
-                if (!allRecordingsComplete) event.preventDefault();
-              }}
-            >
+            <summary>
               <span>⚙️ 展开高级参数配置</span>
-              <small>默认全选</small>
+              <small>{allRecordingsComplete ? "默认全选" : "完成两段录音后可修改"}</small>
             </summary>
             <p className="microphone-benchmark-note">
-              扫描帧间隔、置信度、输入 RMS 门槛和稳定帧数；YIN threshold
+              扫描帧间隔、置信度、输入 RMS 门槛、稳定帧数和最短稳定时间；YIN threshold
               等算法专属参数沿用当前敏感度。
             </p>
             <div className="microphone-benchmark-options-grid">
@@ -1034,6 +1102,23 @@ export function MicrophoneParameterBenchmarkDialog({
                   </label>
                 ))}
               </fieldset>
+              <fieldset>
+                <legend>最短稳定时间</legend>
+                {MICROPHONE_BENCHMARK_STABLE_DURATIONS.map((duration) => (
+                  <label key={duration}>
+                    <input
+                      checked={selectedStableMs.includes(duration)}
+                      disabled={!allRecordingsComplete || isScanning}
+                      onChange={() => {
+                        clearResults();
+                        toggleSelection(selectedStableMs, setSelectedStableMs, duration);
+                      }}
+                      type="checkbox"
+                    />
+                    {duration} ms
+                  </label>
+                ))}
+              </fieldset>
             </div>
           </details>
           <div className="microphone-benchmark-scan-controls">
@@ -1056,7 +1141,11 @@ export function MicrophoneParameterBenchmarkDialog({
                   : "🚀 开始离线扫描"}
             </button>
             {isScanning ? (
-              <button onClick={cancelScan} type="button">
+              <button
+                className="microphone-benchmark-cancel-scan-button"
+                onClick={cancelScan}
+                type="button"
+              >
                 取消扫描
               </button>
             ) : null}
@@ -1105,14 +1194,19 @@ export function MicrophoneParameterBenchmarkDialog({
                 </p>
               </div>
               <div className="microphone-benchmark-export-actions">
-                <button disabled={!isScanComplete} onClick={() => exportCsv()} type="button">
-                  <Download aria-hidden="true" size={16} /> 导出完整结果 CSV
+                <button
+                  className="microphone-benchmark-export-button"
+                  disabled={!isScanComplete}
+                  onClick={() => void exportBenchmarkJsonBundle()}
+                  type="button"
+                >
+                  <Download aria-hidden="true" size={16} /> 导出完整 JSON（CSV + 音频）
                 </button>
               </div>
             </div>
             <MicrophoneBenchmarkResultTable results={results} />
             <p className="microphone-benchmark-note">
-              平均延迟只统计能与正确识别音一一对应的起音标记；表格和 CSV
+              平均延迟只统计能与正确识别音一一对应的起音标记；表格和导出包
               会同时记录标记数、延迟样本数与覆盖率。
             </p>
             <p className="microphone-benchmark-disclaimer">

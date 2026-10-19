@@ -13,6 +13,7 @@ export const MICROPHONE_BENCHMARK_RMS_THRESHOLDS = [
   { id: "high", label: "高", value: 0.0036 },
 ] as const;
 export const MICROPHONE_BENCHMARK_STABLE_FRAME_COUNTS = [2, 3, 4] as const;
+export const MICROPHONE_BENCHMARK_STABLE_DURATIONS = [50, 65, 80] as const;
 export const MICROPHONE_BENCHMARK_GAME_RANGE = { minMidi: 36, maxMidi: 95 } as const;
 export const MICROPHONE_BENCHMARK_SWIFTF0_HOP_MS = (256 / 16_000) * 1000;
 export const MICROPHONE_BENCHMARK_SWIFTF0_LOOKAHEAD_MS = 10 * MICROPHONE_BENCHMARK_SWIFTF0_HOP_MS;
@@ -31,6 +32,7 @@ export interface MicrophoneBenchmarkConfiguration {
   inputRmsThresholdId: string;
   inputRmsThresholdLabel: string;
   requiredStableFrames: number;
+  requiredStableMs: number;
 }
 
 export interface MicrophoneBenchmarkSelections {
@@ -38,6 +40,7 @@ export interface MicrophoneBenchmarkSelections {
   frameIntervals: readonly number[];
   inputRmsThresholdIds: readonly string[];
   requiredStableFrames: readonly number[];
+  requiredStableMs: readonly number[];
 }
 
 export interface MicrophoneBenchmarkFrame {
@@ -61,11 +64,13 @@ export interface MicrophoneBenchmarkScore {
   latencyCoverage: number;
   meanLatencyMs: number | null;
   missed: number;
+  missedMidi: number[];
   missedRate: number;
   predicted: number;
   onsetMarkerCount: number;
   truePositiveLatenciesMs: number[];
   wrong: number;
+  wrongNotes: Array<{ expectedMidi: number; predictedMidi: number }>;
   wrongRate: number;
 }
 
@@ -105,15 +110,18 @@ export function createMicrophoneBenchmarkConfigurations(
   return selections.frameIntervals.flatMap((frameIntervalMs) =>
     selections.confidenceThresholds.flatMap((confidenceThreshold) =>
       rmsThresholds.flatMap((rmsThreshold) =>
-        selections.requiredStableFrames.map((requiredStableFrames) => ({
-          algorithm,
-          confidenceThreshold,
-          frameIntervalMs,
-          inputRmsThreshold: rmsThreshold.value,
-          inputRmsThresholdId: rmsThreshold.id,
-          inputRmsThresholdLabel: rmsThreshold.label,
-          requiredStableFrames,
-        }))
+        selections.requiredStableFrames.flatMap((requiredStableFrames) =>
+          selections.requiredStableMs.map((requiredStableMs) => ({
+            algorithm,
+            confidenceThreshold,
+            frameIntervalMs,
+            inputRmsThreshold: rmsThreshold.value,
+            inputRmsThresholdId: rmsThreshold.id,
+            inputRmsThresholdLabel: rmsThreshold.label,
+            requiredStableFrames,
+            requiredStableMs,
+          }))
+        )
       )
     )
   );
@@ -308,12 +316,13 @@ export function collectMicrophoneBenchmarkEvents(
   frames: readonly MicrophoneBenchmarkFrame[],
   configuration: Pick<
     MicrophoneBenchmarkConfiguration,
-    "confidenceThreshold" | "inputRmsThreshold" | "requiredStableFrames"
+    "confidenceThreshold" | "inputRmsThreshold" | "requiredStableFrames" | "requiredStableMs"
   >
 ): MicrophoneBenchmarkNoteEvent[] {
   const events: MicrophoneBenchmarkNoteEvent[] = [];
   let candidateMidi: number | null = null;
   let candidateFrames = 0;
+  let candidateStartedAt: number | null = null;
   let activeMidi: number | null = null;
   let silenceFrames = 0;
 
@@ -327,6 +336,7 @@ export function collectMicrophoneBenchmarkEvents(
     if (midi === null) {
       candidateMidi = null;
       candidateFrames = 0;
+      candidateStartedAt = null;
       silenceFrames += 1;
       if (silenceFrames >= 2) activeMidi = null;
       continue;
@@ -337,9 +347,15 @@ export function collectMicrophoneBenchmarkEvents(
     else {
       candidateMidi = midi;
       candidateFrames = 1;
+      candidateStartedAt = frame.timeMs;
     }
 
-    if (candidateFrames >= configuration.requiredStableFrames && midi !== activeMidi) {
+    if (
+      candidateFrames >= configuration.requiredStableFrames &&
+      candidateStartedAt !== null &&
+      frame.timeMs - candidateStartedAt >= configuration.requiredStableMs &&
+      midi !== activeMidi
+    ) {
       events.push({ midi, timeMs: frame.timeMs });
       activeMidi = midi;
     }
@@ -391,6 +407,8 @@ export function scoreMicrophoneBenchmarkEvents(
   let wrong = 0;
   let missed = 0;
   let extra = 0;
+  const missedMidi: number[] = [];
+  const wrongNotes: Array<{ expectedMidi: number; predictedMidi: number }> = [];
   const correctAlignments: CorrectEventAlignment[] = [];
   while (expectedIndex > 0 || predictedIndex > 0) {
     const operation = grid[expectedIndex]![predictedIndex]!.operation;
@@ -402,10 +420,17 @@ export function scoreMicrophoneBenchmarkEvents(
       predictedIndex -= 1;
     } else if (operation === "substitute") {
       wrong += 1;
+      const expected = expectedMidi[expectedIndex - 1];
+      const predicted = predictedEvents[predictedIndex - 1];
+      if (expected !== undefined && predicted) {
+        wrongNotes.push({ expectedMidi: expected, predictedMidi: predicted.midi });
+      }
       expectedIndex -= 1;
       predictedIndex -= 1;
     } else if (operation === "delete") {
       missed += 1;
+      const expected = expectedMidi[expectedIndex - 1];
+      if (expected !== undefined) missedMidi.push(expected);
       expectedIndex -= 1;
     } else {
       extra += 1;
@@ -449,11 +474,13 @@ export function scoreMicrophoneBenchmarkEvents(
           truePositiveLatenciesMs.length
         : null,
     missed,
+    missedMidi: missedMidi.reverse(),
     missedRate: missed / expectedCount,
     predicted: predictedEvents.length,
     onsetMarkerCount: onsetMarkersMs.length,
     truePositiveLatenciesMs,
     wrong,
+    wrongNotes: wrongNotes.reverse(),
     wrongRate: wrong / expectedCount,
   };
 }

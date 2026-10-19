@@ -12,6 +12,7 @@ type SortKey =
   | "meanLatencyMs"
   | "missedRate"
   | "requiredStableFrames"
+  | "requiredStableMs"
   | "workerProcessingMs"
   | "wrongRate";
 
@@ -33,6 +34,7 @@ function sortValue(result: MicrophoneBenchmarkResult, key: SortKey): number {
   if (key === "confidenceThreshold") return result.confidenceThreshold;
   if (key === "inputRmsThreshold") return result.inputRmsThreshold;
   if (key === "requiredStableFrames") return result.requiredStableFrames;
+  if (key === "requiredStableMs") return result.requiredStableMs;
   if (key === "workerProcessingMs") return result.workerProcessingMs;
   return result.score.accuracy;
 }
@@ -84,6 +86,7 @@ export function MicrophoneBenchmarkResultTable({
             {header("置信度", "confidenceThreshold")}
             {header("RMS 门槛", "inputRmsThreshold")}
             {header("稳定帧", "requiredStableFrames")}
+            {header("最短稳定时间", "requiredStableMs")}
             {header("准确率", "accuracy")}
             {header("错音率", "wrongRate")}
             {header("误报率", "falsePositiveRate")}
@@ -96,7 +99,7 @@ export function MicrophoneBenchmarkResultTable({
         <tbody>
           {sortedResults.map((result, index) => (
             <tr
-              key={`${result.recordingIndex}-${result.algorithm}-${result.frameIntervalMs}-${result.confidenceThreshold}-${result.inputRmsThresholdId}-${result.requiredStableFrames}-${index}`}
+              key={`${result.recordingIndex}-${result.algorithm}-${result.frameIntervalMs}-${result.confidenceThreshold}-${result.inputRmsThresholdId}-${result.requiredStableFrames}-${result.requiredStableMs}-${index}`}
             >
               <td>录音 {result.recordingIndex}</td>
               <td>{algorithmLabel(result)}</td>
@@ -111,6 +114,7 @@ export function MicrophoneBenchmarkResultTable({
                 {result.inputRmsThresholdLabel} · {result.inputRmsThreshold.toFixed(4)}
               </td>
               <td>{result.requiredStableFrames}</td>
+              <td>{result.requiredStableMs} ms</td>
               <td>
                 {formatPercent(result.score.accuracy)} · {result.score.correct}
               </td>
