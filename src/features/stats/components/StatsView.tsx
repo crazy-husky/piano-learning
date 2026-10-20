@@ -65,7 +65,7 @@ const STATS_TAB_LABELS: Record<StatsTab, string> = {
   overview: "练习概览",
   notes: "单音诊断",
   progress: "练习进度",
-  "wrong-notes": "错题趋势",
+  "wrong-notes": "练习表现",
 };
 const STATS_TAB_TRANSITION_MS = 180;
 

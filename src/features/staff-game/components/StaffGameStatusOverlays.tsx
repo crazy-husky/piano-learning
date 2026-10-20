@@ -13,7 +13,7 @@ interface StaffGameStatusOverlaysProps {
   wrongNoteExitLabel: string | null;
   gameEffectsEnabled: boolean;
   touchGameLayout: boolean;
-  onDismissInputError: () => void;
+  onReturnToReady: () => void;
   onRetryInput: () => void;
   onKeepEffects: () => void;
   onDisableEffects: () => void;
@@ -36,7 +36,7 @@ export function StaffGameStatusOverlays({
   wrongNoteExitLabel,
   gameEffectsEnabled,
   touchGameLayout,
-  onDismissInputError,
+  onReturnToReady,
   onRetryInput,
   onKeepEffects,
   onDisableEffects,
@@ -67,12 +67,8 @@ export function StaffGameStatusOverlays({
                 </h2>
                 <p>{gameError}</p>
                 <div className="staff-game-summary-actions">
-                  <button
-                    className="staff-game-secondary"
-                    onClick={onDismissInputError}
-                    type="button"
-                  >
-                    稍后处理
+                  <button className="staff-game-secondary" onClick={onReturnToReady} type="button">
+                    返回等待页
                   </button>
                   <button
                     className="staff-game-primary"
@@ -83,7 +79,7 @@ export function StaffGameStatusOverlays({
                     {isStarting ? (
                       <LoadingActivityText kind="spinner">正在连接…</LoadingActivityText>
                     ) : (
-                      "重新尝试"
+                      "重新检测"
                     )}
                   </button>
                 </div>

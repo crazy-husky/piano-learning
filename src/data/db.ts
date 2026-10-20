@@ -35,6 +35,7 @@ import {
   filterLegacyStaffGameDrillArchives,
   mergeStaffGameWrongNoteArchives,
 } from "../domain/staffGameWrongNoteArchives";
+import { recoverStaffGameWrongNoteRunResponseTimes } from "../domain/staffGameWrongNoteTrends";
 import type { VocalAudioMaterial } from "../domain/vocalPitch";
 import {
   answerDeviceInfo,
@@ -266,6 +267,70 @@ export class AppDatabase extends Dexie {
 }
 
 export const db = new AppDatabase();
+
+function hasCompleteStaffGameWrongNoteResponseTimes(run: StaffGameWrongNoteArchiveRun): boolean {
+  return (
+    run.responseTimeBasis === "first-correct" &&
+    Object.values(run.notes).every(
+      (note) =>
+        typeof note.totalResponseMs === "number" &&
+        Number.isFinite(note.totalResponseMs) &&
+        note.totalResponseMs >= 0 &&
+        typeof note.responseSampleCount === "number" &&
+        Number.isInteger(note.responseSampleCount) &&
+        note.responseSampleCount >= 0
+    )
+  );
+}
+
+/** Backfill missing trend response times from per-target answer events, once per run. */
+export async function restoreStaffGameWrongNoteArchiveResponseTimes(): Promise<
+  StaffGameWrongNoteArchive[]
+> {
+  return withStaffGameArchiveMutationLock(() =>
+    db.transaction("rw", db.staffGameWrongNoteArchives, db.answerEvents, async () => {
+      const archives = await db.staffGameWrongNoteArchives.orderBy("date").toArray();
+      const runsNeedingResponseTimes = archives.flatMap((archive) =>
+        archive.runs.filter((run) => !hasCompleteStaffGameWrongNoteResponseTimes(run))
+      );
+      const runIds = [...new Set(runsNeedingResponseTimes.map((run) => run.runId))];
+      if (runIds.length === 0) return archives;
+
+      const events = await db.answerEvents.where("sessionId").anyOf(runIds).toArray();
+      const eventsByRunId = new Map<string, AnswerEvent[]>();
+      for (const event of events) {
+        const runEvents = eventsByRunId.get(event.sessionId) ?? [];
+        runEvents.push(event);
+        eventsByRunId.set(event.sessionId, runEvents);
+      }
+
+      const updatedArchives = archives.map((archive) => {
+        let changed = false;
+        const runs = archive.runs.map((run) => {
+          if (hasCompleteStaffGameWrongNoteResponseTimes(run)) return run;
+          const recoveredRun = recoverStaffGameWrongNoteRunResponseTimes(
+            run,
+            eventsByRunId.get(run.runId) ?? []
+          );
+          if (!recoveredRun) return run;
+          changed = true;
+          return recoveredRun;
+        });
+        return changed ? { ...archive, runs } : archive;
+      });
+
+      const changedArchiveIds = new Set(
+        updatedArchives
+          .filter((archive, index) => archive.runs !== archives[index]?.runs)
+          .map((archive) => archive.id)
+      );
+      for (const archive of updatedArchives) {
+        if (changedArchiveIds.has(archive.id)) await db.staffGameWrongNoteArchives.put(archive);
+      }
+      return updatedArchives;
+    })
+  );
+}
 
 export const ANSWER_EVENTS_RESET_KEY = "anki-note.answerEventsReset.v1";
 

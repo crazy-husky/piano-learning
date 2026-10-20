@@ -49,6 +49,21 @@ let samplerLoadPromise: Promise<void> | undefined;
 let samplerStatus: SamplerStatus = "idle";
 let samplerLoadError: Error | null = null;
 let fallbackSynth: Tone.PolySynth | undefined;
+let pianoOutput: Tone.Gain | null = null;
+
+function getPianoOutput(): Tone.Gain | Tone.DestinationInstance {
+  return pianoOutput ?? Tone.getDestination();
+}
+
+/** Route the shared piano voices through a screen-specific mix while that screen is mounted. */
+export function setPianoOutput(output: Tone.Gain | null): void {
+  pianoOutput = output;
+  const destination = getPianoOutput();
+  sampler?.disconnect();
+  sampler?.connect(destination);
+  fallbackSynth?.disconnect();
+  fallbackSynth?.connect(destination);
+}
 
 function normalizeError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
@@ -58,7 +73,7 @@ function getFallbackSynth(): Tone.PolySynth {
   fallbackSynth ??= new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: "triangle" },
     envelope: { attack: 0.01, decay: 0.18, sustain: 0.35, release: 0.6 },
-  }).toDestination();
+  }).connect(getPianoOutput());
   return fallbackSynth;
 }
 
@@ -125,7 +140,7 @@ function getSampler({ retryFailed = false }: GetSamplerOptions = {}): Tone.Sampl
         release: 0.8,
         onload: markLoaded,
         onerror: markFailed,
-      }).toDestination();
+      }).connect(getPianoOutput());
     } catch (error) {
       markFailed(error);
     }

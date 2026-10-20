@@ -39,6 +39,15 @@
 - 影响文件：`src/domain/staffGameWrongNoteTrends.ts`、`src/features/staff-game/components/StaffGameWrongNoteTrendPanel.tsx`
 - 不要改回：趋势分组保持来源、关卡或复习范围、难度、输入方式、音符池范围和出题策略；条件不同的对局不合并。
 
+### 统计页练习趋势与错题集趋势分开
+
+- 日期：2026-10-20
+- 理由：练习表现与错题管理回答不同问题，混用数据范围会让用户误以为记录丢失。
+- 影响文件：`src/features/stats/components/StatsView.tsx`、`src/features/stats/components/WrongNoteStatsPanel.tsx`、`src/features/staff-game/components/StaffGameWrongNoteArchiveManagerDialog.tsx`、`src/features/staff-game/components/StaffGameWrongNoteTrendPanel.tsx`
+- 统计页“练习表现”中的趋势和单音表现纳入所有满足趋势完整性要求的闯关与错题复习对局，不受是否加入错题集影响；错题集弹窗中的错题趋势和单音诊断只统计已加入错题集的错漏局，管理页签也只管理这批记录。
+- 符合趋势统计条件的练习局自动计入统计；“加入错题集”只决定是否进入错题复习、诊断和管理，不改变统计页趋势。
+- 错题管理中的“删除”会彻底删除整局及其练习统计数据；确认提示必须说明会同时从错题集和练习统计中删除。
+
 ### 结算对比和趋势图使用不同统计口径
 
 - 日期：2026-10-16

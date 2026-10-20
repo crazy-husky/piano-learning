@@ -79,7 +79,7 @@ it("renders the statistics shell before heavy content", () => {
   expect(markup).toContain("练习概览");
   expect(markup).toContain("单音诊断");
   expect(markup).toContain("练习进度");
-  expect(markup).toContain("错题趋势");
+  expect(markup).toContain("练习表现");
   expect(markup).toContain("仅影响统计图，不会更改练习范围");
   expect(markup).toContain('aria-label="正在生成统计内容"');
   expect(markup).not.toContain("stats-card-carousel-slide");

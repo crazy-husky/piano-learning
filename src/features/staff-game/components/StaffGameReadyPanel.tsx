@@ -284,12 +284,12 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
               </select>
             </label>
             <button
-              aria-label="错题趋势与管理"
+              aria-label="打开错题集"
               className="staff-game-archive-manage"
               onClick={props.onOpenWrongNoteArchiveManager}
               type="button"
             >
-              趋势与管理
+              错题集
             </button>
           </div>
           <div className="staff-game-review-preview" aria-live="polite">

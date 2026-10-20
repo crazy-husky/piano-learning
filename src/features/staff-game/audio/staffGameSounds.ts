@@ -7,6 +7,12 @@ import comboUnbelievableUrl from "../assets/audio/combo-unbelievable.mp3";
 import levelClearUrl from "../assets/audio/level-clear.wav";
 import menuClickUrl from "../assets/audio/menu-click.mp3";
 import noteMissedRubberyUrl from "../assets/audio/note-missed-rubbery.wav";
+import {
+  STAFF_GAME_AUDIO_LIMITER_CEILING_DB,
+  STAFF_GAME_AUDIO_LIMITER_LOOKAHEAD_MS,
+  STAFF_GAME_AUDIO_LIMITER_RELEASE_MS,
+  STAFF_GAME_AUDIO_MASTER_GAIN_LINEAR,
+} from "./staffGameAudioConfig";
 
 export type StaffGameSound =
   | "bubblePop"
@@ -40,10 +46,10 @@ const soundSources: Record<
   bubblePop: { url: bubblePopUrl, volumeDb: -7, label: "泡泡破裂音效" },
   comboAmazing: { url: comboAmazingUrl, volumeDb: -13, label: "连击 Amazing 音效" },
   comboExcellent: { url: comboExcellentUrl, volumeDb: -14, label: "连击 Excellent 音效" },
-  comboStreak: { url: comboStreakUrl, volumeDb: -27, label: "连击 Streak 音效" },
+  comboStreak: { url: comboStreakUrl, volumeDb: -31, label: "连击 Streak 音效" },
   comboUnbelievable: { url: comboUnbelievableUrl, volumeDb: -12, label: "连击 Unbelievable 音效" },
-  levelClear: { url: levelClearUrl, volumeDb: -18, label: "关卡完成音效" },
-  menuClick: { url: menuClickUrl, volumeDb: -22, label: "菜单点击音效" },
+  levelClear: { url: levelClearUrl, volumeDb: -22, label: "关卡完成音效" },
+  menuClick: { url: menuClickUrl, volumeDb: -28, label: "菜单点击音效" },
   noteMissed: { url: noteMissedRubberyUrl, volumeDb: -8, label: "答错音效" },
   noteMissedUnpitched: { url: noteMissedRubberyUrl, volumeDb: -8, label: "答错音效（无音高）" },
 };
@@ -68,6 +74,122 @@ export interface StaffGameSoundLoadUpdate {
 const soundPlayers = new Map<SampledStaffGameSound, SoundPlayer>();
 let soundEffectsEnabled = true;
 let starRevealSynth: Tone.Synth | null = null;
+let soundMasterGain: Tone.Gain | null = null;
+let soundOutputLimiter: AudioNode | null = null;
+let soundOutputLimiterModuleReady: Promise<void> | null = null;
+let soundOutputLimiterReady: Promise<void> | null = null;
+let soundOutputLatencyMs = STAFF_GAME_AUDIO_LIMITER_LOOKAHEAD_MS;
+
+function getSoundMasterGain(): Tone.Gain {
+  if (!soundMasterGain) {
+    soundMasterGain = new Tone.Gain(STAFF_GAME_AUDIO_MASTER_GAIN_LINEAR);
+    if (soundOutputLimiter) soundMasterGain.connect(soundOutputLimiter);
+  }
+  return soundMasterGain;
+}
+
+function limitSampleMagnitude(value: number, ceiling: number): number {
+  const magnitude = Math.abs(value);
+  const knee = Math.min(0.6, ceiling * 0.7);
+  if (magnitude <= knee) return value;
+  const kneeWidth = 1 - knee;
+  const t = Math.min(1, (magnitude - knee) / kneeWidth);
+  const tSquared = t * t;
+  const tCubed = tSquared * t;
+  const limitedMagnitude =
+    (2 * tCubed - 3 * tSquared + 1) * knee +
+    (tCubed - 2 * tSquared + t) * kneeWidth +
+    (-2 * tCubed + 3 * tSquared) * ceiling;
+  return Math.sign(value) * limitedMagnitude;
+}
+
+function createFallbackCeilingLimiter(): WaveShaperNode {
+  // Leave margin for the oversampled waveshaper's reconstruction between curve points.
+  const ceiling = 10 ** ((STAFF_GAME_AUDIO_LIMITER_CEILING_DB - 0.2) / 20);
+  const rawContext = Tone.getContext().rawContext;
+  const limiter = rawContext.createWaveShaper();
+  const curve = new Float32Array(4096);
+  for (let index = 0; index < curve.length; index += 1) {
+    const value = (index * 2) / (curve.length - 1) - 1;
+    curve[index] = limitSampleMagnitude(value, ceiling);
+  }
+  limiter.curve = curve;
+  limiter.oversample = "4x";
+  return limiter;
+}
+
+function installFallbackCeilingLimiter(): void {
+  const limiter = createFallbackCeilingLimiter();
+  limiter.connect(Tone.getContext().rawContext.destination);
+  soundMasterGain?.connect(limiter);
+  soundOutputLatencyMs = 0;
+  soundOutputLimiter = limiter;
+}
+
+function connectSoundOutputLimiter(): Promise<void> {
+  if (soundOutputLimiter) return Promise.resolve();
+  if (soundOutputLimiterReady) return soundOutputLimiterReady;
+
+  const toneContext = Tone.getContext();
+  if (!toneContext.rawContext.audioWorklet) {
+    installFallbackCeilingLimiter();
+    return Promise.resolve();
+  }
+
+  const workletUrl = new URL(
+    `${import.meta.env.BASE_URL}staff-game-lookahead-limiter.js`,
+    window.location.origin
+  );
+  soundOutputLimiterModuleReady ??= toneContext
+    .addAudioWorkletModule(workletUrl.href)
+    .catch((error: unknown) => {
+      soundOutputLimiterModuleReady = null;
+      throw error;
+    });
+  soundOutputLimiterReady = soundOutputLimiterModuleReady
+    .then(() => {
+      if (soundOutputLimiter) return;
+      const limiter = toneContext.createAudioWorkletNode("staff-game-lookahead-limiter", {
+        channelCount: 2,
+        channelCountMode: "max",
+        channelInterpretation: "speakers",
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+        processorOptions: {
+          ceilingDb: STAFF_GAME_AUDIO_LIMITER_CEILING_DB,
+          lookAheadMs: STAFF_GAME_AUDIO_LIMITER_LOOKAHEAD_MS,
+          releaseMs: STAFF_GAME_AUDIO_LIMITER_RELEASE_MS,
+        },
+      });
+      limiter.connect(toneContext.rawContext.destination);
+      soundMasterGain?.connect(limiter);
+      soundOutputLimiter = limiter;
+    })
+    .catch(() => {
+      soundOutputLimiterReady = null;
+      installFallbackCeilingLimiter();
+    });
+  return soundOutputLimiterReady;
+}
+
+/** Connect game background audio before Tone's destination limiter once it is ready. */
+export async function connectStaffGameAudioOutputSource(source: AudioNode): Promise<boolean> {
+  try {
+    await connectSoundOutputLimiter();
+    if (!soundOutputLimiter) return false;
+    source.connect(soundOutputLimiter);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Prepare the same boosted, limited bus used by Staff Game sound effects. */
+export async function prepareStaffGameAudioMasterGain(): Promise<Tone.Gain> {
+  await connectSoundOutputLimiter();
+  return getSoundMasterGain();
+}
 
 function canPlayAudio(sound?: StaffGameSound): boolean {
   // Menu clicks are interface feedback, independent of the in-game effects setting.
@@ -128,7 +250,7 @@ function getSoundPlayer(sound: SampledStaffGameSound): SoundPlayer {
     volume: source.volumeDb,
     onload: () => markReady?.(),
     onerror: (error) => markFailed?.(error),
-  }).toDestination();
+  }).connect(getSoundMasterGain());
   if (player.loaded) markReady?.();
 
   const result = { player, ready };
@@ -145,6 +267,16 @@ export async function preloadStaffGameSounds(
   onProgress?: (update: StaffGameSoundLoadUpdate) => void
 ): Promise<number> {
   if (typeof window === "undefined") return 0;
+  try {
+    await connectSoundOutputLimiter();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    (Object.keys(soundSources) as SampledStaffGameSound[]).forEach((sound) => {
+      onProgress?.({ sound, status: "failed", error: message });
+    });
+    return Object.keys(soundSources).length;
+  }
+
   const results = await Promise.allSettled(
     (Object.keys(soundSources) as SampledStaffGameSound[]).map(async (sound) => {
       onProgress?.({ sound, status: "loading" });
@@ -171,10 +303,10 @@ export function playStaffGameSound(
   if (typeof window === "undefined" || !canPlayAudio(sound)) return;
   const { player, ready } = getSoundPlayer(sound);
   void Tone.start()
-    .then(() => ready)
+    .then(() => Promise.all([ready, connectSoundOutputLimiter()]))
     .then(() => {
       if (!canPlayAudio(sound)) return;
-      const startAtMs = performance.now();
+      const startAtMs = performance.now() + soundOutputLatencyMs;
       player.start();
       onPlaybackStart?.({
         startAtMs,
@@ -193,12 +325,13 @@ export function playStaffGameStarReveal(
   const note = notes[Math.max(0, Math.min(notes.length - 1, Math.floor(starIndex)))];
 
   return Tone.start()
+    .then(() => connectSoundOutputLimiter())
     .then(() => {
       if (!canPlayAudio()) return;
       starRevealSynth ??= new Tone.Synth({
         oscillator: { type: "sine" },
         envelope: { attack: 0.005, decay: 0.22, sustain: 0, release: 0.12 },
-      }).toDestination();
+      }).connect(getSoundMasterGain());
       starRevealSynth.volume.value = -14;
       starRevealSynth.triggerAttackRelease(note, "16n");
       return new Promise<void>((resolve) => window.setTimeout(resolve, 260));

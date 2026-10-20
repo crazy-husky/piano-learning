@@ -1,5 +1,5 @@
 // ⚠️ [整局趋势]。详见 docs/product-decisions.md
-import type { StaffGameWrongNoteArchive, StaffGameWrongNoteArchiveRun } from "./types";
+import type { AnswerEvent, StaffGameWrongNoteArchive, StaffGameWrongNoteArchiveRun } from "./types";
 import {
   filterStaffGameWrongNoteArchivesByCalendarRange,
   hasCompleteStaffGameWrongNoteComparisonData,
@@ -50,6 +50,133 @@ function hasCompleteTrendSettings(run: StaffGameWrongNoteArchiveRun): boolean {
   );
 }
 
+function hasCompleteTrendPerformanceData(run: StaffGameWrongNoteArchiveRun): boolean {
+  if (!run.notes || typeof run.notes !== "object" || Array.isArray(run.notes)) return false;
+
+  const notes: StaffGameWrongNoteArchiveRun["notes"] = {};
+  for (const [midi, note] of Object.entries(run.notes)) {
+    if (!note || typeof note !== "object" || Array.isArray(note)) return false;
+    notes[midi] = {
+      ...note,
+      totalResponseMs: Object.prototype.hasOwnProperty.call(note, "totalResponseMs")
+        ? note.totalResponseMs
+        : 0,
+      responseSampleCount: Object.prototype.hasOwnProperty.call(note, "responseSampleCount")
+        ? note.responseSampleCount
+        : 0,
+    };
+  }
+
+  return hasCompleteStaffGameWrongNoteComparisonData({ ...run, notes });
+}
+
+/** The shared run eligibility rule for overall practice trends and single-note stats. */
+export function isStaffGameWrongNoteTrendEligibleRun(run: StaffGameWrongNoteArchiveRun): boolean {
+  return (
+    hasCompleteTrendPerformanceData(run) && hasCompleteTrendSettings(run) && run.totalTargets > 0
+  );
+}
+
+/** Keep the same run population in the stats page's trend and single-note panels. */
+export function filterStaffGameWrongNoteTrendEligibleArchives(
+  archives: readonly StaffGameWrongNoteArchive[]
+): StaffGameWrongNoteArchive[] {
+  return archives.flatMap((archive) => {
+    const runs = archive.runs.filter(isStaffGameWrongNoteTrendEligibleRun);
+    return runs.length > 0 ? [{ ...archive, runs }] : [];
+  });
+}
+
+interface RecoveredNoteResponseStats {
+  correct: number;
+  missed: number;
+  responseSampleCount: number;
+  totalResponseMs: number;
+  total: number;
+  wrong: number;
+}
+
+/** Restore missing per-note reaction times from the raw answer-event rows for one run. */
+export function recoverStaffGameWrongNoteRunResponseTimes(
+  run: StaffGameWrongNoteArchiveRun,
+  events: readonly AnswerEvent[]
+): StaffGameWrongNoteArchiveRun | null {
+  if (run.source !== "challenge" && run.source !== "review") return null;
+  const noteEntries = Object.entries(run.notes ?? {});
+  if (noteEntries.length === 0) return null;
+
+  const statsByMidi = new Map<number, RecoveredNoteResponseStats>();
+  for (const event of events) {
+    if (
+      event.sessionId !== run.runId ||
+      event.mode !== "staff-game" ||
+      event.targetMidi === undefined ||
+      event.wasInterrupted === true
+    ) {
+      continue;
+    }
+    if (
+      event.isCorrectFirstTry !== true &&
+      event.isCorrectFirstTry !== false &&
+      event.isCorrectFirstTry !== null
+    ) {
+      return null;
+    }
+
+    const stats = statsByMidi.get(event.targetMidi) ?? {
+      correct: 0,
+      missed: 0,
+      responseSampleCount: 0,
+      totalResponseMs: 0,
+      total: 0,
+      wrong: 0,
+    };
+    stats.total += 1;
+    if (event.isCorrectFirstTry === true) {
+      stats.correct += 1;
+      if (
+        typeof event.responseTimeMs === "number" &&
+        Number.isFinite(event.responseTimeMs) &&
+        event.responseTimeMs >= 0
+      ) {
+        stats.totalResponseMs += event.responseTimeMs;
+        stats.responseSampleCount += 1;
+      }
+    } else if (event.isCorrectFirstTry === false) {
+      stats.wrong += 1;
+    } else {
+      stats.missed += 1;
+    }
+    statsByMidi.set(event.targetMidi, stats);
+  }
+
+  if (statsByMidi.size !== noteEntries.length) return null;
+  let totalTargets = 0;
+  let firstTryCorrect = 0;
+  const notes: StaffGameWrongNoteArchiveRun["notes"] = {};
+  for (const [key, note] of noteEntries) {
+    const stats = statsByMidi.get(note.midi);
+    if (
+      !stats ||
+      stats.total !== note.appear ||
+      stats.correct !== note.correct ||
+      (!run.trendOnly && (stats.wrong !== note.wrong || stats.missed !== note.missed))
+    ) {
+      return null;
+    }
+    totalTargets += stats.total;
+    firstTryCorrect += stats.correct;
+    notes[key] = {
+      ...note,
+      totalResponseMs: stats.totalResponseMs,
+      responseSampleCount: stats.responseSampleCount,
+    };
+  }
+
+  if (totalTargets !== run.totalTargets || firstTryCorrect !== run.firstTryCorrect) return null;
+  return { ...run, notes, responseTimeBasis: "first-correct" };
+}
+
 /** Count older, otherwise comparable runs that lack the draw settings required by trends. */
 export function countStaffGameWrongNoteTrendRunsMissingSettings(
   archives: readonly StaffGameWrongNoteArchive[],
@@ -60,7 +187,7 @@ export function countStaffGameWrongNoteTrendRunsMissingSettings(
     (total, archive) =>
       total +
       archive.runs.filter(
-        (run) => hasCompleteStaffGameWrongNoteComparisonData(run) && !hasCompleteTrendSettings(run)
+        (run) => hasCompleteTrendPerformanceData(run) && !hasCompleteTrendSettings(run)
       ).length,
     0
   );
@@ -75,13 +202,7 @@ export function buildStaffGameWrongNoteTrendGroups(
   const groups = new Map<string, StaffGameWrongNoteTrendGroup>();
   for (const archive of filterStaffGameWrongNoteArchivesByCalendarRange(archives, range, today)) {
     for (const run of archive.runs) {
-      if (
-        !hasCompleteStaffGameWrongNoteComparisonData(run) ||
-        !hasCompleteTrendSettings(run) ||
-        run.totalTargets <= 0
-      ) {
-        continue;
-      }
+      if (!isStaffGameWrongNoteTrendEligibleRun(run)) continue;
 
       const id = JSON.stringify([
         run.source,

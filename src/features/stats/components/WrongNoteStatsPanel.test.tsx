@@ -69,7 +69,7 @@ it("uses the shared stats date range in the embedded management list", () => {
     </ConfirmDialogProvider>
   );
 
-  expect(markup).toContain("错题趋势与管理");
+  expect(markup).toContain("练习表现与已收录错题");
   expect(markup).toContain(todayLabel);
   expect(markup).not.toContain(yesterdayLabel);
   expect(markup).toContain("删除选中");

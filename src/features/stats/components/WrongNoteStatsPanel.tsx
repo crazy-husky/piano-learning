@@ -9,9 +9,15 @@ import { Trash2 } from "lucide-react";
 import type { StaffGameWrongNoteArchive } from "../../../domain/types";
 import {
   filterStaffGameWrongNoteArchivesByRange,
+  filterStaffGameWrongNoteArchivesWithErrors,
   getStaffGameWrongNoteRunErrorCount,
 } from "../../../domain/staffGameWrongNoteArchives";
-import { deleteStaffGameWrongNoteArchiveRuns, db } from "../../../data/db";
+import { filterStaffGameWrongNoteTrendEligibleArchives } from "../../../domain/staffGameWrongNoteTrends";
+import {
+  deleteStaffGameWrongNoteArchiveRuns,
+  db,
+  restoreStaffGameWrongNoteArchiveResponseTimes,
+} from "../../../data/db";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
 import type { StatsRange } from "./statsRange";
 import { getStatsRangeCutoff } from "./statsRange";
@@ -72,12 +78,20 @@ export function WrongNoteStatsPanel({
     () => filterArchivesByStatsRange(archives, range),
     [archives, range]
   );
+  const wrongNoteArchives = useMemo(
+    () => filterStaffGameWrongNoteArchivesWithErrors(rangedArchives),
+    [rangedArchives]
+  );
+  const trendEligibleArchives = useMemo(
+    () => filterStaffGameWrongNoteTrendEligibleArchives(rangedArchives),
+    [rangedArchives]
+  );
   const availableRuns = useMemo(
     () =>
-      filterStaffGameWrongNoteArchivesByRange(rangedArchives, "all").flatMap((archive) =>
+      filterStaffGameWrongNoteArchivesByRange(wrongNoteArchives, "all").flatMap((archive) =>
         archive.runs.map((run) => ({ archiveDate: archive.date, run }))
       ),
-    [rangedArchives]
+    [wrongNoteArchives]
   );
   const visibleRunIds = useMemo(
     () => new Set(availableRuns.map(({ run }) => run.runId)),
@@ -126,7 +140,7 @@ export function WrongNoteStatsPanel({
     if (runIds.length === 0) return;
     const confirmed = await confirm({
       title: `删除选中的 ${runIds.length} 局记录？`,
-      description: "此操作不可撤销。",
+      description: "将从错题集和练习统计中彻底删除这些对局，且无法恢复。",
       cancelLabel: "取消",
       confirmLabel: "确认删除",
       destructive: true,
@@ -143,9 +157,9 @@ export function WrongNoteStatsPanel({
   };
 
   return (
-    <section aria-label="错题趋势与管理" className="panel stats-wrong-note-panel">
+    <section aria-label="练习表现与已收录错题" className="panel stats-wrong-note-panel">
       <div
-        aria-label="错题趋势与管理分区"
+        aria-label="练习表现与已收录错题分区"
         className="stats-wrong-note-tabs"
         onKeyDown={(event) => {
           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -164,9 +178,9 @@ export function WrongNoteStatsPanel({
       >
         {(
           [
-            ["trend", "趋势"],
-            ["note", "单音"],
-            ["manage", "管理"],
+            ["trend", "练习趋势"],
+            ["note", "单音表现"],
+            ["manage", "错题管理"],
           ] as const
         ).map(([tab, label]) => (
           <button
@@ -211,6 +225,7 @@ export function WrongNoteStatsPanel({
               archives={rangedArchives}
               onChangeRange={() => undefined}
               range="all"
+              scopeDescription="所有符合条件的闯关与错题复习都会计入；是否加入错题集不影响练习趋势。"
               showRangeControl={false}
             />
           </div>
@@ -222,8 +237,11 @@ export function WrongNoteStatsPanel({
             id="stats-wrong-note-panel-note"
             role="tabpanel"
           >
+            <p className="stats-wrong-note-scope-note">
+              单音表现统计所有符合条件的对局；是否加入错题集不影响统计。
+            </p>
             <StaffGameWrongNoteNoteDiagnosticPanel
-              archives={rangedArchives}
+              archives={trendEligibleArchives}
               onChangeRange={() => undefined}
               range="all"
               showRangeControl={false}
@@ -237,6 +255,9 @@ export function WrongNoteStatsPanel({
             id="stats-wrong-note-panel-manage"
             role="tabpanel"
           >
+            <p className="stats-wrong-note-scope-note">
+              这里只显示已加入错题集的错漏局；未加入错题集的对局仍计入练习统计。
+            </p>
             <div
               aria-label="错题归档局列表"
               className="staff-game-archive-manager-table"
@@ -372,9 +393,8 @@ export function useStaffGameWrongNoteArchives(): {
     let active = true;
     setLoading(true);
     setError(null);
-    void db.staffGameWrongNoteArchives
-      .orderBy("date")
-      .toArray()
+    void restoreStaffGameWrongNoteArchiveResponseTimes()
+      .catch(() => db.staffGameWrongNoteArchives.orderBy("date").toArray())
       .then((nextArchives) => {
         if (active) setArchives(nextArchives);
       })

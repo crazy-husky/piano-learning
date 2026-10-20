@@ -1,5 +1,9 @@
 import { getContext } from "tone";
-import { STAFF_GAME_BACKGROUND_MUSIC_VOLUME } from "./staffGameAudioConfig";
+import {
+  STAFF_GAME_AUDIO_MASTER_GAIN_LINEAR,
+  STAFF_GAME_BACKGROUND_MUSIC_BASE_VOLUME,
+} from "./staffGameAudioConfig";
+import { connectStaffGameAudioOutputSource } from "./staffGameSounds";
 
 interface StaffGameBackgroundAudioNodes {
   source: MediaElementAudioSourceNode;
@@ -7,13 +11,15 @@ interface StaffGameBackgroundAudioNodes {
 }
 
 const backgroundAudioNodes = new WeakMap<HTMLAudioElement, StaffGameBackgroundAudioNodes>();
+const backgroundMusicGain =
+  STAFF_GAME_BACKGROUND_MUSIC_BASE_VOLUME * STAFF_GAME_AUDIO_MASTER_GAIN_LINEAR;
 
 /** Route the background track through Web Audio so its gain is adjustable on iOS too. */
 export function connectStaffGameBackgroundAudio(audio: HTMLAudioElement): void {
   const existingNodes = backgroundAudioNodes.get(audio);
   if (existingNodes) {
     existingNodes.gain.gain.setValueAtTime(
-      STAFF_GAME_BACKGROUND_MUSIC_VOLUME,
+      backgroundMusicGain,
       getContext().rawContext.currentTime
     );
     return;
@@ -22,10 +28,14 @@ export function connectStaffGameBackgroundAudio(audio: HTMLAudioElement): void {
   const context = getContext();
   const source = context.createMediaElementSource(audio);
   const gain = context.createGain();
-  gain.gain.value = STAFF_GAME_BACKGROUND_MUSIC_VOLUME;
+  gain.gain.value = backgroundMusicGain;
   source.connect(gain);
-  gain.connect(context.rawContext.destination);
-  backgroundAudioNodes.set(audio, { source, gain });
+  const nodes = { source, gain };
+  backgroundAudioNodes.set(audio, nodes);
+  void connectStaffGameAudioOutputSource(gain).then((isLimited) => {
+    if (backgroundAudioNodes.get(audio) !== nodes) return;
+    if (!isLimited) gain.connect(context.rawContext.destination);
+  });
 }
 
 export function disconnectStaffGameBackgroundAudio(audio: HTMLAudioElement): void {

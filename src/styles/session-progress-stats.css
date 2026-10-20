@@ -647,6 +647,13 @@
   box-shadow: none;
 }
 
+.stats-wrong-note-scope-note {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .stats-wrong-note-tabs {
   margin: -4px 0 10px;
 }

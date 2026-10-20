@@ -40,6 +40,7 @@ import {
   db,
   enqueuePendingStaffGameWrongNoteArchiveRun,
   removePendingStaffGameWrongNoteArchiveRun,
+  restoreStaffGameWrongNoteArchiveResponseTimes,
   retryPendingStaffGameWrongNoteArchives,
   saveStaffGameProficiencySamples,
 } from "../../../data/db";
@@ -170,10 +171,7 @@ function makeTrendOnlyWrongNoteRun(
     Object.entries(run.notes).map(([key, note]) => [
       key,
       {
-        midi: note.midi,
-        note: note.note,
-        appear: note.appear,
-        correct: note.correct,
+        ...note,
         wrong: 0,
         missed: 0,
         confusions: {},
@@ -1117,7 +1115,7 @@ export function StaffGameView({
       if (runIds.length === 0) return;
       const confirmed = await confirmDialog({
         title: `删除选中的 ${runIds.length} 局记录？`,
-        description: "此操作不可撤销。",
+        description: "将从错题集和练习统计中彻底删除这些对局，且无法恢复。",
         cancelLabel: "取消",
         confirmLabel: "确认删除",
         destructive: true,
@@ -2774,6 +2772,17 @@ export function StaffGameView({
     onExit();
   }, [cancelPendingStart, onExit, onSessionActiveChange, stopMicrophone]);
 
+  const returnToReady = useCallback((): void => {
+    cancelPendingStart();
+    stopMicrophone();
+    onSessionActiveChange(false);
+    resetRoundState();
+    setDialog(null);
+    if (gameModeRef.current === "songs") setSongSelectionStep("detail");
+    phaseRef.current = "ready";
+    setPhase("ready");
+  }, [cancelPendingStart, onSessionActiveChange, resetRoundState, stopMicrophone]);
+
   const exitWrongNoteReview = useCallback((): void => {
     if (roundPurposeRef.current !== "wrong-note-review") return;
     cancelPendingStart();
@@ -2898,6 +2907,9 @@ export function StaffGameView({
   const openWrongNoteArchiveManager = useCallback((): void => {
     setWrongNoteArchiveManagerRange(wrongNoteReviewRange);
     setIsWrongNoteArchiveManagerOpen(true);
+    void restoreStaffGameWrongNoteArchiveResponseTimes()
+      .then((archives) => setWrongNoteArchives(archives))
+      .catch(() => undefined);
   }, [wrongNoteReviewRange]);
 
   const closeWrongNoteArchiveManager = useCallback((): void => {
@@ -4135,7 +4147,7 @@ export function StaffGameView({
           setShowLowFpsPrompt(false);
           void resumeRound();
         }}
-        onDismissInputError={() => setGameError("")}
+        onReturnToReady={returnToReady}
         onKeepEffects={() => {
           setShowLowFpsPrompt(false);
           void resumeRound();

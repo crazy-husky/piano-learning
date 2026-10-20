@@ -10,6 +10,7 @@ import {
 import type { StaffGameWrongNoteArchive } from "../../../domain/types";
 import {
   filterStaffGameWrongNoteArchivesByRange,
+  filterStaffGameWrongNoteArchivesWithErrors,
   getStaffGameWrongNoteRunErrorCount,
   type StaffGameWrongNoteRange,
 } from "../../../domain/staffGameWrongNoteArchives";
@@ -54,23 +55,27 @@ export function StaffGameWrongNoteArchiveManagerDialog({
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
+  const wrongNoteArchives = useMemo(
+    () => filterStaffGameWrongNoteArchivesWithErrors(archives),
+    [archives]
+  );
   const availableRuns = useMemo(
     () =>
-      filterStaffGameWrongNoteArchivesByRange(archives, "all").flatMap((archive) =>
+      filterStaffGameWrongNoteArchivesByRange(wrongNoteArchives, "all").flatMap((archive) =>
         archive.runs.map((run) => ({ archiveDate: archive.date, run }))
       ),
-    [archives]
+    [wrongNoteArchives]
   );
   const visibleRuns = useMemo(
     () =>
-      filterStaffGameWrongNoteArchivesByRange(archives, range)
+      filterStaffGameWrongNoteArchivesByRange(wrongNoteArchives, range)
         .flatMap((archive) => archive.runs.map((run) => ({ archiveDate: archive.date, run })))
         .sort(
           (left, right) =>
             right.archiveDate.localeCompare(left.archiveDate) ||
             right.run.endedAt.localeCompare(left.run.endedAt)
         ),
-    [archives, range]
+    [wrongNoteArchives, range]
   );
   const visibleRunIds = useMemo(
     () => new Set(visibleRuns.map(({ run }) => run.runId)),
@@ -204,7 +209,10 @@ export function StaffGameWrongNoteArchiveManagerDialog({
         tabIndex={-1}
       >
         <header className="staff-game-archive-manager-header">
-          <h2 id="staff-game-archive-manager-title">错题趋势与管理</h2>
+          <div className="staff-game-archive-manager-heading">
+            <h2 id="staff-game-archive-manager-title">错题集</h2>
+            <p>这里只展示已收录的错漏局；符合条件的练习表现会自动计入统计页。</p>
+          </div>
           <button
             aria-label="关闭错题归档管理"
             className="staff-game-archive-manager-close"
@@ -217,7 +225,7 @@ export function StaffGameWrongNoteArchiveManagerDialog({
         </header>
 
         <div
-          aria-label="错题趋势、单音诊断与管理"
+          aria-label="错题趋势、单音诊断与错题管理"
           className="staff-game-archive-manager-tabs"
           onKeyDown={handleTabKeyDown}
           role="tablist"
@@ -233,7 +241,7 @@ export function StaffGameWrongNoteArchiveManagerDialog({
             tabIndex={activeTab === "trend" ? 0 : -1}
             type="button"
           >
-            趋势
+            错题趋势
           </button>
           <button
             aria-controls="staff-game-archive-panel-note"
@@ -245,7 +253,7 @@ export function StaffGameWrongNoteArchiveManagerDialog({
             tabIndex={activeTab === "note" ? 0 : -1}
             type="button"
           >
-            单音
+            单音诊断
           </button>
           <button
             aria-controls="staff-game-archive-panel-manage"
@@ -257,7 +265,7 @@ export function StaffGameWrongNoteArchiveManagerDialog({
             tabIndex={activeTab === "manage" ? 0 : -1}
             type="button"
           >
-            管理
+            错题管理
           </button>
         </div>
 
@@ -270,9 +278,10 @@ export function StaffGameWrongNoteArchiveManagerDialog({
             tabIndex={0}
           >
             <StaffGameWrongNoteTrendPanel
-              archives={archives}
+              archives={wrongNoteArchives}
               onChangeRange={onChangeRange}
               range={range}
+              scopeDescription="仅统计已加入错题集的错漏局。"
             />
           </div>
         ) : activeTab === "note" ? (
@@ -284,7 +293,7 @@ export function StaffGameWrongNoteArchiveManagerDialog({
             tabIndex={0}
           >
             <StaffGameWrongNoteNoteDiagnosticPanel
-              archives={archives}
+              archives={wrongNoteArchives}
               onChangeRange={onChangeRange}
               range={range}
             />

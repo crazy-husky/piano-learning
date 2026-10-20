@@ -1,10 +1,11 @@
 import { useEffect, type MutableRefObject } from "react";
-import { playPianoNote, unlockAudio } from "../../../audio/piano";
+import { playPianoNote, setPianoOutput, unlockAudio } from "../../../audio/piano";
 import { STAFF_GAME_BACKGROUND_MUSIC_VOLUME } from "../audio/staffGameAudioConfig";
 import { connectStaffGameBackgroundAudio } from "../audio/staffGameBackgroundAudio";
 import {
   playStaffGameSound,
   playStaffGameStarReveal,
+  prepareStaffGameAudioMasterGain,
   setStaffGameSoundsEnabled,
 } from "../audio/staffGameSounds";
 import type { PianoKeyName } from "../../../domain/types";
@@ -43,6 +44,21 @@ export function useStaffGameAudio({
   useEffect(() => {
     setStaffGameSoundsEnabled(soundEffectsEnabled);
   }, [settings, soundEffectsEnabled]);
+
+  useEffect(() => {
+    let active = true;
+    void prepareStaffGameAudioMasterGain()
+      .then((masterGain) => {
+        if (active) setPianoOutput(masterGain);
+      })
+      .catch(() => {
+        if (active) setPianoOutput(null);
+      });
+    return () => {
+      active = false;
+      setPianoOutput(null);
+    };
+  }, []);
 
   useEffect(() => {
     const audio = backgroundMusicRef.current;

@@ -69,11 +69,13 @@ export function StaffGameWrongNoteTrendPanel({
   archives,
   onChangeRange,
   range,
+  scopeDescription,
   showRangeControl = true,
 }: {
   archives: readonly StaffGameWrongNoteArchive[];
   range: StaffGameWrongNoteRange;
   onChangeRange: (range: StaffGameWrongNoteRange) => void;
+  scopeDescription?: string;
   showRangeControl?: boolean;
 }): JSX.Element {
   const [requestedSource, setRequestedSource] = useState<StaffGameWrongNoteTrendSource>("review");
@@ -190,6 +192,10 @@ export function StaffGameWrongNoteTrendPanel({
           闯关
         </button>
       </div>
+
+      {scopeDescription ? (
+        <p className="staff-game-wrong-note-trend-scope-note">{scopeDescription}</p>
+      ) : null}
 
       {!selectedGroup ? (
         <div className="staff-game-wrong-note-trend-empty" role="status">

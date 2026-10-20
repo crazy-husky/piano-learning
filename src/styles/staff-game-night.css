@@ -61,6 +61,32 @@
   -webkit-text-stroke-color: rgba(25, 43, 42, 0.9);
 }
 
+@media (max-width: 1200px), (hover: none) and (pointer: coarse) {
+  :root[data-app-theme="dark"]
+    .staff-game-shell
+    .staff-game-hud.is-rush-mode
+    .staff-game-score-card {
+    box-sizing: border-box;
+    width: clamp(112px, 15vw, 160px);
+    min-width: 112px;
+    min-height: clamp(66px, 7vw, 82px);
+    align-content: center;
+    justify-items: center;
+    border-radius: 18px;
+    padding: 8px 12px;
+  }
+
+  :root[data-app-theme="dark"]
+    .staff-game-shell
+    .staff-game-hud.is-rush-mode
+    .staff-game-score-card
+    strong.is-rush-score {
+    font-size: clamp(36px, 6vw, 52px);
+    line-height: 1;
+    text-align: center;
+  }
+}
+
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-card {
   background-color: var(--staff-game-night-panel);
   background-blend-mode: multiply;
