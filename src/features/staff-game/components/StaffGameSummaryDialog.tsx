@@ -115,10 +115,14 @@ export function StaffGameSummaryDialog({
   ).length;
   const firstTryFailurePercentage =
     generatedNoteCount > 0 ? Math.round((weakNoteCount / generatedNoteCount) * 100) : 0;
-  const missedNoteCount = weakNoteOutcomes.filter((outcome) => outcome.missed).length;
   const wrongNoteCount = weakNoteOutcomes.filter(
     (outcome) => outcome.firstInputCorrect === false
   ).length;
+  const missedNoteCount = weakNoteOutcomes.filter(
+    (outcome) =>
+      outcome.firstInputCorrect !== true && (outcome.firstInputCorrect === null || outcome.missed)
+  ).length;
+  const weakReasonCount = wrongNoteCount + missedNoteCount;
   const isLearningTest = mode === "challenge" && challengeMode === "learning";
   const archiveDateLabel = wrongNoteArchiveDate
     ? (() => {
@@ -134,8 +138,7 @@ export function StaffGameSummaryDialog({
     string,
     {
       inputResultCounts: Map<string, number>;
-      reasons: Set<string>;
-      targetTokens: Set<number>;
+      reasonCounts: Map<string, number>;
     }
   >();
 
@@ -143,18 +146,28 @@ export function StaffGameSummaryDialog({
     if (outcome.firstInputCorrect === true) return;
     const noteSummary = weakNotesByPitch.get(outcome.note) ?? {
       inputResultCounts: new Map<string, number>(),
-      reasons: new Set<string>(),
-      targetTokens: new Set<number>(),
+      reasonCounts: new Map<string, number>(),
     };
-    noteSummary.targetTokens.add(outcome.token);
     const wrongResult = wrongResultsByToken.get(outcome.token);
-    if (outcome.firstInputCorrect === false || wrongResult) noteSummary.reasons.add("错音");
-    if (outcome.firstInputCorrect === null || outcome.missed) noteSummary.reasons.add("漏音");
-    const inputResult = wrongResult ?? (outcome.firstInputCorrect === null ? "未输入" : undefined);
-    if (inputResult) {
+    const isWrong = outcome.firstInputCorrect === false || Boolean(wrongResult);
+    const isMissed = outcome.firstInputCorrect === null || outcome.missed;
+    if (isWrong) {
+      noteSummary.reasonCounts.set("错音", (noteSummary.reasonCounts.get("错音") ?? 0) + 1);
+    }
+    if (isMissed) {
+      noteSummary.reasonCounts.set("漏音", (noteSummary.reasonCounts.get("漏音") ?? 0) + 1);
+    }
+    if (wrongResult) {
       noteSummary.inputResultCounts.set(
-        inputResult,
-        (noteSummary.inputResultCounts.get(inputResult) ?? 0) + 1
+        wrongResult,
+        (noteSummary.inputResultCounts.get(wrongResult) ?? 0) + 1
+      );
+    }
+    if (isMissed) {
+      const missedInputResult = outcome.firstInputCorrect === null ? "未输入" : "超时";
+      noteSummary.inputResultCounts.set(
+        missedInputResult,
+        (noteSummary.inputResultCounts.get(missedInputResult) ?? 0) + 1
       );
     }
     weakNotesByPitch.set(outcome.note, noteSummary);
@@ -164,12 +177,13 @@ export function StaffGameSummaryDialog({
     const inputResults = Array.from(summary.inputResultCounts)
       .sort((first, second) => second[1] - first[1])
       .map(([result, count]) => (count > 1 ? `${result} ×${count}` : result));
+    const reasonEntries = Array.from(summary.reasonCounts);
     return {
       key: note,
       expectedNote: note,
       inputResults,
-      kind: Array.from(summary.reasons).join("、") || "—",
-      count: summary.targetTokens.size,
+      kind: reasonEntries.map(([reason, count]) => `${reason} ×${count}`).join("、") || "—",
+      count: reasonEntries.reduce((total, [, count]) => total + count, 0),
     };
   });
 
@@ -325,10 +339,7 @@ export function StaffGameSummaryDialog({
                       <div className="is-accuracy">
                         <span>首次正确率</span>
                         <strong>{Math.round(accuracy)}%</strong>
-                        <small>
-                          {Math.max(0, generatedNoteCount - weakNoteCount)} / {generatedNoteCount}{" "}
-                          题首次答对
-                        </small>
+                        <small>仅统计首次答对的音符</small>
                       </div>
                       <div className="is-errors">
                         <span>错漏题数</span>
@@ -558,7 +569,8 @@ export function StaffGameSummaryDialog({
             </h2>
             <p className="staff-game-wrong-answer-conclusion">
               本局共出现 <strong>{generatedNoteCount}</strong> {isSongMode ? "个音符" : "道题"}，
-              错答或漏答共计 <strong>{weakNoteCount}</strong> {isSongMode ? "个" : "道"}，占比{" "}
+              错答或漏答涉及 <strong>{weakNoteCount}</strong> {isSongMode ? "个" : "道"}，原因共计{" "}
+              <strong>{weakReasonCount}</strong> 次，占比{" "}
               <strong>{firstTryFailurePercentage}%</strong>。
             </p>
             <div className="staff-game-wrong-answer-table-wrap">
@@ -568,7 +580,7 @@ export function StaffGameSummaryDialog({
                     <th scope="col">目标音</th>
                     <th scope="col">输入结果</th>
                     <th scope="col">薄弱原因</th>
-                    <th scope="col">次数</th>
+                    <th scope="col">原因次数</th>
                   </tr>
                 </thead>
                 <tbody>

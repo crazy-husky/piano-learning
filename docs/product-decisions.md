@@ -73,6 +73,13 @@
 - 影响文件：`src/domain/staffGameWrongNoteArchives.ts`、`src/features/staff-game/components/StaffGameView.tsx`、`src/features/staff-game/components/StaffGameReadyPanel.tsx`
 - 不要改回：权重可以用于排序和抽取，但不要用“权重 X.X”替代列表中的累计错漏次数。
 
+### 闯关结算错漏明细区分题数与原因次数
+
+- 日期：2026-10-21
+- 决策：结算概览中的错漏题数和占比按唯一目标题计算；明细表的原因次数按错音、漏音分别累计。同一道题先答错后超时，可以同时计入错音和漏音原因；输入结果列分别显示识别到的错音与超时。原因次数之和可能大于错漏题数，不用于计算错漏题占比。
+- 理由：一题可能先发生错误输入、之后又超时；明细应保留两种真实原因，并明确区分题目数和原因发生次数。
+- 影响文件：`src/features/staff-game/components/StaffGameSummaryDialog.tsx`
+
 ### 错题复习可按历史练习条件筛选
 
 - 日期：2026-10-20
