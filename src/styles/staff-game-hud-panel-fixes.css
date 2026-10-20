@@ -580,6 +580,13 @@
   }
 }
 
+@media (min-width: 700px) and (max-width: 1024px) and (min-height: 700px),
+  (hover: none) and (pointer: coarse) and (min-width: 700px) and (min-height: 700px) {
+  .staff-game-dialog-backdrop.is-help-dialog-backdrop .staff-game-help-dialog {
+    margin-block-start: clamp(132px, 18dvh, 220px);
+  }
+}
+
 :root[data-app-theme="dark"] .staff-game-help-tabs {
   border-color: rgba(151, 190, 178, 0.24);
   background: rgba(20, 40, 43, 0.78);
