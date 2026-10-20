@@ -420,32 +420,25 @@ export function SettingsView({
             <div className="setting-row">
               <div>
                 <strong>夜间模式</strong>
-                <span>可手动开启/关闭，也可按本地时段自动开启</span>
+                <span>选择关闭、始终开启，或按设备本地时段自动切换</span>
               </div>
               <div className="settings-mode-controls">
-                <ToggleSwitch
-                  aria-label="夜间模式"
-                  checked={pageAppearancePreferences.mode !== "off"}
-                  onCheckedChange={(enabled) =>
-                    onPageAppearancePreferencesChange({
-                      ...pageAppearancePreferences,
-                      mode: enabled ? "on" : "off",
-                    })
-                  }
-                />
                 <select
-                  aria-label="夜间模式时间方式"
-                  disabled={pageAppearancePreferences.mode === "off"}
-                  value={pageAppearancePreferences.mode === "auto" ? "auto" : "manual"}
-                  onChange={(event) =>
+                  aria-label="夜间模式"
+                  className="page-appearance-mode"
+                  value={pageAppearancePreferences.mode}
+                  onChange={(event) => {
+                    const mode = event.target.value;
+                    if (mode !== "off" && mode !== "on" && mode !== "auto") return;
                     onPageAppearancePreferencesChange({
                       ...pageAppearancePreferences,
-                      mode: event.target.value === "auto" ? "auto" : "on",
-                    })
-                  }
+                      mode,
+                    });
+                  }}
                 >
-                  <option value="manual">始终开启/关闭</option>
-                  <option value="auto">自动开启</option>
+                  <option value="off">关闭</option>
+                  <option value="on">始终开启</option>
+                  <option value="auto">按时段自动</option>
                 </select>
               </div>
             </div>

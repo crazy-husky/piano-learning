@@ -1148,6 +1148,83 @@
   content: none;
 }
 
+.staff-game-level-medal.is-learning-test {
+  box-sizing: border-box;
+  width: 100%;
+  aspect-ratio: auto;
+  min-width: 0;
+  min-height: 82px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(43, 110, 128, 0.24);
+  border-radius: 14px;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.96), rgba(222, 244, 241, 0.96));
+  box-shadow: 0 4px 12px rgba(38, 85, 102, 0.16);
+  color: #176f8b;
+  filter: none;
+  padding: 7px 5px;
+}
+
+.staff-game-level-medal.is-learning-test::before,
+.staff-game-level-medal.is-learning-test::after,
+.staff-game-level-medal.is-learning-test .staff-game-level-progress {
+  display: none;
+}
+
+.staff-game-level-medal.is-learning-test > span:first-of-type {
+  position: static;
+  left: auto;
+  transform: none;
+  color: #54747a;
+  font-size: clamp(15px, 1.2vw, 16px);
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.1;
+  text-shadow: none;
+}
+
+.staff-game-level-medal.is-learning-test > strong {
+  position: static;
+  left: auto;
+  transform: none;
+  margin-top: 4px;
+  color: #176f8b;
+  font-size: clamp(21px, 3vw, 32px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: none;
+  -webkit-text-stroke: 0;
+  white-space: nowrap;
+}
+
+.staff-game-level-medal.is-learning-test > .staff-game-question-progress-track {
+  position: relative;
+  top: auto;
+  left: auto;
+  z-index: auto;
+  display: block;
+  transform: none;
+  width: 100%;
+  max-width: 60px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(43, 110, 128, 0.16);
+}
+
+.staff-game-question-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2d9b91;
+  transition: width 240ms ease;
+}
+
 .staff-game-level-progress {
   position: absolute;
   z-index: 1;
@@ -1626,6 +1703,25 @@ body.rush-mode .staff-game-rush-vignette {
   align-items: stretch;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
+}
+
+.staff-game-difficulty-statistics-row.is-arcade-mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.staff-game-settings-dialog
+  .staff-game-difficulty-statistics-row.is-arcade-mode
+  > .staff-game-settings-section:first-of-type {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.staff-game-settings-dialog
+  .staff-game-difficulty-statistics-row.is-arcade-mode
+  .staff-game-difficulty-summary {
+  grid-column: 2 / -1;
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .staff-game-settings-dialog
@@ -2213,5 +2309,107 @@ body.rush-mode .staff-game-rush-vignette {
   .staff-game-wrong-answer-details {
     max-height: min(78dvh, 620px);
     padding: 20px 14px 14px;
+  }
+}
+
+.staff-game-learning-summary {
+  box-sizing: border-box;
+  display: grid;
+  width: 100%;
+  justify-items: center;
+  gap: 10px;
+  color: #305a62;
+}
+
+.staff-game-learning-summary > h2 {
+  margin: 0;
+  color: #287f99;
+  font-size: clamp(21px, 3.2vw, 28px);
+  font-weight: 950;
+  line-height: 1.15;
+}
+
+.staff-game-learning-summary-metrics {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.staff-game-learning-summary-metrics > div {
+  box-sizing: border-box;
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  justify-items: center;
+  gap: 3px;
+  border: 1px solid rgba(67, 148, 165, 0.22);
+  border-radius: 13px;
+  background: rgba(224, 246, 247, 0.76);
+  padding: 9px 6px;
+  text-align: center;
+}
+
+.staff-game-learning-summary-metrics > div > span {
+  color: #557980;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.staff-game-learning-summary-metrics > div > strong {
+  color: #247c90;
+  font-size: clamp(18px, 3vw, 25px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  line-height: 1.15;
+}
+
+.staff-game-learning-summary-metrics > div > small {
+  color: #64838a;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.staff-game-learning-details-button {
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  color: #176f8b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 1px 0;
+}
+
+.staff-game-learning-game-flavor {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  color: #789097;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.staff-game-summary-card.is-learning-test .staff-game-summary-content {
+  gap: 5px;
+}
+
+.staff-game-summary-card.is-learning-test .staff-game-summary-celebration {
+  width: min(78px, 22%);
+}
+
+.staff-game-summary-card.is-learning-test .staff-game-summary-mascot {
+  width: clamp(48px, 12vw, 62px);
+}
+
+@media (max-width: 480px) {
+  .staff-game-learning-summary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .staff-game-learning-summary-metrics > .is-accuracy {
+    grid-column: 1 / -1;
   }
 }

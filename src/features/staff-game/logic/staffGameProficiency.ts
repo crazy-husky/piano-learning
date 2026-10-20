@@ -44,6 +44,7 @@ export function aggregateStaffGameProficiencySamples(
 ): StaffGameProficiencyNoteStats[] {
   const byMidi = new Map<number, StaffGameProficiencySample[]>();
   for (const sample of samples) {
+    if (sample.mode === "song" || sample.wasInterrupted) continue;
     if (sample.inputMode !== inputMode || sample.sensitivityLevel !== sensitivityLevel) continue;
     if (
       inputMode === "microphone" &&
@@ -88,14 +89,15 @@ export function aggregateStaffGameProficiencySamples(
 export function shouldShowFastPlayingHint(
   samples: readonly Pick<
     StaffGameProficiencySample,
-    "playerResponseTimeMs" | "firstInputCorrect" | "missed"
+    "playerResponseTimeMs" | "firstInputCorrect" | "missed" | "wasInterrupted"
   >[]
 ): boolean {
-  if (samples.length < 5) return false;
-  const responses = samples
+  const completedSamples = samples.filter((sample) => !sample.wasInterrupted);
+  if (completedSamples.length < 5) return false;
+  const responses = completedSamples
     .map((sample) => sample.playerResponseTimeMs)
     .filter((value): value is number => value !== null && Number.isFinite(value));
-  const errors = samples.filter(
+  const errors = completedSamples.filter(
     (sample) => sample.firstInputCorrect === false || sample.missed
   ).length;
   const meanResponseMs = responses.length
@@ -103,7 +105,7 @@ export function shouldShowFastPlayingHint(
     : Number.POSITIVE_INFINITY;
   let currentFastRun = 0;
   let longestFastRun = 0;
-  for (const sample of samples) {
+  for (const sample of completedSamples) {
     if (sample.playerResponseTimeMs !== null && sample.playerResponseTimeMs <= 300) {
       currentFastRun += 1;
       longestFastRun = Math.max(longestFastRun, currentFastRun);
@@ -112,6 +114,9 @@ export function shouldShowFastPlayingHint(
     }
   }
   return (
-    longestFastRun >= 3 && meanResponseMs <= 350 && errors >= 2 && errors / samples.length >= 0.3
+    longestFastRun >= 3 &&
+    meanResponseMs <= 350 &&
+    errors >= 2 &&
+    errors / completedSamples.length >= 0.3
   );
 }

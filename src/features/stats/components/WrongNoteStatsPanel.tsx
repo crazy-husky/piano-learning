@@ -238,7 +238,7 @@ export function WrongNoteStatsPanel({
             role="tabpanel"
           >
             <p className="stats-wrong-note-scope-note">
-              单音表现统计所有符合条件的对局；是否加入错题集不影响统计。
+              单音诊断默认统计学习测试，可切换娱乐模式或全部练习（含错题复习）；歌曲数据不参与闯关诊断。
             </p>
             <StaffGameWrongNoteNoteDiagnosticPanel
               archives={trendEligibleArchives}

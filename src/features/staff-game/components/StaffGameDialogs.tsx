@@ -1,6 +1,6 @@
-import { Keyboard, Mic, Music2, X } from "lucide-react";
+import { BookOpen, Flame, Keyboard, Mic, Music2, RefreshCw, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { useEffect, useRef, type AnimationEventHandler, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type AnimationEventHandler, type CSSProperties } from "react";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { ToggleSwitch } from "../../../shared/components/ui/ToggleSwitch";
 import { StaffGamePhysicalInputNotice } from "./StaffGamePhysicalInputNotice";
@@ -36,6 +36,7 @@ interface StaffGameDialogsProps {
   onCancelUnsavedSettingsPrompt: () => void;
   onDiscardUnsavedSettings: () => void;
   isWrongNoteReview: boolean;
+  isArcadeMode: boolean;
   isSongMode: boolean;
   closeGameDialog: () => void;
   bestStars: number[];
@@ -62,7 +63,164 @@ interface StaffGameDialogsProps {
   applyGameSettings: () => void;
 }
 
-const { helpTitleArt, levelJumpDecorationArt, settingsPawArt } = STAFF_GAME_ART;
+const { levelJumpDecorationArt, settingsPawArt } = STAFF_GAME_ART;
+
+const STAFF_GAME_HELP_TABS = [
+  { id: "rules", label: "闯关规则" },
+  { id: "operation", label: "操作说明" },
+  { id: "modes", label: "模式差异" },
+] as const;
+
+type StaffGameHelpTab = (typeof STAFF_GAME_HELP_TABS)[number]["id"];
+
+function StaffGameHelpGuide({
+  isWrongNoteReview,
+  isArcadeMode,
+}: {
+  isWrongNoteReview: boolean;
+  isArcadeMode: boolean;
+}) {
+  const [activeTab, setActiveTab] = useState<StaffGameHelpTab>("rules");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const currentMode = isWrongNoteReview ? "review" : isArcadeMode ? "arcade" : "learning";
+
+  return (
+    <>
+      <div
+        aria-label="玩法说明分类"
+        aria-orientation="horizontal"
+        className="staff-game-help-tabs is-segmented-control"
+        role="tablist"
+      >
+        {STAFF_GAME_HELP_TABS.map((tab, index) => (
+          <button
+            aria-controls="staff-game-help-panel"
+            aria-selected={activeTab === tab.id}
+            className={activeTab === tab.id ? "is-active" : undefined}
+            id={`staff-game-help-tab-${tab.id}`}
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            onKeyDown={(event) => {
+              let nextIndex = index;
+              if (event.key === "ArrowRight") nextIndex = (index + 1) % STAFF_GAME_HELP_TABS.length;
+              else if (event.key === "ArrowLeft") {
+                nextIndex = (index - 1 + STAFF_GAME_HELP_TABS.length) % STAFF_GAME_HELP_TABS.length;
+              } else if (event.key === "Home") nextIndex = 0;
+              else if (event.key === "End") nextIndex = STAFF_GAME_HELP_TABS.length - 1;
+              else return;
+
+              event.preventDefault();
+              const nextTab = STAFF_GAME_HELP_TABS[nextIndex];
+              setActiveTab(nextTab.id);
+              tabRefs.current[nextIndex]?.focus();
+            }}
+            ref={(element) => {
+              tabRefs.current[index] = element;
+            }}
+            role="tab"
+            tabIndex={activeTab === tab.id ? 0 : -1}
+            type="button"
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <section
+        aria-labelledby={`staff-game-help-tab-${activeTab}`}
+        className="staff-game-help-copy"
+        id="staff-game-help-panel"
+        role="tabpanel"
+        tabIndex={0}
+      >
+        {activeTab === "operation" ? (
+          <ul className="staff-game-help-list">
+            <li>
+              <strong>如何作答</strong>
+              <span>观察气泡中的五线谱音符，使用麦克风、MIDI 键盘或虚拟琴键作答。</span>
+            </li>
+            <li>
+              <strong>电脑键盘映射</strong>
+              <span>
+                <kbd>A S D F G H J</kbd> 对应 <b>C4–B4</b> 白键；<kbd>W E T Y U</kbd> 对应 5
+                个黑键。
+              </span>
+            </li>
+          </ul>
+        ) : null}
+
+        {activeTab === "rules" ? (
+          <ul className="staff-game-help-list">
+            <li>
+              <strong>关卡进度</strong>
+              <span>
+                共 <b>60 关</b>：第 1–35 关逐步加入白键，第 36–60
+                关加入黑键。可通过「跳级」自选关卡。
+              </span>
+            </li>
+            <li>
+              <strong>星级评价</strong>
+              <span>
+                按首次答对率计算：≥<b>60%</b> 获 1 星，≥<b>75%</b> 获 2 星，≥<b>90%</b> 获 3 星。
+              </span>
+            </li>
+            <li>
+              <strong>成绩记录</strong>
+              <span>完整完成一局才记录成绩；中途退出或重新开始不记录。</span>
+            </li>
+            <li>
+              <strong>得分机制</strong>
+              <span>难度影响基础分和音符下落速度；连击可增加额外分数。</span>
+            </li>
+          </ul>
+        ) : null}
+
+        {activeTab === "modes" ? (
+          <div className="staff-game-help-mode-grid">
+            <article
+              className={`staff-game-help-mode-card is-learning${currentMode === "learning" ? " is-current" : ""}`}
+            >
+              <h3>
+                <BookOpen aria-hidden="true" size={18} /> 学习测试
+              </h3>
+              <ul>
+                <li>无整局倒计时。</li>
+                <li>当前音池每个音出现 2 次，答完全部题目后生成报告。</li>
+                <li>报告展示正确率、错漏明细和反应耗时。</li>
+              </ul>
+            </article>
+            <article
+              className={`staff-game-help-mode-card is-review${currentMode === "review" ? " is-current" : ""}`}
+            >
+              <h3>
+                <RefreshCw aria-hidden="true" size={18} /> 错题复习
+              </h3>
+              <ul>
+                <li>按历史错题生成本轮题目。</li>
+                <li>
+                  限时 <b>1–3 分钟</b>，打完整袋或时间耗尽即结束。
+                </li>
+                <li>完整完成才记录，中途退出不记录。</li>
+              </ul>
+            </article>
+            <article
+              className={`staff-game-help-mode-card is-arcade${currentMode === "arcade" ? " is-current" : ""}`}
+            >
+              <h3>
+                <Flame aria-hidden="true" size={18} /> 娱乐模式
+              </h3>
+              <ul>
+                <li>整局倒计时结束后结算。</li>
+                <li>题袋打完会循环补题。</li>
+                <li>适合追求高分和连击。</li>
+              </ul>
+            </article>
+          </div>
+        ) : null}
+      </section>
+    </>
+  );
+}
 
 export function StaffGameDialogs({
   dialog,
@@ -76,6 +234,7 @@ export function StaffGameDialogs({
   onCancelUnsavedSettingsPrompt,
   onDiscardUnsavedSettings,
   isWrongNoteReview,
+  isArcadeMode,
   isSongMode,
   closeGameDialog,
   bestStars,
@@ -264,76 +423,48 @@ export function StaffGameDialogs({
                     >
                       <X size={23} />
                     </button>
-                    <h2
-                      aria-label="提示"
-                      className="staff-game-help-title"
-                      id="staff-game-dialog-title"
-                    >
-                      <img alt="" aria-hidden="true" draggable="false" src={helpTitleArt} />
+                    <h2 className="staff-game-help-heading" id="staff-game-dialog-title">
+                      玩法说明
                     </h2>
-                    <div className="staff-game-help-copy">
-                      <h3>
-                        {isWrongNoteReview
-                          ? "错题复习说明"
-                          : isSongMode
-                            ? "歌曲模式说明"
-                            : "闯关模式说明"}
-                      </h3>
-                      {isWrongNoteReview ? (
-                        <>
-                          <p>
-                            从错题归档里挑出薄弱音，集中练习。可选择近 3 天、近 7
-                            天、半个月、一个月或全部时间范围，系统按权重优先安排最需要复习的音符。
-                          </p>
-                          <p>
-                            每个错音至少出现一次，再按错漏情况加权重复，并穿插已解锁的熟悉音。复习上限根据题数和当前难度下落时长计算（60–180
-                            秒）；题袋练完或时间到即结束，暂停时不计时。
-                          </p>
-                          <p>
-                            观察气泡里的五线谱音符，用麦克风（实体乐器）、MIDI
-                            键盘或虚拟琴键作答。虚拟琴键可点击；电脑端也可用 A、S、D、F、G、H、J
-                            弹奏 C4 到 B4，W、E、T、Y、U 对应五个黑键。
-                          </p>
-                          <p>
-                            答对可得分并增加连击。有错漏的复习局会自动归档，供下次对比；全对局不入库。结算页可选择「再练一轮」或「退出复习」。
-                          </p>
-                        </>
-                      ) : isSongMode ? (
-                        <>
-                          <p>
-                            选择歌曲后，气泡会按旋律顺序出现。答错可重试当前音符；气泡飘走后会记为漏音并继续下一音。全曲完成后，按准确率（第一次就按对）评星：达到
-                            60%、75%、90% 分别获得 1、2、3 星。
-                          </p>
-                          <p>
-                            可用麦克风、MIDI 键盘或虚拟琴键输入。虚拟琴键可点击；电脑端也可用
-                            A、S、D、F、G、H、J 弹奏 C4 到 B4。
-                          </p>
-                          <p>
-                            答对可得分并增加连击；难度会影响基础分、气泡下落速度和连击时限，连击另有加分。闯关和歌曲的星级统一按首次答对率计算：60%、75%、90%
-                            分别获得 1、2、3 星；成绩按难度分别记录。
-                          </p>
-                        </>
-                      ) : (
-                        <>
-                          <p>
-                            共有 60 关：第 1–35 关逐步加入白键，第 36–60
-                            关加入黑键。可通过「跳级」直接选择任意关卡。
-                          </p>
-                          <p>
-                            观察气泡里的五线谱音符，用麦克风（实体乐器）、MIDI
-                            键盘或虚拟琴键作答。虚拟琴键可点击，也可在电脑端用键盘输入。
-                          </p>
-                          <p>
-                            答对可得分并增加连击；难度会影响基础分、气泡下落速度和连击时限，连击另有加分。星级按首次答对率计算：60%、75%、90%
-                            分别获得 1、2、3
-                            星；结算页可重试或直接开始下一关，也可通过跳级选择任意关卡。
-                          </p>
-                          <p>
-                            虚拟琴键输入时，电脑端可用 A、S、D、F、G、H、J 弹奏 C4 到
-                            B4；W、E、T、Y、U 对应五个黑键。
-                          </p>
-                        </>
-                      )}
+                    {isSongMode ? (
+                      <div className="staff-game-help-copy staff-game-help-song-copy">
+                        <h3>歌曲模式说明</h3>
+                        <ul className="staff-game-help-list">
+                          <li>
+                            <strong>旋律顺序</strong>
+                            <span>
+                              选择歌曲后，气泡按旋律顺序出现；答错可重试，气泡飘走后会记为漏音并继续。
+                            </span>
+                          </li>
+                          <li>
+                            <strong>完成评星</strong>
+                            <span>
+                              全曲完成后按首次答对率评星：达到 <b>60%</b>、<b>75%</b>、<b>90%</b>
+                              分别获得 1、2、3 星。
+                            </span>
+                          </li>
+                          <li>
+                            <strong>得分与输入</strong>
+                            <span>
+                              可用麦克风、MIDI 或虚拟琴键；难度影响基础分、下落速度和连击时限。
+                            </span>
+                          </li>
+                        </ul>
+                      </div>
+                    ) : (
+                      <StaffGameHelpGuide
+                        isArcadeMode={isArcadeMode}
+                        isWrongNoteReview={isWrongNoteReview}
+                      />
+                    )}
+                    <div className="staff-game-dialog-actions staff-game-help-actions">
+                      <button
+                        className="staff-game-primary"
+                        onClick={closeGameDialog}
+                        type="button"
+                      >
+                        知道了
+                      </button>
                     </div>
                   </>
                 ) : dialog === "levels" ? (
@@ -486,57 +617,65 @@ export function StaffGameDialogs({
                           ) : null}
                         </div>
                       </section>
-                      <StaffGameSettingsControls
-                        draftAudioSettings={draftAudioSettings}
-                        onDisplayModeChange={onDisplayModeChange}
-                        onToggleBackgroundMusic={onToggleBackgroundMusic}
-                        onToggleGameEffects={onToggleGameEffects}
-                        onTogglePianoSound={onTogglePianoSound}
-                        onToggleSoundEffects={onToggleSoundEffects}
-                        settingsDraft={settingsDraft}
-                      />
-                      <div className="staff-game-difficulty-statistics-row">
-                        <section className="staff-game-settings-section staff-game-difficulty-setting">
-                          <label htmlFor="staff-game-difficulty">难度</label>
-                          <select
-                            aria-describedby="staff-game-difficulty-summary"
-                            className="staff-game-difficulty-select"
-                            id="staff-game-difficulty"
-                            onChange={(event) =>
-                              onDifficultyChange(event.currentTarget.value as GameDifficulty)
-                            }
-                            value={settingsDraft.difficulty}
-                          >
-                            {GAME_DIFFICULTIES.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                          <p
-                            className="staff-game-difficulty-summary"
-                            id="staff-game-difficulty-summary"
-                            aria-live="polite"
-                          >
-                            <span>
-                              下落 {(draftDifficulty.bubbleDurationMs / 1000).toFixed(1)} 秒 ·
-                              连击等待 {(draftDifficulty.comboWindowMs / 1000).toFixed(1)} 秒
-                            </span>
-                          </p>
-                        </section>
-                        <section className="staff-game-settings-section staff-game-wrong-note-setting">
-                          <div>
-                            <h3>展示薄弱音</h3>
-                            <p>在结算页显示错漏音数和逐音详情</p>
-                          </div>
-                          <ToggleSwitch
-                            aria-label="展示薄弱音"
-                            checked={settingsDraft.wrongNoteStatisticsEnabled}
-                            className="staff-game-settings-toggle"
-                            id="staff-game-weak-note-statistics-toggle"
-                            onCheckedChange={() => onToggleWrongNoteStatistics()}
-                          />
-                        </section>
+                      <div
+                        className={`staff-game-settings-layout${isArcadeMode && settingsDraft.inputMode === "virtual" ? " is-arcade-virtual-layout" : ""}`}
+                      >
+                        <StaffGameSettingsControls
+                          draftAudioSettings={draftAudioSettings}
+                          onDisplayModeChange={onDisplayModeChange}
+                          onToggleBackgroundMusic={onToggleBackgroundMusic}
+                          onToggleGameEffects={onToggleGameEffects}
+                          onTogglePianoSound={onTogglePianoSound}
+                          onToggleSoundEffects={onToggleSoundEffects}
+                          settingsDraft={settingsDraft}
+                        />
+                        <div
+                          className={`staff-game-difficulty-statistics-row${isArcadeMode ? " is-arcade-mode" : ""}`}
+                        >
+                          <section className="staff-game-settings-section staff-game-difficulty-setting">
+                            <label htmlFor="staff-game-difficulty">难度</label>
+                            <select
+                              aria-describedby="staff-game-difficulty-summary"
+                              className="staff-game-difficulty-select"
+                              id="staff-game-difficulty"
+                              onChange={(event) =>
+                                onDifficultyChange(event.currentTarget.value as GameDifficulty)
+                              }
+                              value={settingsDraft.difficulty}
+                            >
+                              {GAME_DIFFICULTIES.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            <p
+                              className="staff-game-difficulty-summary"
+                              id="staff-game-difficulty-summary"
+                              aria-live="polite"
+                            >
+                              <span>
+                                下落 {(draftDifficulty.bubbleDurationMs / 1000).toFixed(1)} 秒 ·
+                                连击等待 {(draftDifficulty.comboWindowMs / 1000).toFixed(1)} 秒
+                              </span>
+                            </p>
+                          </section>
+                          {!isArcadeMode ? (
+                            <section className="staff-game-settings-section staff-game-wrong-note-setting">
+                              <div>
+                                <h3>展示薄弱音</h3>
+                                <p>在结算页显示错漏音数和逐音详情</p>
+                              </div>
+                              <ToggleSwitch
+                                aria-label="展示薄弱音"
+                                checked={settingsDraft.wrongNoteStatisticsEnabled}
+                                className="staff-game-settings-toggle"
+                                id="staff-game-weak-note-statistics-toggle"
+                                onCheckedChange={() => onToggleWrongNoteStatistics()}
+                              />
+                            </section>
+                          ) : null}
+                        </div>
                       </div>
                       <section className="staff-game-settings-section staff-game-wrong-note-setting">
                         <div>
@@ -573,7 +712,7 @@ export function StaffGameDialogs({
                           </select>
                         </section>
                       ) : null}
-                      {!isSongMode ? (
+                      {!isSongMode && !isArcadeMode ? (
                         <section
                           aria-describedby="staff-game-note-scheduling-description"
                           aria-labelledby="staff-game-note-scheduling-title"

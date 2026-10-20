@@ -5,8 +5,10 @@ import {
   calculateStaffGameWrongNoteWeights,
   compareStaffGameWrongNoteRun,
   filterLegacyStaffGameDrillArchives,
+  filterStaffGameWrongNoteArchivesByGameMode,
   filterStaffGameWrongNoteArchivesByRange,
   filterStaffGameWrongNoteArchivesWithErrors,
+  filterStaffGameWrongNoteLearningChallengeArchivesWithErrors,
   getStaffGameWrongNotePriorityPreview,
   mergeStaffGameWrongNoteArchives,
 } from "./staffGameWrongNoteArchives";
@@ -16,7 +18,13 @@ import type {
   StaffGameWrongNoteNoteStats,
 } from "./types";
 
-function archive(date: string, runId: string, midi: number, wrong: number, missed = 0) {
+function archive(
+  date: string,
+  runId: string,
+  midi: number,
+  wrong: number,
+  missed = 0
+): StaffGameWrongNoteArchive {
   return {
     id: date,
     date,
@@ -46,7 +54,7 @@ function archive(date: string, runId: string, midi: number, wrong: number, misse
         },
       },
     ],
-  } satisfies StaffGameWrongNoteArchive;
+  };
 }
 
 function noteStats(
@@ -114,6 +122,38 @@ function withOneWrongAnswer(runRecord: StaffGameWrongNoteArchiveRun): StaffGameW
 }
 
 describe("staff game wrong note archives", () => {
+  it("limits wrong-note review sources to errored learning challenge runs", () => {
+    const learningRun = archive("2026-10-15", "learning", 60, 1).runs[0]!;
+    const arcadeRun = {
+      ...archive("2026-10-15", "arcade", 61, 1).runs[0]!,
+      gameMode: "arcade" as const,
+    };
+    const reviewRun = {
+      ...archive("2026-10-15", "review", 62, 1).runs[0]!,
+      source: "review" as const,
+      level: null,
+      gameMode: undefined,
+    };
+    const trendRun = {
+      ...learningRun,
+      runId: "trend-only",
+      trendOnly: true,
+    };
+    const allCorrectRun = archive("2026-10-15", "all-correct", 63, 0).runs[0]!;
+
+    const result = filterStaffGameWrongNoteLearningChallengeArchivesWithErrors([
+      { id: "2026-10-15", date: "2026-10-15", runs: [{ ...learningRun, gameMode: "learning" }] },
+      { id: "2026-10-15", date: "2026-10-15", runs: [arcadeRun] },
+      { id: "2026-10-15", date: "2026-10-15", runs: [reviewRun] },
+      { id: "2026-10-15", date: "2026-10-15", runs: [trendRun] },
+      { id: "2026-10-15", date: "2026-10-15", runs: [allCorrectRun] },
+    ]);
+
+    expect(result.flatMap((item) => item.runs.map((itemRun) => itemRun.runId))).toEqual([
+      "learning",
+    ]);
+  });
+
   it("deduplicates runs by runId while merging dates", () => {
     const first = archive("2026-10-15", "run-a", 60, 1);
     const second = archive("2026-10-15", "run-b", 62, 2);
@@ -191,6 +231,24 @@ describe("staff game wrong note archives", () => {
     expect(calculateStaffGameWrongNoteErrorCounts(rows, 3, today)).toEqual([
       { midi: 64, errorCount: 4 },
       { midi: 60, errorCount: 3 },
+    ]);
+  });
+
+  it("filters diagnostics by learning and arcade while keeping all as an explicit union", () => {
+    const learning = archive("2026-10-15", "learning", 60, 1);
+    learning.runs[0]!.gameMode = "learning";
+    const arcade = archive("2026-10-14", "arcade", 62, 1);
+    arcade.runs[0]!.gameMode = "arcade";
+
+    expect(filterStaffGameWrongNoteArchivesByGameMode([learning, arcade], "learning")).toEqual([
+      learning,
+    ]);
+    expect(filterStaffGameWrongNoteArchivesByGameMode([learning, arcade], "arcade")).toEqual([
+      arcade,
+    ]);
+    expect(filterStaffGameWrongNoteArchivesByGameMode([learning, arcade], "all")).toEqual([
+      learning,
+      arcade,
     ]);
   });
 

@@ -4,16 +4,19 @@ import type { Ref } from "react";
 export interface StaffGameHudProps {
   songSelectionHeaderTitle: string | null;
   isSongMode: boolean;
+  isLearningChallenge: boolean;
+  isQuestionCountProgress: boolean;
   isWrongNoteReview: boolean;
+  isReady: boolean;
   rushModeActive: boolean;
   historyLabel: string;
   historyStars: number;
-  starImage: string;
   medalLabel: string;
   activeProgress: number;
   currentRoundStars: number;
   progressLabel: string;
   progressValue: string | number;
+  showScore: boolean;
   scoreLabel: string;
   displayedScore: number;
   scoreDetail: string;
@@ -25,16 +28,19 @@ export interface StaffGameHudProps {
 export function StaffGameHud({
   songSelectionHeaderTitle,
   isSongMode,
+  isLearningChallenge,
+  isQuestionCountProgress,
   isWrongNoteReview,
+  isReady,
   rushModeActive,
   historyLabel,
   historyStars,
-  starImage,
   medalLabel,
   activeProgress,
   currentRoundStars,
   progressLabel,
   progressValue,
+  showScore,
   scoreLabel,
   displayedScore,
   scoreDetail,
@@ -55,80 +61,120 @@ export function StaffGameHud({
     );
   }
 
+  const medalClassName = `staff-game-level-medal${isSongMode ? " is-song-progress" : ""}${isQuestionCountProgress ? " is-learning-test" : ""}${isWrongNoteReview ? " is-review-question-progress" : ""}`;
+  const medalContent = isQuestionCountProgress ? (
+    <>
+      <span>{progressLabel}</span>
+      <span aria-hidden="true" className="staff-game-question-progress-track">
+        <span
+          className="staff-game-question-progress-fill"
+          style={{ width: `${Math.max(0, Math.min(100, activeProgress * 100))}%` }}
+        />
+      </span>
+      <strong>{progressValue}</strong>
+    </>
+  ) : (
+    <>
+      <svg aria-hidden="true" className="staff-game-level-progress" viewBox="0 0 120 120">
+        <path
+          className="staff-game-level-progress-track"
+          d="M 26.06 26.06 A 48 48 0 1 0 93.94 26.06"
+          pathLength="1000"
+        />
+        <path
+          className="staff-game-level-progress-fill"
+          d="M 26.06 26.06 A 48 48 0 1 0 93.94 26.06"
+          pathLength="1000"
+          strokeDashoffset={1000 * (1 - activeProgress)}
+        />
+        {!isSongMode
+          ? [
+              { x: 15, y: 93.94 },
+              { x: 105, y: 93.94 },
+              { x: 93.94, y: 26.06 },
+            ].map((position, index) => (
+              <text
+                className={`staff-game-level-progress-star${currentRoundStars > index ? " earned" : ""}`}
+                dominantBaseline="central"
+                key={index}
+                textAnchor="middle"
+                x={position.x}
+                y={position.y}
+              >
+                ★
+              </text>
+            ))
+          : null}
+      </svg>
+      <span>{progressLabel}</span>
+      <strong className={isSongMode ? "staff-game-song-progress-value" : undefined}>
+        {progressValue}
+      </strong>
+    </>
+  );
+  const canJumpFromMedal = showLevelJump && !isQuestionCountProgress && !isSongMode;
+
   return (
     <header
-      className={`staff-game-hud${isSongMode ? " is-song-mode" : ""}${rushModeActive ? " is-rush-mode" : ""}${isWrongNoteReview ? " is-wrong-note-review" : ""}`}
+      className={`staff-game-hud${isSongMode ? " is-song-mode" : ""}${isLearningChallenge ? " is-learning-test" : ""}${rushModeActive ? " is-rush-mode" : ""}${isWrongNoteReview ? " is-wrong-note-review" : ""}${isReady ? " is-ready" : ""}`}
     >
       {!isWrongNoteReview ? (
-        <div aria-hidden={rushModeActive} className="staff-game-hud-card staff-game-display-card">
+        <div
+          aria-hidden={rushModeActive}
+          className="staff-game-hud-card hud-panel-css staff-game-display-card"
+        >
           <span>{historyLabel}</span>
           <strong aria-label={`${historyStars} 颗星`} className="staff-game-history-stars">
             {[1, 2, 3].map((star) => (
-              <img
-                alt=""
-                className={historyStars >= star ? "earned" : ""}
-                key={star}
-                src={starImage}
-              />
+              <span aria-hidden="true" className={historyStars >= star ? "earned" : ""} key={star}>
+                ★
+              </span>
             ))}
           </strong>
         </div>
       ) : null}
-      {!isWrongNoteReview ? (
-        <div
-          aria-hidden={rushModeActive}
-          aria-label={medalLabel}
-          className={`staff-game-level-medal${isSongMode ? " is-song-progress" : ""}`}
-        >
-          <svg aria-hidden="true" className="staff-game-level-progress" viewBox="0 0 120 120">
-            <path
-              className="staff-game-level-progress-track"
-              d="M 26.06 26.06 A 48 48 0 1 0 93.94 26.06"
-              pathLength="1000"
-            />
-            <path
-              className="staff-game-level-progress-fill"
-              d="M 26.06 26.06 A 48 48 0 1 0 93.94 26.06"
-              pathLength="1000"
-              strokeDashoffset={1000 * (1 - activeProgress)}
-            />
-            {!isSongMode
-              ? [
-                  { x: 15, y: 93.94 },
-                  { x: 105, y: 93.94 },
-                  { x: 93.94, y: 26.06 },
-                ].map((position, index) => (
-                  <text
-                    className={`staff-game-level-progress-star${currentRoundStars > index ? " earned" : ""}`}
-                    dominantBaseline="central"
-                    key={index}
-                    textAnchor="middle"
-                    x={position.x}
-                    y={position.y}
-                  >
-                    ★
-                  </text>
-                ))
-              : null}
-          </svg>
-          <span>{progressLabel}</span>
-          <strong className={isSongMode ? "staff-game-song-progress-value" : undefined}>
-            {progressValue}
-          </strong>
-        </div>
+      {isQuestionCountProgress || !isWrongNoteReview ? (
+        canJumpFromMedal ? (
+          <button
+            aria-label={`${medalLabel}，点击打开跳级选择`}
+            className={`${medalClassName} is-jump-trigger`}
+            onClick={onOpenLevels}
+            type="button"
+          >
+            {medalContent}
+          </button>
+        ) : (
+          <div
+            aria-hidden={rushModeActive}
+            aria-label={medalLabel}
+            className={medalClassName}
+            aria-valuemax={isQuestionCountProgress ? 100 : undefined}
+            aria-valuemin={isQuestionCountProgress ? 0 : undefined}
+            aria-valuenow={
+              isQuestionCountProgress
+                ? Math.round(Math.max(0, Math.min(1, activeProgress)) * 100)
+                : undefined
+            }
+            role={isQuestionCountProgress ? "progressbar" : undefined}
+          >
+            {medalContent}
+          </div>
+        )
       ) : null}
       <div className="staff-game-score-group">
-        <div className="staff-game-hud-card staff-game-score-card">
-          <span>{scoreLabel}</span>
-          <strong
-            aria-label={`当前得分 ${Math.round(displayedScore)}`}
-            className={rushModeActive ? "is-rush-score" : undefined}
-            ref={scoreValueRef}
-          >
-            {Math.round(displayedScore)}
-          </strong>
-          <small>{scoreDetail}</small>
-        </div>
+        {showScore ? (
+          <div className="staff-game-hud-card hud-panel-css staff-game-score-card">
+            <span>{scoreLabel}</span>
+            <strong
+              aria-label={`当前得分 ${Math.round(displayedScore)}`}
+              className={rushModeActive ? "is-rush-score" : undefined}
+              ref={scoreValueRef}
+            >
+              {Math.round(displayedScore)}
+            </strong>
+            {scoreDetail ? <small>{scoreDetail}</small> : null}
+          </div>
+        ) : null}
         {showLevelJump && !isWrongNoteReview ? (
           <button
             aria-label="选择关卡跳级"

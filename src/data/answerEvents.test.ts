@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { boundedAnswerEvent, MAX_ANSWER_EVENT_ATTEMPTS } from "./answerEvents";
+import {
+  answerEventToReview,
+  answerEventToStaffGameProficiencySample,
+  boundedAnswerEvent,
+  MAX_ANSWER_EVENT_ATTEMPTS,
+} from "./answerEvents";
 import type { AnswerEvent } from "../domain/types";
 
 const event: AnswerEvent = {
@@ -40,5 +45,41 @@ describe("boundedAnswerEvent", () => {
     });
 
     expect(bounded.attempts[0].clipping).toBe(true);
+  });
+});
+
+describe("answerEventToStaffGameProficiencySample", () => {
+  it("preserves the challenge subtype and source for statistics filters", () => {
+    const sample = answerEventToStaffGameProficiencySample({
+      ...event,
+      mode: "staff-game",
+      targetMidi: 60,
+      gameMode: "learning",
+      staffGameSource: "challenge",
+    });
+
+    expect(sample?.gameMode).toBe("learning");
+    expect(sample?.staffGameSource).toBe("challenge");
+  });
+
+  it("keeps interruption status and leaves song events outside challenge modes", () => {
+    const interruptedSongEvent: AnswerEvent = {
+      ...event,
+      mode: "song",
+      gameMode: null,
+      wasInterrupted: true,
+      targetMidi: 60,
+      targetNoteId: "C4",
+      targetGroupId: "G3-F4",
+      targetNoteName: "C",
+      targetOctave: 4,
+    };
+
+    expect(answerEventToReview(interruptedSongEvent)?.interrupted).toBe(true);
+    expect(answerEventToStaffGameProficiencySample(interruptedSongEvent)).toMatchObject({
+      mode: "song",
+      gameMode: null,
+      wasInterrupted: true,
+    });
   });
 });

@@ -2,6 +2,7 @@ import { CircleHelp, RotateCcw, SkipForward, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { StaffGameWrongNoteComparison } from "../../../domain/staffGameWrongNoteArchives";
+import type { StaffGameChallengeMode } from "../../../domain/types";
 import type { StaffGameWrongAnswerRecord } from "../hooks/useStaffGameScoring";
 import type { StaffGameRoundNoteOutcome } from "../hooks/useStaffGameRoundClock";
 import type { StaffGameWrongNoteRunPerformance } from "../logic/staffGameWrongNoteArchive";
@@ -11,6 +12,7 @@ export type StaffGameSummaryMode = "challenge" | "song" | "review";
 
 export interface StaffGameSummaryDialogProps {
   mode: StaffGameSummaryMode;
+  challengeMode: StaffGameChallengeMode;
   ariaLabel: string;
   gameArtStyle: CSSProperties;
   isSongMode: boolean;
@@ -58,6 +60,7 @@ export interface StaffGameSummaryDialogProps {
 
 export function StaffGameSummaryDialog({
   mode,
+  challengeMode,
   ariaLabel,
   gameArtStyle,
   isSongMode,
@@ -112,6 +115,11 @@ export function StaffGameSummaryDialog({
   ).length;
   const firstTryFailurePercentage =
     generatedNoteCount > 0 ? Math.round((weakNoteCount / generatedNoteCount) * 100) : 0;
+  const missedNoteCount = weakNoteOutcomes.filter((outcome) => outcome.missed).length;
+  const wrongNoteCount = weakNoteOutcomes.filter(
+    (outcome) => outcome.firstInputCorrect === false
+  ).length;
+  const isLearningTest = mode === "challenge" && challengeMode === "learning";
   const archiveDateLabel = wrongNoteArchiveDate
     ? (() => {
         const [, month, day] = wrongNoteArchiveDate.split("-");
@@ -141,7 +149,7 @@ export function StaffGameSummaryDialog({
     noteSummary.targetTokens.add(outcome.token);
     const wrongResult = wrongResultsByToken.get(outcome.token);
     if (outcome.firstInputCorrect === false || wrongResult) noteSummary.reasons.add("错音");
-    if (outcome.firstInputCorrect === null) noteSummary.reasons.add("漏音");
+    if (outcome.firstInputCorrect === null || outcome.missed) noteSummary.reasons.add("漏音");
     const inputResult = wrongResult ?? (outcome.firstInputCorrect === null ? "未输入" : undefined);
     if (inputResult) {
       noteSummary.inputResultCounts.set(
@@ -256,7 +264,9 @@ export function StaffGameSummaryDialog({
             ))}
           </div>
         ) : null}
-        <section className="staff-game-card staff-game-summary-card">
+        <section
+          className={`staff-game-card staff-game-summary-card${isLearningTest ? " is-learning-test" : ""}`}
+        >
           {mode === "challenge" ? (
             <button
               aria-label="关闭结算，返回关卡开始页"
@@ -274,7 +284,13 @@ export function StaffGameSummaryDialog({
           >
             <img alt="" aria-hidden="true" draggable="false" src={levelBannerImage} />
             <strong className={isSongMode ? "is-song-title" : undefined}>
-              {isWrongNoteReview ? "错题复习" : isSongMode ? songTitle : `LEVEL ${level}`}
+              {isWrongNoteReview
+                ? "错题复习"
+                : isSongMode
+                  ? songTitle
+                  : isLearningTest
+                    ? "学习测试"
+                    : `LEVEL ${level}`}
             </strong>
           </div>
           <div className={`staff-game-summary-content${mode === "review" ? " is-review" : ""}`}>
@@ -302,73 +318,122 @@ export function StaffGameSummaryDialog({
               />
             ) : (
               <>
-                {isWrongNoteReview || isSongMode || earnedStars > 0 ? (
-                  <h2>
-                    {isWrongNoteReview ? "复习完成" : isSongMode ? "演奏完成！" : "闯关成功！"}
-                  </h2>
-                ) : null}
-                <div className="staff-game-result-stats">
-                  {wrongNoteStatisticsEnabled ? (
-                    <div className="is-wrong-count">
-                      <span>错漏音 / 总音</span>
-                      <strong>
-                        <span className="staff-game-result-metric-value">
-                          {weakNoteCount} / {generatedNoteCount}
-                        </span>
-                        <span className="staff-game-result-metric-accessory">
-                          <button
-                            aria-label="查看薄弱音统计详情"
-                            className="staff-game-wrong-answer-details-trigger"
-                            onClick={() => setShowWrongAnswerDetails(true)}
-                            ref={detailsTriggerRef}
-                            type="button"
-                          >
-                            <CircleHelp aria-hidden="true" size={16} />
-                          </button>
-                        </span>
-                      </strong>
+                {isLearningTest ? (
+                  <section aria-label="学习测试结果" className="staff-game-learning-summary">
+                    <h2>测试完成</h2>
+                    <div className="staff-game-learning-summary-metrics">
+                      <div className="is-accuracy">
+                        <span>首次正确率</span>
+                        <strong>{Math.round(accuracy)}%</strong>
+                        <small>
+                          {Math.max(0, generatedNoteCount - weakNoteCount)} / {generatedNoteCount}{" "}
+                          题首次答对
+                        </small>
+                      </div>
+                      <div className="is-errors">
+                        <span>错漏题数</span>
+                        <strong>{weakNoteCount} 题</strong>
+                        <small>
+                          错答 {wrongNoteCount} 题 · 漏答 {missedNoteCount} 题
+                        </small>
+                        <button
+                          aria-label="查看错漏音明细"
+                          className="staff-game-learning-details-button"
+                          onClick={() => setShowWrongAnswerDetails(true)}
+                          ref={detailsTriggerRef}
+                          type="button"
+                        >
+                          查看明细
+                        </button>
+                      </div>
+                      <div className="is-response">
+                        <span>平均反应时间</span>
+                        <strong>
+                          {averagePlayerResponseMs === null
+                            ? "暂无"
+                            : `${(averagePlayerResponseMs / 1000).toFixed(1)} 秒`}
+                        </strong>
+                        <small>仅统计首次答对的音符</small>
+                      </div>
                     </div>
-                  ) : null}
-                  <div>
-                    <span>最大连击数</span>
-                    <strong>
-                      <span className="staff-game-result-metric-value">{comboCount} 次</span>
-                      <span className="staff-game-result-metric-accessory">
-                        {isNewComboRecord ? <em>新纪录</em> : null}
-                      </span>
-                    </strong>
-                  </div>
-                  <div className="is-score">
-                    <span>获得的分数</span>
-                    <strong>
-                      <span className="staff-game-result-metric-value">{Math.round(score)} 分</span>
-                      <span className="staff-game-result-metric-accessory">
-                        {isNewScoreRecord ? <em>新纪录</em> : null}
-                      </span>
-                    </strong>
-                  </div>
-                  {isSongMode ? (
-                    <div>
-                      <span>准确率（第一次就按对）</span>
-                      <strong>
-                        <span className="staff-game-result-metric-value">
-                          {Math.round(accuracy)}%
-                        </span>
-                        <span className="staff-game-result-metric-accessory" />
-                      </strong>
+                    <div className="staff-game-learning-game-flavor">
+                      <span>得分 {Math.round(score)}</span>
+                      <span>最高连击 {comboCount}</span>
                     </div>
-                  ) : null}
-                </div>
-                {generatedNoteCount > 0 ? (
-                  <p className="staff-game-proficiency-summary">
-                    {!isSongMode
-                      ? `首次正确率 ${Math.round((100 * (generatedNoteCount - weakNoteCount)) / generatedNoteCount)}% · `
-                      : ""}
-                    {averagePlayerResponseMs === null
-                      ? "暂无有效反应时间样本"
-                      : `平均反应 ${(averagePlayerResponseMs / 1000).toFixed(1)}s${inputMode === "physical" ? "（已校准）" : ""}`}
-                  </p>
-                ) : null}
+                  </section>
+                ) : (
+                  <>
+                    {isWrongNoteReview || isSongMode || earnedStars > 0 ? (
+                      <h2>
+                        {isWrongNoteReview ? "复习完成" : isSongMode ? "演奏完成！" : "闯关成功！"}
+                      </h2>
+                    ) : null}
+                    <div className="staff-game-result-stats">
+                      {wrongNoteStatisticsEnabled ? (
+                        <div className="is-wrong-count">
+                          <span>{isSongMode ? "错漏音 / 总音" : "错漏题 / 总题"}</span>
+                          <strong>
+                            <span className="staff-game-result-metric-value">
+                              {weakNoteCount} / {generatedNoteCount}
+                            </span>
+                            <span className="staff-game-result-metric-accessory">
+                              <button
+                                aria-label="查看薄弱音统计详情"
+                                className="staff-game-wrong-answer-details-trigger"
+                                onClick={() => setShowWrongAnswerDetails(true)}
+                                ref={detailsTriggerRef}
+                                type="button"
+                              >
+                                <CircleHelp aria-hidden="true" size={16} />
+                              </button>
+                            </span>
+                          </strong>
+                        </div>
+                      ) : null}
+                      <div>
+                        <span>最大连击数</span>
+                        <strong>
+                          <span className="staff-game-result-metric-value">{comboCount} 次</span>
+                          <span className="staff-game-result-metric-accessory">
+                            {isNewComboRecord ? <em>新纪录</em> : null}
+                          </span>
+                        </strong>
+                      </div>
+                      <div className="is-score">
+                        <span>获得的分数</span>
+                        <strong>
+                          <span className="staff-game-result-metric-value">
+                            {Math.round(score)} 分
+                          </span>
+                          <span className="staff-game-result-metric-accessory">
+                            {isNewScoreRecord ? <em>新纪录</em> : null}
+                          </span>
+                        </strong>
+                      </div>
+                      {isSongMode ? (
+                        <div>
+                          <span>准确率（第一次就按对）</span>
+                          <strong>
+                            <span className="staff-game-result-metric-value">
+                              {Math.round(accuracy)}%
+                            </span>
+                            <span className="staff-game-result-metric-accessory" />
+                          </strong>
+                        </div>
+                      ) : null}
+                    </div>
+                    {generatedNoteCount > 0 ? (
+                      <p className="staff-game-proficiency-summary">
+                        {!isSongMode
+                          ? `首次正确率 ${Math.round((100 * (generatedNoteCount - weakNoteCount)) / generatedNoteCount)}% · `
+                          : ""}
+                        {averagePlayerResponseMs === null
+                          ? "暂无有效反应时间样本"
+                          : `平均反应 ${(averagePlayerResponseMs / 1000).toFixed(1)}s${inputMode === "physical" ? "（已校准）" : ""}`}
+                      </p>
+                    ) : null}
+                  </>
+                )}
                 {showFastPlayingHint && inputMode === "physical" ? (
                   <p className="staff-game-fast-playing-hint">
                     检测到您正在快速演奏，若识别准确率低，建议使用 MIDI 键盘或虚拟键盘。
@@ -486,12 +551,12 @@ export function StaffGameSummaryDialog({
               <X aria-hidden="true" size={19} />
             </button>
             <h2 id="staff-game-weak-note-details-title">
-              薄弱音统计详情
+              {isLearningTest ? "错漏音明细" : "薄弱音统计详情"}
               <span className="staff-game-wrong-answer-details-title-note">（仅供参考）</span>
             </h2>
             <p className="staff-game-wrong-answer-conclusion">
-              本局共出现 <strong>{generatedNoteCount}</strong> 个音符，错答或漏答共计{" "}
-              <strong>{weakNoteCount}</strong> 个，占比{" "}
+              本局共出现 <strong>{generatedNoteCount}</strong> {isSongMode ? "个音符" : "道题"}，
+              错答或漏答共计 <strong>{weakNoteCount}</strong> {isSongMode ? "个" : "道"}，占比{" "}
               <strong>{firstTryFailurePercentage}%</strong>。
             </p>
             <div className="staff-game-wrong-answer-table-wrap">

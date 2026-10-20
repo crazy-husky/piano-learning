@@ -1,5 +1,10 @@
 // ⚠️ [整局趋势]。详见 docs/product-decisions.md
-import type { AnswerEvent, StaffGameWrongNoteArchive, StaffGameWrongNoteArchiveRun } from "./types";
+import type {
+  AnswerEvent,
+  StaffGameChallengeMode,
+  StaffGameWrongNoteArchive,
+  StaffGameWrongNoteArchiveRun,
+} from "./types";
 import {
   filterStaffGameWrongNoteArchivesByCalendarRange,
   hasCompleteStaffGameWrongNoteComparisonData,
@@ -22,6 +27,7 @@ export interface StaffGameWrongNoteTrendGroup {
   inputMode: string;
   notePoolScope: StaffGameWrongNoteArchiveRun["notePoolScope"];
   noteSchedulingStrategy: StaffGameWrongNoteArchiveRun["noteSchedulingStrategy"];
+  gameMode: StaffGameChallengeMode | null;
   runs: StaffGameWrongNoteTrendRun[];
 }
 
@@ -212,6 +218,7 @@ export function buildStaffGameWrongNoteTrendGroups(
         run.inputMode,
         run.notePoolScope,
         run.noteSchedulingStrategy,
+        run.gameMode ?? null,
       ]);
       const group = groups.get(id) ?? {
         id,
@@ -222,6 +229,7 @@ export function buildStaffGameWrongNoteTrendGroups(
         inputMode: run.inputMode,
         notePoolScope: run.notePoolScope,
         noteSchedulingStrategy: run.noteSchedulingStrategy,
+        gameMode: run.gameMode ?? null,
         runs: [],
       };
       group.runs.push({ archiveDate: archive.date, run });

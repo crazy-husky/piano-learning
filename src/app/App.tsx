@@ -31,6 +31,7 @@ import {
   loadPracticeHistory,
   loadStaffRecallHistory,
   recoverAbandonedSessions,
+  retryPendingAnswerEvents,
   restoreDefaultConfiguration,
 } from "../data/db";
 import { IndexedDbMaintenancePanel } from "../debug/IndexedDbMaintenancePanel";
@@ -196,7 +197,11 @@ function HistoryLoadingState({
   );
 }
 
-export function App(): JSX.Element {
+export function App({
+  skipPendingAnswerEventRetry = false,
+}: {
+  skipPendingAnswerEventRetry?: boolean;
+}): JSX.Element {
   useBlurButtonAfterPointerClick();
   const appUpdateController = useAppUpdateNotice();
   const midi = useMidiInput();
@@ -752,6 +757,7 @@ export function App(): JSX.Element {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      if (!skipPendingAnswerEventRetry) await retryPendingAnswerEvents();
       await recoverAbandonedSessions();
       const [settings, backupState] = await Promise.all([ensureSettings(), getBackupState()]);
       if (!cancelled)
@@ -768,7 +774,7 @@ export function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [skipPendingAnswerEventRetry]);
 
   const appDataAvailable = data !== null;
   const practiceHistoryLoaded = data?.practiceHistoryLoaded ?? false;

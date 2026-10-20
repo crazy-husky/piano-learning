@@ -1,7 +1,9 @@
 // ⚠️ [错题袋覆盖]。详见 docs/product-decisions.md
-import type { NoteName, PianoKeyName } from "../../../domain/types";
+import type { NoteName, PianoKeyName, StaffGameChallengeMode } from "../../../domain/types";
 
 export type GameDifficulty = "muggle" | "leisure" | "easy" | "normal" | "hard" | "nightmare";
+export type { StaffGameChallengeMode };
+export type StaffGameArcadeDuration = "level-default" | 60_000 | 120_000 | 180_000;
 export type StaffGameNotePoolScope = "current-group" | "all-history" | "all-history-current-clef";
 export type StaffGameNoteSchedulingStrategy = "random" | "system";
 
@@ -194,6 +196,37 @@ export function shuffledItems<T>(items: T[]): T[] {
   return shuffled;
 }
 
+/** Every distinct note in the selected challenge pool appears exactly twice. */
+export function learningTestNoteBag(
+  level: number,
+  notePoolScope: StaffGameNotePoolScope
+): StaffGamePitch[] {
+  const uniqueNotes = new Map(
+    notePoolCandidates(level, notePoolScope).map((note) => [note.midi, note] as const)
+  );
+  const bag = [...uniqueNotes.values()].flatMap((note) => [{ ...note }, { ...note }]);
+  return shuffledItems(bag);
+}
+
+/** Draws from a finite learning-test bag without replenishing it. */
+export function drawNextLearningTestNote(
+  noteBag: StaffGamePitch[],
+  recentNoteMidis: number[],
+  temporarilyExcludedMidiNotes: ReadonlySet<number> = new Set()
+): StaffGamePitch | null {
+  const allowedIndices = noteBag.flatMap((note, index) =>
+    temporarilyExcludedMidiNotes.has(note.midi) ? [] : [index]
+  );
+  if (allowedIndices.length === 0) return null;
+  const eligibleIndices = allowedIndices.filter((index) =>
+    canFollowRecentNotes(noteBag[index]!.midi, recentNoteMidis)
+  );
+  const chosenIndex = eligibleIndices.length
+    ? eligibleIndices[Math.floor(Math.random() * eligibleIndices.length)]!
+    : allowedIndices[allowedIndices.length - 1]!;
+  return noteBag.splice(chosenIndex, 1)[0] ?? null;
+}
+
 export function canFollowRecentNotes(midi: number, recentNoteMidis: number[]): boolean {
   const lastTwo = recentNoteMidis.slice(-2);
   if (lastTwo.length === 2 && lastTwo[0] === midi && lastTwo[1] === midi) return false;
@@ -235,8 +268,7 @@ export function gameLevelForNotePoolScope(
 export function shuffledNoteBag(
   level: number,
   notePoolScope: StaffGameNotePoolScope = "all-history",
-  noteSchedulingStrategy: StaffGameNoteSchedulingStrategy = "system",
-  weakNoteWeights?: ReadonlyMap<number, number>
+  noteSchedulingStrategy: StaffGameNoteSchedulingStrategy = "system"
 ): StaffGamePitch[] {
   const unlockedNotes = GAME_NOTE_PROGRESSION.slice(0, level);
   const focusNote = unlockedNotes[unlockedNotes.length - 1];
@@ -250,19 +282,8 @@ export function shuffledNoteBag(
   const addCopies = (note: (typeof GAME_NOTE_PROGRESSION)[number], count: number): void => {
     for (let index = 0; index < count; index += 1) bag.push({ ...note });
   };
-  const addReviewNotes = (
-    pool: typeof GAME_NOTE_PROGRESSION,
-    count: number,
-    weakSlotRatio = 0.25
-  ): void => {
-    const weakNotes = weakNoteWeights
-      ? pool.filter((note) => (weakNoteWeights.get(note.midi) ?? 0) > 0)
-      : [];
-    const weakSlots = weakNotes.length > 0 ? Math.min(count, Math.ceil(count * weakSlotRatio)) : 0;
-    if (weakSlots > 0) {
-      bag.push(...weightedNoteDraws(weakNotes, weakSlots, weakNoteWeights));
-    }
-    let remaining = count - weakSlots;
+  const addReviewNotes = (pool: typeof GAME_NOTE_PROGRESSION, count: number): void => {
+    let remaining = count;
     while (pool.length > 0 && remaining > 0) {
       const cycle = shuffledItems(pool);
       const selected = cycle.slice(0, remaining);
@@ -296,36 +317,9 @@ export function shuffledNoteBag(
   return shuffledItems(bag);
 }
 
-function weightedNoteDraws(
-  pool: readonly StaffGamePitch[],
-  count: number,
-  weights?: ReadonlyMap<number, number>
-): StaffGamePitch[] {
-  if (pool.length === 0 || count <= 0) return [];
-  const weightedPool = pool.map((note) => ({
-    note,
-    weight: Math.max(0, weights?.get(note.midi) ?? 1),
-  }));
-  const totalWeight = weightedPool.reduce((sum, item) => sum + item.weight, 0);
-  if (totalWeight <= 0) {
-    return Array.from({ length: count }, () => ({
-      ...pool[Math.floor(Math.random() * pool.length)]!,
-    }));
-  }
-  return Array.from({ length: count }, () => {
-    let point = Math.random() * totalWeight;
-    const selected = weightedPool.find((item) => {
-      point -= item.weight;
-      return point < 0;
-    });
-    return { ...(selected?.note ?? weightedPool[weightedPool.length - 1]!.note) };
-  });
-}
-
 function systemNoteWeights(
   level: number,
-  notePoolScope: StaffGameNotePoolScope,
-  weakNoteWeights?: ReadonlyMap<number, number>
+  notePoolScope: StaffGameNotePoolScope
 ): Map<number, number> {
   const poolNotes = notePoolCandidates(level, notePoolScope);
   const focusNote = poolNotes[poolNotes.length - 1];
@@ -334,24 +328,8 @@ function systemNoteWeights(
 
   const addReviewWeights = (pool: StaffGamePitch[], count: number): void => {
     if (pool.length === 0 || count <= 0) return;
-    const weakNotes = weakNoteWeights
-      ? pool.filter((note) => (weakNoteWeights.get(note.midi) ?? 0) > 0)
-      : [];
-    const weakSlots = weakNotes.length > 0 ? Math.min(count, Math.ceil(count * 0.25)) : 0;
-    const totalWeakWeight = weakNotes.reduce(
-      (sum, note) => sum + Math.max(0, weakNoteWeights?.get(note.midi) ?? 0),
-      0
-    );
-    const regularWeightPerNote = (count - weakSlots) / pool.length;
-
+    const regularWeightPerNote = count / pool.length;
     for (const note of pool) weights.set(note.midi, regularWeightPerNote);
-    if (weakSlots > 0 && totalWeakWeight > 0) {
-      for (const note of weakNotes) {
-        const weightedShare =
-          (weakSlots * Math.max(0, weakNoteWeights?.get(note.midi) ?? 0)) / totalWeakWeight;
-        weights.set(note.midi, (weights.get(note.midi) ?? 0) + weightedShare);
-      }
-    }
   };
 
   if (level <= 5) {
@@ -377,11 +355,10 @@ function systemNoteWeights(
 function chooseSystemWeightedNote(
   candidates: StaffGamePitch[],
   level: number,
-  notePoolScope: StaffGameNotePoolScope,
-  weakNoteWeights?: ReadonlyMap<number, number>
+  notePoolScope: StaffGameNotePoolScope
 ): StaffGamePitch | null {
   if (candidates.length === 0) return null;
-  const weights = systemNoteWeights(level, notePoolScope, weakNoteWeights);
+  const weights = systemNoteWeights(level, notePoolScope);
   const totalWeight = candidates.reduce((sum, note) => sum + (weights.get(note.midi) ?? 0), 0);
   if (totalWeight <= 0) return { ...candidates[Math.floor(Math.random() * candidates.length)]! };
 
@@ -418,11 +395,10 @@ export function drawNextNote(
   recentNoteMidis: number[],
   notePoolScope: StaffGameNotePoolScope = "all-history",
   noteSchedulingStrategy: StaffGameNoteSchedulingStrategy = "system",
-  weakNoteWeights?: ReadonlyMap<number, number>,
   temporarilyExcludedMidiNotes: ReadonlySet<number> = new Set()
 ): StaffGamePitch | null {
   const nextBag = (): StaffGamePitch[] =>
-    shuffledNoteBag(level, notePoolScope, noteSchedulingStrategy, weakNoteWeights);
+    shuffledNoteBag(level, notePoolScope, noteSchedulingStrategy);
   if (level === 1) {
     if (notePool.length === 0) notePool.push(...nextBag());
     let index = notePool.length - 1;
@@ -487,12 +463,7 @@ export function drawNextNote(
     const safeCandidates = allowedCandidates.filter((note) =>
       canFollowRecentNotes(note.midi, recentNoteMidis)
     );
-    const fallbackNote = chooseSystemWeightedNote(
-      safeCandidates,
-      level,
-      notePoolScope,
-      weakNoteWeights
-    );
+    const fallbackNote = chooseSystemWeightedNote(safeCandidates, level, notePoolScope);
     if (!fallbackNote) return null;
     notePool.push(fallbackNote);
     return notePool.pop() ?? null;

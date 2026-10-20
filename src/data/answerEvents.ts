@@ -145,6 +145,9 @@ export function answerEventToStaffGameProficiencySample(
     inputGain: event.inputGain,
     deviceInfo: event.deviceInfo,
     mode: event.mode,
+    wasInterrupted: event.wasInterrupted,
+    gameMode: event.gameMode,
+    staffGameSource: event.staffGameSource,
     levelId: event.levelId,
     songId: event.songId,
   };

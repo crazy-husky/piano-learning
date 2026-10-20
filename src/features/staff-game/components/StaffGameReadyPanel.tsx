@@ -1,4 +1,4 @@
-import { BookOpen, Keyboard, Mic, Music2, Play, Sparkles } from "lucide-react";
+import { BookOpen, Keyboard, Lightbulb, Mic, Music2, Play, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import type {
   StaffGameSong,
@@ -6,9 +6,14 @@ import type {
   StaffGameSongRecord,
 } from "../data/staffGameSongs";
 import type { StaffGameWrongNoteRange } from "../../../domain/staffGameWrongNoteArchives";
-import { GAME_DIFFICULTIES, type GameDifficulty } from "../logic/staffGameRules";
+import {
+  GAME_DIFFICULTIES,
+  type GameDifficulty,
+  type StaffGameArcadeDuration,
+  type StaffGameChallengeMode,
+  type StaffGameNotePoolScope,
+} from "../logic/staffGameRules";
 import { formatStaffGameWrongNoteReviewDuration } from "../logic/staffGameWrongNoteReview";
-import notationC4Preview from "../assets/notation/treble-staff-c4-note.webp";
 import {
   LoadingActivityText,
   type LoadingActivityKind,
@@ -18,6 +23,8 @@ interface SharedArtwork {
   bubbleImage: string;
   starImage: string;
 }
+
+type StaffGameReadyInputMode = "virtual" | "physical" | "midi";
 
 type StaffGameReadyPanelProps = SharedArtwork &
   (
@@ -44,23 +51,39 @@ type StaffGameReadyPanelProps = SharedArtwork &
         bestStars: number;
         maxCombo: number;
         reviewRange: StaffGameWrongNoteRange;
+        reviewConditionValue: string;
+        reviewConditions: readonly { value: string; label: string }[];
         reviewNotes: Array<{ label: string; errorCount: number; accuracyPercent: number | null }>;
         reviewQuestionCount: number;
         reviewDurationMs: number;
         reviewWeakNoteCount: number;
         wrongNoteArchiveDateCount: number;
-        inputMode: "virtual" | "physical" | "midi";
+        inputMode: StaffGameReadyInputMode;
+        midiInputAvailable: boolean;
+        virtualKeyboardAvailable: boolean;
         inputStatusActivity: LoadingActivityKind | null;
         inputStatusText: string;
         inputStatusState: "error" | "ready" | "pending";
+        challengeMode: StaffGameChallengeMode;
+        arcadeDuration: StaffGameArcadeDuration;
+        difficulty: GameDifficulty;
+        notePoolScope: StaffGameNotePoolScope;
+        learningQuestionCount: number;
+        arcadeDefaultDurationMs: number;
         isPreparingMicrophone: boolean;
         isStarting: boolean;
         onSelectReadyMode: (mode: "level" | "review") => void;
         onChangeReviewRange: (range: StaffGameWrongNoteRange) => void;
+        onChangeReviewCondition: (value: string) => void;
         onOpenWrongNoteArchiveManager: () => void;
         onOpenWrongNoteStudy: () => void;
         onStartReview: () => void;
         onStartLevel: () => void;
+        onChangeChallengeMode: (mode: StaffGameChallengeMode) => void;
+        onChangeInputMode: (mode: StaffGameReadyInputMode) => void;
+        onChangeArcadeDuration: (duration: StaffGameArcadeDuration) => void;
+        onChangeDifficulty: (difficulty: GameDifficulty) => void;
+        onChangeNotePoolScope: (scope: StaffGameNotePoolScope) => void;
       }
   );
 
@@ -203,44 +226,168 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
     ) : (
       <Mic size={17} />
     );
+  const activeReadyTab =
+    props.readyMode === "review"
+      ? "review"
+      : props.challengeMode === "learning"
+        ? "learning"
+        : "arcade";
+  const selectReadyTab = (tab: "learning" | "review" | "arcade") => {
+    if (tab === "review") {
+      props.onSelectReadyMode("review");
+      return;
+    }
+
+    props.onSelectReadyMode("level");
+    props.onChangeChallengeMode(tab);
+  };
+  const renderInputSetting = () => (
+    <label className="staff-game-ready-input-setting">
+      <span>输入方式</span>
+      <select
+        aria-label="输入方式"
+        onChange={(event) =>
+          props.onChangeInputMode(event.currentTarget.value as StaffGameReadyInputMode)
+        }
+        value={props.inputMode}
+      >
+        <option disabled={!props.virtualKeyboardAvailable} value="virtual">
+          虚拟键盘
+        </option>
+        <option value="physical">麦克风</option>
+        {props.midiInputAvailable || props.inputMode === "midi" ? (
+          <option disabled={!props.midiInputAvailable} value="midi">
+            MIDI 键盘
+          </option>
+        ) : null}
+      </select>
+    </label>
+  );
+  const inputStatusContent = (
+    <div
+      className={`staff-game-mic-status${props.inputStatusState === "error" ? " has-error" : props.inputStatusState === "ready" ? " is-ready" : " is-pending"}${props.inputMode === "midi" && props.inputStatusState === "pending" && !props.inputStatusActivity ? " is-idle-midi-hint" : ""}`}
+    >
+      <span aria-hidden="true" className="staff-game-mic-indicator">
+        {inputModeIcon}
+      </span>
+      <span aria-live="polite" role="status">
+        {props.inputStatusActivity ? (
+          <LoadingActivityText kind={props.inputStatusActivity}>
+            {props.inputStatusText}
+          </LoadingActivityText>
+        ) : (
+          props.inputStatusText
+        )}
+      </span>
+    </div>
+  );
+
   return (
     <div
-      className={`staff-game-card staff-game-ready-card${props.readyMode === "review" ? " is-wrong-note-review" : ""}`}
+      className={`staff-game-card staff-game-ready-card${props.readyMode === "review" ? " is-wrong-note-review" : props.challengeMode === "arcade" ? " is-arcade-ready" : ""}`}
     >
-      <div className="staff-game-ready-mode-switch" aria-label="选择游戏模式" role="group">
+      <div className="staff-game-ready-mode-switch" aria-label="选择练习模式" role="group">
         <button
-          aria-pressed={props.readyMode === "level"}
-          className={props.readyMode === "level" ? "is-active" : ""}
-          onClick={() => props.onSelectReadyMode("level")}
+          aria-pressed={activeReadyTab === "learning"}
+          className={activeReadyTab === "learning" ? "is-active" : ""}
+          onClick={() => selectReadyTab("learning")}
           type="button"
         >
-          闯关
+          学习测试
         </button>
         <button
-          aria-pressed={props.readyMode === "review"}
-          className={props.readyMode === "review" ? "is-active" : ""}
-          onClick={() => props.onSelectReadyMode("review")}
+          aria-pressed={activeReadyTab === "review"}
+          className={activeReadyTab === "review" ? "is-active" : ""}
+          onClick={() => selectReadyTab("review")}
           type="button"
         >
           错题复习
         </button>
+        <button
+          aria-pressed={activeReadyTab === "arcade"}
+          className={activeReadyTab === "arcade" ? "is-active" : ""}
+          onClick={() => selectReadyTab("arcade")}
+          type="button"
+        >
+          娱乐模式
+        </button>
       </div>
-      <h1>{props.readyMode === "review" ? "错题复习" : "五线谱闯关"}</h1>
-      <div className="staff-game-preview-bubble">
-        <img
-          alt=""
-          aria-hidden="true"
-          className="staff-game-bubble-shell"
-          draggable="false"
-          src={props.bubbleImage}
-        />
-        <img
-          alt="中央 C 音符位于高音谱表上的示意图"
-          className="staff-game-preview-notation"
-          draggable="false"
-          src={notationC4Preview}
-        />
-      </div>
+      <div className="staff-game-ready-input-row">{renderInputSetting()}</div>
+      {props.readyMode === "level" ? (
+        <div className="staff-game-challenge-setup">
+          <div className="staff-game-challenge-settings">
+            <label>
+              <span>难度</span>
+              <select
+                aria-label="闯关难度"
+                onChange={(event) =>
+                  props.onChangeDifficulty(event.currentTarget.value as GameDifficulty)
+                }
+                value={props.difficulty}
+              >
+                {GAME_DIFFICULTIES.map((difficulty) => (
+                  <option key={difficulty.id} value={difficulty.id}>
+                    {difficulty.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>音域</span>
+              <select
+                aria-label="闯关音域"
+                onChange={(event) =>
+                  props.onChangeNotePoolScope(event.currentTarget.value as StaffGameNotePoolScope)
+                }
+                value={props.notePoolScope}
+              >
+                <option value="current-group">当前组</option>
+                <option value="all-history-current-clef">当前谱号全部音域</option>
+                <option value="all-history">全部已解锁音</option>
+              </select>
+            </label>
+            {props.challengeMode === "arcade" ? (
+              <label>
+                <span>关卡时长</span>
+                <select
+                  aria-label="娱乐模式关卡时长"
+                  onChange={(event) =>
+                    props.onChangeArcadeDuration(
+                      event.currentTarget.value === "level-default"
+                        ? "level-default"
+                        : (Number(event.currentTarget.value) as 60_000 | 120_000 | 180_000)
+                    )
+                  }
+                  value={props.arcadeDuration}
+                >
+                  <option value="level-default">
+                    关卡默认（{Math.ceil(props.arcadeDefaultDurationMs / 1000)} 秒）
+                  </option>
+                  <option value={60_000}>60 秒</option>
+                  <option value={120_000}>120 秒</option>
+                  <option value={180_000}>180 秒</option>
+                </select>
+              </label>
+            ) : null}
+          </div>
+          <p
+            aria-live="polite"
+            className={`staff-game-challenge-mode-description${props.challengeMode === "learning" ? " is-learning-mode" : ""}`}
+          >
+            {props.challengeMode === "learning" ? (
+              <>
+                <span>
+                  覆盖 {props.learningQuestionCount / 2} 个音，每个音出现 2 次，共{" "}
+                  {props.learningQuestionCount} 题；
+                </span>
+                <span>完成全部题目后生成学习报告。</span>
+              </>
+            ) : (
+              "限时内连续答题，音符袋打完后会循环补题；得分和连击计入娱乐模式记录。"
+            )}
+          </p>
+        </div>
+      ) : null}
       {props.readyMode === "level" ? (
         <button
           className={`staff-game-primary staff-game-ready-start${props.isStarting ? " is-loading" : ""}`}
@@ -260,13 +407,14 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
           )}
         </button>
       ) : null}
+      {props.readyMode === "level" ? inputStatusContent : null}
       {props.readyMode === "review" ? (
         <div className="staff-game-review-picker">
-          <div className="staff-game-review-range-row">
+          <div className="staff-game-review-filters">
             <label className="staff-game-review-range">
-              <span>复习范围</span>
+              <span>日期范围</span>
               <select
-                aria-label="错题复习时间范围"
+                aria-label="错题复习日期范围"
                 onChange={(event) =>
                   props.onChangeReviewRange(
                     event.target.value === "all"
@@ -283,52 +431,83 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
                 <option value="all">全部</option>
               </select>
             </label>
+            <label className="staff-game-review-condition">
+              <span>练习条件</span>
+              <select
+                aria-label="错题复习练习条件"
+                onChange={(event) => props.onChangeReviewCondition(event.currentTarget.value)}
+                value={props.reviewConditionValue}
+              >
+                <option value="all-learning">全部学习测试条件</option>
+                {props.reviewConditions.map((condition) => (
+                  <option key={condition.value} value={condition.value}>
+                    {condition.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
-              aria-label="打开错题集"
+              aria-label="详情与管理错题集"
               className="staff-game-archive-manage"
               onClick={props.onOpenWrongNoteArchiveManager}
+              title="详情与管理错题集"
               type="button"
             >
-              错题集
+              <Lightbulb aria-hidden="true" className="staff-game-archive-manage-icon" size={22} />
             </button>
           </div>
           <div className="staff-game-review-preview" aria-live="polite">
             {props.reviewWeakNoteCount > 0 ? (
-              <div className="staff-game-review-count">
-                <strong>
-                  本次复习约 {props.reviewQuestionCount} 题 · 覆盖全部 {props.reviewWeakNoteCount}{" "}
-                  个错音
-                </strong>
-                <p>
-                  限时 {formatStaffGameWrongNoteReviewDuration(props.reviewDurationMs)}
-                  ，时间到或题目练完即结束
-                </p>
-                {props.reviewWeakNoteCount > 20 ? (
-                  <p role="status">错音较多，本次仍会全部覆盖；可缩小复习范围减少题量。</p>
-                ) : null}
-              </div>
-            ) : null}
-            <strong>优先复习的音</strong>
-            {props.reviewNotes.length > 0 ? (
-              <ol>
-                {props.reviewNotes.map((note) => (
-                  <li key={note.label}>
-                    <span>{note.label}</span>
-                    <small
-                      aria-label={`错漏 ${note.errorCount} 次 · 准确率 ${note.accuracyPercent === null ? "暂无数据" : `${Math.round(note.accuracyPercent)}%`}`}
-                    >
-                      错漏 {note.errorCount} 次 · 准确率{" "}
-                      {note.accuracyPercent === null ? "—" : `${Math.round(note.accuracyPercent)}%`}
-                    </small>
-                  </li>
-                ))}
-              </ol>
+              <>
+                <div className="staff-game-review-count">
+                  <p className="staff-game-review-count-summary">
+                    本轮预计 <strong>{props.reviewQuestionCount}</strong> 题，覆盖{" "}
+                    <strong>{props.reviewWeakNoteCount}</strong> 个错音，限时{" "}
+                    <strong>
+                      {formatStaffGameWrongNoteReviewDuration(props.reviewDurationMs)}
+                    </strong>
+                  </p>
+                  {props.reviewWeakNoteCount > 20 ? (
+                    <p className="staff-game-review-overload-warning" role="status">
+                      错音较多，本轮仍会全部覆盖；可缩小复习范围减少题量。
+                    </p>
+                  ) : null}
+                </div>
+                <div className="staff-game-review-priority">
+                  <strong>优先复习的音</strong>
+                  {props.reviewNotes.length > 0 ? (
+                    <ol>
+                      {props.reviewNotes.slice(0, 3).map((note, index) => (
+                        <li className={`is-priority-${index + 1}`} key={note.label}>
+                          <strong>{note.label}</strong>
+                          <small
+                            aria-label={`错漏 ${note.errorCount} 次，错误率 ${note.accuracyPercent === null ? "暂无数据" : `${100 - Math.round(note.accuracyPercent)}%`}`}
+                          >
+                            <span>错漏 {note.errorCount} 次</span>
+                            <span>
+                              错误率{" "}
+                              {note.accuracyPercent === null
+                                ? "—"
+                                : `${100 - Math.round(note.accuracyPercent)}%`}
+                            </span>
+                          </small>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p>当前范围内暂无需要优先复习的音。</p>
+                  )}
+                </div>
+              </>
             ) : (
-              <p>
-                {props.wrongNoteArchiveDateCount === 0
-                  ? "暂无错题归档记录"
-                  : "所选范围内还没有错题记录"}
-              </p>
+              <div className="staff-game-review-empty">
+                <strong>暂无可复习的错音</strong>
+                {props.wrongNoteArchiveDateCount === 0 ? (
+                  <p>完成闯关并产生错音后，这里会整理本轮复习内容。</p>
+                ) : (
+                  <p>所选范围内没有错题，试试扩大日期范围或更换练习条件。</p>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -352,55 +531,42 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             </strong>
           </div>
           <div className="staff-game-stat">
-            <span>最高连击</span>
+            <span>{props.challengeMode === "learning" ? "娱乐最高连击" : "最高连击"}</span>
             <strong>{props.maxCombo} 次</strong>
           </div>
         </div>
       )}
-      <div
-        className={`staff-game-mic-status${props.inputStatusState === "error" ? " has-error" : props.inputStatusState === "ready" ? " is-ready" : " is-pending"}`}
-      >
-        <span aria-hidden="true" className="staff-game-mic-indicator">
-          {inputModeIcon}
-        </span>
-        <span aria-live="polite" role="status">
-          {props.inputStatusActivity ? (
-            <LoadingActivityText kind={props.inputStatusActivity}>
-              {props.inputStatusText}
-            </LoadingActivityText>
-          ) : (
-            props.inputStatusText
-          )}
-        </span>
-      </div>
       {props.readyMode === "review" ? (
-        <div className="staff-game-ready-actions">
-          <button
-            className="staff-game-secondary"
-            disabled={props.isStarting}
-            onClick={props.onOpenWrongNoteStudy}
-            type="button"
-          >
-            <BookOpen aria-hidden="true" size={19} />
-            先看一遍
-          </button>
-          <button
-            className={`staff-game-primary${props.isStarting ? " is-loading" : ""}`}
-            disabled={props.isStarting || props.reviewNotes.length === 0}
-            onClick={props.onStartReview}
-            type="button"
-          >
-            {props.isStarting ? (
-              <LoadingActivityText kind="dots">
-                {props.isPreparingMicrophone ? "正在准备识别模型" : "正在准备"}
-              </LoadingActivityText>
-            ) : (
-              <>
-                <Play fill="currentColor" size={20} />
-                开始测试
-              </>
-            )}
-          </button>
+        <div className="staff-game-ready-footer">
+          <div className="staff-game-ready-actions">
+            <button
+              className="staff-game-secondary"
+              disabled={props.isStarting}
+              onClick={props.onOpenWrongNoteStudy}
+              type="button"
+            >
+              <BookOpen aria-hidden="true" size={19} />
+              先看一遍
+            </button>
+            <button
+              className={`staff-game-primary${props.isStarting ? " is-loading" : ""}`}
+              disabled={props.isStarting || props.reviewNotes.length === 0}
+              onClick={props.onStartReview}
+              type="button"
+            >
+              {props.isStarting ? (
+                <LoadingActivityText kind="dots">
+                  {props.isPreparingMicrophone ? "正在准备识别模型" : "正在准备"}
+                </LoadingActivityText>
+              ) : (
+                <>
+                  <Play fill="currentColor" size={20} />
+                  开始测试
+                </>
+              )}
+            </button>
+          </div>
+          {inputStatusContent}
         </div>
       ) : null}
     </div>

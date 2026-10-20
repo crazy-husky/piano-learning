@@ -57,6 +57,11 @@ function trendGroupLabel(group: StaffGameWrongNoteTrendGroup): string {
         ]
       : [
           `第${group.level ?? "—"}关`,
+          group.gameMode === "learning"
+            ? "学习测试"
+            : group.gameMode === "arcade"
+              ? "娱乐模式"
+              : "旧版闯关",
           DIFFICULTY_LABELS[group.difficulty] ?? group.difficulty,
           INPUT_MODE_LABELS[group.inputMode] ?? group.inputMode,
           NOTE_POOL_SCOPE_LABELS[group.notePoolScope ?? ""] ?? "",

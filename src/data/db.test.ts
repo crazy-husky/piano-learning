@@ -5,6 +5,7 @@ import { DEFAULT_VOCAL_PITCH_CONFIG, type VocalAudioMaterial } from "../domain/v
 import { makeReview } from "../domain/testFactories";
 import type {
   AnswerEvent,
+  StaffGameProficiencySample,
   StaffGameWrongNoteArchive,
   PracticeSessionRecordV1,
   StaffGameWrongNoteArchiveRun,
@@ -22,6 +23,10 @@ import {
   loadPracticeHistory,
   normalizeAppSettings,
   retryPendingStaffGameWrongNoteArchives,
+  retryPendingAnswerEvents,
+  saveAnswerEvents,
+  openDatabaseForInitialization,
+  finalizeStaffGameDataReset,
   replaceAllData,
   restoreDefaultConfiguration,
 } from "./db";
@@ -231,8 +236,8 @@ describe("restoreDefaultConfiguration", () => {
   });
 });
 
-describe("staff game archive database migration", () => {
-  it("removes legacy drill runs and empty dates when upgrading to version 5", async () => {
+describe("staff game archive database reset", () => {
+  it("clears old archive rows as part of the v9 reset", async () => {
     const databaseName = `anki-note-drill-migration-${Date.now()}-${Math.random()}`;
     const legacyDatabase = new Dexie(databaseName);
     legacyDatabase.version(4).stores({
@@ -289,10 +294,212 @@ describe("staff game archive database migration", () => {
     const upgradedDatabase = new AppDatabase(databaseName);
     await upgradedDatabase.open();
 
-    expect(await upgradedDatabase.staffGameWrongNoteArchives.toArray()).toEqual([
-      { ...mixedDateArchive, runs: [challengeRun, reviewRun] },
-    ]);
+    expect(await upgradedDatabase.staffGameWrongNoteArchives.toArray()).toEqual([]);
     await upgradedDatabase.delete();
+  });
+});
+
+describe("Staff Game data reset", () => {
+  it("keeps reporting a pending blocked open until it resolves", async () => {
+    vi.stubGlobal("window", { localStorage: makeMemoryLocalStorage() });
+    let resolveOpen!: (database: Dexie) => void;
+    const pendingOpen = new Promise<Dexie>((resolve) => {
+      resolveOpen = resolve;
+    }) as ReturnType<typeof db.open>;
+    await db.open();
+    const isOpen = vi.spyOn(db, "isOpen").mockReturnValue(false);
+    const open = vi.spyOn(db, "open").mockReturnValue(pendingOpen);
+
+    const firstAttempt = openDatabaseForInitialization();
+    await Promise.resolve();
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    db.on("blocked").fire({ oldVersion: 8, newVersion: 9 } as IDBVersionChangeEvent);
+    await expect(firstAttempt).resolves.toBe(false);
+    await expect(openDatabaseForInitialization()).resolves.toBe(false);
+    expect(open).toHaveBeenCalledTimes(1);
+
+    resolveOpen(db);
+    await pendingOpen;
+    isOpen.mockReturnValue(true);
+    await expect(openDatabaseForInitialization()).resolves.toBe(true);
+  });
+
+  it("opens the current database without deleting it when no local reset marker exists", async () => {
+    const localStorage = makeMemoryLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    const previousSettings = await db.settings.get("default");
+    const settings = { ...makeDefaultSettings(), dataSetId: "keep-without-reset-marker" };
+    await db.settings.put(settings);
+    db.close();
+
+    await expect(openDatabaseForInitialization()).resolves.toBe(true);
+    await expect(db.settings.get("default")).resolves.toMatchObject({
+      dataSetId: "keep-without-reset-marker",
+    });
+
+    if (previousSettings) await db.settings.put(previousSettings);
+    else await db.settings.delete("default");
+  });
+
+  it("clears Staff Game rows and keeps unrelated events", async () => {
+    const databaseName = `anki-note-staff-game-reset-${Date.now()}-${Math.random()}`;
+    const legacyDatabase = new Dexie(databaseName);
+    legacyDatabase.version(8).stores({
+      settings: "id",
+      practiceSessions: "id, startedAt, mode, endReason",
+      reviews: "id, sessionId, targetNoteId, groupId, startedAt, answeredCorrectly, interrupted",
+      answerEvents:
+        "id, sessionId, eventIndex, occurredAt, mode, inputMode, sensitivityLevel, targetMidi, songId, levelId",
+      staffRecallRuns: "id, answerSetKey, endedAt",
+      backupStates: "id",
+      vocalAudioMaterials: "id, createdAt, updatedAt, name",
+      staffGameWrongNoteArchives: "id, date",
+      staffGameProficiencySamples:
+        "id, runId, date, endedAt, midi, inputMode, sensitivityLevel, [midi+inputMode+sensitivityLevel]",
+    });
+    await legacyDatabase.open();
+    await legacyDatabase.table("staffGameWrongNoteArchives").put({
+      id: "2026-10-20",
+      date: "2026-10-20",
+      runs: [],
+    });
+    const sample: StaffGameProficiencySample = {
+      id: "sample-staff-game",
+      dataSetId: "dataset-1",
+      runId: "run-1",
+      date: "2026-10-20",
+      startedAt: "2026-10-20T10:00:00.000Z",
+      endedAt: "2026-10-20T10:00:01.000Z",
+      midi: 60,
+      note: "C4",
+      inputMode: "midi",
+      sensitivityLevel: 3,
+      rawResponseTimeMs: 1000,
+      estimatedSystemDelayMs: 0,
+      playerResponseTimeMs: 1000,
+      firstInputCorrect: true,
+      missed: false,
+      mode: "staff-game",
+    };
+    await legacyDatabase.table("staffGameProficiencySamples").put(sample);
+    const makeEvent = (id: string, mode: AnswerEvent["mode"]): AnswerEvent => ({
+      id,
+      dataSetId: "dataset-1",
+      sessionId: `session-${id}`,
+      eventIndex: 0,
+      occurredAt: "2026-10-20T10:00:01.000Z",
+      mode,
+      inputMode: "midi",
+      deviceInfo: "Mac",
+      attempts: [],
+      isCorrectFirstTry: true,
+      isCorrectFinal: true,
+      wrongAttempts: 0,
+      isExtraNote: false,
+      isMissed: false,
+    });
+    await legacyDatabase
+      .table("answerEvents")
+      .bulkPut([
+        makeEvent("event-staff-game", "staff-game"),
+        makeEvent("event-song", "song"),
+        makeEvent("event-free-practice", "free-practice"),
+      ]);
+    legacyDatabase.close();
+
+    const upgradedDatabase = new AppDatabase(databaseName);
+    await upgradedDatabase.open();
+    try {
+      expect(await upgradedDatabase.staffGameWrongNoteArchives.count()).toBe(0);
+      expect(await upgradedDatabase.staffGameProficiencySamples.count()).toBe(0);
+      expect(await upgradedDatabase.answerEvents.toArray()).toMatchObject([
+        { id: "event-free-practice", mode: "free-practice" },
+      ]);
+      expect(await upgradedDatabase.appMigrationState.get("staff-game-data-reset-v9")).toEqual({
+        id: "staff-game-data-reset-v9",
+        pending: true,
+      });
+    } finally {
+      upgradedDatabase.close();
+      await upgradedDatabase.delete();
+    }
+  });
+
+  it("clears old local progress and only removes Staff Game rows from the retry queue", async () => {
+    const localStorage = makeMemoryLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    const events: AnswerEvent[] = ["staff-game", "song", "free-practice"].map((mode, index) => ({
+      id: `pending-${index}`,
+      dataSetId: "dataset-1",
+      sessionId: `pending-session-${index}`,
+      eventIndex: 0,
+      occurredAt: "2026-10-20T10:00:01.000Z",
+      mode: mode as AnswerEvent["mode"],
+      inputMode: "midi",
+      deviceInfo: "Mac",
+      attempts: [],
+      isCorrectFirstTry: true,
+      isCorrectFinal: true,
+      wrongAttempts: 0,
+      isExtraNote: false,
+      isMissed: false,
+    }));
+    localStorage.setItem("anki-note.staffGameProgress.v5", "old-progress");
+    localStorage.setItem("anki-note.pendingArchive", "old-archive");
+    localStorage.setItem("anki-note.pendingAnswerEvents.v1", JSON.stringify(events));
+    await db.appMigrationState.put({ id: "staff-game-data-reset-v9", pending: true });
+
+    await finalizeStaffGameDataReset();
+
+    expect(localStorage.getItem("anki-note.staffGameProgress.v5")).toBeNull();
+    expect(localStorage.getItem("anki-note.pendingArchive")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("anki-note.pendingAnswerEvents.v1") ?? "[]")).toEqual([
+      events[2],
+    ]);
+    await expect(db.appMigrationState.get("staff-game-data-reset-v9")).resolves.toEqual({
+      id: "staff-game-data-reset-v9",
+      pending: false,
+    });
+  });
+
+  it("retries a staged AnswerEvent after a transient IndexedDB write failure", async () => {
+    const localStorage = makeMemoryLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    const settings = { ...makeDefaultSettings(), dataSetId: "dataset-at-save" };
+    await db.settings.put(settings);
+    const event: AnswerEvent = {
+      id: "retryable-event",
+      dataSetId: "",
+      sessionId: "retryable-session",
+      eventIndex: 0,
+      occurredAt: "2026-10-20T10:00:01.000Z",
+      mode: "free-practice",
+      inputMode: "midi",
+      deviceInfo: "Mac",
+      attempts: [],
+      isCorrectFirstTry: true,
+      isCorrectFinal: true,
+      wrongAttempts: 0,
+      isExtraNote: false,
+      isMissed: false,
+    };
+    const bulkPut = vi
+      .spyOn(db.answerEvents, "bulkPut")
+      .mockRejectedValueOnce(new Error("temporary IndexedDB failure"));
+
+    await expect(saveAnswerEvents([event])).rejects.toThrow("temporary IndexedDB failure");
+    expect(JSON.parse(localStorage.getItem("anki-note.pendingAnswerEvents.v1") ?? "[]")).toEqual([
+      { ...event, dataSetId: "dataset-at-save" },
+    ]);
+
+    await db.settings.put({ ...settings, dataSetId: "dataset-after-switch" });
+    bulkPut.mockRestore();
+    expect(await retryPendingAnswerEvents()).toBe(1);
+    expect(await db.answerEvents.get(event.id)).toMatchObject({
+      id: event.id,
+      dataSetId: "dataset-at-save",
+    });
+    expect(localStorage.getItem("anki-note.pendingAnswerEvents.v1")).toBeNull();
   });
 });
 

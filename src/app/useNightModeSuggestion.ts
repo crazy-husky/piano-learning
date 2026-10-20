@@ -110,7 +110,7 @@ export function useNightModeSuggestion({
       description: "夜间配色更柔和，阅读更舒适。",
       duration: 12_000,
       action: {
-        label: "开启",
+        label: "开启自动模式",
         onClick: () => {
           const preferences = latestPreferencesRef.current;
           setPageAppearancePreferences((current) => ({ ...current, mode: "auto" }));

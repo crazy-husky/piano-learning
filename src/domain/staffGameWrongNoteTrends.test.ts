@@ -69,6 +69,23 @@ function makeArchives(...runs: StaffGameWrongNoteArchiveRun[]): StaffGameWrongNo
 }
 
 describe("staff game wrong note trends", () => {
+  it("keeps learning-test and arcade challenge runs in separate cohorts", () => {
+    const base = {
+      "60": note(60, 2, 1, { totalResponseMs: 900, responseSampleCount: 1 }),
+    };
+    const groups = buildStaffGameWrongNoteTrendGroups(
+      makeArchives(
+        run("learning", "2026-10-15T10:00:00.000Z", base, { gameMode: "learning" }),
+        run("arcade", "2026-10-15T11:00:00.000Z", base, { gameMode: "arcade" })
+      ),
+      "all",
+      new Date(2026, 9, 15, 12)
+    );
+
+    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => group.gameMode).sort()).toEqual(["arcade", "learning"]);
+  });
+
   it("pools run accuracy by local day without requiring note intersections", () => {
     const archives = makeArchives(
       run("day-1-a", "2026-10-13T10:00:00.000Z", {

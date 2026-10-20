@@ -7,11 +7,11 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react";
-import type { PianoKeyName } from "../../../domain/types";
-import type { AnswerAttempt } from "../../../domain/types";
+import type { AnswerAttempt, PianoKeyName, StaffGameChallengeMode } from "../../../domain/types";
 import { STAFF_GAME_SONGS } from "../data/staffGameSongs";
 import {
   drawNextNote,
+  drawNextLearningTestNote,
   drawNextWrongNoteReviewNote,
   gameNoteFromMidi,
   randomBubbleCenterX,
@@ -38,6 +38,7 @@ export interface StaffGameRoundNoteOutcome {
   note: string;
   firstInputCorrect: boolean | null;
   missed: boolean;
+  resolved?: boolean;
   wasInterrupted?: boolean;
   /** Wall-clock time of the most recent wrong input or bubble expiry. */
   errorAt?: number;
@@ -52,6 +53,8 @@ export interface StaffGameRoundNoteOutcome {
 
 export interface StaffGameLevelRoundMetrics {
   generatedBubbleCount: number;
+  resolvedQuestionCount: number;
+  targetQuestionCount: number;
   firstTryCorrectCount: number;
   correctBubbleCount: number;
   responseTotalMs: number;
@@ -74,6 +77,7 @@ interface StaffGameRoundClockOptions {
   levelRef: MutableRefObject<number>;
   phaseRef: MutableRefObject<StaffGamePhase>;
   gameModeRef: MutableRefObject<StaffGameMode>;
+  challengeModeRef: MutableRefObject<StaffGameChallengeMode>;
   roundPurposeRef: MutableRefObject<StaffGameRoundPurpose>;
   selectedSongIdRef: MutableRefObject<string>;
   songTargetIndexRef: MutableRefObject<number>;
@@ -81,7 +85,6 @@ interface StaffGameRoundClockOptions {
   noteBagRef: MutableRefObject<StaffGamePitch[]>;
   notePoolScopeRef: MutableRefObject<StaffGameNotePoolScope>;
   noteSchedulingStrategyRef: MutableRefObject<StaffGameNoteSchedulingStrategy>;
-  weakNoteWeightsRef: MutableRefObject<Map<number, number>>;
   recentNoteMidisRef: MutableRefObject<number[]>;
   targetTokenRef: MutableRefObject<number>;
   roundMetricsRef: MutableRefObject<StaffGameLevelRoundMetrics>;
@@ -119,6 +122,7 @@ export function useStaffGameRoundClock({
   levelRef,
   phaseRef,
   gameModeRef,
+  challengeModeRef,
   roundPurposeRef,
   selectedSongIdRef,
   songTargetIndexRef,
@@ -126,7 +130,6 @@ export function useStaffGameRoundClock({
   noteBagRef,
   notePoolScopeRef,
   noteSchedulingStrategyRef,
-  weakNoteWeightsRef,
   recentNoteMidisRef,
   targetTokenRef,
   roundMetricsRef,
@@ -160,6 +163,7 @@ export function useStaffGameRoundClock({
       if (
         gameModeRef.current === "levels" &&
         roundPurposeRef.current !== "wrong-note-review" &&
+        challengeModeRef.current === "arcade" &&
         gameDurationMs - atGameMs < MIN_LEVEL_TARGET_RESPONSE_WINDOW_MS
       ) {
         return;
@@ -182,15 +186,20 @@ export function useStaffGameRoundClock({
                 recentNoteMidisRef.current,
                 temporarilyExcludedMidiNotes
               )
-            : drawNextNote(
-                levelRef.current,
-                noteBagRef.current,
-                recentNoteMidisRef.current,
-                notePoolScopeRef.current,
-                noteSchedulingStrategyRef.current,
-                weakNoteWeightsRef.current,
-                temporarilyExcludedMidiNotes
-              );
+            : challengeModeRef.current === "learning"
+              ? drawNextLearningTestNote(
+                  noteBagRef.current,
+                  recentNoteMidisRef.current,
+                  temporarilyExcludedMidiNotes
+                )
+              : drawNextNote(
+                  levelRef.current,
+                  noteBagRef.current,
+                  recentNoteMidisRef.current,
+                  notePoolScopeRef.current,
+                  noteSchedulingStrategyRef.current,
+                  temporarilyExcludedMidiNotes
+                );
       if (!drawnNote) {
         if (promptSuppressionWindow && noteBagRef.current.length > 0) {
           waitingForNextTargetRef.current = true;
@@ -214,6 +223,12 @@ export function useStaffGameRoundClock({
           return;
         }
         if (gameModeRef.current === "levels" && roundPurposeRef.current === "wrong-note-review") {
+          finishRound();
+        } else if (
+          gameModeRef.current === "levels" &&
+          roundPurposeRef.current === "level" &&
+          challengeModeRef.current === "learning"
+        ) {
           finishRound();
         }
         return;
@@ -252,6 +267,7 @@ export function useStaffGameRoundClock({
     [
       gameDurationMs,
       gameModeRef,
+      challengeModeRef,
       getPromptSuppressionWindow,
       inputMode,
       roundPurposeRef,
@@ -262,7 +278,6 @@ export function useStaffGameRoundClock({
       notePoolScopeRef,
       noteSchedulingStrategyRef,
       noteLabel,
-      weakNoteWeightsRef,
       recentNoteMidisRef,
       roundMetricsRef,
       runSegmentStartedAtRef,
@@ -291,7 +306,9 @@ export function useStaffGameRoundClock({
       if (now - lastUiUpdateAt >= 100) {
         lastUiUpdateAt = now;
         setElapsedMs(
-          gameModeRef.current === "songs" || roundPurposeRef.current === "wrong-note-review"
+          gameModeRef.current === "songs" ||
+            roundPurposeRef.current === "wrong-note-review" ||
+            challengeModeRef.current === "learning"
             ? gameTime
             : Math.min(gameDurationMs, gameTime)
         );
@@ -299,6 +316,7 @@ export function useStaffGameRoundClock({
       if (
         gameModeRef.current === "levels" &&
         roundPurposeRef.current !== "wrong-note-review" &&
+        challengeModeRef.current === "arcade" &&
         gameTime >= gameDurationMs
       ) {
         setElapsedMs(gameDurationMs);
@@ -341,6 +359,10 @@ export function useStaffGameRoundClock({
           const outcome = roundMetricsRef.current.firstInputByToken.get(missedTarget.token);
           if (outcome) {
             outcome.missed = true;
+            if (!outcome.resolved) {
+              outcome.resolved = true;
+              roundMetricsRef.current.resolvedQuestionCount += 1;
+            }
             outcome.errorAt = Date.now();
           }
         }
@@ -391,6 +413,7 @@ export function useStaffGameRoundClock({
     finishRound,
     gameDurationMs,
     gameModeRef,
+    challengeModeRef,
     inputMode,
     nextTargetTimeoutRef,
     noteLabel,
@@ -425,11 +448,20 @@ export function useStaffGameRoundClock({
     const pausedAt = performance.now();
     const elapsedAtPause = elapsedBeforeRunRef.current + pausedAt - runSegmentStartedAtRef.current;
     elapsedBeforeRunRef.current =
-      gameModeRef.current === "songs" || roundPurposeRef.current === "wrong-note-review"
+      gameModeRef.current === "songs" ||
+      roundPurposeRef.current === "wrong-note-review" ||
+      challengeModeRef.current === "learning"
         ? elapsedAtPause
         : Math.min(gameDurationMs, elapsedAtPause);
     return elapsedBeforeRunRef.current;
-  }, [elapsedBeforeRunRef, gameDurationMs, gameModeRef, roundPurposeRef, runSegmentStartedAtRef]);
+  }, [
+    challengeModeRef,
+    elapsedBeforeRunRef,
+    gameDurationMs,
+    gameModeRef,
+    roundPurposeRef,
+    runSegmentStartedAtRef,
+  ]);
 
   return { pauseRunSegment, spawnTarget, startRunSegment };
 }

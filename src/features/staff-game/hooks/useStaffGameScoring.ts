@@ -392,6 +392,10 @@ export function useStaffGameScoring({
           // Measure from the bubble's fully visible point, not the start of its entrance.
           targetOutcome.proficiencyResponseMs = Math.max(0, reactionMs - BUBBLE_FADE_IN_MS);
         }
+        if (targetOutcome && !targetOutcome.resolved) {
+          targetOutcome.resolved = true;
+          metrics.resolvedQuestionCount += 1;
+        }
         if (targetOutcome) {
           targetOutcome.correctConfidence = answer.confidence;
           targetOutcome.correctClipping = answer.clipping;
@@ -410,10 +414,10 @@ export function useStaffGameScoring({
         }
         if (!isSongMode) {
           metrics.correctBubbleCount += 1;
-          if (reactionMs > 0) {
+          if (reactionMs > 0 && firstInput?.firstInputCorrect === true) {
             metrics.responseTotalMs += reactionMs;
             metrics.responseSampleCount += 1;
-            if (firstInput?.firstInputCorrect === true) firstInput.responseMs = reactionMs;
+            if (firstInput) firstInput.responseMs = reactionMs;
           }
         }
         triggerMascotReaction("cheer");

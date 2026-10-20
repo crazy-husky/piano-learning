@@ -20,7 +20,6 @@ import actionResumeArt from "../assets/ui/action-resume.webp";
 import actionReturnArt from "../assets/ui/action-return.webp";
 import actionSettingsArt from "../assets/ui/action-settings.webp";
 import helpTitleArt from "../assets/ui/help-title-tip.webp";
-import hudFrameArt from "../assets/ui/hud-frame.webp";
 import modalFrameArt from "../assets/ui/modal-frame.webp";
 import starParticleArt from "../assets/ui/star-particle.webp";
 import settingsPawArt from "../assets/ui/settings-paw.webp";
@@ -50,7 +49,6 @@ export const STAFF_GAME_ART = {
   actionReturnArt,
   actionSettingsArt,
   helpTitleArt,
-  hudFrameArt,
   modalFrameArt,
   starParticleArt,
   settingsPawArt,
@@ -95,7 +93,6 @@ const STAFF_GAME_IMAGE_ASSETS = [
   { id: "image:action-return", label: "返回按钮素材", source: STAFF_GAME_ART.actionReturnArt },
   { id: "image:action-settings", label: "设置按钮素材", source: STAFF_GAME_ART.actionSettingsArt },
   { id: "image:help-title", label: "帮助标题素材", source: STAFF_GAME_ART.helpTitleArt },
-  { id: "image:hud-frame", label: "游戏状态栏素材", source: STAFF_GAME_ART.hudFrameArt },
   { id: "image:modal-frame", label: "弹窗边框素材", source: STAFF_GAME_ART.modalFrameArt },
   { id: "image:star-particle", label: "星星粒子素材", source: STAFF_GAME_ART.starParticleArt },
   { id: "image:settings-paw", label: "设置爪印素材", source: STAFF_GAME_ART.settingsPawArt },

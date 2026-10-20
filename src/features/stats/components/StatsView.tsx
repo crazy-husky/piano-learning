@@ -71,6 +71,7 @@ const STATS_TAB_TRANSITION_MS = 180;
 
 const EMPTY_SESSIONS: PracticeSessionRecord[] = [];
 type ProficiencyInputMode = StaffGameProficiencySample["inputMode"];
+type ProficiencyGameModeFilter = "learning" | "arcade" | "all";
 
 function LegendSwatch({ color }: { color: string }): JSX.Element {
   return <i className="legend-swatch" style={{ backgroundColor: color }} />;
@@ -118,6 +119,8 @@ export function StatsView({
   const [proficiencySamples, setProficiencySamples] = useState<StaffGameProficiencySample[]>([]);
   const [proficiencyInputMode, setProficiencyInputMode] =
     useState<ProficiencyInputMode>("microphone");
+  const [proficiencyGameMode, setProficiencyGameMode] =
+    useState<ProficiencyGameModeFilter>("learning");
   const [proficiencyAlgorithm, setProficiencyAlgorithm] = useState<PracticeMicrophoneAlgorithm>(
     () => {
       try {
@@ -283,9 +286,13 @@ export function StatsView({
     const cutoff = getStatsRangeCutoff(range);
     return proficiencySamples.filter(
       (sample) =>
-        sample.dataSetId === settings.dataSetId && (!cutoff || new Date(sample.endedAt) >= cutoff)
+        sample.dataSetId === settings.dataSetId &&
+        (!cutoff || new Date(sample.endedAt) >= cutoff) &&
+        sample.mode === "staff-game" &&
+        (proficiencyGameMode === "all" ||
+          (sample.staffGameSource === "challenge" && sample.gameMode === proficiencyGameMode))
     );
-  }, [proficiencySamples, range, settings.dataSetId]);
+  }, [proficiencyGameMode, proficiencySamples, range, settings.dataSetId]);
   const proficiencyNoteStats = useMemo(
     () =>
       aggregateStaffGameProficiencySamples(
@@ -658,6 +665,20 @@ export function StatsView({
                   </header>
                   {statsUiPreferences.noteMetric === "proficiency" ? (
                     <div className="stats-proficiency-filters">
+                      <label>
+                        练习模式
+                        <select
+                          aria-label="熟练度练习模式"
+                          onChange={(event) =>
+                            setProficiencyGameMode(event.target.value as ProficiencyGameModeFilter)
+                          }
+                          value={proficiencyGameMode}
+                        >
+                          <option value="all">全部练习（含错题复习）</option>
+                          <option value="learning">学习测试</option>
+                          <option value="arcade">娱乐模式</option>
+                        </select>
+                      </label>
                       <label>
                         输入方式
                         <select

@@ -105,10 +105,6 @@
   padding-top: clamp(24px, 4vh, 36px);
 }
 
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-ready-card::before {
-  display: none;
-}
-
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-card h1,
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-card h2,
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-level-detail .staff-game-stat strong {
@@ -144,11 +140,45 @@
   color: #f0fff8;
 }
 
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-range,
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview,
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-archive-manage,
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-picker > p {
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-level-medal.is-learning-test {
+  border-color: rgba(125, 210, 189, 0.32);
+  background: linear-gradient(150deg, rgba(35, 58, 62, 0.98), rgba(23, 43, 48, 0.98));
+  box-shadow: 0 5px 14px rgba(2, 12, 17, 0.34);
+}
+
+:root[data-app-theme="dark"]
+  .staff-game-shell
+  .staff-game-level-medal.is-learning-test
+  > span:first-of-type {
   color: var(--staff-game-night-muted);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-level-medal.is-learning-test > strong {
+  color: var(--staff-game-night-text);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-question-progress-track {
+  background: rgba(125, 210, 189, 0.18);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-question-progress-fill {
+  background: var(--staff-game-night-mint);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-range,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-condition,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-empty,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-priority,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-archive-manage,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-empty p,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-priority > p {
+  color: var(--staff-game-night-muted);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-filters {
+  border-color: rgba(125, 210, 189, 0.2);
+  background: rgba(35, 58, 62, 0.58);
 }
 
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-archive-manage:hover {
@@ -161,18 +191,52 @@
   color: var(--staff-game-night-text);
 }
 
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-condition select {
+  border-color: rgba(125, 210, 189, 0.3);
+  background: #20383c;
+  color: var(--staff-game-night-text);
+}
+
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview {
+  border-color: rgba(125, 210, 189, 0.2);
   background: rgba(35, 58, 62, 0.92);
 }
 
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview > strong,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-priority {
+  border-top-color: rgba(125, 210, 189, 0.2);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-count-heading strong,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-priority > strong,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-empty > strong,
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-review-count strong,
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview li {
   color: var(--staff-game-night-mint);
 }
 
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-review-count p {
+  color: var(--staff-game-night-muted);
+}
+
+:root[data-app-theme="dark"]
+  .staff-game-shell
+  .staff-game-review-count
+  p.staff-game-review-overload-warning {
   color: #ffc2a8;
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-count-heading span,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview li {
+  border-color: rgba(125, 210, 189, 0.18);
+  background: rgba(23, 42, 43, 0.72);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-count-heading span {
+  color: var(--staff-game-night-muted);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview li > strong {
+  color: var(--staff-game-night-text);
 }
 
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-review-end-button {
@@ -374,6 +438,18 @@
   border-color: var(--staff-game-night-mint);
   background: linear-gradient(155deg, #38695f, #2c544f);
   color: #dff5e9;
+}
+
+:root[data-app-theme="dark"] .staff-game-settings-dialog .staff-game-display-setting select {
+  border-color: rgba(126, 173, 162, 0.48);
+  background-color: #2c4446;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m3 6 5 5 5-5' stroke='%23a9e2d2' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5'/%3E%3C/svg%3E"),
+    linear-gradient(155deg, #354f50, #293f42);
+  box-shadow:
+    inset 0 1px 0 rgba(207, 233, 217, 0.07),
+    0 3px 7px rgba(0, 10, 12, 0.18);
+  color: var(--staff-game-night-text);
 }
 
 :root[data-app-theme="dark"]
@@ -952,4 +1028,66 @@
 :root[data-app-theme="dark"] .staff-game-note-staff .staff-game-note-stem,
 :root[data-app-theme="dark"] .staff-game-note-staff .staff-game-ledger {
   stroke: var(--staff-game-night-note);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-challenge-settings label,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-challenge-mode-description {
+  color: var(--staff-game-night-muted);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-challenge-settings select {
+  border-color: rgba(125, 210, 189, 0.34);
+  background: rgba(23, 42, 43, 0.92);
+  color: var(--staff-game-night-text);
+}
+
+:root[data-app-theme="dark"]
+  .staff-game-summary-card.is-learning-test
+  .staff-game-learning-summary {
+  color: var(--staff-game-night-text);
+}
+
+:root[data-app-theme="dark"]
+  .staff-game-summary-card.is-learning-test
+  .staff-game-learning-summary
+  > h2 {
+  color: var(--staff-game-night-mint);
+}
+
+:root[data-app-theme="dark"]
+  .staff-game-summary-card.is-learning-test
+  .staff-game-learning-summary-metrics
+  > div {
+  border-color: rgba(125, 210, 189, 0.26);
+  background: rgba(44, 75, 74, 0.86);
+}
+
+:root[data-app-theme="dark"]
+  .staff-game-summary-card.is-learning-test
+  .staff-game-learning-summary-metrics
+  > div
+  > span,
+:root[data-app-theme="dark"]
+  .staff-game-summary-card.is-learning-test
+  .staff-game-learning-summary-metrics
+  > div
+  > small {
+  color: var(--staff-game-night-muted);
+}
+
+:root[data-app-theme="dark"]
+  .staff-game-summary-card.is-learning-test
+  .staff-game-learning-summary-metrics
+  > div
+  > strong,
+:root[data-app-theme="dark"]
+  .staff-game-summary-card.is-learning-test
+  .staff-game-learning-details-button {
+  color: var(--staff-game-night-mint);
+}
+
+:root[data-app-theme="dark"]
+  .staff-game-summary-card.is-learning-test
+  .staff-game-learning-game-flavor {
+  color: #9db4ac;
 }

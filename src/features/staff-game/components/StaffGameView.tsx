@@ -19,6 +19,7 @@ import type {
   StaffGameWrongNoteArchiveRun,
   StaffGameProficiencySample,
   StaffGameProficiencySampleDraft,
+  StaffGameChallengeMode,
 } from "../../../domain/types";
 import { createUuid } from "../../../domain/id";
 import {
@@ -26,9 +27,11 @@ import {
   calculateStaffGameWrongNoteErrorCounts,
   calculateStaffGameWrongNoteWeights,
   compareStaffGameWrongNoteRun,
+  filterStaffGameWrongNoteArchivesByRange,
   getStaffGameWrongNoteArchiveDateCount,
   getStaffGameWrongNotePriorityPreview,
   getStaffGameWrongNoteRunErrorCount,
+  filterStaffGameWrongNoteLearningChallengeArchivesWithErrors,
   mergeStaffGameWrongNoteArchives,
   type StaffGameWrongNoteComparison,
   type StaffGameWrongNoteRange,
@@ -123,14 +126,17 @@ import {
   PITCH_NAMES,
   RUSH_FALL_SPEED_MULTIPLIER,
   RUSH_MODE_COMBO_THRESHOLD,
+  learningTestNoteBag,
   gameDurationMsForLevel,
   gameLevelForNotePoolScope,
   gameDifficultyPreset,
   gameNoteFromMidi,
+  notePoolCandidates,
   staffGameSolfegeLabel,
   starsForAccuracy,
   type StaffGameNotePoolScope,
   type StaffGameNoteSchedulingStrategy,
+  type StaffGameArcadeDuration,
   type StaffGamePitch,
 } from "../logic/staffGameRules";
 import {
@@ -139,10 +145,6 @@ import {
   staffGameWrongNoteReviewDurationMs,
   formatStaffGameWrongNoteReviewDuration,
 } from "../logic/staffGameWrongNoteReview";
-import {
-  readStaffGameWeakNoteWeights,
-  updateStaffGameWeakNoteWeights,
-} from "../logic/staffGameWeakNoteHistory";
 import {
   summarizeStaffGameWrongNoteOutcomes,
   summarizeStaffGameWrongNoteRunPerformance,
@@ -201,7 +203,6 @@ const {
   actionResumeArt,
   actionReturnArt,
   actionSettingsArt,
-  hudFrameArt,
   modalFrameArt,
   starParticleArt,
   summaryLevelBannerArt,
@@ -234,13 +235,7 @@ function isNearComboVoiceMilestone(comboCount: number): boolean {
   return Math.min(offset, COMBO_UNBELIEVABLE_INTERVAL - offset) <= COMBO_VOICE_MILESTONE_BUFFER;
 }
 
-const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v5";
-const PREVIOUS_GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v4";
-const LEGACY_GAME_PROGRESS_KEYS = [
-  "anki-note.staffGameProgress.v3",
-  "anki-note.staffGameProgress.v2",
-] as const;
-const LEVELS_WITH_CHANGED_PITCH_MAPPING = new Set([32, 33, 34, 35, 58, 59, 60]);
+const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v6";
 const GAME_SETTINGS_KEY = "anki-note.staffGameSettings.v1";
 const LOW_FPS_PROMPT_SESSION_KEY = "anki-note.staffGameLowFpsPrompted.v1";
 const NIGHTMARE_LANDSCAPE_PROMPT_SNOOZE_KEY =
@@ -268,10 +263,38 @@ interface StaffGameSettings {
   difficulty: GameDifficulty;
   notePoolScope: StaffGameNotePoolScope;
   noteSchedulingStrategy: StaffGameNoteSchedulingStrategy;
+  challengeMode: StaffGameChallengeMode;
+  arcadeDuration: StaffGameArcadeDuration;
   wrongNoteStatisticsEnabled: boolean;
   autoArchiveWrongNotesEnabled: boolean;
   audioByMode: Record<StaffGameMode, StaffGameAudioSettings>;
   gameEffectsEnabled: boolean;
+}
+
+interface StaffGameWrongNoteReviewCondition {
+  id: string;
+  level: number;
+  difficulty: GameDifficulty;
+  notePoolScope: StaffGameNotePoolScope;
+  gameMode: StaffGameChallengeMode;
+  runCount: number;
+  latestEndedAt: string;
+  label: string;
+}
+
+const STAFF_GAME_REVIEW_SCOPE_LABELS: Record<StaffGameNotePoolScope, string> = {
+  "current-group": "当前组",
+  "all-history": "全部音域",
+  "all-history-current-clef": "当前谱号全部",
+};
+
+function staffGameWrongNoteReviewConditionId(
+  level: number,
+  difficulty: GameDifficulty,
+  notePoolScope: StaffGameNotePoolScope,
+  gameMode: StaffGameChallengeMode
+): string {
+  return `${level}|${difficulty}|${notePoolScope}|${gameMode}`;
 }
 
 function areStaffGameSettingsEqual(left: StaffGameSettings, right: StaffGameSettings): boolean {
@@ -287,6 +310,8 @@ function areStaffGameSettingsEqual(left: StaffGameSettings, right: StaffGameSett
     left.difficulty === right.difficulty &&
     left.notePoolScope === right.notePoolScope &&
     left.noteSchedulingStrategy === right.noteSchedulingStrategy &&
+    left.challengeMode === right.challengeMode &&
+    left.arcadeDuration === right.arcadeDuration &&
     left.wrongNoteStatisticsEnabled === right.wrongNoteStatisticsEnabled &&
     left.autoArchiveWrongNotesEnabled === right.autoArchiveWrongNotesEnabled &&
     left.gameEffectsEnabled === right.gameEffectsEnabled &&
@@ -295,13 +320,23 @@ function areStaffGameSettingsEqual(left: StaffGameSettings, right: StaffGameSett
   );
 }
 
-interface StaffGameProgress {
-  version: 5;
-  bestScores: number[];
+interface StaffGameModeProgress {
   bestStars: number[];
-  maxCombos: number[];
   bestAccuracy: Array<Record<GameDifficulty, number | null>>;
   bestResponseMs: Array<Record<GameDifficulty, number | null>>;
+}
+
+interface StaffGameArcadeProgress extends StaffGameModeProgress {
+  bestScores: number[];
+  maxCombos: number[];
+}
+
+interface StaffGameProgress {
+  version: 6;
+  modes: {
+    learning: StaffGameModeProgress;
+    arcade: StaffGameArcadeProgress;
+  };
   /** 仅调试用，后续清理。 */
   _debugLastRound: StaffGameLevelRoundSummary | null;
   unlockedLevel: number;
@@ -377,6 +412,8 @@ function createDifficultyMetricSlots(): Array<Record<GameDifficulty, number | nu
 function createRoundMetrics(): StaffGameLevelRoundMetrics {
   return {
     generatedBubbleCount: 0,
+    resolvedQuestionCount: 0,
+    targetQuestionCount: 0,
     firstTryCorrectCount: 0,
     correctBubbleCount: 0,
     responseTotalMs: 0,
@@ -388,13 +425,21 @@ function createRoundMetrics(): StaffGameLevelRoundMetrics {
 }
 
 function defaultProgress(): StaffGameProgress {
-  return {
-    version: 5,
-    bestScores: Array(GAME_LEVEL_COUNT).fill(0),
+  const defaultModeProgress = (): StaffGameModeProgress => ({
     bestStars: Array(GAME_LEVEL_COUNT).fill(0),
-    maxCombos: Array(GAME_LEVEL_COUNT).fill(0),
     bestAccuracy: createDifficultyMetricSlots(),
     bestResponseMs: createDifficultyMetricSlots(),
+  });
+  return {
+    version: 6,
+    modes: {
+      learning: defaultModeProgress(),
+      arcade: {
+        ...defaultModeProgress(),
+        bestScores: Array(GAME_LEVEL_COUNT).fill(0),
+        maxCombos: Array(GAME_LEVEL_COUNT).fill(0),
+      },
+    },
     _debugLastRound: null,
     unlockedLevel: 1,
     selectedLevel: 1,
@@ -455,6 +500,8 @@ function defaultGameSettings(): StaffGameSettings {
     difficulty: "normal",
     notePoolScope: "all-history",
     noteSchedulingStrategy: "system",
+    challengeMode: "learning",
+    arcadeDuration: "level-default",
     wrongNoteStatisticsEnabled: true,
     autoArchiveWrongNotesEnabled: true,
     audioByMode: {
@@ -540,6 +587,13 @@ function readGameSettings(virtualAvailable: boolean, midiAvailable: boolean): St
             : base.notePoolScope,
       noteSchedulingStrategy:
         parsed?.noteSchedulingStrategy === "random" ? "random" : base.noteSchedulingStrategy,
+      challengeMode: parsed?.challengeMode === "arcade" ? "arcade" : "learning",
+      arcadeDuration:
+        parsed?.arcadeDuration === 60_000 ||
+        parsed?.arcadeDuration === 120_000 ||
+        parsed?.arcadeDuration === 180_000
+          ? parsed.arcadeDuration
+          : "level-default",
       audioByMode: { levels: readModeAudio("levels"), songs: readModeAudio("songs") },
       gameEffectsEnabled:
         typeof parsed?.gameEffectsEnabled === "boolean"
@@ -592,33 +646,22 @@ function updateModeAudioSettings(
 
 function readProgress(): StaffGameProgress {
   try {
-    for (const key of LEGACY_GAME_PROGRESS_KEYS) localStorage.removeItem(key);
-    const storedV5 = readStoredJson(GAME_PROGRESS_KEY);
-    const hasValidV5 =
-      Boolean(storedV5) &&
-      typeof storedV5 === "object" &&
-      !Array.isArray(storedV5) &&
-      (storedV5 as { version?: unknown }).version === 5;
-    const storedV4 = hasValidV5 ? null : readStoredJson(PREVIOUS_GAME_PROGRESS_KEY);
-    const hasValidV4 =
-      Boolean(storedV4) &&
-      typeof storedV4 === "object" &&
-      !Array.isArray(storedV4) &&
-      (storedV4 as { version?: unknown }).version === 4;
-    const isMigratingPitchMapping = !hasValidV5 && hasValidV4;
-    const stored = hasValidV5 ? storedV5 : hasValidV4 ? storedV4 : null;
-
-    if (!stored) {
-      const fresh = defaultProgress();
-      if (saveProgress(fresh)) localStorage.removeItem(PREVIOUS_GAME_PROGRESS_KEY);
-      return fresh;
+    const stored = readStoredJson(GAME_PROGRESS_KEY);
+    const base = defaultProgress();
+    if (
+      !stored ||
+      typeof stored !== "object" ||
+      Array.isArray(stored) ||
+      (stored as { version?: unknown }).version !== 6
+    ) {
+      saveProgress(base);
+      return base;
     }
     const parsed = stored as Partial<StaffGameProgress>;
-    const base = defaultProgress();
-    const readArray = (value: unknown): number[] =>
+    const readArray = (value: unknown, maxValue = Number.MAX_SAFE_INTEGER): number[] =>
       Array.from({ length: GAME_LEVEL_COUNT }, (_, index) => {
         const item = Array.isArray(value) ? Number(value[index]) : 0;
-        return Number.isFinite(item) ? Math.max(0, Math.floor(item)) : 0;
+        return Number.isFinite(item) ? Math.max(0, Math.min(maxValue, Math.floor(item))) : 0;
       });
     const readMetricSlots = (
       value: unknown,
@@ -639,6 +682,26 @@ function readProgress(): StaffGameProgress {
           })
         ) as Record<GameDifficulty, number | null>;
       });
+    const normalizeModeProgress = (
+      value: unknown,
+      includeArcadeRecords: boolean
+    ): StaffGameModeProgress | StaffGameArcadeProgress => {
+      const record =
+        value && typeof value === "object" && !Array.isArray(value)
+          ? (value as Partial<StaffGameModeProgress & StaffGameArcadeProgress>)
+          : {};
+      return {
+        bestStars: readArray(record.bestStars, 3),
+        bestAccuracy: readMetricSlots(record.bestAccuracy, 1),
+        bestResponseMs: readMetricSlots(record.bestResponseMs, Number.MAX_SAFE_INTEGER),
+        ...(includeArcadeRecords
+          ? {
+              bestScores: readArray(record.bestScores),
+              maxCombos: readArray(record.maxCombos),
+            }
+          : {}),
+      };
+    };
     const readLastRound = (value: unknown): StaffGameLevelRoundSummary | null => {
       if (!value || typeof value !== "object" || Array.isArray(value)) return null;
       const record = value as Record<string, unknown>;
@@ -664,33 +727,14 @@ function readProgress(): StaffGameProgress {
         averageResponseMs: readOptionalMetric("averageResponseMs"),
       };
     };
-    const clearChangedLevels = <T,>(values: T[], replacement: T): T[] =>
-      values.map((value, index) =>
-        LEVELS_WITH_CHANGED_PITCH_MAPPING.has(index + 1) ? replacement : value
-      );
-    const bestScores = readArray(parsed.bestScores);
-    const bestStars = readArray(parsed.bestStars);
-    const maxCombos = readArray(parsed.maxCombos);
-    const bestAccuracy = readMetricSlots(parsed.bestAccuracy, 1);
-    const bestResponseMs = readMetricSlots(parsed.bestResponseMs, Number.MAX_SAFE_INTEGER);
     const lastRound = readLastRound(parsed._debugLastRound);
     const progress: StaffGameProgress = {
-      version: 5,
-      bestScores: isMigratingPitchMapping ? clearChangedLevels(bestScores, 0) : bestScores,
-      bestStars: isMigratingPitchMapping ? clearChangedLevels(bestStars, 0) : bestStars,
-      maxCombos: isMigratingPitchMapping ? clearChangedLevels(maxCombos, 0) : maxCombos,
-      bestAccuracy: isMigratingPitchMapping
-        ? clearChangedLevels(bestAccuracy, base.bestAccuracy[0])
-        : bestAccuracy,
-      bestResponseMs: isMigratingPitchMapping
-        ? clearChangedLevels(bestResponseMs, base.bestResponseMs[0])
-        : bestResponseMs,
-      _debugLastRound:
-        isMigratingPitchMapping &&
-        lastRound &&
-        LEVELS_WITH_CHANGED_PITCH_MAPPING.has(lastRound.level)
-          ? null
-          : lastRound,
+      version: 6,
+      modes: {
+        learning: normalizeModeProgress(parsed.modes?.learning, false) as StaffGameModeProgress,
+        arcade: normalizeModeProgress(parsed.modes?.arcade, true) as StaffGameArcadeProgress,
+      },
+      _debugLastRound: lastRound,
       unlockedLevel: Math.max(
         1,
         Math.min(GAME_LEVEL_COUNT, Math.floor(Number(parsed.unlockedLevel) || base.unlockedLevel))
@@ -705,11 +749,7 @@ function readProgress(): StaffGameProgress {
         )
       ),
     };
-    if (isMigratingPitchMapping) {
-      if (saveProgress(progress)) localStorage.removeItem(PREVIOUS_GAME_PROGRESS_KEY);
-    } else if (hasValidV5) {
-      localStorage.removeItem(PREVIOUS_GAME_PROGRESS_KEY);
-    }
+    saveProgress(progress);
     return progress;
   } catch {
     return defaultProgress();
@@ -915,6 +955,8 @@ export function StaffGameView({
   const readyMascotCheerLockRef = useRef(false);
   const [summaryScoreCount, setSummaryScoreCount] = useState(0);
   const [summaryComboCount, setSummaryComboCount] = useState(0);
+  const [summaryChallengeMode, setSummaryChallengeMode] =
+    useState<StaffGameChallengeMode>("learning");
   const [summaryAccuracy, setSummaryAccuracy] = useState(0);
   const [summaryAveragePlayerResponseMs, setSummaryAveragePlayerResponseMs] = useState<
     number | null
@@ -928,9 +970,9 @@ export function StaffGameView({
   >([]);
   const [summaryIsWrongNoteReview, setSummaryIsWrongNoteReview] = useState(false);
   const [summaryWrongNoteReviewTimedOut, setSummaryWrongNoteReviewTimedOut] = useState(false);
-  const [weakNoteWeights, setWeakNoteWeights] = useState(readStaffGameWeakNoteWeights);
   const [wrongNoteArchives, setWrongNoteArchives] = useState<StaffGameWrongNoteArchive[]>([]);
   const [wrongNoteReviewRange, setWrongNoteReviewRange] = useState<StaffGameWrongNoteRange>(7);
+  const [wrongNoteReviewConditionId, setWrongNoteReviewConditionId] = useState("all-learning");
   const [wrongNoteArchiveManagerRange, setWrongNoteArchiveManagerRange] =
     useState<StaffGameWrongNoteRange>(7);
   const [wrongNoteStudyRange, setWrongNoteStudyRange] = useState<StaffGameWrongNoteRange | null>(
@@ -984,15 +1026,16 @@ export function StaffGameView({
   const maxComboRef = useRef(0);
   const errorFlashTimeoutRef = useRef<number | null>(null);
   const wrongAnswerRecordsRef = useRef<StaffGameWrongAnswerRecord[]>([]);
-  const weakNoteWeightsRef = useRef(weakNoteWeights);
   const pendingWrongNoteArchiveRunsRef = useRef<StaffGameWrongNoteArchiveRun[]>([]);
   const summaryArchiveRunIdRef = useRef<string | null>(null);
   const roundStartedAtRef = useRef(new Date().toISOString());
   const roundReviewRangeRef = useRef<StaffGameWrongNoteRange | null>(null);
+  const wrongNoteReviewDifficultyOverrideRef = useRef<GameDifficulty | null>(null);
   const roundNotePoolScopeRef = useRef<StaffGameWrongNoteArchiveRun["notePoolScope"]>(null);
   const roundNoteSchedulingStrategyRef =
     useRef<StaffGameWrongNoteArchiveRun["noteSchedulingStrategy"]>(undefined);
   const roundPurposeRef = useRef<StaffGameRoundPurpose>("level");
+  const roundChallengeModeRef = useRef<StaffGameChallengeMode>("learning");
   const roundRecordsAtStartRef = useRef({ score: 0, maxCombo: 0 });
   const gameModeRef = useRef<StaffGameMode>(initialMode);
   const selectedSongIdRef = useRef(selectedSongId);
@@ -1031,52 +1074,148 @@ export function StaffGameView({
   const lastLoggedMicrophoneObservationRef = useRef<string | null>(null);
   const prepareMicrophone = microphone.prepare;
 
-  const unlockedReviewMidiSet = useMemo(
-    () => new Set(GAME_NOTE_PROGRESSION.slice(0, progress.unlockedLevel).map((note) => note.midi)),
-    [progress.unlockedLevel]
-  );
   const unlockedReviewNotes = useMemo(
     () => GAME_NOTE_PROGRESSION.slice(0, progress.unlockedLevel),
     [progress.unlockedLevel]
   );
+  const wrongNoteReviewConditions = useMemo(() => {
+    const byId = new Map<string, Omit<StaffGameWrongNoteReviewCondition, "label">>();
+    const eligibleArchives = filterStaffGameWrongNoteArchivesByRange(
+      filterStaffGameWrongNoteLearningChallengeArchivesWithErrors(wrongNoteArchives),
+      wrongNoteReviewRange
+    );
+    for (const archive of eligibleArchives) {
+      for (const run of archive.runs) {
+        const difficulty = GAME_DIFFICULTIES.find((item) => item.id === run.difficulty)?.id;
+        const level = run.level;
+        const notePoolScope = run.notePoolScope;
+        const gameMode = run.gameMode;
+        if (
+          gameMode !== "learning" ||
+          !Number.isInteger(level) ||
+          level === null ||
+          level < 1 ||
+          level > GAME_LEVEL_COUNT ||
+          !difficulty ||
+          (notePoolScope !== "current-group" &&
+            notePoolScope !== "all-history" &&
+            notePoolScope !== "all-history-current-clef")
+        ) {
+          continue;
+        }
+
+        const id = staffGameWrongNoteReviewConditionId(level, difficulty, notePoolScope, gameMode);
+        const current = byId.get(id);
+        byId.set(id, {
+          id,
+          level,
+          difficulty,
+          notePoolScope,
+          gameMode,
+          runCount: (current?.runCount ?? 0) + 1,
+          latestEndedAt:
+            !current || run.endedAt.localeCompare(current.latestEndedAt) > 0
+              ? run.endedAt
+              : current.latestEndedAt,
+        });
+      }
+    }
+
+    return [...byId.values()]
+      .sort(
+        (left, right) =>
+          right.latestEndedAt.localeCompare(left.latestEndedAt) || right.level - left.level
+      )
+      .map((condition) => ({
+        ...condition,
+        label: [
+          `第 ${condition.level} 关`,
+          GAME_DIFFICULTIES.find((item) => item.id === condition.difficulty)?.label ??
+            condition.difficulty,
+          STAFF_GAME_REVIEW_SCOPE_LABELS[condition.notePoolScope],
+          condition.gameMode === "learning" ? "学习测试" : "娱乐模式",
+          `${condition.runCount} 局`,
+        ].join(" · "),
+      }));
+  }, [wrongNoteArchives, wrongNoteReviewRange]);
+  const selectedWrongNoteReviewCondition = wrongNoteReviewConditions.find(
+    (condition) => condition.id === wrongNoteReviewConditionId
+  );
+  const wrongNoteReviewSourceArchives = useMemo(() => {
+    const eligibleArchives =
+      filterStaffGameWrongNoteLearningChallengeArchivesWithErrors(wrongNoteArchives);
+    if (!selectedWrongNoteReviewCondition) {
+      return eligibleArchives;
+    }
+    return eligibleArchives.flatMap((archive) => {
+      const runs = archive.runs.filter(
+        (run) =>
+          run.level === selectedWrongNoteReviewCondition.level &&
+          run.difficulty === selectedWrongNoteReviewCondition.difficulty &&
+          run.notePoolScope === selectedWrongNoteReviewCondition.notePoolScope &&
+          run.gameMode === selectedWrongNoteReviewCondition.gameMode
+      );
+      return runs.length > 0 ? [{ ...archive, runs }] : [];
+    });
+  }, [selectedWrongNoteReviewCondition, wrongNoteArchives]);
+  const wrongNoteReviewCandidateNotes = useMemo(
+    () =>
+      selectedWrongNoteReviewCondition
+        ? notePoolCandidates(
+            selectedWrongNoteReviewCondition.level,
+            selectedWrongNoteReviewCondition.notePoolScope
+          )
+        : unlockedReviewNotes,
+    [selectedWrongNoteReviewCondition, unlockedReviewNotes]
+  );
+  const wrongNoteReviewCandidateMidiSet = useMemo(
+    () => new Set(wrongNoteReviewCandidateNotes.map((note) => note.midi)),
+    [wrongNoteReviewCandidateNotes]
+  );
   const wrongNoteReviewWeights = useMemo(
     () =>
       new Map(
-        [...calculateStaffGameWrongNoteWeights(wrongNoteArchives, wrongNoteReviewRange)].filter(
-          ([midi, weight]) => weight > 0 && unlockedReviewMidiSet.has(midi)
-        )
+        [
+          ...calculateStaffGameWrongNoteWeights(
+            wrongNoteReviewSourceArchives,
+            wrongNoteReviewRange
+          ),
+        ].filter(([midi, weight]) => weight > 0 && wrongNoteReviewCandidateMidiSet.has(midi))
       ),
-    [unlockedReviewMidiSet, wrongNoteArchives, wrongNoteReviewRange]
+    [wrongNoteReviewCandidateMidiSet, wrongNoteReviewRange, wrongNoteReviewSourceArchives]
   );
   const wrongNoteReviewErrorCounts = useMemo(
     () =>
       new Map(
-        calculateStaffGameWrongNoteErrorCounts(wrongNoteArchives, wrongNoteReviewRange).map(
-          ({ midi, errorCount }) => [midi, errorCount] as const
-        )
+        calculateStaffGameWrongNoteErrorCounts(
+          wrongNoteReviewSourceArchives,
+          wrongNoteReviewRange
+        ).map(({ midi, errorCount }) => [midi, errorCount] as const)
       ),
-    [wrongNoteArchives, wrongNoteReviewRange]
+    [wrongNoteReviewRange, wrongNoteReviewSourceArchives]
   );
   const wrongNoteReviewAccuracies = useMemo(
     () =>
       new Map(
-        calculateStaffGameWrongNoteNoteDiagnostics(wrongNoteArchives, wrongNoteReviewRange).map(
-          ({ midi, accuracyPercent }) => [midi, accuracyPercent] as const
-        )
+        calculateStaffGameWrongNoteNoteDiagnostics(
+          wrongNoteReviewSourceArchives,
+          wrongNoteReviewRange
+        ).map(({ midi, accuracyPercent }) => [midi, accuracyPercent] as const)
       ),
-    [wrongNoteArchives, wrongNoteReviewRange]
+    [wrongNoteReviewRange, wrongNoteReviewSourceArchives]
   );
   const wrongNoteReviewPreviewNotes = useMemo(
     () =>
-      getStaffGameWrongNotePriorityPreview(wrongNoteReviewWeights, unlockedReviewMidiSet).map(
-        ({ midi }) => ({
-          ...gameNoteFromMidi(midi),
-          errorCount: wrongNoteReviewErrorCounts.get(midi) ?? 0,
-          accuracyPercent: wrongNoteReviewAccuracies.get(midi) ?? null,
-        })
-      ),
+      getStaffGameWrongNotePriorityPreview(
+        wrongNoteReviewWeights,
+        wrongNoteReviewCandidateMidiSet
+      ).map(({ midi }) => ({
+        ...gameNoteFromMidi(midi),
+        errorCount: wrongNoteReviewErrorCounts.get(midi) ?? 0,
+        accuracyPercent: wrongNoteReviewAccuracies.get(midi) ?? null,
+      })),
     [
-      unlockedReviewMidiSet,
+      wrongNoteReviewCandidateMidiSet,
       wrongNoteReviewAccuracies,
       wrongNoteReviewErrorCounts,
       wrongNoteReviewWeights,
@@ -1085,15 +1224,15 @@ export function StaffGameView({
   const wrongNoteReviewPlan = useMemo(
     () =>
       buildStaffGameWrongNoteReviewPlan(
-        unlockedReviewNotes,
+        wrongNoteReviewCandidateNotes,
         wrongNoteReviewWeights,
-        getStaffGameWrongNoteMasteredMidis(wrongNoteArchives)
+        getStaffGameWrongNoteMasteredMidis(wrongNoteReviewSourceArchives)
       ),
-    [unlockedReviewNotes, wrongNoteArchives, wrongNoteReviewWeights]
+    [wrongNoteReviewCandidateNotes, wrongNoteReviewSourceArchives, wrongNoteReviewWeights]
   );
   const wrongNoteArchiveDateCount = useMemo(
-    () => getStaffGameWrongNoteArchiveDateCount(wrongNoteArchives),
-    [wrongNoteArchives]
+    () => getStaffGameWrongNoteArchiveDateCount(wrongNoteReviewSourceArchives),
+    [wrongNoteReviewSourceArchives]
   );
   const summaryWrongNoteComparison = useMemo<StaffGameWrongNoteComparison | null>(
     () =>
@@ -1223,40 +1362,6 @@ export function StaffGameView({
   }, [gameMode, phase]);
 
   useEffect(() => {
-    const getGameButton = (target: EventTarget | null): HTMLButtonElement | null => {
-      if (!(target instanceof Element)) return null;
-      const button = target.closest<HTMLButtonElement>("button");
-      if (!button || button.disabled || button.classList.contains("staff-game-virtual-key"))
-        return null;
-      return button.closest(
-        ".staff-game-shell, .staff-game-summary-backdrop, .staff-game-dialog-backdrop, .staff-game-mic-dialog-backdrop, .staff-game-low-fps-backdrop, .staff-game-pause-backdrop"
-      )
-        ? button
-        : null;
-    };
-    const playMenuClick = (button: HTMLButtonElement | null): void => {
-      if (button) playGameSound("menuClick");
-    };
-    const handlePointerDown = (event: PointerEvent): void => {
-      if (event.button !== 0) return;
-      playMenuClick(getGameButton(event.target));
-    };
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.repeat || (event.key !== "Enter" && event.key !== " ")) return;
-      playMenuClick(getGameButton(event.target));
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    document.addEventListener("keydown", handleKeyDown, true);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown, true);
-      document.removeEventListener("keydown", handleKeyDown, true);
-    };
-    // This is a module-level stable function, declared below via useStaffGameAudio.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
     let active = true;
     let retryTimer: number | null = null;
     let retryCount = 0;
@@ -1324,8 +1429,9 @@ export function StaffGameView({
   gameModeRef.current = gameMode;
   selectedSongIdRef.current = selectedSongId;
   songProgressRef.current = songProgress;
-  settingsRef.current = settings;
-  weakNoteWeightsRef.current = weakNoteWeights;
+  settingsRef.current = wrongNoteReviewDifficultyOverrideRef.current
+    ? { ...settings, difficulty: wrongNoteReviewDifficultyOverrideRef.current }
+    : settings;
   notePoolScopeRef.current = settings.notePoolScope;
   noteSchedulingStrategyRef.current = settings.noteSchedulingStrategy;
   midiRef.current = midi;
@@ -1347,10 +1453,20 @@ export function StaffGameView({
     soundEffectsEnabled: activeAudioSettings.soundEffectsEnabled,
   });
   const draftAudioSettings = settingsDraft.audioByMode[gameMode];
-  const difficulty = gameDifficultyPreset(settings.difficulty);
+  const readyReviewDifficulty =
+    phase === "ready" && readyWrongNoteMode === "review"
+      ? selectedWrongNoteReviewCondition?.difficulty
+      : null;
+  const difficulty = gameDifficultyPreset(
+    wrongNoteReviewDifficultyOverrideRef.current ?? readyReviewDifficulty ?? settings.difficulty
+  );
   const bubbleDurationMs = difficulty.bubbleDurationMs;
   const durationLevel = gameLevelForNotePoolScope(level, settings.notePoolScope);
-  const gameDurationMs = gameDurationMsForLevel(durationLevel);
+  const levelDefaultGameDurationMs = gameDurationMsForLevel(durationLevel);
+  const gameDurationMs =
+    settings.arcadeDuration === "level-default"
+      ? levelDefaultGameDurationMs
+      : settings.arcadeDuration;
   const draftDifficulty = gameDifficultyPreset(settingsDraft.difficulty);
   const activeSongForStars =
     gameMode === "songs"
@@ -1584,6 +1700,9 @@ export function StaffGameView({
     const current = progressRef.current;
     const difficulty = settingsRef.current.difficulty;
     const metrics = roundMetricsRef.current;
+    const isArcadeRound = roundChallengeModeRef.current === "arcade";
+    const mode = isArcadeRound ? "arcade" : "learning";
+    const currentMode = current.modes[mode];
     const accuracy =
       metrics.generatedBubbleCount > 0
         ? metrics.firstTryCorrectCount / metrics.generatedBubbleCount
@@ -1592,18 +1711,12 @@ export function StaffGameView({
       metrics.responseSampleCount > 0
         ? metrics.responseTotalMs / metrics.responseSampleCount
         : null;
-    const next: StaffGameProgress = {
-      version: 5,
-      bestScores: current.bestScores.map((best, itemIndex) =>
-        itemIndex === index ? Math.max(best, scoreRef.current) : best
-      ),
-      bestStars: current.bestStars.map((best, itemIndex) =>
+    const nextMode: StaffGameModeProgress | StaffGameArcadeProgress = {
+      ...currentMode,
+      bestStars: currentMode.bestStars.map((best, itemIndex) =>
         itemIndex === index ? Math.max(best, finalStars) : best
       ),
-      maxCombos: current.maxCombos.map((best, itemIndex) =>
-        itemIndex === index ? Math.max(best, maxComboRef.current) : best
-      ),
-      bestAccuracy: current.bestAccuracy.map((bestByDifficulty, itemIndex) =>
+      bestAccuracy: currentMode.bestAccuracy.map((bestByDifficulty, itemIndex) =>
         itemIndex === index && accuracy !== null
           ? {
               ...bestByDifficulty,
@@ -1611,7 +1724,7 @@ export function StaffGameView({
             }
           : bestByDifficulty
       ),
-      bestResponseMs: current.bestResponseMs.map((bestByDifficulty, itemIndex) =>
+      bestResponseMs: currentMode.bestResponseMs.map((bestByDifficulty, itemIndex) =>
         itemIndex === index && averageResponseMs !== null
           ? {
               ...bestByDifficulty,
@@ -1622,6 +1735,20 @@ export function StaffGameView({
             }
           : bestByDifficulty
       ),
+      ...(isArcadeRound
+        ? {
+            bestScores: (currentMode as StaffGameArcadeProgress).bestScores.map(
+              (best, itemIndex) => (itemIndex === index ? Math.max(best, scoreRef.current) : best)
+            ),
+            maxCombos: (currentMode as StaffGameArcadeProgress).maxCombos.map((best, itemIndex) =>
+              itemIndex === index ? Math.max(best, maxComboRef.current) : best
+            ),
+          }
+        : {}),
+    };
+    const next: StaffGameProgress = {
+      version: 6,
+      modes: { ...current.modes, [mode]: nextMode } as StaffGameProgress["modes"],
       _debugLastRound: {
         level: levelRef.current,
         difficulty,
@@ -1739,12 +1866,6 @@ export function StaffGameView({
       setWrongNoteArchiveStatus("idle");
       setWrongNoteArchiveRetryQueued(false);
 
-      if (roundPurposeRef.current !== "wrong-note-review") {
-        const nextWeights = updateStaffGameWeakNoteWeights(scoredOutcomes);
-        weakNoteWeightsRef.current = nextWeights;
-        setWeakNoteWeights(nextWeights);
-      }
-
       const roundPurpose = roundPurposeRef.current;
       const source = roundPurpose === "level" ? "challenge" : "review";
       const endedAt = new Date().toISOString();
@@ -1780,6 +1901,7 @@ export function StaffGameView({
       );
       const proficiencySamples: StaffGameProficiencySampleDraft[] = outcomes.map((outcome) => {
         const rawResponseTimeMs = outcome.proficiencyResponseMs ?? null;
+        const isSongRound = gameModeRef.current === "songs";
         return {
           id: `${runId}:${outcome.token}`,
           runId,
@@ -1791,14 +1913,19 @@ export function StaffGameView({
           inputMode,
           deviceInfo: answerDeviceInfo(),
           inputGain: inputMode === "microphone" ? microphoneContext.inputGain : undefined,
-          mode: gameModeRef.current === "songs" ? "song" : "staff-game",
+          mode: isSongRound ? "song" : "staff-game",
           levelId:
             gameModeRef.current === "songs" || roundPurpose === "wrong-note-review"
               ? undefined
               : String(levelRef.current),
-          songId: gameModeRef.current === "songs" ? selectedSongIdRef.current : undefined,
+          songId: isSongRound ? selectedSongIdRef.current : undefined,
           difficulty: settingsRef.current.difficulty,
-          staffGameSource: source,
+          staffGameSource: isSongRound ? undefined : source,
+          gameMode: isSongRound
+            ? null
+            : source === "challenge"
+              ? roundChallengeModeRef.current
+              : null,
           attempts: outcome.attempts ?? [],
           sensitivityLevel,
           ...(inputMode === "microphone"
@@ -1816,6 +1943,7 @@ export function StaffGameView({
         };
       });
       const validPlayerResponses = proficiencySamples
+        .filter((sample) => sample.firstInputCorrect === true)
         .map((sample) => sample.playerResponseTimeMs)
         .filter((response): response is number => response !== null);
       setSummaryAveragePlayerResponseMs(
@@ -1843,6 +1971,7 @@ export function StaffGameView({
       const run: StaffGameWrongNoteArchiveRun = {
         runId,
         source,
+        ...(source === "challenge" ? { gameMode: roundChallengeModeRef.current } : {}),
         level: roundPurpose === "level" ? levelRef.current : null,
         difficulty: settingsRef.current.difficulty,
         inputMode: settingsRef.current.inputMode,
@@ -1852,6 +1981,7 @@ export function StaffGameView({
         reviewRange: source === "review" ? roundReviewRangeRef.current : null,
         notePoolScope: roundNotePoolScopeRef.current ?? null,
         noteSchedulingStrategy: roundNoteSchedulingStrategyRef.current,
+        responseTimeBasis: "first-correct",
         totalTargets: scoredOutcomes.length,
         firstTryCorrect,
         lowSample: source !== "challenge" && scoredOutcomes.length < 10,
@@ -2201,6 +2331,7 @@ export function StaffGameView({
     getPromptSuppressionWindow,
     gameDurationMs,
     gameModeRef,
+    challengeModeRef: roundChallengeModeRef,
     roundPurposeRef,
     wrongNoteReviewDurationMsRef: roundReviewDurationMsRef,
     inputMode: settings.inputMode,
@@ -2208,7 +2339,6 @@ export function StaffGameView({
     noteBagRef,
     notePoolScopeRef,
     noteSchedulingStrategyRef,
-    weakNoteWeightsRef,
     noteLabel,
     nextTargetTimeoutRef,
     phase,
@@ -2392,14 +2522,22 @@ export function StaffGameView({
             maxCombo: record?.maxCombo ?? 0,
           };
         } else {
+          const arcadeRecords = records.modes.arcade;
+          const shouldCompareArcadeRecords =
+            purpose === "level" && settingsRef.current.challengeMode === "arcade";
           roundRecordsAtStartRef.current = {
-            score: records.bestScores[levelIndex] ?? 0,
-            maxCombo: records.maxCombos[levelIndex] ?? 0,
+            score: shouldCompareArcadeRecords ? (arcadeRecords.bestScores[levelIndex] ?? 0) : 0,
+            maxCombo: shouldCompareArcadeRecords ? (arcadeRecords.maxCombos[levelIndex] ?? 0) : 0,
           };
         }
         resetRoundState();
         roundStartedAtRef.current = new Date().toISOString();
         roundPurposeRef.current = purpose;
+        roundChallengeModeRef.current =
+          purpose === "level" && gameModeRef.current === "levels"
+            ? settingsRef.current.challengeMode
+            : "learning";
+        setSummaryChallengeMode(roundChallengeModeRef.current);
         if (purpose === "wrong-note-review") {
           const preparedNotes = reviewNotes ?? [];
           roundReviewQuestionCountRef.current = preparedNotes.length;
@@ -2408,13 +2546,25 @@ export function StaffGameView({
             gameDifficultyPreset(settingsRef.current.difficulty).bubbleDurationMs
           );
           noteBagRef.current = preparedNotes.map((note) => ({ ...note }));
+        } else if (
+          purpose === "level" &&
+          gameModeRef.current === "levels" &&
+          roundChallengeModeRef.current === "learning"
+        ) {
+          noteBagRef.current = learningTestNoteBag(
+            levelRef.current,
+            settingsRef.current.notePoolScope
+          );
+          roundMetricsRef.current.targetQuestionCount = noteBagRef.current.length;
         }
         roundNotePoolScopeRef.current =
           purpose === "wrong-note-review" ? null : settingsRef.current.notePoolScope;
         roundNoteSchedulingStrategyRef.current =
           purpose === "wrong-note-review"
             ? "review-weighted"
-            : settingsRef.current.noteSchedulingStrategy;
+            : roundChallengeModeRef.current === "arcade"
+              ? "random"
+              : settingsRef.current.noteSchedulingStrategy;
         startRunSegment();
         setFeedback(
           purpose === "wrong-note-review"
@@ -2769,19 +2919,39 @@ export function StaffGameView({
     cancelPendingStart();
     stopMicrophone();
     onSessionActiveChange(false);
+    wrongNoteReviewDifficultyOverrideRef.current = null;
+    settingsRef.current = settings;
     onExit();
-  }, [cancelPendingStart, onExit, onSessionActiveChange, stopMicrophone]);
+  }, [
+    cancelPendingStart,
+    onExit,
+    onSessionActiveChange,
+    settings,
+    settingsRef,
+    stopMicrophone,
+    wrongNoteReviewDifficultyOverrideRef,
+  ]);
 
   const returnToReady = useCallback((): void => {
     cancelPendingStart();
     stopMicrophone();
     onSessionActiveChange(false);
     resetRoundState();
+    wrongNoteReviewDifficultyOverrideRef.current = null;
+    settingsRef.current = settings;
     setDialog(null);
     if (gameModeRef.current === "songs") setSongSelectionStep("detail");
     phaseRef.current = "ready";
     setPhase("ready");
-  }, [cancelPendingStart, onSessionActiveChange, resetRoundState, stopMicrophone]);
+  }, [
+    cancelPendingStart,
+    onSessionActiveChange,
+    resetRoundState,
+    settings,
+    settingsRef,
+    stopMicrophone,
+    wrongNoteReviewDifficultyOverrideRef,
+  ]);
 
   const exitWrongNoteReview = useCallback((): void => {
     if (roundPurposeRef.current !== "wrong-note-review") return;
@@ -2789,6 +2959,8 @@ export function StaffGameView({
     stopMicrophone();
     onSessionActiveChange(false);
     resetRoundState();
+    wrongNoteReviewDifficultyOverrideRef.current = null;
+    settingsRef.current = settings;
     gameModeRef.current = "levels";
     setGameMode("levels");
     setSongSelectionStep(null);
@@ -2796,55 +2968,42 @@ export function StaffGameView({
     setDialog(null);
     phaseRef.current = "ready";
     setPhase("ready");
-  }, [cancelPendingStart, onSessionActiveChange, resetRoundState, stopMicrophone]);
+  }, [
+    cancelPendingStart,
+    onSessionActiveChange,
+    resetRoundState,
+    settings,
+    settingsRef,
+    stopMicrophone,
+    wrongNoteReviewDifficultyOverrideRef,
+  ]);
 
-  const endWrongNoteReview = useCallback((): void => {
+  const handleExitWrongNoteReview = useCallback((): void => {
     if (
       roundPurposeRef.current !== "wrong-note-review" ||
       (phaseRef.current !== "running" && phaseRef.current !== "paused")
     )
       return;
-
-    const activeTarget = targetRef.current;
-    if (activeTarget && !targetPoppedRef.current) {
-      const outcome = roundMetricsRef.current.firstInputByToken.get(activeTarget.token);
-      if (outcome && outcome.firstInputCorrect === null && !outcome.missed) {
-        const attempts = outcome.attempts ?? [];
-        if (attempts.length > 0 && attempts.every((attempt) => attempt.isLateForPrevious)) {
-          outcome.wasInterrupted = true;
-        } else {
-          roundMetricsRef.current.firstInputByToken.delete(activeTarget.token);
-        }
-      }
-    }
-
-    if (roundMetricsRef.current.firstInputByToken.size === 0) {
-      exitWrongNoteReview();
-      return;
-    }
-    finishRound();
-  }, [
-    exitWrongNoteReview,
-    finishRound,
-    phaseRef,
-    roundMetricsRef,
-    roundPurposeRef,
-    targetRef,
-    targetPoppedRef,
-  ]);
+    exitWrongNoteReview();
+  }, [exitWrongNoteReview, phaseRef, roundPurposeRef]);
 
   const retryLevel = useCallback((): void => {
     if (roundPurposeRef.current === "wrong-note-review") {
       const retryPlan = buildStaffGameWrongNoteReviewPlan(
-        unlockedReviewNotes,
+        wrongNoteReviewCandidateNotes,
         wrongNoteReviewWeights,
-        getStaffGameWrongNoteMasteredMidis(wrongNoteArchives)
+        getStaffGameWrongNoteMasteredMidis(wrongNoteReviewSourceArchives)
       );
       void beginRound("wrong-note-review", retryPlan.notes);
     } else {
       void beginRound();
     }
-  }, [beginRound, unlockedReviewNotes, wrongNoteArchives, wrongNoteReviewWeights]);
+  }, [
+    beginRound,
+    wrongNoteReviewCandidateNotes,
+    wrongNoteReviewSourceArchives,
+    wrongNoteReviewWeights,
+  ]);
 
   const closeChallengeSummary = useCallback((): void => {
     if (phaseRef.current !== "summary" || gameModeRef.current !== "levels") return;
@@ -2858,12 +3017,33 @@ export function StaffGameView({
 
   const startWrongNoteReview = useCallback((): void => {
     if (wrongNoteReviewWeights.size === 0) return;
+    wrongNoteReviewDifficultyOverrideRef.current =
+      selectedWrongNoteReviewCondition?.difficulty ?? null;
+    settingsRef.current = wrongNoteReviewDifficultyOverrideRef.current
+      ? { ...settings, difficulty: wrongNoteReviewDifficultyOverrideRef.current }
+      : settings;
     setReadyWrongNoteMode("review");
     roundReviewRangeRef.current = wrongNoteReviewRange;
     void beginRound("wrong-note-review", wrongNoteReviewPlan.notes);
-  }, [beginRound, wrongNoteReviewPlan.notes, wrongNoteReviewRange, wrongNoteReviewWeights]);
+  }, [
+    beginRound,
+    selectedWrongNoteReviewCondition,
+    settings,
+    settingsRef,
+    wrongNoteReviewDifficultyOverrideRef,
+    wrongNoteReviewPlan.notes,
+    wrongNoteReviewRange,
+    wrongNoteReviewWeights,
+  ]);
+
+  const handleWrongNoteReviewRangeChange = useCallback((range: StaffGameWrongNoteRange): void => {
+    setWrongNoteReviewRange(range);
+    setWrongNoteReviewConditionId("all-learning");
+  }, []);
 
   const startLevel = useCallback(async (): Promise<void> => {
+    wrongNoteReviewDifficultyOverrideRef.current = null;
+    settingsRef.current = settings;
     if (isNightmareLandscapePromptPendingRef.current) return;
     const isIPadPortrait =
       isIPadDevice() &&
@@ -2893,7 +3073,7 @@ export function StaffGameView({
     }
 
     await beginRound();
-  }, [beginRound, confirmDialog, readyWrongNoteMode]);
+  }, [beginRound, confirmDialog, readyWrongNoteMode, settings]);
 
   const openWrongNoteStudyDialog = useCallback((): void => {
     setWrongNoteStudyRange((current) => current ?? wrongNoteReviewRange);
@@ -2984,7 +3164,8 @@ export function StaffGameView({
   const handleSongSelectionBack = useCallback((): void => {
     cancelPendingStart();
     if (gameMode !== "songs") {
-      exitGame();
+      if (phase === "ready" && !isStarting) exitGame();
+      else returnToReady();
     } else if (isSongPlayRoute) {
       returnToSongList();
     } else if (songSelectionStep === "detail") {
@@ -2996,8 +3177,11 @@ export function StaffGameView({
     cancelPendingStart,
     exitGame,
     gameMode,
+    isStarting,
     isSongPlayRoute,
     onSongSelectionExit,
+    phase,
+    returnToReady,
     returnToSongList,
     songSelectionStep,
   ]);
@@ -3059,10 +3243,10 @@ export function StaffGameView({
       if (phaseRef.current === "running") pauseRound();
       setIsWrongNoteNoticeOpen(false);
       setIsUnsavedSettingsPromptOpen(false);
-      setSettingsDraft(settingsRef.current);
+      setSettingsDraft(settings);
       setDialog(nextDialog);
     },
-    [pauseRound]
+    [pauseRound, settings]
   );
 
   const closeGameDialog = useCallback((): void => {
@@ -3075,23 +3259,58 @@ export function StaffGameView({
       setIsWrongNoteNoticeOpen(false);
       return;
     }
-    if (dialog === "settings" && !areStaffGameSettingsEqual(settingsDraft, settingsRef.current)) {
+    if (dialog === "settings" && !areStaffGameSettingsEqual(settingsDraft, settings)) {
       setIsUnsavedSettingsPromptOpen(true);
       return;
     }
     setDialog(null);
-  }, [dialog, isUnsavedSettingsPromptOpen, isWrongNoteNoticeOpen, settingsDraft]);
+  }, [dialog, isUnsavedSettingsPromptOpen, isWrongNoteNoticeOpen, settings, settingsDraft]);
 
   const discardUnsavedGameSettings = useCallback((): void => {
     if (isStartingRef.current) return;
-    setSettingsDraft(settingsRef.current);
+    setSettingsDraft(settings);
     setIsUnsavedSettingsPromptOpen(false);
     setDialog(null);
-  }, []);
+  }, [settings]);
 
   const selectInputMode = useCallback((inputMode: StaffGameSettings["inputMode"]): void => {
     setSettingsDraft((current) => ({ ...current, inputMode }));
   }, []);
+
+  const updateReadyInputMode = useCallback(
+    (inputMode: GameInputMode): void => {
+      if (inputMode === "virtual" && !virtualKeyboardAvailable) return;
+      if (inputMode === "midi" && !supportsMidi(midi.status)) return;
+
+      const nextSettings = { ...settingsRef.current, inputMode };
+      settingsRef.current = nextSettings;
+      setSettings(nextSettings);
+      setSettingsDraft((current) => ({ ...current, inputMode }));
+      saveGameSettings(nextSettings);
+      if (inputMode !== "physical") stopMicrophone();
+    },
+    [midi.status, stopMicrophone, virtualKeyboardAvailable]
+  );
+
+  const updateReadyChallengeSettings = useCallback(
+    (
+      patch: Partial<
+        Pick<StaffGameSettings, "challengeMode" | "arcadeDuration" | "difficulty" | "notePoolScope">
+      >
+    ): void => {
+      const current = settingsRef.current;
+      const nextSettings = { ...current, ...patch };
+      if (patch.notePoolScope && patch.notePoolScope !== current.notePoolScope) {
+        noteBagRef.current = [];
+        notePoolScopeRef.current = patch.notePoolScope;
+      }
+      settingsRef.current = nextSettings;
+      setSettings(nextSettings);
+      setSettingsDraft((draft) => ({ ...draft, ...patch }));
+      saveGameSettings(nextSettings);
+    },
+    []
+  );
 
   const applyGameSettings = useCallback((): void => {
     const midiAvailable = supportsMidi(midi.status);
@@ -3227,6 +3446,8 @@ export function StaffGameView({
     plays: 0,
   };
   const isSongMode = gameMode === "songs";
+  const activeChallengeMode = phase === "ready" ? settings.challengeMode : summaryChallengeMode;
+  const activeChallengeProgress = progress.modes[activeChallengeMode];
   const isWrongNoteReview =
     !isSongMode &&
     (summaryIsWrongNoteReview ||
@@ -3244,7 +3465,29 @@ export function StaffGameView({
     selectedSong.noteMidis.length > 0
       ? (songFirstTryHits * 100) / selectedSong.noteMidis.length
       : 0;
-  const activeProgress = isSongMode ? songProgressRatio : levelProgress;
+  const challengePoolSize = new Set(
+    notePoolCandidates(level, settings.notePoolScope).map((note) => note.midi)
+  ).size;
+  const learningQuestionTargetCount = challengePoolSize * 2;
+  const questionTargetCount =
+    roundMetricsRef.current.targetQuestionCount || learningQuestionTargetCount;
+  const isLearningChallenge =
+    !isSongMode &&
+    !isWrongNoteReview &&
+    (phase === "ready" ? settings.challengeMode : roundChallengeModeRef.current) === "learning";
+  const reviewQuestionProgressTarget =
+    phase === "ready"
+      ? wrongNoteReviewPlan.totalQuestionCount
+      : roundReviewQuestionCountRef.current;
+  const reviewQuestionProgressResolvedCount =
+    phase === "ready" ? 0 : roundMetricsRef.current.resolvedQuestionCount;
+  const activeProgress = isSongMode
+    ? songProgressRatio
+    : isWrongNoteReview
+      ? reviewQuestionProgressTarget > 0
+        ? reviewQuestionProgressResolvedCount / reviewQuestionProgressTarget
+        : 0
+      : levelProgress;
   const midiOptionAvailable = supportsMidi(midi.status);
   const remainingSeconds = Math.max(
     0,
@@ -3255,7 +3498,6 @@ export function StaffGameView({
   const gameArtStyle = {
     "--staff-game-bg-desktop": `url("${gameBackgroundDesktop}")`,
     "--staff-game-bg-mobile": `url("${gameBackgroundMobile}")`,
-    "--staff-game-hud-frame": `url("${hudFrameArt}")`,
     "--staff-game-modal-frame": `url("${modalFrameArt}")`,
     "--staff-game-primary-button": `url("${buttonPrimaryArt}")`,
     "--staff-game-secondary-button": `url("${buttonSecondaryArt}")`,
@@ -3319,6 +3561,13 @@ export function StaffGameView({
       : 0;
   const showPauseControl = phase === "running" || phase === "paused";
   const showWrongNoteEndControl = isWrongNoteReview && showPauseControl;
+  const backButtonLabel = isSongMode
+    ? isSongPlayRoute
+      ? "返回歌曲选择"
+      : "返回上一页"
+    : phase === "ready" && !isStarting
+      ? "返回首页"
+      : "返回等待页";
 
   if (resourceLoadState !== "ready") {
     return (
@@ -3486,20 +3735,36 @@ export function StaffGameView({
         ))}
         <StaffGameHud
           activeProgress={activeProgress}
+          isLearningChallenge={isLearningChallenge}
+          isQuestionCountProgress={isWrongNoteReview}
+          isReady={phase === "ready" && gameMode === "levels"}
           currentRoundStars={currentRoundStars}
           displayedScore={displayedScore}
-          historyLabel={isSongMode ? "歌曲最佳" : "历史最高"}
-          historyStars={isSongMode ? selectedSongRecord.bestStars : progress.bestStars[level - 1]}
+          historyLabel={isSongMode ? "歌曲最佳" : isLearningChallenge ? "本关星级" : "历史最高"}
+          historyStars={
+            isSongMode ? selectedSongRecord.bestStars : activeChallengeProgress.bestStars[level - 1]
+          }
           isSongMode={isSongMode}
           isWrongNoteReview={isWrongNoteReview}
           medalLabel={
             isSongMode
               ? `${selectedSong.title}，已完成 ${songNotesCompleted} 音，共 ${selectedSong.noteMidis.length} 音`
-              : `第 ${level} 关，当前获得 ${currentRoundStars} 颗星`
+              : isWrongNoteReview
+                ? `错题复习，已完成 ${reviewQuestionProgressResolvedCount}/${reviewQuestionProgressTarget} 题`
+                : isLearningChallenge
+                  ? `第 ${level} 关学习测试，已完成 ${roundMetricsRef.current.resolvedQuestionCount}/${questionTargetCount} 题`
+                  : `第 ${level} 关，当前获得 ${currentRoundStars} 颗星`
           }
           onOpenLevels={() => openGameDialog("levels")}
-          progressLabel={isSongMode ? "歌曲" : "LEVEL"}
-          progressValue={isSongMode ? `${songProgressPercent}%` : level}
+          progressLabel={isSongMode ? "歌曲" : isWrongNoteReview ? "题数" : "LEVEL"}
+          progressValue={
+            isSongMode
+              ? `${songProgressPercent}%`
+              : isWrongNoteReview
+                ? `${reviewQuestionProgressResolvedCount}/${reviewQuestionProgressTarget}`
+                : level
+          }
+          showScore={!isWrongNoteReview || phase !== "ready"}
           rushModeActive={rushModeActive}
           scoreDetail={
             isWrongNoteReview
@@ -3508,7 +3773,13 @@ export function StaffGameView({
                 : `已出题 ${Math.min(roundMetricsRef.current.generatedBubbleCount, roundReviewQuestionCountRef.current)}/${roundReviewQuestionCountRef.current} 题 · 剩余 ${remainingSeconds} 秒`
               : isSongMode
                 ? `最佳 ${Math.round(selectedSongRecord.bestScore)}\u3000·\u3000${songNotesCompleted}/${selectedSong.noteMidis.length} 音\u3000·\u3000${Math.round(songAccuracy)}%`
-                : `最高 ${Math.round(progress.bestScores[level - 1])}${phase === "ready" ? "" : `\u3000·\u3000${remainingSeconds} 秒`}`
+                : isLearningChallenge
+                  ? phase === "ready"
+                    ? `进度 0/${questionTargetCount} 题`
+                    : `已完成 ${roundMetricsRef.current.resolvedQuestionCount}/${questionTargetCount} 题 · 无倒计时`
+                  : phase === "ready"
+                    ? ""
+                    : `最高 ${Math.round(progress.modes.arcade.bestScores[level - 1])}\u3000·\u3000${remainingSeconds} 秒`
           }
           scoreLabel={
             isSongMode
@@ -3526,11 +3797,10 @@ export function StaffGameView({
                 : "选择一首歌曲"
               : null
           }
-          starImage={starParticleArt}
         />
 
         <div
-          className={`staff-game-playfield${phase === "paused" ? " is-paused" : ""}${preserveRushBubbleScreenTop ? " is-rush-mode" : ""}${rushBubbleScreenTopStart?.token === target?.token ? " has-screen-top-rush-bubble" : ""}`}
+          className={`staff-game-playfield${phase === "paused" ? " is-paused" : ""}${phase === "ready" && gameMode === "levels" ? " is-ready" : ""}${preserveRushBubbleScreenTop ? " is-rush-mode" : ""}${rushBubbleScreenTopStart?.token === target?.token ? " has-screen-top-rush-bubble" : ""}`}
           ref={playfieldRef}
         >
           <div aria-hidden="true" className="staff-game-scene-glow" />
@@ -3701,22 +3971,42 @@ export function StaffGameView({
 
           {phase === "ready" && songSelectionStep === null && gameMode === "levels" ? (
             <StaffGameReadyPanel
-              bestStars={progress.bestStars[level - 1]}
+              bestStars={progress.modes[settings.challengeMode].bestStars[level - 1]}
+              arcadeDefaultDurationMs={levelDefaultGameDurationMs}
+              arcadeDuration={settings.arcadeDuration}
               bubbleImage={bubbleShell}
+              challengeMode={settings.challengeMode}
               focusNote={focusNote}
+              difficulty={settings.difficulty}
               inputMode={settings.inputMode}
+              midiInputAvailable={midiOptionAvailable}
+              virtualKeyboardAvailable={virtualKeyboardAvailable}
               inputStatusActivity={gameInputStatusActivity}
               inputStatusState={gameInputStatusState}
               inputStatusText={gameInputStatusText}
               isPreparingMicrophone={microphone.isPreparingSwiftF0}
               isStarting={isStarting}
-              maxCombo={progress.maxCombos[level - 1]}
-              onChangeReviewRange={setWrongNoteReviewRange}
+              maxCombo={progress.modes.arcade.maxCombos[level - 1]}
+              onChangeReviewRange={handleWrongNoteReviewRangeChange}
+              onChangeArcadeDuration={(arcadeDuration) =>
+                updateReadyChallengeSettings({ arcadeDuration })
+              }
+              onChangeChallengeMode={(challengeMode) =>
+                updateReadyChallengeSettings({ challengeMode })
+              }
+              onChangeInputMode={updateReadyInputMode}
+              onChangeDifficulty={(difficulty) => updateReadyChallengeSettings({ difficulty })}
+              onChangeNotePoolScope={(notePoolScope) =>
+                updateReadyChallengeSettings({ notePoolScope })
+              }
+              onChangeReviewCondition={setWrongNoteReviewConditionId}
               onOpenWrongNoteArchiveManager={openWrongNoteArchiveManager}
               onOpenWrongNoteStudy={openWrongNoteStudyDialog}
               onStartLevel={() => void startLevel()}
               onStartReview={startWrongNoteReview}
               onSelectReadyMode={setReadyWrongNoteMode}
+              learningQuestionCount={learningQuestionTargetCount}
+              notePoolScope={settings.notePoolScope}
               readyMode={readyWrongNoteMode}
               reviewNotes={wrongNoteReviewPreviewNotes.map((note) => ({
                 label: `${note.name}${note.octave}`,
@@ -3729,6 +4019,11 @@ export function StaffGameView({
                 bubbleDurationMs
               )}
               reviewRange={wrongNoteReviewRange}
+              reviewConditionValue={wrongNoteReviewConditionId}
+              reviewConditions={wrongNoteReviewConditions.map((condition) => ({
+                value: condition.id,
+                label: condition.label,
+              }))}
               reviewWeakNoteCount={wrongNoteReviewPlan.weakNoteCount}
               wrongNoteArchiveDateCount={wrongNoteArchiveDateCount}
               starImage={starParticleArt}
@@ -3765,6 +4060,7 @@ export function StaffGameView({
             <StaffGameSummaryDialog
               accuracy={summaryAccuracy}
               averagePlayerResponseMs={summaryAveragePlayerResponseMs}
+              challengeMode={summaryChallengeMode}
               mode={summaryIsWrongNoteReview ? "review" : isSongMode ? "song" : "challenge"}
               ariaLabel={
                 summaryIsWrongNoteReview
@@ -3794,11 +4090,13 @@ export function StaffGameView({
               wrongNoteArchiveRetryQueued={wrongNoteArchiveRetryQueued}
               isNewComboRecord={
                 !summaryIsWrongNoteReview &&
+                summaryChallengeMode === "arcade" &&
                 roundRecordsAtStartRef.current.maxCombo > 0 &&
                 maxCombo > roundRecordsAtStartRef.current.maxCombo
               }
               isNewScoreRecord={
                 !summaryIsWrongNoteReview &&
+                summaryChallengeMode === "arcade" &&
                 roundRecordsAtStartRef.current.score > 0 &&
                 score > roundRecordsAtStartRef.current.score
               }
@@ -3837,7 +4135,9 @@ export function StaffGameView({
               weakNoteOutcomes={summaryWeakNoteOutcomes}
               inputMode={settings.inputMode}
               showFastPlayingHint={summaryFastPlayingHint}
-              wrongNoteStatisticsEnabled={settings.wrongNoteStatisticsEnabled}
+              wrongNoteStatisticsEnabled={
+                settings.wrongNoteStatisticsEnabled && summaryChallengeMode !== "arcade"
+              }
               songTitle={selectedSong.title}
               starImage={starParticleArt}
               hasNextSong={STAFF_GAME_SONGS[STAFF_GAME_SONGS.length - 1]?.id !== selectedSong.id}
@@ -3884,8 +4184,8 @@ export function StaffGameView({
           className={`staff-game-controls${touchGameLayout ? " is-touch-layout" : ""}${isSongMode ? " is-song-mode" : ""}${showWrongNoteEndControl ? " is-wrong-note-review" : ""}`}
         >
           <button
-            aria-label={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
-            title={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
+            aria-label={backButtonLabel}
+            title={backButtonLabel}
             className="staff-game-action-button staff-game-back-button is-desktop-control"
             onClick={handleSongSelectionBack}
             type="button"
@@ -3959,10 +4259,10 @@ export function StaffGameView({
             ) : null}
             {showWrongNoteEndControl ? (
               <button
-                aria-label="结束复习"
+                aria-label="退出复习"
                 className="staff-game-action-button staff-game-review-end-button"
-                onClick={endWrongNoteReview}
-                title="结束复习"
+                onClick={handleExitWrongNoteReview}
+                title="退出复习"
                 type="button"
               >
                 <Square aria-hidden="true" size={20} strokeWidth={3} />
@@ -3974,10 +4274,8 @@ export function StaffGameView({
             className={`staff-game-toolbar is-mobile-control${showWrongNoteEndControl ? " is-wrong-note-review" : ""}`}
           >
             <button
-              aria-label={
-                !isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"
-              }
-              title={!isSongMode ? "返回首页" : isSongPlayRoute ? "返回歌曲选择" : "返回上一页"}
+              aria-label={backButtonLabel}
+              title={backButtonLabel}
               className="staff-game-action-button"
               onClick={handleSongSelectionBack}
               type="button"
@@ -4036,10 +4334,10 @@ export function StaffGameView({
             ) : null}
             {showWrongNoteEndControl ? (
               <button
-                aria-label="结束复习"
+                aria-label="退出复习"
                 className="staff-game-action-button staff-game-review-end-button"
-                onClick={endWrongNoteReview}
-                title="结束复习"
+                onClick={handleExitWrongNoteReview}
+                title="退出复习"
                 type="button"
               >
                 <Square aria-hidden="true" size={20} strokeWidth={3} />
@@ -4049,7 +4347,7 @@ export function StaffGameView({
         </footer>
         <StaffGameDialogs
           applyGameSettings={applyGameSettings}
-          bestStars={progress.bestStars}
+          bestStars={activeChallengeProgress.bestStars}
           closeGameDialog={closeGameDialog}
           dialog={dialog}
           draftAudioSettings={draftAudioSettings}
@@ -4060,6 +4358,12 @@ export function StaffGameView({
           isSettingsDialogShaking={isSettingsDialogShaking}
           isUnsavedSettingsPromptOpen={isUnsavedSettingsPromptOpen}
           isWrongNoteReview={isWrongNoteReview}
+          isArcadeMode={
+            !isWrongNoteReview &&
+            gameMode === "levels" &&
+            (phase === "ready" ? settingsDraft.challengeMode : roundChallengeModeRef.current) ===
+              "arcade"
+          }
           isSongMode={isSongMode}
           jumpToLevel={jumpToLevel}
           level={level}

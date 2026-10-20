@@ -99,6 +99,7 @@ export interface ReviewRecord {
 
 export type AnswerEventMode = "free-practice" | "staff-game" | "song" | "staff-distance";
 export type AnswerInputMode = "microphone" | "midi" | "virtual-keyboard" | "computer-keyboard";
+export type StaffGameChallengeMode = "learning" | "arcade";
 
 /** Canonical per-prompt answer record. Attempts are capped by the writer. */
 export interface AnswerEvent {
@@ -110,6 +111,9 @@ export interface AnswerEvent {
   promptStartedAt?: string;
   promptEndedAt?: string;
   mode: AnswerEventMode;
+  /** Challenge subtype; absent for songs, review rounds, and legacy events. */
+  gameMode?: StaffGameChallengeMode | null;
+  staffGameSource?: "challenge" | "review";
   inputMode: AnswerInputMode;
   deviceInfo: "Mac" | "iPad" | "iPhone" | "other";
   inputGain?: number;
@@ -325,6 +329,8 @@ export interface StaffGameWrongNoteNoteStats {
 export interface StaffGameWrongNoteArchiveRun {
   runId: string;
   source: StaffGameWrongNoteArchiveSource;
+  /** Challenge subtype; absent for review runs and legacy archives. */
+  gameMode?: StaffGameChallengeMode;
   level: number | null;
   difficulty: string;
   inputMode: string;
@@ -377,6 +383,8 @@ export interface StaffGameProficiencySample {
   inputGain?: number;
   deviceInfo?: AnswerEvent["deviceInfo"];
   mode?: "staff-game" | "song";
+  /** Challenge subtype; absent for songs, review rounds, and legacy samples. */
+  gameMode?: StaffGameChallengeMode | null;
   levelId?: string;
   songId?: string;
   attempts?: AnswerAttempt[];

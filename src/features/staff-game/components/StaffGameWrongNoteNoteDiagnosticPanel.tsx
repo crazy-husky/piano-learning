@@ -1,9 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { PITCH_OCTAVE_GROUPS } from "../../../domain/notes";
 import type { StaffGameWrongNoteArchive } from "../../../domain/types";
 import {
   calculateStaffGameWrongNoteNoteDiagnostics,
+  filterStaffGameWrongNoteArchivesByGameMode,
   type StaffGameWrongNoteRange,
+  type StaffGameWrongNoteGameModeFilter,
 } from "../../../domain/staffGameWrongNoteArchives";
 import { gameNoteFromMidi, staffGameSolfegeLabel } from "../logic/staffGameRules";
 
@@ -26,15 +28,34 @@ export function StaffGameWrongNoteNoteDiagnosticPanel({
   onChangeRange: (range: StaffGameWrongNoteRange) => void;
   showRangeControl?: boolean;
 }): JSX.Element {
+  const [gameMode, setGameMode] = useState<StaffGameWrongNoteGameModeFilter>("learning");
+  const filteredArchives = useMemo(
+    () => filterStaffGameWrongNoteArchivesByGameMode(archives, gameMode),
+    [archives, gameMode]
+  );
   const diagnostics = useMemo(
-    () => calculateStaffGameWrongNoteNoteDiagnostics(archives, range),
-    [archives, range]
+    () => calculateStaffGameWrongNoteNoteDiagnostics(filteredArchives, range),
+    [filteredArchives, range]
   );
 
   return (
     <div className="staff-game-archive-note-panel">
-      {showRangeControl ? (
-        <div className="staff-game-archive-note-toolbar">
+      <div className="staff-game-archive-note-toolbar">
+        <label>
+          <span>练习模式</span>
+          <select
+            aria-label="单音诊断练习模式"
+            onChange={(event) =>
+              setGameMode(event.target.value as StaffGameWrongNoteGameModeFilter)
+            }
+            value={gameMode}
+          >
+            <option value="learning">学习测试</option>
+            <option value="arcade">娱乐模式</option>
+            <option value="all">全部练习（含错题复习）</option>
+          </select>
+        </label>
+        {showRangeControl ? (
           <label>
             <span>记录时间</span>
             <select
@@ -55,8 +76,8 @@ export function StaffGameWrongNoteNoteDiagnosticPanel({
               <option value="all">全部</option>
             </select>
           </label>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       <div className="staff-game-archive-note-list" aria-label="单音诊断列表" role="list">
         {diagnostics.length === 0 ? (

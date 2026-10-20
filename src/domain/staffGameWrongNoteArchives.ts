@@ -1,6 +1,7 @@
 import type { StaffGameWrongNoteArchive, StaffGameWrongNoteArchiveRun } from "./types";
 
 export type StaffGameWrongNoteRange = 3 | 7 | 15 | 30 | "all";
+export type StaffGameWrongNoteGameModeFilter = "learning" | "arcade" | "all";
 
 export interface StaffGameWrongNoteComparison {
   previousRun: StaffGameWrongNoteArchiveRun;
@@ -84,6 +85,32 @@ export function filterStaffGameWrongNoteArchivesWithErrors(
   return archives.flatMap((archive) => {
     const runs = archive.runs.filter(
       (run) => run.trendOnly !== true && getStaffGameWrongNoteRunErrorCount(run) > 0
+    );
+    return runs.length > 0 ? [{ ...archive, runs }] : [];
+  });
+}
+
+/** Keep only learning-test challenge rows eligible for wrong-note review. */
+export function filterStaffGameWrongNoteLearningChallengeArchivesWithErrors(
+  archives: readonly StaffGameWrongNoteArchive[]
+): StaffGameWrongNoteArchive[] {
+  return filterStaffGameWrongNoteArchivesWithErrors(archives).flatMap((archive) => {
+    const runs = archive.runs.filter(
+      (run) => run.source === "challenge" && run.gameMode === "learning"
+    );
+    return runs.length > 0 ? [{ ...archive, runs }] : [];
+  });
+}
+
+/** Keep single-note diagnostics separated by challenge mode; all includes every Staff Game run. */
+export function filterStaffGameWrongNoteArchivesByGameMode(
+  archives: readonly StaffGameWrongNoteArchive[],
+  gameMode: StaffGameWrongNoteGameModeFilter
+): StaffGameWrongNoteArchive[] {
+  if (gameMode === "all") return [...archives];
+  return archives.flatMap((archive) => {
+    const runs = archive.runs.filter(
+      (run) => run.source === "challenge" && run.gameMode === gameMode
     );
     return runs.length > 0 ? [{ ...archive, runs }] : [];
   });

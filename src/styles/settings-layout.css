@@ -94,14 +94,6 @@
   justify-self: end;
 }
 
-.settings-mode-controls select {
-  margin-top: 16px;
-}
-
-.settings-mode-controls select:disabled {
-  opacity: 0.55;
-}
-
 .settings-category-card .settings-range-control {
   min-width: 220px;
 }
@@ -386,6 +378,31 @@
   .settings-shell .settings-category-card .setting-row > button:not(.ui-switch),
   .settings-shell .settings-about-panel .setting-row > button:not(.ui-switch),
   .settings-shell .settings-developer-options .setting-row > button:not(.ui-switch) {
+    width: 100%;
+  }
+
+  .settings-category-card .page-appearance-hours {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .settings-category-card .page-appearance-hours label {
+    align-items: center;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 3.5em minmax(0, 1fr);
+    min-width: 0;
+    width: 100%;
+  }
+
+  .settings-category-card .page-appearance-hours label > span {
+    white-space: nowrap;
+  }
+
+  .settings-category-card .page-appearance-hours select {
+    min-width: 0;
     width: 100%;
   }
 

@@ -674,6 +674,22 @@
   pointer-events: none;
 }
 
+.staff-game-level-medal.is-jump-trigger {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  margin: 0;
+  padding: 0;
+  pointer-events: auto;
+}
+
+.staff-game-level-medal.is-jump-trigger:focus-visible {
+  outline: 3px solid rgba(255, 213, 92, 0.9);
+  outline-offset: 3px;
+}
+
 .staff-game-level-medal > img {
   position: absolute;
   inset: 0;
@@ -1054,6 +1070,10 @@
     padding: clamp(10px, 2vw, 22px) clamp(18px, 3vw, 34px) 8px;
   }
 
+  .staff-game-hud.is-ready {
+    min-height: calc(clamp(82px, 7vw, 94px) + 25px);
+  }
+
   .staff-game-hud-card {
     width: 100%;
     max-width: clamp(210px, 23vw, 270px);
@@ -1182,13 +1202,8 @@
   }
 
   .staff-game-ready-card.is-wrong-note-review {
-    width: min(492px, calc(100% - 10px));
     max-height: min(calc(86vh + 20px), 780px);
     padding-bottom: calc(clamp(18px, 2.8vh, 28px) + 20px);
-  }
-
-  .staff-game-ready-card.is-wrong-note-review::before {
-    inset-block: 0;
   }
 
   .staff-game-ready-mode-switch {
@@ -1204,11 +1219,11 @@
 
   .staff-game-review-range-row,
   .staff-game-review-preview {
-    width: min(calc(100% - 64px), 820px);
+    width: 100%;
   }
 
   .staff-game-review-preview {
-    padding-inline: 14px;
+    padding: 11px;
   }
 
   .staff-game-ready-card > .staff-game-primary {
@@ -1296,11 +1311,6 @@
     line-height: 1.3;
   }
 
-  .staff-game-ready-card .staff-game-preview-bubble {
-    width: 74px;
-    margin: 0 auto 5px;
-  }
-
   .staff-game-level-detail {
     margin-bottom: 6px;
     padding: 6px 6px;
@@ -1344,11 +1354,6 @@
 
   .staff-game-ready-card h1 {
     font-size: 23px;
-  }
-
-  .staff-game-ready-card .staff-game-preview-bubble {
-    width: 58px;
-    margin-bottom: 2px;
   }
 
   .staff-game-ready-card .staff-game-level-detail {

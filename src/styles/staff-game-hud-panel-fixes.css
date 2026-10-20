@@ -1,0 +1,653 @@
+/* Flexible glass panels replace the fixed-ratio score plaque art. */
+.staff-game-shell .staff-game-hud-card.hud-panel-css {
+  box-sizing: border-box;
+  display: flex;
+  width: fit-content;
+  max-width: min(100%, 270px, 45vw);
+  min-width: min(120px, 100%);
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  align-content: center;
+  gap: 4px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 215, 0, 0.78);
+  border-radius: 40px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(240, 248, 255, 0.72) 100%);
+  box-shadow:
+    0 0 0 3px rgba(135, 206, 250, 0.52),
+    0 4px 12px rgba(0, 0, 0, 0.12),
+    inset 0 2px 4px rgba(255, 255, 255, 0.86);
+  color: #35535c;
+  filter: none;
+  padding: 9px clamp(8px, 1.6vw, 20px);
+  text-align: center;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.staff-game-shell .staff-game-display-card.hud-panel-css {
+  width: min(100%, 168px);
+  max-width: min(100%, 270px, 45vw);
+  min-width: min(120px, 100%);
+  justify-self: start;
+  align-self: start;
+  min-height: clamp(68px, 7vw, 84px);
+}
+
+.staff-game-shell .staff-game-hud-card.hud-panel-css > span {
+  max-width: 100%;
+  color: #526b70;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.staff-game-shell .staff-game-hud-card.hud-panel-css strong {
+  box-sizing: border-box;
+  max-width: 100%;
+  color: #35535c;
+  line-height: 1;
+}
+
+.staff-game-shell .staff-game-display-card.hud-panel-css .staff-game-history-stars {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  line-height: 1;
+}
+
+.staff-game-shell .staff-game-display-card.hud-panel-css .staff-game-history-stars > span {
+  color: #ddb445;
+  font-size: 20px;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(126, 82, 17, 0.2);
+}
+
+.staff-game-shell
+  .staff-game-display-card.hud-panel-css
+  .staff-game-history-stars
+  > span:not(.earned) {
+  color: rgba(104, 128, 132, 0.38);
+  text-shadow: none;
+}
+
+.staff-game-shell .staff-game-hud-card.hud-panel-css small {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  color: #8a6c40;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.25;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.staff-game-shell .staff-game-score-group {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: min(270px, 45vw);
+  min-width: 0;
+  align-self: start;
+  align-items: center;
+  gap: 5px;
+  justify-self: end;
+  padding: 0;
+}
+
+.staff-game-shell .staff-game-score-card.hud-panel-css {
+  width: min(100%, 168px);
+  max-width: min(100%, 270px, 45vw);
+  min-width: min(120px, 100%);
+  min-height: clamp(68px, 7vw, 84px);
+  align-self: center;
+  justify-self: center;
+}
+
+@media (max-width: 1024px) {
+  .staff-game-shell .staff-game-challenge-mode-description.is-learning-mode {
+    display: grid;
+    gap: 2px;
+  }
+
+  .staff-game-shell .staff-game-challenge-mode-description.is-learning-mode > span {
+    white-space: nowrap;
+  }
+}
+
+.staff-game-shell .staff-game-score-card.hud-panel-css > span {
+  margin: 0;
+}
+
+.staff-game-shell .staff-game-score-card.hud-panel-css strong {
+  width: 100%;
+  font-size: clamp(20px, 3.6vw, 40px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  line-height: 1;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
+}
+
+.staff-game-shell .staff-game-score-card.hud-panel-css small {
+  margin: 0;
+  text-align: center;
+}
+
+.staff-game-shell .staff-game-score-group .staff-game-jump-button {
+  align-self: center;
+  position: static;
+  margin: 0;
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-hud-card.hud-panel-css {
+  border-color: rgba(240, 197, 107, 0.62);
+  background: linear-gradient(145deg, rgba(43, 69, 72, 0.94), rgba(29, 50, 57, 0.92));
+  box-shadow:
+    0 0 0 3px rgba(125, 210, 189, 0.27),
+    0 5px 14px rgba(2, 12, 17, 0.32),
+    inset 0 1px 0 rgba(232, 255, 246, 0.12);
+  color: var(--staff-game-night-text, #e7eee8);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-hud-card.hud-panel-css > span,
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-hud-card.hud-panel-css strong {
+  color: var(--staff-game-night-text, #e7eee8);
+  text-shadow: 0 1px 4px rgba(8, 23, 27, 0.58);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-hud-card.hud-panel-css small {
+  color: var(--staff-game-night-gold, #f0c56b);
+  text-shadow: 0 1px 3px rgba(8, 23, 27, 0.62);
+}
+
+:root[data-app-theme="dark"]
+  .staff-game-shell
+  .staff-game-score-card.hud-panel-css
+  strong.is-rush-score {
+  color: var(--staff-game-night-gold, #f0c56b);
+  -webkit-text-fill-color: var(--staff-game-night-gold, #f0c56b);
+}
+
+/* Keep the arcade settings compact on wide screens. */
+.staff-game-settings-layout {
+  display: contents;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-virtual-audio-grid {
+  grid-column: 1 / -1;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-virtual-display-effects-grid,
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-difficulty-statistics-row {
+  display: contents;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout
+  .staff-game-virtual-display-effects-grid
+  > .staff-game-settings-section,
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-difficulty-setting {
+  box-sizing: border-box;
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  border-right: 1px solid rgba(63, 148, 171, 0.3);
+  padding: 8px 12px;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-difficulty-setting {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout
+  .staff-game-virtual-display-effects-grid
+  > .staff-game-settings-section:first-child,
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-difficulty-setting {
+  padding-left: 0;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-display-setting label,
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-difficulty-setting label,
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-settings-row h3 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-display-setting select,
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-difficulty-setting select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  background-position:
+    right 10px center,
+    center;
+  padding: 6px 30px 6px 9px;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-settings-row > div {
+  min-width: 0;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-settings-row p {
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout
+  .staff-game-difficulty-setting
+  .staff-game-difficulty-summary {
+  grid-column: 1;
+  justify-content: flex-start;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.staff-game-settings-layout.is-arcade-virtual-layout .staff-game-settings-toggle {
+  flex: 0 0 auto;
+}
+
+/* Give each major setting its own row in the app and on tablets. */
+@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  .staff-game-settings-layout.is-arcade-virtual-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .staff-game-settings-layout.is-arcade-virtual-layout .staff-game-virtual-display-effects-grid,
+  .staff-game-settings-layout.is-arcade-virtual-layout .staff-game-difficulty-statistics-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .staff-game-settings-layout.is-arcade-virtual-layout
+    .staff-game-virtual-display-effects-grid
+    > .staff-game-settings-section,
+  .staff-game-settings-layout.is-arcade-virtual-layout .staff-game-difficulty-setting {
+    border-right: 0;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .staff-game-shell .staff-game-settings-dialog .staff-game-settings-content select {
+    box-sizing: border-box;
+    width: min(100%, 320px);
+    max-width: 100%;
+  }
+
+  .staff-game-shell .staff-game-settings-dialog .staff-game-note-pool-setting select {
+    width: min(100%, 200px);
+  }
+}
+
+/* Distinguish priority with restrained red, yellow, and white card fills. */
+.staff-game-shell .staff-game-review-preview li.is-priority-1 {
+  border-color: rgba(194, 101, 88, 0.34);
+  background: #fff0ed;
+}
+
+.staff-game-shell .staff-game-review-preview li.is-priority-2 {
+  border-color: rgba(190, 157, 79, 0.34);
+  background: #fff8e4;
+}
+
+.staff-game-shell .staff-game-review-preview li.is-priority-3 {
+  border-color: rgba(43, 110, 128, 0.14);
+  background: #fff;
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview li.is-priority-1 {
+  border-color: rgba(255, 157, 141, 0.42);
+  background: rgba(173, 76, 68, 0.08);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview li.is-priority-2 {
+  border-color: rgba(242, 205, 120, 0.36);
+  background: rgba(133, 99, 38, 0.07);
+}
+
+:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview li.is-priority-3 {
+  border-color: rgba(213, 231, 224, 0.18);
+  background: transparent;
+}
+
+@media (max-width: 420px) {
+  .staff-game-shell .staff-game-hud-card.hud-panel-css > span {
+    font-size: 11px;
+  }
+
+  .staff-game-shell .staff-game-display-card.hud-panel-css .staff-game-history-stars > span {
+    font-size: 17px;
+  }
+
+  .staff-game-shell .staff-game-score-card.hud-panel-css strong {
+    font-size: clamp(18px, 6vw, 24px);
+  }
+
+  .staff-game-settings-layout.is-arcade-virtual-layout
+    .staff-game-virtual-display-effects-grid
+    > .staff-game-settings-section,
+  .staff-game-settings-layout.is-arcade-virtual-layout .staff-game-difficulty-setting {
+    padding-right: 6px;
+  }
+}
+
+/* Center the ready dialog in the usable playfield on phones and tablets. */
+@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  .staff-game-shell.is-ready .staff-game-playfield.is-ready {
+    place-items: center;
+  }
+
+  .staff-game-shell.is-ready .staff-game-playfield.is-ready > .staff-game-ready-card {
+    max-height: calc(100% - 24px);
+    margin-block: 12px;
+  }
+
+  /* Keep all three HUD items on the same top edge with room between them. */
+  .staff-game-shell.is-ready .staff-game-hud.is-ready {
+    align-items: start;
+    gap: clamp(8px, 2vw, 16px);
+  }
+}
+
+@media (max-width: 460px) {
+  .staff-game-shell.is-ready .staff-game-hud.is-ready {
+    gap: clamp(7px, 1.8vw, 10px);
+    padding-inline: 8px;
+  }
+}
+
+/* Lightweight, tabbed help content. */
+.staff-game-dialog.staff-game-help-dialog {
+  width: min(760px, 100%);
+  padding: 34px clamp(18px, 4vw, 34px) 24px;
+}
+
+.staff-game-dialog.staff-game-help-dialog > h2.staff-game-help-heading {
+  margin: 0 42px 16px;
+  font-size: 24px;
+}
+
+.staff-game-help-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(76, 154, 173, 0.2);
+  border-radius: 12px;
+  background: rgba(226, 247, 251, 0.78);
+  padding: 4px;
+}
+
+.staff-game-help-tabs button {
+  box-sizing: border-box;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 40px;
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #54717a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 0 4px;
+  transition:
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    color 140ms ease;
+}
+
+.staff-game-help-tabs button.is-active {
+  border-color: rgba(47, 139, 157, 0.12);
+  background: #fffefa;
+  color: #187a72;
+  font-weight: 750;
+  box-shadow: 0 1px 4px rgba(35, 91, 88, 0.14);
+}
+
+.staff-game-help-tabs button:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.58);
+  color: #3d626a;
+}
+
+.staff-game-help-tabs button:focus-visible,
+.staff-game-help-copy:focus-visible {
+  outline: 2px solid #288da6;
+  outline-offset: 2px;
+}
+
+.staff-game-dialog.staff-game-help-dialog .staff-game-help-copy {
+  margin: 0;
+  border: 1px solid rgba(101, 183, 198, 0.25);
+  border-radius: 12px;
+  background: rgba(247, 252, 250, 0.92);
+  padding: 16px;
+}
+
+.staff-game-help-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.staff-game-help-list li {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.28fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  color: #395c6c;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.staff-game-help-list li > strong {
+  color: #246886;
+  font-weight: 800;
+}
+
+.staff-game-help-copy b {
+  color: #167f87;
+  font-weight: 850;
+}
+
+.staff-game-help-copy kbd {
+  display: inline-block;
+  border: 1px solid rgba(65, 140, 157, 0.28);
+  border-radius: 5px;
+  background: rgba(225, 243, 244, 0.86);
+  color: #345c68;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.4;
+  padding: 1px 5px;
+}
+
+.staff-game-help-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.staff-game-help-mode-card {
+  min-width: 0;
+  border: 1px solid rgba(101, 183, 198, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 12px;
+}
+
+.staff-game-help-mode-card.is-current {
+  border-color: rgba(38, 142, 143, 0.58);
+  box-shadow: 0 0 0 2px rgba(49, 166, 157, 0.12);
+}
+
+.staff-game-help-mode-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: #246886;
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.staff-game-help-mode-card ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 17px;
+  color: #496875;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.staff-game-help-mode-card.is-learning h3 svg {
+  color: #218a91;
+}
+
+.staff-game-help-mode-card.is-review h3 svg {
+  color: #c26f67;
+}
+
+.staff-game-help-mode-card.is-arcade h3 svg {
+  color: #d28a2d;
+}
+
+.staff-game-dialog-actions.staff-game-help-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.staff-game-help-actions .staff-game-primary {
+  min-width: 132px;
+  min-height: 42px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+:root[data-app-theme="dark"] .staff-game-help-tabs {
+  border-color: rgba(151, 190, 178, 0.24);
+  background: rgba(20, 40, 43, 0.78);
+}
+
+:root[data-app-theme="dark"] .staff-game-help-tabs button {
+  color: var(--staff-game-night-muted);
+}
+
+:root[data-app-theme="dark"] .staff-game-help-tabs button.is-active {
+  border-color: rgba(151, 190, 178, 0.24);
+  background: #f3fffa;
+  color: #176f68;
+  box-shadow: 0 1px 4px rgba(3, 16, 18, 0.28);
+}
+
+:root[data-app-theme="dark"] .staff-game-dialog.staff-game-help-dialog .staff-game-help-copy {
+  border-color: rgba(151, 190, 178, 0.28);
+  background: rgba(24, 45, 48, 0.72);
+}
+
+:root[data-app-theme="dark"] .staff-game-help-list li {
+  color: var(--staff-game-night-muted);
+}
+
+:root[data-app-theme="dark"] .staff-game-help-list li > strong,
+:root[data-app-theme="dark"] .staff-game-help-mode-card h3 {
+  color: var(--staff-game-night-mint);
+}
+
+:root[data-app-theme="dark"] .staff-game-help-copy b {
+  color: #f0c56b;
+}
+
+:root[data-app-theme="dark"] .staff-game-help-copy kbd {
+  border-color: rgba(151, 190, 178, 0.3);
+  background: rgba(151, 190, 178, 0.12);
+  color: var(--staff-game-night-text);
+}
+
+:root[data-app-theme="dark"] .staff-game-help-mode-card {
+  border-color: rgba(151, 190, 178, 0.26);
+  background: rgba(213, 231, 224, 0.045);
+}
+
+:root[data-app-theme="dark"] .staff-game-help-mode-card.is-current {
+  border-color: rgba(135, 211, 184, 0.58);
+  box-shadow: 0 0 0 2px rgba(135, 211, 184, 0.1);
+}
+
+:root[data-app-theme="dark"] .staff-game-help-mode-card ul {
+  color: var(--staff-game-night-muted);
+}
+
+@media (max-width: 680px) {
+  .staff-game-help-mode-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .staff-game-dialog.staff-game-help-dialog {
+    padding: 48px 12px 16px;
+  }
+
+  .staff-game-dialog.staff-game-help-dialog > h2.staff-game-help-heading {
+    margin: 0 36px 12px;
+    font-size: 20px;
+  }
+
+  .staff-game-help-tabs {
+    gap: 2px;
+    margin-bottom: 8px;
+  }
+
+  .staff-game-help-tabs button {
+    font-size: 12px;
+  }
+
+  .staff-game-dialog.staff-game-help-dialog .staff-game-help-copy {
+    padding: 12px;
+  }
+
+  .staff-game-help-list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    font-size: 13px;
+  }
+}

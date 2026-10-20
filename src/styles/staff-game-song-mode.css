@@ -457,12 +457,6 @@
   paint-order: stroke fill;
 }
 
-@media (min-width: 821px) {
-  .staff-game-ready-card::before {
-    inset-block: -18px;
-  }
-}
-
 /* Keep a color-matched star glow behind the result dialog and its contents. */
 .staff-game-summary-stars.has-star-halo::before {
   position: absolute;
@@ -566,9 +560,18 @@
 
   .staff-game-hud:not(.is-song-mode) .staff-game-score-card small {
     margin-top: -1px;
+    box-sizing: border-box;
+    display: -webkit-box;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
     transform: none;
     font-size: 8px;
-    line-height: 1;
+    line-height: 1.1;
   }
 
   .staff-game-hud:not(.is-song-mode) .staff-game-level-medal {
@@ -581,11 +584,11 @@
     width: clamp(88px, 26vw, 112px);
   }
 
-  .staff-game-hud:not(.is-song-mode) .staff-game-level-medal > span {
+  .staff-game-hud:not(.is-song-mode) .staff-game-level-medal:not(.is-learning-test) > span {
     font-size: 9px;
   }
 
-  .staff-game-hud:not(.is-song-mode) .staff-game-level-medal > strong {
+  .staff-game-hud:not(.is-song-mode) .staff-game-level-medal:not(.is-learning-test) > strong {
     font-size: clamp(38px, 10vw, 48px);
   }
 }
@@ -620,6 +623,10 @@
     font-size: 22px;
   }
 
+  .staff-game-hud.is-learning-test.is-ready .staff-game-score-card small {
+    display: none;
+  }
+
   .staff-game-hud:not(.is-song-mode) .staff-game-level-medal {
     width: clamp(88px, 26vw, 104px);
   }
@@ -628,7 +635,7 @@
     width: clamp(88px, 26vw, 104px);
   }
 
-  .staff-game-hud:not(.is-song-mode) .staff-game-level-medal > strong {
+  .staff-game-hud:not(.is-song-mode) .staff-game-level-medal:not(.is-learning-test) > strong {
     font-size: clamp(37px, 10vw, 44px);
   }
 }

@@ -3,10 +3,33 @@ import {
   drawNextNote,
   GAME_DIFFICULTIES,
   GAME_NOTE_PROGRESSION,
+  learningTestNoteBag,
+  drawNextLearningTestNote,
+  notePoolCandidates,
   starsForAccuracy,
 } from "./staffGameRules";
 
 describe("staff game difficulty and star rules", () => {
+  it("covers every selected learning-test note exactly twice and never refills", () => {
+    const pool = notePoolCandidates(8, "current-group");
+    const expectedMidis = new Set(pool.map((note) => note.midi));
+    const bag = learningTestNoteBag(8, "current-group");
+    const drawn: number[] = [];
+
+    expect(bag).toHaveLength(expectedMidis.size * 2);
+    while (bag.length > 0) {
+      const next = drawNextLearningTestNote(bag, []);
+      expect(next).not.toBeNull();
+      drawn.push(next!.midi);
+    }
+
+    expect(drawNextLearningTestNote(bag, [])).toBeNull();
+    expect(new Set(drawn)).toEqual(expectedMidis);
+    expect(
+      [...new Set(drawn)].every((midi) => drawn.filter((item) => item === midi).length === 2)
+    ).toBe(true);
+  });
+
   it("defines the six approved timing and scoring tiers", () => {
     expect(
       GAME_DIFFICULTIES.map(
@@ -53,7 +76,6 @@ describe("staff game difficulty and star rules", () => {
         [recentNote!.midi, recentNote!.midi],
         "all-history",
         scheduling,
-        undefined,
         new Set([suppressedNote!.midi])
       );
 
@@ -80,7 +102,6 @@ describe("staff game difficulty and star rules", () => {
         [focusNote.midi, focusNote.midi],
         "all-history",
         "system",
-        undefined,
         excludedNotes
       );
 

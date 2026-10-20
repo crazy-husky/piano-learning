@@ -45,9 +45,111 @@ import {
 } from "./answerEvents";
 
 const PENDING_STAFF_GAME_ARCHIVES_KEY = "anki-note.pendingArchive";
+const PENDING_ANSWER_EVENTS_KEY = "anki-note.pendingAnswerEvents.v1";
 const STAFF_GAME_ARCHIVE_MUTATION_LOCK_NAME = "anki-note.staff-game-archive-mutations";
+const ANSWER_EVENT_MUTATION_LOCK_NAME = "anki-note.answer-event-mutations";
 const STORED_PROMPT_NOTE_DURATIONS = ["whole", "quarter", "eighth", "sixteenth"] as const;
+const STAFF_GAME_DATA_RESET_STATE_ID = "staff-game-data-reset-v9";
+
+interface AppMigrationState {
+  id: string;
+  pending: boolean;
+}
+
 let staffGameArchiveMutationQueue: Promise<void> = Promise.resolve();
+let answerEventMutationQueue: Promise<void> = Promise.resolve();
+
+function withAnswerEventMutationLock<T>(operation: () => Promise<T>): Promise<T> {
+  const serializeInThisPage = (): Promise<T> => {
+    const result = answerEventMutationQueue.then(operation, operation);
+    answerEventMutationQueue = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
+  };
+
+  if (typeof navigator !== "undefined" && navigator.locks) {
+    return navigator.locks
+      .request<Promise<T>>(ANSWER_EVENT_MUTATION_LOCK_NAME, serializeInThisPage)
+      .then((result) => result);
+  }
+  return serializeInThisPage();
+}
+
+function isPendingAnswerEvent(value: unknown): value is AnswerEvent {
+  if (!value || typeof value !== "object") return false;
+  const event = value as Partial<AnswerEvent>;
+  return (
+    typeof event.id === "string" &&
+    typeof event.sessionId === "string" &&
+    typeof event.eventIndex === "number" &&
+    Number.isFinite(event.eventIndex) &&
+    typeof event.occurredAt === "string" &&
+    Number.isFinite(Date.parse(event.occurredAt)) &&
+    (event.mode === "free-practice" ||
+      event.mode === "staff-game" ||
+      event.mode === "song" ||
+      event.mode === "staff-distance") &&
+    Array.isArray(event.attempts)
+  );
+}
+
+function readPendingAnswerEvents(): AnswerEvent[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PENDING_ANSWER_EVENTS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isPendingAnswerEvent).map(boundedAnswerEvent) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingAnswerEvents(events: readonly AnswerEvent[]): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (events.length === 0) window.localStorage.removeItem(PENDING_ANSWER_EVENTS_KEY);
+    else window.localStorage.setItem(PENDING_ANSWER_EVENTS_KEY, JSON.stringify(events));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function updatePendingAnswerEvents(
+  update: (pendingEvents: AnswerEvent[]) => readonly AnswerEvent[]
+): Promise<boolean> {
+  return withAnswerEventMutationLock(async () =>
+    writePendingAnswerEvents(update(readPendingAnswerEvents()))
+  );
+}
+
+export async function enqueuePendingAnswerEvents(events: readonly AnswerEvent[]): Promise<boolean> {
+  if (events.length === 0) return true;
+  try {
+    return await updatePendingAnswerEvents((pendingEvents) => {
+      const byId = new Map(pendingEvents.map((event) => [event.id, event]));
+      for (const event of events.map(boundedAnswerEvent)) byId.set(event.id, event);
+      return [...byId.values()];
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function removePendingAnswerEvents(ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return;
+  try {
+    const idSet = new Set(ids);
+    await updatePendingAnswerEvents((pendingEvents) =>
+      pendingEvents.filter((event) => !idSet.has(event.id))
+    );
+  } catch {
+    // A duplicate is safe: event writes use stable ids and bulkPut.
+  }
+}
 
 function withStaffGameArchiveMutationLock<T>(operation: () => Promise<T>): Promise<T> {
   const serializeInThisPage = (): Promise<T> => {
@@ -174,6 +276,7 @@ export async function removePendingStaffGameWrongNoteArchiveRun(
 
 export class AppDatabase extends Dexie {
   settings!: Table<StoredAppSettings, string>;
+  appMigrationState!: Table<AppMigrationState, string>;
   practiceSessions!: Table<PracticeSessionRecord, string>;
   reviews!: Table<ReviewRecord, string>;
   staffRecallRuns!: Table<StaffRecallRunRecord, string>;
@@ -263,6 +366,49 @@ export class AppDatabase extends Dexie {
       staffGameProficiencySamples:
         "id, runId, date, endedAt, midi, inputMode, sensitivityLevel, [midi+inputMode+sensitivityLevel]",
     });
+    this.version(8).stores({
+      settings: "id",
+      practiceSessions: "id, startedAt, mode, endReason",
+      reviews: "id, sessionId, targetNoteId, groupId, startedAt, answeredCorrectly, interrupted",
+      answerEvents:
+        "id, sessionId, eventIndex, occurredAt, mode, inputMode, sensitivityLevel, targetMidi, songId, levelId",
+      staffRecallRuns: "id, answerSetKey, endedAt",
+      backupStates: "id",
+      vocalAudioMaterials: "id, createdAt, updatedAt, name",
+      staffGameWrongNoteArchives: "id, date",
+      staffGameProficiencySamples:
+        "id, runId, date, endedAt, midi, inputMode, sensitivityLevel, [midi+inputMode+sensitivityLevel]",
+    });
+    this.version(9)
+      .stores({
+        settings: "id",
+        practiceSessions: "id, startedAt, mode, endReason",
+        reviews: "id, sessionId, targetNoteId, groupId, startedAt, answeredCorrectly, interrupted",
+        answerEvents:
+          "id, sessionId, eventIndex, occurredAt, mode, inputMode, sensitivityLevel, targetMidi, songId, levelId",
+        staffRecallRuns: "id, answerSetKey, endedAt",
+        backupStates: "id",
+        vocalAudioMaterials: "id, createdAt, updatedAt, name",
+        staffGameWrongNoteArchives: "id, date",
+        staffGameProficiencySamples:
+          "id, runId, date, endedAt, midi, inputMode, sensitivityLevel, [midi+inputMode+sensitivityLevel]",
+        appMigrationState: "id",
+      })
+      .upgrade(async (transaction) => {
+        await Promise.all([
+          transaction.table("staffGameWrongNoteArchives").clear(),
+          transaction.table("staffGameProficiencySamples").clear(),
+          transaction
+            .table<AnswerEvent>("answerEvents")
+            .where("mode")
+            .anyOf("staff-game", "song")
+            .delete(),
+          transaction.table<AppMigrationState>("appMigrationState").put({
+            id: STAFF_GAME_DATA_RESET_STATE_ID,
+            pending: true,
+          }),
+        ]);
+      });
   }
 }
 
@@ -332,32 +478,101 @@ export async function restoreStaffGameWrongNoteArchiveResponseTimes(): Promise<
   );
 }
 
-export const ANSWER_EVENTS_RESET_KEY = "anki-note.answerEventsReset.v1";
+type PendingDatabaseInitialization = {
+  blocked: boolean;
+  blockedPromise: Promise<void>;
+  openPromise: Promise<void>;
+};
 
-/** Destructively resets pre-answerEvents learning data once, before the app opens the DB. */
-export async function resetLegacyDatabaseForAnswerEvents(): Promise<boolean> {
+let pendingDatabaseInitialization: PendingDatabaseInitialization | null = null;
+
+/** Open the database so Dexie can run scoped migrations before the app mounts. */
+export async function openDatabaseForInitialization(): Promise<boolean> {
   if (typeof window === "undefined" || typeof indexedDB === "undefined") return true;
-  if (window.localStorage.getItem(ANSWER_EVENTS_RESET_KEY) === "done") return true;
-  db.close();
-  const removed = await new Promise<boolean>((resolve) => {
-    const request = indexedDB.deleteDatabase("anki-note");
-    request.onsuccess = () => resolve(true);
-    request.onerror = () => resolve(false);
-    request.onblocked = () => resolve(false);
-  });
-  if (removed) window.localStorage.setItem(ANSWER_EVENTS_RESET_KEY, "done");
-  return removed;
+  if (db.isOpen()) return true;
+
+  let pending = pendingDatabaseInitialization;
+  if (!pending) {
+    let resolveBlocked!: () => void;
+    let wasBlocked = false;
+    const blockedPromise = new Promise<void>((resolve) => {
+      resolveBlocked = resolve;
+    });
+    const handleBlocked = (): void => {
+      wasBlocked = true;
+      resolveBlocked();
+    };
+    const unsubscribe = (): void => db.on("blocked").unsubscribe(handleBlocked);
+    db.on("blocked", handleBlocked);
+
+    const openPromise = Promise.resolve()
+      .then(() => db.open())
+      .then(() => undefined)
+      .finally(() => {
+        unsubscribe();
+        if (pendingDatabaseInitialization === pending) pendingDatabaseInitialization = null;
+      });
+    pending = {
+      get blocked() {
+        return wasBlocked;
+      },
+      blockedPromise,
+      openPromise,
+    };
+    pendingDatabaseInitialization = pending;
+  }
+
+  if (pending.blocked) return false;
+  return Promise.race([
+    pending.openPromise.then(() => true),
+    pending.blockedPromise.then(() => false),
+  ]);
 }
 
-export function saveAnswerEvents(events: readonly AnswerEvent[]): Promise<void> {
-  if (events.length === 0) return Promise.resolve();
-  return ensureSettings().then((settings) =>
-    db.answerEvents
-      .bulkPut(
-        events.map((event) => boundedAnswerEvent({ ...event, dataSetId: settings.dataSetId }))
-      )
-      .then(() => undefined)
+async function writeAnswerEvents(events: readonly AnswerEvent[]): Promise<void> {
+  if (events.length === 0) return;
+  const settings = await ensureSettings();
+  await db.answerEvents.bulkPut(
+    events.map((event) =>
+      boundedAnswerEvent({
+        ...event,
+        dataSetId: event.dataSetId || settings.dataSetId,
+      })
+    )
   );
+}
+
+export async function saveAnswerEvents(events: readonly AnswerEvent[]): Promise<void> {
+  if (events.length === 0) return;
+  const settings = await ensureSettings();
+  const boundedEvents = events.map((event) =>
+    boundedAnswerEvent({
+      ...event,
+      dataSetId: event.dataSetId || settings.dataSetId,
+    })
+  );
+  const queuePersisted = await enqueuePendingAnswerEvents(boundedEvents);
+  try {
+    await writeAnswerEvents(boundedEvents);
+  } catch (error) {
+    if (!queuePersisted) {
+      throw new Error("Answer events could not be saved or queued for retry.", { cause: error });
+    }
+    throw error;
+  }
+  await removePendingAnswerEvents(boundedEvents.map((event) => event.id));
+}
+
+export async function retryPendingAnswerEvents(): Promise<number> {
+  const pendingEvents = readPendingAnswerEvents();
+  if (pendingEvents.length === 0) return 0;
+  try {
+    await writeAnswerEvents(pendingEvents);
+    await removePendingAnswerEvents(pendingEvents.map((event) => event.id));
+    return pendingEvents.length;
+  } catch {
+    return 0;
+  }
 }
 
 const LOCAL_LEARNING_PROGRESS_KEYS = [
@@ -365,13 +580,41 @@ const LOCAL_LEARNING_PROGRESS_KEYS = [
   "anki-note.staffGameProgress.v3",
   "anki-note.staffGameProgress.v4",
   "anki-note.staffGameProgress.v5",
+  "anki-note.staffGameProgress.v6",
   "anki-note.staffGameWeakNoteHistory.v2",
   "anki-note.staffGameWeakNoteHistory.v1",
   "anki-note.staffGameSongProgress.v1",
   "anki-note.staffGameSongProgress.v2",
   "piano-learning.song-practice-progress.v1",
   PENDING_STAFF_GAME_ARCHIVES_KEY,
+  PENDING_ANSWER_EVENTS_KEY,
 ];
+
+const STAFF_GAME_RESET_LOCAL_KEYS = [
+  "anki-note.staffGameProgress.v2",
+  "anki-note.staffGameProgress.v3",
+  "anki-note.staffGameProgress.v4",
+  "anki-note.staffGameProgress.v5",
+  "anki-note.staffGameProgress.v6",
+  "anki-note.staffGameWeakNoteHistory.v2",
+  "anki-note.staffGameWeakNoteHistory.v1",
+  PENDING_STAFF_GAME_ARCHIVES_KEY,
+];
+
+/** Finish the Staff Game reset before the app mounts, clearing queued rows that could restore old data. */
+export async function finalizeStaffGameDataReset(): Promise<void> {
+  const migrationState = await db.appMigrationState.get(STAFF_GAME_DATA_RESET_STATE_ID);
+  if (!migrationState?.pending) return;
+
+  for (const key of STAFF_GAME_RESET_LOCAL_KEYS) window.localStorage.removeItem(key);
+  const unrelatedEvents = readPendingAnswerEvents().filter(
+    (event) => event.mode !== "staff-game" && event.mode !== "song"
+  );
+  if (!writePendingAnswerEvents(unrelatedEvents)) {
+    throw new Error("Could not remove reset Staff Game events from the pending write queue.");
+  }
+  await db.appMigrationState.put({ ...migrationState, pending: false });
+}
 
 export async function clearLearningRecordsPreservingConfiguration(): Promise<void> {
   await db.transaction(
@@ -433,7 +676,6 @@ export async function deleteAllApplicationData(): Promise<void> {
   db.close();
   await db.delete();
   window.localStorage.clear();
-  window.localStorage.setItem(ANSWER_EVENTS_RESET_KEY, "done");
   await db.open();
 }
 
@@ -831,6 +1073,7 @@ export async function saveStaffGameProficiencySamples(
         levelId: sample.levelId,
         songId: sample.songId,
         staffGameSource: sample.staffGameSource,
+        gameMode: sample.gameMode,
         targetMidi: sample.midi,
         confidence: scoredAttempts.at(-1)?.confidence,
         recognizedMidi: sample.wasInterrupted

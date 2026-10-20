@@ -5,7 +5,6 @@ import bubblePopUrl from "../assets/audio/bubble-pop.wav";
 import comboStreakUrl from "../assets/audio/combo-streak.wav";
 import comboUnbelievableUrl from "../assets/audio/combo-unbelievable.mp3";
 import levelClearUrl from "../assets/audio/level-clear.wav";
-import menuClickUrl from "../assets/audio/menu-click.mp3";
 import noteMissedRubberyUrl from "../assets/audio/note-missed-rubbery.wav";
 import {
   STAFF_GAME_AUDIO_LIMITER_CEILING_DB,
@@ -21,7 +20,6 @@ export type StaffGameSound =
   | "comboStreak"
   | "comboUnbelievable"
   | "levelClear"
-  | "menuClick"
   | "noteMissed"
   | "noteMissedUnpitched";
 type SampledStaffGameSound = StaffGameSound;
@@ -41,15 +39,13 @@ const soundSources: Record<
   SampledStaffGameSound,
   { url: string; volumeDb: number; label: string }
 > = {
-  // Gains use measured source RMS to keep answer, combo, and level-clear cues close;
-  // the short bubble/menu sounds and Streak cue remain intentionally quieter.
+  // Gains use measured source RMS to keep answer, combo, and level-clear cues close.
   bubblePop: { url: bubblePopUrl, volumeDb: -7, label: "泡泡破裂音效" },
   comboAmazing: { url: comboAmazingUrl, volumeDb: -13, label: "连击 Amazing 音效" },
   comboExcellent: { url: comboExcellentUrl, volumeDb: -14, label: "连击 Excellent 音效" },
   comboStreak: { url: comboStreakUrl, volumeDb: -31, label: "连击 Streak 音效" },
   comboUnbelievable: { url: comboUnbelievableUrl, volumeDb: -12, label: "连击 Unbelievable 音效" },
   levelClear: { url: levelClearUrl, volumeDb: -22, label: "关卡完成音效" },
-  menuClick: { url: menuClickUrl, volumeDb: -28, label: "菜单点击音效" },
   noteMissed: { url: noteMissedRubberyUrl, volumeDb: -8, label: "答错音效" },
   noteMissedUnpitched: { url: noteMissedRubberyUrl, volumeDb: -8, label: "答错音效（无音高）" },
 };
@@ -191,14 +187,12 @@ export async function prepareStaffGameAudioMasterGain(): Promise<Tone.Gain> {
   return getSoundMasterGain();
 }
 
-function canPlayAudio(sound?: StaffGameSound): boolean {
-  // Menu clicks are interface feedback, independent of the in-game effects setting.
-  return sound === "menuClick" || soundEffectsEnabled;
+function canPlayAudio(): boolean {
+  return soundEffectsEnabled;
 }
 
 function stopPlayingAudio(): void {
-  soundPlayers.forEach(({ player }, sound) => {
-    if (sound === "menuClick") return;
+  soundPlayers.forEach(({ player }) => {
     try {
       player.stop();
     } catch {
@@ -300,12 +294,12 @@ export function playStaffGameSound(
   sound: StaffGameSound,
   onPlaybackStart?: (timing: StaffGameSoundPlaybackTiming) => void
 ): void {
-  if (typeof window === "undefined" || !canPlayAudio(sound)) return;
+  if (typeof window === "undefined" || !canPlayAudio()) return;
   const { player, ready } = getSoundPlayer(sound);
   void Tone.start()
     .then(() => Promise.all([ready, connectSoundOutputLimiter()]))
     .then(() => {
-      if (!canPlayAudio(sound)) return;
+      if (!canPlayAudio()) return;
       const startAtMs = performance.now() + soundOutputLatencyMs;
       player.start();
       onPlaybackStart?.({
