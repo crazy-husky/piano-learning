@@ -967,10 +967,11 @@
 @media (min-width: 821px) {
   .staff-game-settings-dialog .staff-game-difficulty-summary {
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
     flex-wrap: nowrap;
     gap: 14px;
     white-space: nowrap;
+    text-align: left;
   }
 
   .staff-game-settings-dialog .staff-game-difficulty-summary span {
@@ -1798,16 +1799,18 @@ body.rush-mode .staff-game-rush-vignette {
 
 .staff-game-settings-dialog .staff-game-difficulty-summary {
   display: flex;
-  grid-column: 1 / -1;
+  grid-column: 2;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
+  justify-self: end;
+  width: min(100%, 180px);
   gap: 4px 12px;
   margin: 1px 0 0;
   color: #638392;
   font-size: 10px;
   font-weight: 700;
   line-height: 1.35;
-  text-align: center;
+  text-align: left;
 }
 
 .staff-game-settings-dialog .staff-game-difficulty-summary span {
