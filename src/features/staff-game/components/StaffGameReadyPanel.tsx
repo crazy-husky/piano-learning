@@ -383,7 +383,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
                 <span>完成全部题目后生成学习报告。</span>
               </>
             ) : (
-              "限时内连续答题，音符袋打完后会循环补题；得分和连击计入娱乐模式记录。"
+              "时间有限，连击无限！在倒计时结束前尽情弹奏，挑战你的最高分纪录。"
             )}
           </p>
         </div>

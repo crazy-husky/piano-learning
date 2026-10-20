@@ -11,7 +11,7 @@ import {
 } from "../domain/backupSync";
 import { backupText } from "../domain/backupText";
 import { normalizeCurrentPracticeGroupIds, normalizeEnabledPitchIds } from "../domain/notes";
-import { normalizeAnswerKeyboardScale, normalizePianoVolume } from "../domain/settings";
+import { normalizePianoVolume } from "../domain/settings";
 import type {
   AppSettings,
   AnswerEvent,
@@ -1731,7 +1731,6 @@ async function normalizeImportedSettings(manifest: BackupManifest): Promise<AppS
     drillNoteNames: resolveDrillNoteNames(baseSettings),
     focusedTraining:
       baseSettings.focusedTraining ?? resolveQueueStrategy(baseSettings) === "focused",
-    answerKeyboardScale: normalizeAnswerKeyboardScale(baseSettings.answerKeyboardScale),
     pianoVolume: normalizePianoVolume(baseSettings.pianoVolume),
     promptDisplayMode: baseSettings.promptDisplayMode,
     promptNoteDuration: baseSettings.promptNoteDuration,

@@ -10,7 +10,6 @@ describe("practice session start snapshot", () => {
   it("groups normalized practice, presentation, interaction, and environment values", () => {
     const settings = {
       ...makeDefaultSettings(),
-      answerKeyboardScale: 1.2,
       correctDelayMs: 650,
       inactivityThresholdSeconds: 45,
       pianoVolume: 0.6,
@@ -44,7 +43,6 @@ describe("practice session start snapshot", () => {
       startPausedReading: true,
     });
     expect(built?.snapshot.interactionConfig).toEqual({
-      answerKeyboardScale: 1.2,
       correctDelayMs: 650,
       inactivityThresholdSeconds: 45,
       pianoVolume: 0.6,

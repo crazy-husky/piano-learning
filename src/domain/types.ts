@@ -2,7 +2,7 @@ import type { VocalAudioCounts } from "./vocalPitch";
 
 export type NoteName = "C" | "D" | "E" | "F" | "G" | "A" | "B";
 export type PianoKeyName = NoteName | "C#" | "D#" | "F#" | "G#" | "A#";
-export type Octave = 1 | 2 | 3 | 4 | 5 | 6;
+export type Octave = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type Staff = "treble" | "bass";
 export type StaffNotationMode = "treble-only" | "bass-only" | "grand";
 export type PitchId = `${NoteName}${Octave}`;
@@ -53,10 +53,12 @@ export interface TargetNote {
   isInterStaffLedgerSpelling: boolean;
 }
 
-export type PracticeGroupId = "F1-F2" | "G2-F3" | "G3-F4" | "G4-F5" | "G5-G6";
+export type CurrentPracticeGroupId = "C2-B2" | "C3-B3" | "C4-B4" | "C5-B5" | "C6-B6";
+export type LegacyPracticeGroupId = "F1-F2" | "G2-F3" | "G3-F4" | "G4-F5" | "G5-G6";
+export type PracticeGroupId = CurrentPracticeGroupId | LegacyPracticeGroupId;
 
 export interface PracticeGroup {
-  id: PracticeGroupId;
+  id: CurrentPracticeGroupId;
   label: string;
   notes: TargetNote[];
 }
@@ -252,7 +254,8 @@ export interface PracticeSessionStartSnapshot {
     startPausedReading: boolean;
   };
   interactionConfig: {
-    answerKeyboardScale: number;
+    /** Stored only on older session snapshots; current keyboards use fixed sizing. */
+    answerKeyboardScale?: number;
     correctDelayMs: number;
     inactivityThresholdSeconds: number;
     pianoVolume: number;
@@ -414,7 +417,6 @@ interface AppSettingsBase {
   autoPlayTarget: boolean;
   playAnswerNote: boolean;
   includeInterStaffLedgerSpellings: boolean;
-  answerKeyboardScale: number;
   pianoVolume: number;
   queueStrategy: PracticeQueueStrategy;
   drillNoteNames: NoteName[];

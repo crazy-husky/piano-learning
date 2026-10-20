@@ -4,7 +4,7 @@ import { buildPracticeComparisonSnapshot, getQueueComparisonFamily } from "./pra
 function snapshot(overrides: Partial<Parameters<typeof buildPracticeComparisonSnapshot>[0]> = {}) {
   return buildPracticeComparisonSnapshot({
     drillNoteNames: [],
-    enabledGroupIds: ["G4-F5"],
+    enabledGroupIds: ["C4-B4"],
     includeInterStaffLedgerSpellings: false,
     promptDisplayMode: "staff-page",
     promptNoteDuration: "quarter",

@@ -34,7 +34,7 @@ const menuItems: Array<{
   },
   {
     label: "五线谱游戏-闯关模式",
-    description: "听音作答，支持跳级",
+    description: "听音作答，可选择关卡",
     icon: Music2,
     isNew: true,
     path: "/practice/game",

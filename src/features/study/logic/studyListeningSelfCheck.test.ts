@@ -13,7 +13,7 @@ import {
   type HeldNoteSequence,
 } from "./studyListeningSelfCheck";
 
-const middlePitches = getUniqueStudyPitches(getNotesForGroups(["G3-F4"], true, "grand"));
+const middlePitches = getUniqueStudyPitches(getNotesForGroups(["C4-B4"], true, "grand"));
 
 function createHeldNoteSequence(): HeldNoteSequence {
   return { cancelled: false, releases: [], settled: Promise.resolve() };
@@ -30,23 +30,23 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 describe("study listening self-check", () => {
   it("deduplicates staff spellings before selecting audible pitches", () => {
     expect(middlePitches.map((pitch) => pitch.pitchId)).toEqual([
-      "G3",
-      "A3",
-      "B3",
       "C4",
       "D4",
       "E4",
       "F4",
+      "G4",
+      "A4",
+      "B4",
     ]);
   });
 
   it("selects single pitches uniformly while avoiding the previous pitch on a reroll", () => {
     const first = selectListeningSelfCheckTarget("single", middlePitches, undefined, () => 0);
     expect(first?.mode).toBe("single");
-    expect(first && getListeningTargetNoteName(first)).toBe("G");
+    expect(first && getListeningTargetNoteName(first)).toBe("C");
 
     const next = selectListeningSelfCheckTarget("single", middlePitches, first, () => 0);
-    expect(next?.mode === "single" ? next.pitch.pitchId : undefined).toBe("A3");
+    expect(next?.mode === "single" ? next.pitch.pitchId : undefined).toBe("D4");
   });
 
   it("selects octave targets by note name while avoiding the previous name", () => {
@@ -59,19 +59,19 @@ describe("study listening self-check", () => {
   });
 
   it("uses a random available pitch for free single-note playback", () => {
-    const pitches = getUniqueStudyPitches(getNotesForGroups(["G3-F4", "G4-F5"], false, "grand"));
-    expect(selectFreeSinglePitch("G", pitches, () => 0)?.pitchId).toBe("G3");
-    expect(selectFreeSinglePitch("G", pitches, () => 0.99)?.pitchId).toBe("G4");
+    const pitches = getUniqueStudyPitches(getNotesForGroups(["C4-B4", "C5-B5"], false, "grand"));
+    expect(selectFreeSinglePitch("G", pitches, () => 0)?.pitchId).toBe("G4");
+    expect(selectFreeSinglePitch("G", pitches, () => 0.99)?.pitchId).toBe("G5");
   });
 
   it("uses the nearest available answer pitch within the selected range", () => {
     const target = middlePitches.find((pitch) => pitch.pitchId === "D4");
     expect(target).toBeDefined();
-    expect(target && findNearestAnswerPitch("G", target, middlePitches)?.pitchId).toBe("G3");
+    expect(target && findNearestAnswerPitch("G", target, middlePitches)?.pitchId).toBe("G4");
   });
 
   it("prefers the target's numbered octave when distances are tied", () => {
-    const pitches = getUniqueStudyPitches(getNotesForGroups(["G3-F4", "G4-F5"], false, "grand"));
+    const pitches = getUniqueStudyPitches(getNotesForGroups(["C4-B4", "C5-B5"], false, "grand"));
     const target = pitches.find((pitch) => pitch.pitchId === "F4");
     expect(target).toBeDefined();
     expect(target && findNearestAnswerPitch("B", target, pitches)?.pitchId).toBe("B4");

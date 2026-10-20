@@ -55,10 +55,9 @@ describe("makeDefaultSettings", () => {
       promptNoteDuration: "quarter",
       autoPlayTarget: false,
       playAnswerNote: true,
-      enabledGroupIds: ["G3-F4"],
+      enabledGroupIds: ["C4-B4"],
       includeInterStaffLedgerSpellings: false,
       correctDelayMs: 0,
-      answerKeyboardScale: 1,
       pianoVolume: 0.8,
     });
   });
@@ -84,7 +83,7 @@ describe("makeDefaultSettings", () => {
         enabledGroupIds: [],
       })
     ).toMatchObject({
-      enabledGroupIds: ["G3-F4"],
+      enabledGroupIds: ["C4-B4"],
       staffNotationMode: "grand",
     });
   });
@@ -100,21 +99,14 @@ describe("makeDefaultSettings", () => {
     expect("selectedStaffs" in normalized).toBe(false);
   });
 
-  it("defaults and clamps the answer keyboard scale without a schema migration", () => {
+  it("discards the retired keyboard scale setting when loading existing settings", () => {
     const current = makeDefaultSettings();
+    const normalized = normalizeAppSettings({
+      ...current,
+      answerKeyboardScale: 1.5,
+    } as unknown as Parameters<typeof normalizeAppSettings>[0]);
 
-    expect(normalizeAppSettings({ ...current, answerKeyboardScale: 2 }).answerKeyboardScale).toBe(
-      1.5
-    );
-    expect(normalizeAppSettings({ ...current, answerKeyboardScale: 0.1 }).answerKeyboardScale).toBe(
-      0.7
-    );
-    expect(
-      normalizeAppSettings({
-        ...current,
-        answerKeyboardScale: undefined,
-      } as unknown as Parameters<typeof normalizeAppSettings>[0]).answerKeyboardScale
-    ).toBe(1);
+    expect("answerKeyboardScale" in normalized).toBe(false);
   });
 
   it("defaults answer-note playback on while preserving an explicit off setting", () => {
@@ -182,7 +174,7 @@ describe("restoreDefaultConfiguration", () => {
       id: "session-kept",
       schemaVersion: 1,
       mode: "fixed-duration",
-      enabledGroupIds: ["G3-F4"],
+      enabledGroupIds: ["C4-B4"],
       startedAt: "2026-01-03T00:00:00.000Z",
       completedCount: 0,
       interruptedCount: 0,
@@ -574,7 +566,7 @@ describe("wrong note archive backup merge", () => {
       id: "session-preserved",
       schemaVersion: 1,
       mode: "fixed-duration",
-      enabledGroupIds: ["G3-F4"],
+      enabledGroupIds: ["C4-B4"],
       startedAt: "2026-10-15T10:00:00.000Z",
       completedCount: 0,
       interruptedCount: 0,

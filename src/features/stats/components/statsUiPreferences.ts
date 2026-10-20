@@ -13,11 +13,11 @@ import {
 import { parseStatsRange, parseStatsRangeDays, type StatsRange } from "./statsRange";
 import type {
   AppSettings,
-  PracticeGroupId,
   PitchId,
   StaffNotationMode,
   StaffRangeSelection,
 } from "../../../domain/types";
+import { normalizeCurrentPracticeGroupIds } from "../../../domain/notes";
 
 export const STATS_TABS = ["overview", "notes", "progress", "wrong-notes"] as const;
 export type StatsTab = (typeof STATS_TABS)[number];
@@ -126,7 +126,6 @@ function isStatsCarouselCardId(value: unknown): value is StatsCarouselCardId {
 }
 
 const STAFF_NOTATION_MODES: StaffNotationMode[] = ["treble-only", "bass-only", "grand"];
-const PRACTICE_GROUP_IDS: PracticeGroupId[] = ["F1-F2", "G2-F3", "G3-F4", "G4-F5", "G5-G6"];
 const NOTE_NAMES = ["C", "D", "E", "F", "G", "A", "B"] as const;
 
 function isStatsTab(value: unknown): value is StatsTab {
@@ -148,9 +147,8 @@ function parsePitchIds(value: unknown): PitchId[] | undefined {
 
 function parseRangeSelection(value: unknown): StaffRangeSelection | undefined {
   if (!isRecord(value) || !Array.isArray(value.enabledGroupIds)) return undefined;
-  const enabledGroupIds = value.enabledGroupIds.filter(
-    (group): group is PracticeGroupId =>
-      typeof group === "string" && PRACTICE_GROUP_IDS.includes(group as PracticeGroupId)
+  const enabledGroupIds = normalizeCurrentPracticeGroupIds(
+    value.enabledGroupIds.filter((group): group is string => typeof group === "string")
   );
   const enabledPitchIds =
     value.enabledPitchIds === undefined ? undefined : parsePitchIds(value.enabledPitchIds);
@@ -175,9 +173,8 @@ function parseNoteScope(value: unknown): StatsNoteScopePreferences | null {
   ) {
     return null;
   }
-  const enabledGroupIds = value.enabledGroupIds.filter(
-    (group): group is PracticeGroupId =>
-      typeof group === "string" && PRACTICE_GROUP_IDS.includes(group as PracticeGroupId)
+  const enabledGroupIds = normalizeCurrentPracticeGroupIds(
+    value.enabledGroupIds.filter((group): group is string => typeof group === "string")
   );
   const enabledPitchIds =
     value.enabledPitchIds === undefined ? undefined : parsePitchIds(value.enabledPitchIds);

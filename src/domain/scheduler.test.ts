@@ -276,7 +276,7 @@ describe("adaptive-v2 scheduler", () => {
   });
 
   it("routes melody generation separately", () => {
-    const notes = getNotesForGroups(["G3-F4"], false);
+    const notes = getNotesForGroups(["C3-B3"], false);
     const rngValues = [0, 0];
 
     expect(
@@ -287,6 +287,6 @@ describe("adaptive-v2 scheduler", () => {
         lastTargetNoteId: "C4",
         rng: () => rngValues.shift() ?? 0,
       }).id
-    ).toBe("B3");
+    ).toBe("C3");
   });
 });

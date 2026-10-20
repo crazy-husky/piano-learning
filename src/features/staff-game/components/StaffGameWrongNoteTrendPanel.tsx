@@ -37,14 +37,14 @@ const INPUT_MODE_LABELS: Record<string, string> = {
 };
 
 const NOTE_POOL_SCOPE_LABELS: Record<string, string> = {
-  "current-group": "仅当前组",
+  "current-group": "当前组",
   "all-history": "全部已解锁音符",
   "all-history-current-clef": "当前谱号全部",
 };
 
 const NOTE_SCHEDULING_LABELS: Record<string, string> = {
   random: "随机练习",
-  system: "系统编排",
+  system: "重点音优先",
 };
 
 function trendGroupLabel(group: StaffGameWrongNoteTrendGroup): string {
@@ -64,7 +64,7 @@ function trendGroupLabel(group: StaffGameWrongNoteTrendGroup): string {
               : "旧版闯关",
           DIFFICULTY_LABELS[group.difficulty] ?? group.difficulty,
           INPUT_MODE_LABELS[group.inputMode] ?? group.inputMode,
-          NOTE_POOL_SCOPE_LABELS[group.notePoolScope ?? ""] ?? "",
+          group.notePoolScope ? `音域：${NOTE_POOL_SCOPE_LABELS[group.notePoolScope] ?? ""}` : "",
           NOTE_SCHEDULING_LABELS[group.noteSchedulingStrategy ?? ""] ?? "",
         ];
   return parts.filter(Boolean).join(" · ");
@@ -206,14 +206,14 @@ export function StaffGameWrongNoteTrendPanel({
         <div className="staff-game-wrong-note-trend-empty" role="status">
           <strong>
             {runsMissingSettings > 0
-              ? "历史归档缺少出题设置，暂不能可靠比较"
+              ? "较早的练习记录信息不完整，暂时无法准确对比"
               : groups.length === 0
                 ? "当前范围暂无可比较的对局"
                 : "当前类型暂无记录"}
           </strong>
           <span>
             {runsMissingSettings > 0
-              ? "旧归档仍保留，但不纳入趋势；新归档会记录音池范围和出题策略。"
+              ? "较早的记录仍可查看，但暂不参与趋势对比；之后的练习会按音域和音符安排分别展示。"
               : "完成几局相同条件的闯关或错题复习后，这里会显示变化趋势。"}
           </span>
         </div>

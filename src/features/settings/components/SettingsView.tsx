@@ -8,14 +8,7 @@ import {
   X,
 } from "lucide-react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import {
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type Dispatch, type SetStateAction, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   chooseBackupDirectory,
@@ -31,7 +24,6 @@ import {
   getBackupState,
 } from "../../../data/db";
 import { backupText, formatBackupConflictDetail } from "../../../domain/backupText";
-import { normalizeAnswerKeyboardScale } from "../../../domain/settings";
 import type { AppSettings, BackupState } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import type { PageAppearancePreferences } from "../../../shared/appearance/pageAppearance";
@@ -45,9 +37,6 @@ import {
 } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
 import { releaseSwiftF0PracticeRuntime } from "../../vocal-pitch/logic/swiftF0PracticeClient";
 import { BackupConflictResolver } from "../../../shared/components/BackupConflictResolver";
-import { PausedPlaybackBpmInput } from "../../../shared/components/PausedPlaybackBpmInput";
-import { PlayableKeyboardPreview } from "../../../shared/components/PlayableKeyboardPreview";
-import { handleWheelStep } from "../logic/settingsWheel";
 import { formatDateTime } from "../../../shared/formatDateTime";
 import type { AppUpdateStatus } from "../../../app/useAppUpdateNotice";
 import {
@@ -73,30 +62,6 @@ import { MicrophoneParameterBenchmarkDialog } from "./MicrophoneParameterBenchma
 type StoredBackupState = BackupState & { restoreRequiredBeforeBackup?: boolean };
 type SettingsActionFeedback = { description?: string; kind?: "danger"; title: string };
 type SettingsDataClearFeedback = { kind: "success" | "error"; message: string };
-const ANSWER_KEYBOARD_SCALE_STEP = 0.05;
-const SLIDER_SAVE_DEBOUNCE_MS = 450;
-
-function useWheelSteps<T extends HTMLElement>(
-  elementRef: RefObject<T>,
-  onStep: (direction: -1 | 1) => void
-): void {
-  const onStepRef = useRef(onStep);
-  onStepRef.current = onStep;
-
-  useEffect(() => {
-    const element = elementRef.current;
-    if (!element) {
-      return;
-    }
-
-    function handleWheel(event: WheelEvent): void {
-      handleWheelStep(event, onStepRef.current);
-    }
-
-    element.addEventListener("wheel", handleWheel, { passive: false });
-    return () => element.removeEventListener("wheel", handleWheel);
-  }, [elementRef]);
-}
 
 function truncateStart(value: string, maxLength = 24): string {
   if (value.length <= maxLength) {
@@ -229,22 +194,11 @@ export function SettingsView({
       setBusy(false);
     }
   }
-  const [answerKeyboardScaleDraft, setAnswerKeyboardScaleDraft] = useState(() =>
-    normalizeAnswerKeyboardScale(settings.answerKeyboardScale)
-  );
   const [staffPageUiPreferences, setStaffPageUiPreferences] = useLocalStorageState(
     STAFF_PAGE_UI_PREFERENCES_KEY,
     DEFAULT_STAFF_PAGE_UI_PREFERENCES,
     { parse: parseStaffPageUiPreferences }
   );
-  const answerKeyboardScaleRef = useRef(answerKeyboardScaleDraft);
-  const pendingSliderSettingsRef = useRef<Partial<AppSettings> | null>(null);
-  const sliderSaveTimerRef = useRef<number | null>(null);
-  const onSettingsSavedRef = useRef(onSettingsSaved);
-  const settingsRef = useRef(settings);
-  onSettingsSavedRef.current = onSettingsSaved;
-  settingsRef.current = settings;
-  const answerKeyboardScaleControlRef = useRef<HTMLLabelElement>(null);
   const storedBackupState = backupState as StoredBackupState;
   const backupBlockedUntilSync = Boolean(
     backupState.dataConflictBeforeBackup ??
@@ -252,60 +206,8 @@ export function SettingsView({
     storedBackupState.restoreRequiredBeforeBackup
   );
   const hasBackupSnapshot = Boolean(backupBlockedUntilSync || backupState.lastSeenBackupVersion);
-  const answerKeyboardScalePercent = Math.round(answerKeyboardScaleDraft * 100);
-
-  useEffect(
-    () => () => {
-      if (sliderSaveTimerRef.current !== null) {
-        window.clearTimeout(sliderSaveTimerRef.current);
-      }
-      const pendingSettings = pendingSliderSettingsRef.current;
-      pendingSliderSettingsRef.current = null;
-      if (pendingSettings) {
-        void onSettingsSavedRef.current({ ...settingsRef.current, ...pendingSettings });
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    const nextScale = normalizeAnswerKeyboardScale(settings.answerKeyboardScale);
-    answerKeyboardScaleRef.current = nextScale;
-    setAnswerKeyboardScaleDraft(nextScale);
-  }, [settings.answerKeyboardScale]);
-
   async function saveSettings(next: AppSettings): Promise<void> {
     await onSettingsSaved(next);
-  }
-
-  function scheduleSliderSettingsSave(update: Partial<AppSettings>): void {
-    pendingSliderSettingsRef.current = {
-      ...pendingSliderSettingsRef.current,
-      ...update,
-    };
-    if (sliderSaveTimerRef.current !== null) {
-      window.clearTimeout(sliderSaveTimerRef.current);
-    }
-    sliderSaveTimerRef.current = window.setTimeout(() => {
-      const pendingSettings = pendingSliderSettingsRef.current;
-      pendingSliderSettingsRef.current = null;
-      sliderSaveTimerRef.current = null;
-      if (pendingSettings) {
-        void onSettingsSavedRef.current({ ...settingsRef.current, ...pendingSettings });
-      }
-    }, SLIDER_SAVE_DEBOUNCE_MS);
-  }
-
-  async function flushPendingSliderSettingsSave(): Promise<void> {
-    if (sliderSaveTimerRef.current !== null) {
-      window.clearTimeout(sliderSaveTimerRef.current);
-      sliderSaveTimerRef.current = null;
-    }
-    const pendingSettings = pendingSliderSettingsRef.current;
-    pendingSliderSettingsRef.current = null;
-    if (pendingSettings) {
-      await onSettingsSavedRef.current({ ...settingsRef.current, ...pendingSettings });
-    }
   }
 
   async function restoreDefaultConfiguration(): Promise<void> {
@@ -320,7 +222,6 @@ export function SettingsView({
     setBusy(true);
     setIsRestoringConfiguration(true);
     try {
-      await flushPendingSliderSettingsSave();
       releaseSwiftF0PracticeRuntime();
       await onRestoreDefaultConfiguration();
     } finally {
@@ -328,22 +229,6 @@ export function SettingsView({
       setBusy(false);
     }
   }
-
-  function saveAnswerKeyboardScale(nextScale: number): void {
-    const normalizedScale = normalizeAnswerKeyboardScale(nextScale);
-    if (normalizedScale === answerKeyboardScaleRef.current) {
-      return;
-    }
-    answerKeyboardScaleRef.current = normalizedScale;
-    setAnswerKeyboardScaleDraft(normalizedScale);
-    scheduleSliderSettingsSave({ answerKeyboardScale: normalizedScale });
-  }
-
-  useWheelSteps(answerKeyboardScaleControlRef, (direction) => {
-    saveAnswerKeyboardScale(
-      answerKeyboardScaleRef.current + direction * ANSWER_KEYBOARD_SCALE_STEP
-    );
-  });
 
   function describeDirectorySelection(
     result: BackupDirectorySelectionResult
@@ -581,22 +466,6 @@ export function SettingsView({
                 <option value={30}>30 秒</option>
               </select>
             </div>
-            <div className="setting-row">
-              <div>
-                <strong>播放剩余 BPM</strong>
-                <span>暂停时按谱面时值播放的速度</span>
-              </div>
-              <PausedPlaybackBpmInput
-                className="setting-number-input"
-                value={staffPageUiPreferences.pausedPlaybackBpm}
-                onChange={(pausedPlaybackBpm) =>
-                  setStaffPageUiPreferences((current) => ({
-                    ...current,
-                    pausedPlaybackBpm,
-                  }))
-                }
-              />
-            </div>
           </section>
 
           <section
@@ -694,31 +563,6 @@ export function SettingsView({
                   : "请按下一个琴键"}
               </p>
             ) : null}
-          </section>
-
-          <section className="panel settings-panel settings-category-card keyboard-settings-panel">
-            <div className="panel-heading">
-              <h2>界面显示</h2>
-            </div>
-            <div className="setting-row keyboard-size-row">
-              <div>
-                <strong>琴键大小</strong>
-                <span className="settings-helper">调整虚拟键盘的显示比例及预览音区（C4-C5）。</span>
-              </div>
-              <label className="settings-range-control" ref={answerKeyboardScaleControlRef}>
-                <input
-                  aria-label="琴键大小"
-                  max={150}
-                  min={70}
-                  step={5}
-                  type="range"
-                  value={answerKeyboardScalePercent}
-                  onChange={(event) => saveAnswerKeyboardScale(Number(event.target.value) / 100)}
-                />
-                <span>{answerKeyboardScalePercent}%</span>
-              </label>
-            </div>
-            <PlayableKeyboardPreview scale={answerKeyboardScaleDraft} />
           </section>
 
           <section className="panel settings-panel settings-category-card settings-backup-card">
@@ -823,7 +667,7 @@ export function SettingsView({
                 type="button"
               >
                 <Trash2 size={17} />
-                ⚠️ 清空所有数据
+                清空所有数据
               </button>
             </div>
           </section>

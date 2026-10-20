@@ -11,7 +11,7 @@ import type { AnswerAttempt, PianoKeyName, StaffGameChallengeMode } from "../../
 import { STAFF_GAME_SONGS } from "../data/staffGameSongs";
 import {
   drawNextNote,
-  drawNextLearningTestNote,
+  takeNextLearningTestNote,
   drawNextWrongNoteReviewNote,
   gameNoteFromMidi,
   randomBubbleCenterX,
@@ -187,11 +187,7 @@ export function useStaffGameRoundClock({
                 temporarilyExcludedMidiNotes
               )
             : challengeModeRef.current === "learning"
-              ? drawNextLearningTestNote(
-                  noteBagRef.current,
-                  recentNoteMidisRef.current,
-                  temporarilyExcludedMidiNotes
-                )
+              ? takeNextLearningTestNote(noteBagRef.current, temporarilyExcludedMidiNotes)
               : drawNextNote(
                   levelRef.current,
                   noteBagRef.current,

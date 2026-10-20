@@ -296,6 +296,7 @@ export function App({
   const settingsMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const configurationRestoreInProgressRef = useRef(false);
   const [practiceRunning, setPracticeRunning] = useState(false);
+  const [practiceVirtualKeyboardActive, setPracticeVirtualKeyboardActive] = useState(false);
   const practiceRunningRef = useRef(false);
   practiceRunningRef.current = practiceRunning;
   const [practiceStageActive, setPracticeStageActive] = useState(false);
@@ -1068,6 +1069,7 @@ export function App({
   const showMobileBackButton =
     view !== "home" &&
     !(view === "practice" && isStaffGameRoutePath(route.path)) &&
+    !practiceVirtualKeyboardActive &&
     (!practiceRunning || view === "practice");
   const mobileBackReturnsToSetup = view === "practice" && (practiceRunning || practiceStageActive);
   useLayoutEffect(() => {
@@ -1346,6 +1348,7 @@ export function App({
                   onPracticeFinished={showBackupReminderAfterActivity}
                   onRunningChange={setPracticeRunning}
                   onPracticeStageChange={setPracticeStageActive}
+                  onVirtualKeyboardActiveChange={setPracticeVirtualKeyboardActive}
                   onSettingsSaved={(settings, options) =>
                     saveSettings(settings, { ...options, feedback: false })
                   }

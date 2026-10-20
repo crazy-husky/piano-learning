@@ -23,7 +23,7 @@ import { saveAnswerEvents } from "../../../data/db";
 import type { AnswerAttempt } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
-import { isNaturalPianoKey } from "../../../shared/components/PianoKeyboard";
+import { isNaturalPianoKey } from "../../../shared/components/pianoKeyNames";
 import {
   createStaffDistanceSequence,
   summarizeStaffDistancePair,

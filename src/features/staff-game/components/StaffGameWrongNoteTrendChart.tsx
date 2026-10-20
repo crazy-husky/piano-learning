@@ -308,10 +308,10 @@ export function StaffGameWrongNoteTrendChart({
       </svg>
       <p className="staff-game-wrong-note-trend-chart-caption">
         横轴为{displayMode === "run" ? "局序" : "日期"}，纵轴为{metricLabel}
-        {displayMode === "day" ? "；同一天多局按出题量合并。" : "。"}
+        {displayMode === "day" ? "；同一天多局按练习题数合并。" : "。"}
         {metric === "accuracy" ? (
           <>
-            {"准确率按出题次数加权，只将"}
+            {"准确率按作答题数计算，只将"}
             <span className="staff-game-wrong-note-trend-first-try">第一次</span>
             {"答对计为正确，"}
           </>

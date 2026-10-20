@@ -3,8 +3,8 @@ import {
   drawNextNote,
   GAME_DIFFICULTIES,
   GAME_NOTE_PROGRESSION,
-  learningTestNoteBag,
-  drawNextLearningTestNote,
+  learningTestNoteSequence,
+  takeNextLearningTestNote,
   notePoolCandidates,
   starsForAccuracy,
 } from "./staffGameRules";
@@ -13,17 +13,17 @@ describe("staff game difficulty and star rules", () => {
   it("covers every selected learning-test note exactly twice and never refills", () => {
     const pool = notePoolCandidates(8, "current-group");
     const expectedMidis = new Set(pool.map((note) => note.midi));
-    const bag = learningTestNoteBag(8, "current-group");
+    const sequence = learningTestNoteSequence(8, "current-group");
     const drawn: number[] = [];
 
-    expect(bag).toHaveLength(expectedMidis.size * 2);
-    while (bag.length > 0) {
-      const next = drawNextLearningTestNote(bag, []);
+    expect(sequence).toHaveLength(expectedMidis.size * 2);
+    while (sequence.length > 0) {
+      const next = takeNextLearningTestNote(sequence);
       expect(next).not.toBeNull();
       drawn.push(next!.midi);
     }
 
-    expect(drawNextLearningTestNote(bag, [])).toBeNull();
+    expect(takeNextLearningTestNote(sequence)).toBeNull();
     expect(new Set(drawn)).toEqual(expectedMidis);
     expect(
       [...new Set(drawn)].every((midi) => drawn.filter((item) => item === midi).length === 2)

@@ -49,6 +49,7 @@ import {
 } from "../../../data/db";
 import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
+import { VirtualPianoKeyboard } from "../../../shared/components/VirtualPianoKeyboard";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import type { MidiAccessStatus } from "../../../midi/midiInput";
 import type {
@@ -115,7 +116,6 @@ import {
   type StaffGameResourceUpdate,
 } from "../logic/staffGameResources";
 import {
-  BLACK_KEY_NOTES,
   BUBBLE_FADE_IN_MS,
   COMBO_INDICATOR_FADE_DURATION_MS,
   COMPUTER_KEY_PITCHES,
@@ -126,7 +126,7 @@ import {
   PITCH_NAMES,
   RUSH_FALL_SPEED_MULTIPLIER,
   RUSH_MODE_COMBO_THRESHOLD,
-  learningTestNoteBag,
+  learningTestNoteSequence,
   gameDurationMsForLevel,
   gameLevelForNotePoolScope,
   gameDifficultyPreset,
@@ -2551,7 +2551,7 @@ export function StaffGameView({
           gameModeRef.current === "levels" &&
           roundChallengeModeRef.current === "learning"
         ) {
-          noteBagRef.current = learningTestNoteBag(
+          noteBagRef.current = learningTestNoteSequence(
             levelRef.current,
             settingsRef.current.notePoolScope
           );
@@ -3644,7 +3644,7 @@ export function StaffGameView({
 
   return (
     <section
-      className={`practice-shell staff-game-shell${phase === "ready" ? " is-ready" : ""}`}
+      className={`practice-shell staff-game-shell${phase === "ready" ? " is-ready" : ""}${rushModeActive ? " is-rush-mode" : ""}`}
       aria-label="五线谱闯关游戏"
     >
       <div className="staff-game-scene" ref={sceneRef} style={gameArtStyle}>
@@ -3776,7 +3776,7 @@ export function StaffGameView({
                 : isLearningChallenge
                   ? phase === "ready"
                     ? `进度 0/${questionTargetCount} 题`
-                    : `已完成 ${roundMetricsRef.current.resolvedQuestionCount}/${questionTargetCount} 题 · 无倒计时`
+                    : `已完成 ${roundMetricsRef.current.resolvedQuestionCount}/${questionTargetCount} 题`
                   : phase === "ready"
                     ? ""
                     : `最高 ${Math.round(progress.modes.arcade.bestScores[level - 1])}\u3000·\u3000${remainingSeconds} 秒`
@@ -4146,39 +4146,15 @@ export function StaffGameView({
         </div>
 
         {showVirtualKeyboard ? (
-          <div
-            aria-label="虚拟键盘按音名判定，可匹配任意八度"
-            className={`staff-game-virtual-keyboard${phase === "paused" ? " is-paused" : ""}`}
-            role="group"
-          >
-            <div className="staff-game-keybed">
-              {NOTE_NAMES.map((note) => (
-                <button
-                  aria-label={`${note} 音键，按音名匹配任意八度`}
-                  className="staff-game-virtual-key"
-                  disabled={phase === "paused"}
-                  key={note}
-                  onClick={() => handleVirtualKey(note)}
-                  type="button"
-                >
-                  {settings.displayMode === "none" ? null : (
-                    <span>{virtualKeyLabel(note, settings.displayMode)}</span>
-                  )}
-                </button>
-              ))}
-              {/* Product choice: black keys have no visible labels; their note names remain available to assistive technology. */}
-              {BLACK_KEY_NOTES.map(({ pitch, className }) => (
-                <button
-                  aria-label={`${pitch.replace("#", "♯")} 音键，按音名匹配任意八度`}
-                  className={`staff-game-virtual-key staff-game-black-key ${className}`}
-                  disabled={phase === "paused"}
-                  key={pitch}
-                  onClick={() => handleVirtualKey(pitch)}
-                  type="button"
-                />
-              ))}
-            </div>
-          </div>
+          <VirtualPianoKeyboard
+            ariaLabel="虚拟键盘按音名判定，可匹配任意八度"
+            className={phase === "paused" ? "is-paused" : undefined}
+            disabled={phase === "paused"}
+            enabledKeys={new Set(PITCH_NAMES)}
+            getKeyAriaLabel={(pitch) => `${pitch.replace("#", "♯")} 音键，按音名匹配任意八度`}
+            getKeyLabel={(pitch) => virtualKeyLabel(pitch, settings.displayMode)}
+            onKeyPress={handleVirtualKey}
+          />
         ) : null}
         <footer
           className={`staff-game-controls${touchGameLayout ? " is-touch-layout" : ""}${isSongMode ? " is-song-mode" : ""}${showWrongNoteEndControl ? " is-wrong-note-review" : ""}`}
@@ -4374,9 +4350,6 @@ export function StaffGameView({
           }
           onNotePoolScopeChange={(notePoolScope) =>
             setSettingsDraft((current) => ({ ...current, notePoolScope }))
-          }
-          onNoteSchedulingStrategyChange={(noteSchedulingStrategy) =>
-            setSettingsDraft((current) => ({ ...current, noteSchedulingStrategy }))
           }
           onCloseWrongNoteNotice={() => setIsWrongNoteNoticeOpen(false)}
           onCancelUnsavedSettingsPrompt={() => setIsUnsavedSettingsPromptOpen(false)}

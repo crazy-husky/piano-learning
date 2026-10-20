@@ -1,4 +1,4 @@
-import { ArrowLeft, Pause, Play, Square, Volume2 } from "lucide-react";
+import { ArrowLeft, Pause, Play, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { playTargetNote } from "../../../audio/piano";
 import { resolveDrillNoteNames, resolveQueueStrategy } from "../../../data/db";
@@ -56,11 +56,8 @@ import { LoadingActivityText } from "../../../shared/components/LoadingActivity"
 import { B6SwiftF0ReminderDialog } from "../../vocal-pitch/components/B6SwiftF0ReminderDialog";
 import type { PracticePagePreferences } from "../../../shared/preferences/practicePagePreferences";
 import type { PracticeDistanceMode } from "../../../routing/appRoutes";
-import {
-  isNaturalPianoKey,
-  NATURAL_PIANO_KEYS,
-  PianoKeyboard,
-} from "../../../shared/components/PianoKeyboard";
+import { VirtualPianoKeyboard } from "../../../shared/components/VirtualPianoKeyboard";
+import { isNaturalPianoKey, NATURAL_PIANO_KEYS } from "../../../shared/components/pianoKeyNames";
 import { StaffPagePrompt } from "./StaffPagePrompt";
 import { StaffPrompt } from "./StaffPrompt";
 import { MOBILE_PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
@@ -72,13 +69,11 @@ import {
 import { PROMPT_NOTE_DURATIONS, type GeneratedStaffPageRhythm } from "../logic/staffPageNotation";
 import {
   DEFAULT_STAFF_PAGE_UI_PREFERENCES,
-  normalizePausedPlaybackBpm,
   parseStaffPageUiPreferences,
   STAFF_PAGE_UI_PREFERENCES_KEY,
 } from "../../../shared/preferences/staffPageUiPreferences";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { useDelayedBusy } from "../../../shared/hooks/useDelayedBusy";
-import { useRemainingNotePlayback } from "../hooks/useRemainingNotePlayback";
 import { usePracticeTimers } from "../hooks/usePracticeTimers";
 import {
   usePracticeSessionLifecycle,
@@ -104,10 +99,7 @@ import type {
   SongPracticeSelection,
 } from "../song-practice/songPracticeMaterials";
 import { usePracticeMicrophoneInput } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
-import {
-  practiceMicrophoneAlgorithmLabel,
-  type PracticeMicrophonePreferences,
-} from "../../vocal-pitch/logic/practiceMicrophonePreferences";
+import { type PracticeMicrophonePreferences } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
 import {
   ensurePracticeMicrophoneForResume,
   releasePracticeMicrophoneOnPause,
@@ -134,6 +126,7 @@ interface PracticeViewProps {
   onPracticeTabChange: (tab: PracticeSetupTab) => void;
   onPracticeFinished: () => void;
   onPracticeStageChange: (active: boolean) => void;
+  onVirtualKeyboardActiveChange: (active: boolean) => void;
   practiceTab: PracticeSetupTab;
   practiceDistanceMode?: PracticeDistanceMode;
   onRunningChange: (running: boolean) => void;
@@ -319,6 +312,7 @@ export function PracticeView({
   onPracticeTabChange,
   onPracticeFinished,
   onPracticeStageChange,
+  onVirtualKeyboardActiveChange,
   practiceTab,
   onRunningChange,
   practiceDistanceMode,
@@ -433,12 +427,9 @@ export function PracticeView({
     runningStartSnapshot?.practiceConfig.queueStrategy ?? practiceSetupPreferences.queueStrategy;
   const drillNoteNames =
     runningStartSnapshot?.practiceConfig.drillNoteNames ?? practiceSetupPreferences.drillNoteNames;
-  const pausedPlaybackBpm = staffPageUiPreferences.pausedPlaybackBpm;
   const startPausedReading = staffPageUiPreferences.startPausedReading;
   const effectivePromptNoteDuration =
     runningStartSnapshot?.presentationConfig.promptNoteDuration ?? promptNoteDuration;
-  const effectiveAnswerKeyboardScale =
-    runningStartSnapshot?.interactionConfig.answerKeyboardScale ?? settings.answerKeyboardScale;
   const staffPageScrollDurationMs =
     (runningStartSnapshot?.presentationConfig.smoothStaffPageScroll ??
       staffPageUiPreferences.smoothStaffPageScroll) &&
@@ -504,12 +495,6 @@ export function PracticeView({
   };
   const setQueueStrategy = (nextQueueStrategy: PracticeQueueStrategy): void => {
     setPracticeSetupPreferences((current) => ({ ...current, queueStrategy: nextQueueStrategy }));
-  };
-  const setPausedPlaybackBpm = (nextBpm: number): void => {
-    setStaffPageUiPreferences((current) => ({
-      ...current,
-      pausedPlaybackBpm: normalizePausedPlaybackBpm(nextBpm, current.pausedPlaybackBpm),
-    }));
   };
   const setSummaryProgressMode = (nextMode: SessionProgressMode): void => {
     setSessionProgressPreferences((current) => ({ ...current, mode: nextMode }));
@@ -593,21 +578,6 @@ export function PracticeView({
     return markMidiLatencyAfterPaint(diagnosticSampleId, "paintApprox");
   }, [feedback]);
 
-  const getRemainingPlaybackNotes = useCallback((): TargetNote[] => {
-    const page = staffPageRef.current;
-    const startIndex = page ? Math.max(page.index, page.completedCount) : 0;
-    return page ? page.notes.slice(startIndex) : [];
-  }, []);
-  const {
-    cancel: cancelRemainingPlayback,
-    state: remainingPlaybackState,
-    toggle: toggleRemainingPlayback,
-  } = useRemainingNotePlayback({
-    bpm: pausedPlaybackBpm,
-    getNotes: getRemainingPlaybackNotes,
-    noteDuration: effectivePromptNoteDuration,
-  });
-
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const onChange = (): void => setPrefersReducedMotion(mediaQuery.matches);
@@ -625,6 +595,11 @@ export function PracticeView({
   useEffect(() => {
     onRunningChange(phase === "running" || isStaffDistanceRunning);
   }, [isStaffDistanceRunning, onRunningChange, phase]);
+
+  useLayoutEffect(() => {
+    onVirtualKeyboardActiveChange(phase === "running" && answerPitchMode === "note-name");
+    return () => onVirtualKeyboardActiveChange(false);
+  }, [answerPitchMode, onVirtualKeyboardActiveChange, phase]);
 
   useEffect(() => () => onRunningChange(false), [onRunningChange]);
 
@@ -849,7 +824,6 @@ export function PracticeView({
         microphoneResumeInFlightRef.current = false;
       }
     }
-    cancelRemainingPlayback();
     isPausedRef.current = false;
     setIsPaused(false);
     const pendingAfterPause = pendingAfterPauseRef.current;
@@ -867,7 +841,6 @@ export function PracticeView({
   }, [
     answerPitchMode,
     autoPlayTarget,
-    cancelRemainingPlayback,
     midi.isConnected,
     practiceMicrophone.isListening,
     practiceMicrophone.start,
@@ -1142,18 +1115,11 @@ export function PracticeView({
   const sessionLifecycleServices = useMemo(
     () => ({
       stopMicrophone: practiceMicrophone.stop,
-      cancelRemainingPlayback,
       clearStaffPageScrollSchedule,
       onDataChanged,
       onPracticeFinished,
     }),
-    [
-      cancelRemainingPlayback,
-      clearStaffPageScrollSchedule,
-      onDataChanged,
-      onPracticeFinished,
-      practiceMicrophone.stop,
-    ]
+    [clearStaffPageScrollSchedule, onDataChanged, onPracticeFinished, practiceMicrophone.stop]
   );
   const sessionLifecycleUi = useMemo(
     () => ({
@@ -1328,7 +1294,12 @@ export function PracticeView({
     let pauseTimeout: number | null = null;
 
     function onVisibilityOrBlur(): void {
-      const hasFocus = document.visibilityState !== "hidden" && document.hasFocus();
+      // Mobile browsers can report document.hasFocus() as false while the
+      // practice page is still visible (for example during the transition
+      // from the setup screen). Treat backgrounding, rather than transient
+      // window focus changes, as a pause on mobile.
+      const hasFocus =
+        document.visibilityState !== "hidden" && (isMobileViewport || document.hasFocus());
       if (!hasFocus) {
         if (focusLossStartedAt !== null) {
           return;
@@ -1377,7 +1348,7 @@ export function PracticeView({
         window.clearTimeout(pauseTimeout);
       }
     };
-  }, [pauseForFocusLoss, phase, practicePagePreferences.focusLossPauseSeconds]);
+  }, [isMobileViewport, pauseForFocusLoss, phase, practicePagePreferences.focusLossPauseSeconds]);
 
   useEffect(() => {
     if (phase !== "running") {
@@ -1680,6 +1651,7 @@ export function PracticeView({
         .join(" ")}
     >
       <div className="practice-topline">
+        {practiceTab === "free" ? <h1 className="practice-running-title">自由练习</h1> : null}
         <div className="progress-readout">
           {mode === "open-ended" ? (
             <span>完成 {completedCount}</span>
@@ -1695,18 +1667,19 @@ export function PracticeView({
         </div>
         <div className="topline-actions">
           <button
-            aria-label="返回配置"
+            aria-keyshortcuts="Escape"
+            aria-label="退出练习并返回配置"
             className="practice-return-home"
-            title="返回配置"
+            title="退出练习并返回配置 Esc"
             onClick={() =>
               void completeSession("manual-stop", "manual-stop", { showSummary: false })
             }
             type="button"
           >
             <ArrowLeft aria-hidden="true" size={18} />
-            返回
+            退出<kbd>Esc</kbd>
           </button>
-          {answerPitchMode !== "microphone" ? (
+          {answerPitchMode !== "microphone" && answerPitchMode !== "note-name" ? (
             <button title="重播目标音" onClick={() => void replayTarget()}>
               <Volume2 size={18} />
               重播
@@ -1729,14 +1702,6 @@ export function PracticeView({
             {isPaused ? "继续" : "暂停"}
             <kbd>空格</kbd>
           </button>
-          <button
-            aria-keyshortcuts="Escape"
-            title="结束 Esc"
-            onClick={() => void completeSession("manual-stop", "manual-stop")}
-          >
-            <Square fill="currentColor" size={14} strokeWidth={0} />
-            结束<kbd>Esc</kbd>
-          </button>
         </div>
       </div>
 
@@ -1746,19 +1711,37 @@ export function PracticeView({
             className={`practice-microphone-indicator ${practiceMicrophone.error ? "error" : practiceMicrophone.status}`}
             aria-hidden="true"
           />
-          <span role="status">
-            {practiceMicrophone.status === "listening" ? (
-              `正在监听麦克风 · ${practiceMicrophoneAlgorithmLabel(practiceMicrophone.activeAlgorithm)}`
-            ) : practiceMicrophone.status === "requesting" ? (
-              <LoadingActivityText
-                kind={practiceMicrophone.isPreparingSwiftF0 ? "dots" : "spinner"}
+          {practiceMicrophone.status === "listening" ? (
+            <>
+              <span role="status">正在监听麦克风</span>
+              <div
+                aria-label="麦克风输入音量"
+                aria-valuemax={100}
+                aria-valuemin={0}
+                aria-valuenow={Math.round(practiceMicrophone.inputLevel * 100)}
+                aria-valuetext={`${Math.round(practiceMicrophone.inputLevel * 100)}%`}
+                className="practice-microphone-level"
+                role="meter"
               >
-                {practiceMicrophone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风…"}
-              </LoadingActivityText>
-            ) : (
-              (practiceMicrophone.error ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))
-            )}
-          </span>
+                <span
+                  className="practice-microphone-level-fill"
+                  style={{ width: `${Math.round(practiceMicrophone.inputLevel * 100)}%` }}
+                />
+              </div>
+            </>
+          ) : (
+            <span role="status">
+              {practiceMicrophone.status === "requesting" ? (
+                <LoadingActivityText
+                  kind={practiceMicrophone.isPreparingSwiftF0 ? "dots" : "spinner"}
+                >
+                  {practiceMicrophone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风…"}
+                </LoadingActivityText>
+              ) : (
+                (practiceMicrophone.error ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))
+              )}
+            </span>
+          )}
         </div>
       ) : null}
 
@@ -1818,38 +1801,39 @@ export function PracticeView({
       </div>
 
       {showPracticeKeyboard ? (
-        <PianoKeyboard
+        <VirtualPianoKeyboard
           ariaLabel="答案琴键"
-          className="practice-piano-keyboard"
+          className="practice-virtual-piano-keyboard"
+          disabled={isPaused}
           enabledKeys={
             answerPitchMode === "note-name" ? NATURAL_PIANO_KEYS : new Set<PianoKeyName>()
           }
           feedback={
             feedback?.noteName ? { keyName: feedback.noteName, type: feedback.type } : undefined
           }
-          keyOctave={currentNote?.octave}
-          onKeyPress={(key) => {
-            if (answerPitchMode === "note-name" && isNaturalPianoKey(key.keyName)) {
-              void submitAnswer({ noteName: key.keyName, source: "screen-keyboard" });
+          getKeyAriaLabel={(keyName) => `${keyName.replace("#", "♯")} 音键`}
+          onKeyPress={(keyName) => {
+            if (answerPitchMode === "note-name" && isNaturalPianoKey(keyName)) {
+              void submitAnswer({ noteName: keyName, source: "screen-keyboard" });
             }
           }}
-          onFeedbackTransitionEnd={
+          onKeyTransitionEnd={
             MIDI_LATENCY_DIAGNOSTICS_ENABLED
               ? (keyName, type, propertyName) => {
+                  const diagnosticSampleId = feedback?.diagnosticSampleId;
                   if (
                     type === feedback?.type &&
                     feedback?.noteName === keyName &&
+                    diagnosticSampleId !== undefined &&
                     propertyName.startsWith("border-") &&
                     propertyName.endsWith("-color")
                   ) {
-                    markMidiLatencyStage(feedback.diagnosticSampleId, "transitionEnd");
+                    markMidiLatencyStage(diagnosticSampleId, "transitionEnd");
                   }
                 }
               : undefined
           }
           pressedKeys={pressedAnswerKeys}
-          touchLabels={isMobileViewport}
-          scale={effectiveAnswerKeyboardScale}
         />
       ) : null}
       <span className="sr-only" aria-live="polite">
@@ -1857,10 +1841,9 @@ export function PracticeView({
       </span>
       {isPaused ? (
         <PauseOverlay
-          bpm={pausedPlaybackBpm}
-          onBpmChange={setPausedPlaybackBpm}
           onExit={handleInputEscape}
           onResume={resumePractice}
+          allowBackdropResume={!isMobileViewport}
           resumeBlockedMessage={
             answerPitchMode === "exact-pitch" && !midi.isConnected
               ? "MIDI 连接已断开；重新连接后可继续练习"
@@ -1881,12 +1864,7 @@ export function PracticeView({
                       : "暂停期间麦克风已释放；点击空白处或按空格重新连接"
               : undefined
           }
-          onToggleRemainingPlayback={toggleRemainingPlayback}
-          playbackState={remainingPlaybackState}
           showKeyboardShortcuts={!isMobileViewport}
-          showRemainingPlayback={
-            promptDisplayMode === "staff-page" && answerPitchMode !== "microphone"
-          }
         />
       ) : null}
     </section>

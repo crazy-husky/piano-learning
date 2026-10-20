@@ -102,7 +102,7 @@ export const STUDY_STAFF_LAYOUT = {
   },
   labels: {
     // StudyNoteMap 将音名、固定调唱名和简谱固定放在谱表上方。
-    noteNameYPx: 48,
+    noteNameYPx: 60,
     lineGapPx: 22,
     noteNameFontSizePx: 18,
     solfegeFontSizePx: 13,

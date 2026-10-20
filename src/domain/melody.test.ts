@@ -9,7 +9,7 @@ function rngFrom(values: number[]): () => number {
 
 describe("melody generator", () => {
   it("generates the requested count inside the enabled practice range", () => {
-    const notes = getNotesForGroups(["G3-F4"], false);
+    const notes = getNotesForGroups(["C4-B4"], false);
     const selected = selectMelodyNotes({
       notes,
       count: 12,
@@ -17,11 +17,11 @@ describe("melody generator", () => {
     });
 
     expect(selected).toHaveLength(12);
-    expect(selected.every((note) => note.groupId === "G3-F4")).toBe(true);
+    expect(selected.every((note) => note.groupId === "C4-B4")).toBe(true);
   });
 
   it("cadences phrase endings on stable notes", () => {
-    const notes = getNotesForGroups(["G3-F4"], false);
+    const notes = getNotesForGroups(["C4-B4"], false);
     const selected = selectMelodyNotes({
       notes,
       count: 8,
@@ -59,14 +59,14 @@ describe("melody generator", () => {
   });
 
   it("alternates grand-staff phrases between treble and bass when both are selected", () => {
-    const notes = getNotesForGroups(["G3-F4", "G4-F5"], false);
+    const notes = getNotesForGroups(["C3-B3", "C4-B4"], false);
     const selected = selectMelodyNotes({ notes, count: 32, rng: () => 0.5 });
 
     expect(new Set(selected.map((note) => note.staff))).toEqual(new Set(["treble", "bass"]));
   });
 
   it("softly prefers the less-practiced pitch when both melodic directions are available", () => {
-    const notes = getNotesForGroups(["G3-F4"], false);
+    const notes = getNotesForGroups(["C4-B4"], false);
     const state = createMelodyGenerationState();
     state.currentRegisterIndex = 0;
     state.phrasePosition = 1;
@@ -85,14 +85,11 @@ describe("melody generator", () => {
   });
 
   it("carries a short transition into the opposite grand staff at the next phrase", () => {
-    const notes = getNotesForGroups(
-      PRACTICE_GROUPS.map((group) => group.id),
-      false
-    );
-    const previousNote = notes.find((note) => note.pitchId === "F1");
+    const notes = getNotesForGroups(["C3-B3", "C4-B4"], false);
+    const previousNote = notes.find((note) => note.pitchId === "B3");
     const state = createMelodyGenerationState();
     state.currentRegisterIndex = 0;
-    state.registerVisitCounts = [1, 0, 0, 0, 0];
+    state.registerVisitCounts = [1, 0];
 
     const selected = selectMelodyNotes({
       notes,
@@ -102,7 +99,6 @@ describe("melody generator", () => {
       rng: rngFrom([0, 0, 0, 0, 0.8, 0, 0, 0]),
     });
 
-    expect(state.currentRegisterIndex).toBe(2);
-    expect(selected[0].staff).toBe("treble");
+    expect(selected[0].staff).not.toBe(previousNote?.staff);
   });
 });

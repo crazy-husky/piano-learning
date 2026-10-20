@@ -3,6 +3,7 @@ import type {
   NoteName,
   Octave,
   PianoKeyName,
+  CurrentPracticeGroupId,
   PitchId,
   PracticeGroup,
   PracticeGroupId,
@@ -16,7 +17,7 @@ export const NOTE_NAMES: NoteName[] = ["C", "D", "E", "F", "G", "A", "B"];
 const NOTE_NAME_INDEX = new Map(NOTE_NAMES.map((noteName, index) => [noteName, index]));
 type PracticePitch = { noteName: NoteName; octave: Octave };
 type PracticeGroupDefinition = {
-  id: PracticeGroupId;
+  id: CurrentPracticeGroupId;
   label: string;
   pitches: PracticePitch[];
 };
@@ -30,75 +31,35 @@ export const ANSWER_BUTTONS: Array<{ key: string; label: string; noteName: NoteN
 
 const PRACTICE_GROUP_DEFINITIONS: PracticeGroupDefinition[] = [
   {
-    id: "F1-F2",
-    label: "F1-F2",
-    pitches: [
-      { noteName: "F", octave: 1 },
-      { noteName: "G", octave: 1 },
-      { noteName: "A", octave: 1 },
-      { noteName: "B", octave: 1 },
-      { noteName: "C", octave: 2 },
-      { noteName: "D", octave: 2 },
-      { noteName: "E", octave: 2 },
-      { noteName: "F", octave: 2 },
-    ],
+    id: "C2-B2",
+    label: "C2-B2",
+    pitches: NOTE_NAMES.map((noteName) => ({ noteName, octave: 2 })),
   },
   {
-    id: "G2-F3",
-    label: "G2-F3",
-    pitches: [
-      { noteName: "G", octave: 2 },
-      { noteName: "A", octave: 2 },
-      { noteName: "B", octave: 2 },
-      { noteName: "C", octave: 3 },
-      { noteName: "D", octave: 3 },
-      { noteName: "E", octave: 3 },
-      { noteName: "F", octave: 3 },
-    ],
+    id: "C3-B3",
+    label: "C3-B3",
+    pitches: NOTE_NAMES.map((noteName) => ({ noteName, octave: 3 })),
   },
   {
-    id: "G3-F4",
-    label: "G3-F4",
-    pitches: [
-      { noteName: "G", octave: 3 },
-      { noteName: "A", octave: 3 },
-      { noteName: "B", octave: 3 },
-      { noteName: "C", octave: 4 },
-      { noteName: "D", octave: 4 },
-      { noteName: "E", octave: 4 },
-      { noteName: "F", octave: 4 },
-    ],
+    id: "C4-B4",
+    label: "C4-B4",
+    pitches: NOTE_NAMES.map((noteName) => ({ noteName, octave: 4 })),
   },
   {
-    id: "G4-F5",
-    label: "G4-F5",
-    pitches: [
-      { noteName: "G", octave: 4 },
-      { noteName: "A", octave: 4 },
-      { noteName: "B", octave: 4 },
-      { noteName: "C", octave: 5 },
-      { noteName: "D", octave: 5 },
-      { noteName: "E", octave: 5 },
-      { noteName: "F", octave: 5 },
-    ],
+    id: "C5-B5",
+    label: "C5-B5",
+    pitches: NOTE_NAMES.map((noteName) => ({ noteName, octave: 5 })),
   },
   {
-    id: "G5-G6",
-    label: "G5-G6",
-    pitches: [
-      { noteName: "G", octave: 5 },
-      { noteName: "A", octave: 5 },
-      { noteName: "B", octave: 5 },
-      { noteName: "C", octave: 6 },
-      { noteName: "D", octave: 6 },
-      { noteName: "E", octave: 6 },
-      { noteName: "F", octave: 6 },
-      { noteName: "G", octave: 6 },
-    ],
+    id: "C6-B6",
+    label: "C6-B6",
+    pitches: NOTE_NAMES.map((noteName) => ({ noteName, octave: 6 })),
   },
 ];
 
-const LEGACY_GROUP_ID_SEQUENCES = [["C2-B2", "C3-B3", "C4-B4", "C5-B5", "C6-B6"]] as const;
+const LEGACY_GROUP_ID_SEQUENCES: readonly (readonly PracticeGroupId[])[] = [
+  ["F1-F2", "G2-F3", "G3-F4", "G4-F5", "G5-G6"],
+];
 
 function noteOrder(noteName: NoteName, octave: Octave): number {
   const index = NOTE_NAME_INDEX.get(noteName);
@@ -174,9 +135,11 @@ export const PRACTICE_GROUPS: PracticeGroup[] = PRACTICE_GROUP_DEFINITIONS.map((
 
 export const ALL_NOTES: TargetNote[] = PRACTICE_GROUPS.flatMap((group) => group.notes);
 export const AVAILABLE_PITCH_IDS: PitchId[] = [...new Set(ALL_NOTES.map((note) => note.pitchId))];
+const LEGACY_LOW_NOTES: TargetNote[] = (["F", "G", "A", "B"] as const).flatMap((noteName) =>
+  makeTargetNotes(noteName, 1, "F1-F2")
+);
 
 const OCTAVE_GROUP_LABELS = new Map<number, string>([
-  [1, "大字一组"],
   [2, "大字组"],
   [3, "小字组"],
   [4, "小字一组"],
@@ -201,12 +164,17 @@ export const PITCH_OCTAVE_GROUPS: PitchOctaveGroup[] = [...OCTAVE_GROUP_LABELS.e
   })
   .filter((group) => group.pitchIds.length > 0);
 
-export const DEFAULT_ENABLED_GROUPS: PracticeGroupId[] = ["G3-F4"];
+export const CURRENT_PRACTICE_GROUP_IDS: CurrentPracticeGroupId[] = PRACTICE_GROUPS.map(
+  (group) => group.id
+);
+export const DEFAULT_ENABLED_GROUPS: PracticeGroupId[] = ["C4-B4"];
 
-const CURRENT_GROUP_IDS = PRACTICE_GROUPS.map((group) => group.id);
+const CURRENT_GROUP_IDS = CURRENT_PRACTICE_GROUP_IDS;
 const CURRENT_GROUP_ID_SET = new Set<string>(CURRENT_GROUP_IDS);
 const CURRENT_PITCH_ID_SET = new Set<string>(AVAILABLE_PITCH_IDS);
-const ALL_NOTES_BY_ID = new Map<TargetNoteId, TargetNote>(ALL_NOTES.map((note) => [note.id, note]));
+const ALL_NOTES_BY_ID = new Map<TargetNoteId, TargetNote>(
+  [...ALL_NOTES, ...LEGACY_LOW_NOTES].map((note) => [note.id, note])
+);
 
 function isCurrentPracticeGroupId(groupId: string): groupId is PracticeGroupId {
   return CURRENT_GROUP_ID_SET.has(groupId);
@@ -252,7 +220,7 @@ export function getNotesForGroups(
 }
 
 export function getPitchIdsForGroups(groupIds: readonly PracticeGroupId[]): PitchId[] {
-  const enabled = new Set(groupIds);
+  const enabled = new Set(normalizeCurrentPracticeGroupIds(groupIds));
   return AVAILABLE_PITCH_IDS.filter((pitchId) =>
     ALL_NOTES.some((note) => note.pitchId === pitchId && enabled.has(note.groupId))
   );
@@ -421,7 +389,7 @@ export function normalizeCurrentPracticeGroupIds(
     }
 
     for (const legacyGroupIds of LEGACY_GROUP_ID_SEQUENCES) {
-      const legacyIndex = (legacyGroupIds as readonly string[]).indexOf(groupId);
+      const legacyIndex = legacyGroupIds.indexOf(groupId as PracticeGroupId);
       if (legacyIndex >= 0) {
         selected.add(currentGroupIdForLegacyPosition(legacyIndex, legacyGroupIds.length));
         break;

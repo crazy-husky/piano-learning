@@ -88,7 +88,7 @@ describe("recognition trend preferences", () => {
     expect(parsed.noteMetric).toBe("errors");
     expect(parsed.noteScope).toMatchObject({
       staffNotationMode: "grand",
-      enabledGroupIds: ["G3-F4"],
+      enabledGroupIds: ["C4-B4"],
       enabledPitchIds: ["C4"],
       includeInterStaffLedgerSpellings: true,
     });

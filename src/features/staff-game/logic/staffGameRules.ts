@@ -1,4 +1,4 @@
-// ⚠️ [错题袋覆盖]。详见 docs/product-decisions.md
+// 错题归档覆盖范围规则详见 docs/product-decisions.md
 import type { NoteName, PianoKeyName, StaffGameChallengeMode } from "../../../domain/types";
 
 export type GameDifficulty = "muggle" | "leisure" | "easy" | "normal" | "hard" | "nightmare";
@@ -49,13 +49,6 @@ export const PITCH_NAMES: PianoKeyName[] = [
   "A",
   "A#",
   "B",
-];
-export const BLACK_KEY_NOTES: Array<{ pitch: PianoKeyName; className: string }> = [
-  { pitch: "C#", className: "key-cs" },
-  { pitch: "D#", className: "key-ds" },
-  { pitch: "F#", className: "key-fs" },
-  { pitch: "G#", className: "key-gs" },
-  { pitch: "A#", className: "key-as" },
 ];
 export const COMPUTER_KEY_PITCHES: Record<string, PianoKeyName> = {
   KeyA: "C",
@@ -196,35 +189,30 @@ export function shuffledItems<T>(items: T[]): T[] {
   return shuffled;
 }
 
-/** Every distinct note in the selected challenge pool appears exactly twice. */
-export function learningTestNoteBag(
+/** Builds the full learning-test sequence before the round starts. */
+export function learningTestNoteSequence(
   level: number,
   notePoolScope: StaffGameNotePoolScope
 ): StaffGamePitch[] {
   const uniqueNotes = new Map(
     notePoolCandidates(level, notePoolScope).map((note) => [note.midi, note] as const)
   );
-  const bag = [...uniqueNotes.values()].flatMap((note) => [{ ...note }, { ...note }]);
-  return shuffledItems(bag);
+  const shuffledNotes = shuffledItems([...uniqueNotes.values()]);
+  const sequence =
+    shuffledNotes.length > 1
+      ? [...shuffledNotes, ...shuffledNotes]
+      : shuffledNotes.flatMap((note) => [note, note]);
+  return sequence.map((note) => ({ ...note }));
 }
 
-/** Draws from a finite learning-test bag without replenishing it. */
-export function drawNextLearningTestNote(
-  noteBag: StaffGamePitch[],
-  recentNoteMidis: number[],
+/** Consumes the prebuilt learning-test sequence in order without replenishing it. */
+export function takeNextLearningTestNote(
+  noteSequence: StaffGamePitch[],
   temporarilyExcludedMidiNotes: ReadonlySet<number> = new Set()
 ): StaffGamePitch | null {
-  const allowedIndices = noteBag.flatMap((note, index) =>
-    temporarilyExcludedMidiNotes.has(note.midi) ? [] : [index]
-  );
-  if (allowedIndices.length === 0) return null;
-  const eligibleIndices = allowedIndices.filter((index) =>
-    canFollowRecentNotes(noteBag[index]!.midi, recentNoteMidis)
-  );
-  const chosenIndex = eligibleIndices.length
-    ? eligibleIndices[Math.floor(Math.random() * eligibleIndices.length)]!
-    : allowedIndices[allowedIndices.length - 1]!;
-  return noteBag.splice(chosenIndex, 1)[0] ?? null;
+  const nextNote = noteSequence[0];
+  if (!nextNote || temporarilyExcludedMidiNotes.has(nextNote.midi)) return null;
+  return noteSequence.shift() ?? null;
 }
 
 export function canFollowRecentNotes(midi: number, recentNoteMidis: number[]): boolean {

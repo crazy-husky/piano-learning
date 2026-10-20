@@ -247,7 +247,7 @@
   color: var(--staff-game-night-muted);
 }
 
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-keybed {
+:root[data-app-theme="dark"] :is(.staff-game-shell, .practice-shell) .staff-game-keybed {
   border-color: #496a65;
   background: #496a65;
   box-shadow:
@@ -255,7 +255,7 @@
     0 7px 15px rgba(2, 12, 17, 0.36);
 }
 
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-virtual-keyboard {
+:root[data-app-theme="dark"] :is(.staff-game-shell, .practice-shell) .staff-game-virtual-keyboard {
   border-color: rgba(116, 151, 145, 0.35);
   background: linear-gradient(180deg, rgba(27, 47, 49, 0.96), rgba(19, 35, 39, 0.98));
   box-shadow: 0 -8px 22px rgba(2, 12, 17, 0.32);
@@ -277,7 +277,9 @@
   box-shadow: 0 -5px 16px rgba(2, 12, 17, 0.28);
 }
 
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-virtual-key:not(.staff-game-black-key) {
+:root[data-app-theme="dark"]
+  :is(.staff-game-shell, .practice-shell)
+  .staff-game-virtual-key:not(.staff-game-black-key) {
   border-color: #839b92;
   border-bottom-color: #687d76;
   background: linear-gradient(180deg, #e7e8dc 0%, #d4d9cf 78%, #b7c1b7 100%);
@@ -285,25 +287,27 @@
 }
 
 :root[data-app-theme="dark"]
-  .staff-game-shell
+  :is(.staff-game-shell, .practice-shell)
   .staff-game-virtual-key:not(.staff-game-black-key)
   small {
   color: #526c67;
 }
 
 :root[data-app-theme="dark"]
-  .staff-game-shell
+  :is(.staff-game-shell, .practice-shell)
   .staff-game-virtual-key:not(.staff-game-black-key):hover:not(:disabled) {
   background: linear-gradient(180deg, #fff2c7, #e8c976);
   color: #49391d;
 }
 
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-black-key {
+:root[data-app-theme="dark"] :is(.staff-game-shell, .practice-shell) .staff-game-black-key {
   border-color: #0b1316;
   background: linear-gradient(90deg, #090f12, #263438 48%, #0a1114);
 }
 
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-black-key:hover:not(:disabled) {
+:root[data-app-theme="dark"]
+  :is(.staff-game-shell, .practice-shell)
+  .staff-game-black-key:hover:not(:disabled) {
   background: linear-gradient(90deg, #3d5e59, #5d8278 48%, #29443f);
   color: #e7f4e9;
 }

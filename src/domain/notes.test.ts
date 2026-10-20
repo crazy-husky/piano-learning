@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL_NOTES,
+  AVAILABLE_PITCH_IDS,
   ANSWER_BUTTONS,
   DEFAULT_ENABLED_GROUPS,
   formatTargetNoteLabel,
@@ -13,50 +14,53 @@ import {
 } from "./notes";
 
 describe("notes", () => {
-  it("builds the natural-note cards from F1 through G6 with inter-staff ledger spellings", () => {
-    expect(ALL_NOTES).toHaveLength(74);
-    expect(ALL_NOTES[0].id).toBe("F1");
-    expect(ALL_NOTES.map((note) => note.id)).toContain("F1");
+  it("builds the active natural-note pool from C2 through B6 with inter-staff spellings", () => {
+    expect(ALL_NOTES).toHaveLength(70);
+    expect(ALL_NOTES[0].id).toBe("C2");
     expect(ALL_NOTES.map((note) => note.id)).toContain("C2");
-    expect(ALL_NOTES.map((note) => note.id)).toContain("G6");
+    expect(ALL_NOTES.map((note) => note.id)).toContain("B6");
     expect(ALL_NOTES.map((note) => note.id)).toContain("E3-treble");
     expect(ALL_NOTES.map((note) => note.id)).toContain("C4-bass");
     expect(ALL_NOTES.map((note) => note.id)).toContain("A4-bass");
-    expect(ALL_NOTES.map((note) => note.id)).not.toContain("A6");
-    expect(ALL_NOTES.map((note) => note.id)).not.toContain("B6");
+    expect(ALL_NOTES.map((note) => note.id)).toContain("A6");
+    expect(ALL_NOTES.map((note) => note.id)).toContain("B6");
     expect(ALL_NOTES.map((note) => note.id)).toContain("D3-treble");
     expect(ALL_NOTES.map((note) => note.id)).toContain("B4-bass");
+    expect(AVAILABLE_PITCH_IDS).toHaveLength(35);
+    expect(AVAILABLE_PITCH_IDS[0]).toBe("C2");
+    expect(AVAILABLE_PITCH_IDS.at(-1)).toBe("B6");
+    expect(ALL_NOTES.map((note) => note.id)).not.toContain("F1");
+    expect(getNoteById("F1").id).toBe("F1");
   });
 
   it("orders practice groups from low to high while defaulting to the middle group", () => {
     expect(PRACTICE_GROUPS.map((group) => group.id)).toEqual([
-      "F1-F2",
-      "G2-F3",
-      "G3-F4",
-      "G4-F5",
-      "G5-G6",
+      "C2-B2",
+      "C3-B3",
+      "C4-B4",
+      "C5-B5",
+      "C6-B6",
     ]);
-    expect(DEFAULT_ENABLED_GROUPS).toEqual(["G3-F4"]);
+    expect(DEFAULT_ENABLED_GROUPS).toEqual(["C4-B4"]);
   });
 
-  it("keeps inter-staff ledger spellings in their pitch-range practice groups", () => {
-    expect(PRACTICE_GROUPS.find((group) => group.id === "F1-F2")?.notes).toHaveLength(16);
-    expect(PRACTICE_GROUPS.find((group) => group.id === "G2-F3")?.notes).toHaveLength(14);
-    expect(PRACTICE_GROUPS.find((group) => group.id === "G3-F4")?.notes).toHaveLength(14);
-    expect(PRACTICE_GROUPS.find((group) => group.id === "G4-F5")?.notes).toHaveLength(14);
-    expect(PRACTICE_GROUPS.find((group) => group.id === "G5-G6")?.notes).toHaveLength(16);
+  it("keeps five complete octave groups with seven natural pitches each", () => {
+    expect(
+      PRACTICE_GROUPS.map((group) => new Set(group.notes.map((note) => note.pitchId)).size)
+    ).toEqual([7, 7, 7, 7, 7]);
+    expect(PRACTICE_GROUPS.map((group) => group.notes)).toHaveLength(5);
   });
 
   it("can exclude the added inter-staff ledger spellings from enabled practice groups", () => {
-    expect(getNotesForGroups(["G4-F5"])).toHaveLength(9);
-    expect(getNotesForGroups(["G4-F5"], false).map((note) => note.id)).toEqual([
-      "G4",
-      "A4",
-      "B4",
+    expect(getNotesForGroups(["C5-B5"])).toHaveLength(7);
+    expect(getNotesForGroups(["C5-B5"], false).map((note) => note.id)).toEqual([
       "C5",
       "D5",
       "E5",
       "F5",
+      "G5",
+      "A5",
+      "B5",
     ]);
   });
 
@@ -75,11 +79,11 @@ describe("notes", () => {
     const trebleNotes = getNotesForGroups(groups, true, "treble-only");
     const bassNotes = getNotesForGroups(groups, true, "bass-only");
 
-    expect(trebleNotes).toHaveLength(19);
+    expect(trebleNotes).toHaveLength(21);
     expect(trebleNotes.every((note) => note.staff === "treble")).toBe(true);
     expect(trebleNotes.map((note) => note.pitchId)).toContain("C4");
     expect(trebleNotes.map((note) => note.pitchId)).not.toContain("B3");
-    expect(bassNotes).toHaveLength(18);
+    expect(bassNotes).toHaveLength(14);
     expect(bassNotes.every((note) => note.staff === "bass")).toBe(true);
     expect(bassNotes.map((note) => note.pitchId)).toContain("B3");
     expect(bassNotes.map((note) => note.pitchId)).not.toContain("C4");
@@ -87,18 +91,18 @@ describe("notes", () => {
 
   it("normalizes persisted group ids to the current low-to-high groups", () => {
     expect(normalizePracticeGroupIds(["C2-B2", "C4-B4", "C6-B6"])).toEqual([
-      "F1-F2",
-      "G3-F4",
-      "G5-G6",
+      "C2-B2",
+      "C4-B4",
+      "C6-B6",
     ]);
-    expect(normalizePracticeGroupIds(["G4-F5", "F1-F2"])).toEqual(["F1-F2", "G4-F5"]);
-    expect(normalizePracticeGroupIds([])).toEqual(["G3-F4"]);
-    expect(normalizePracticeGroupIds(["unknown"])).toEqual(["G3-F4"]);
+    expect(normalizePracticeGroupIds(["G4-F5", "F1-F2"])).toEqual(["C2-B2", "C5-B5"]);
+    expect(normalizePracticeGroupIds([])).toEqual(["C4-B4"]);
+    expect(normalizePracticeGroupIds(["unknown"])).toEqual(["C4-B4"]);
     expect(normalizeCurrentPracticeGroupIds([])).toEqual([]);
   });
 
   it("can collect current target note ids for group filtering", () => {
-    const noteIds = getCurrentTargetNoteIdsForGroups(["G3-F4"]);
+    const noteIds = getCurrentTargetNoteIdsForGroups(["C4-B4"]);
     expect(noteIds.has("C4")).toBe(true);
     expect(noteIds.has("C4-bass")).toBe(true);
     expect(noteIds.has("A6")).toBe(false);

@@ -1788,6 +1788,7 @@ body.rush-mode .staff-game-rush-vignette {
   font-size: 14px;
   font-weight: 800;
   padding: 8px 36px 8px 12px;
+  justify-self: end;
 }
 
 .staff-game-settings-dialog .staff-game-difficulty-select:focus-visible {
@@ -2340,7 +2341,7 @@ body.rush-mode .staff-game-rush-vignette {
   box-sizing: border-box;
   display: grid;
   min-width: 0;
-  align-content: start;
+  align-content: center;
   justify-items: center;
   gap: 3px;
   border: 1px solid rgba(67, 148, 165, 0.22);
@@ -2371,15 +2372,26 @@ body.rush-mode .staff-game-rush-vignette {
 }
 
 .staff-game-learning-details-button {
-  border: 0;
-  border-bottom: 1px solid currentColor;
-  background: transparent;
+  min-height: 32px;
+  border: 1px solid rgba(23, 111, 139, 0.22);
+  border-radius: 999px;
+  background: rgba(23, 111, 139, 0.08);
   color: #176f8b;
   cursor: pointer;
   font: inherit;
   font-size: 11px;
   font-weight: 850;
-  padding: 1px 0;
+  padding: 4px 11px;
+}
+
+.staff-game-learning-details-button:hover {
+  border-color: rgba(23, 111, 139, 0.42);
+  background: rgba(23, 111, 139, 0.14);
+}
+
+.staff-game-learning-details-button:focus-visible {
+  outline: 2px solid #32879d;
+  outline-offset: 2px;
 }
 
 .staff-game-learning-game-flavor {

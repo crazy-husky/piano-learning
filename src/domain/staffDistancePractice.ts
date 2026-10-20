@@ -5,7 +5,11 @@ import type {
   StaffDistancePracticeSettings,
   TargetNote,
 } from "./types";
-import { PITCH_OCTAVE_GROUPS } from "./notes";
+import {
+  CURRENT_PRACTICE_GROUP_IDS,
+  PITCH_OCTAVE_GROUPS,
+  normalizeCurrentPracticeGroupIds,
+} from "./notes";
 
 export const MAX_STAFF_DISTANCE = 7;
 const LONG_LEAP_MIN_DISTANCE = 5;
@@ -103,8 +107,10 @@ function hasTwoConsecutiveSelectedGroups(
 ): boolean {
   if (selectedRangeIds.length === 0) return false;
   if (selectedRangeIds[0]!.includes("-")) {
-    const groupOrder: readonly PracticeGroupId[] = ["F1-F2", "G2-F3", "G3-F4", "G4-F5", "G5-G6"];
-    const selected = new Set(selectedRangeIds as readonly PracticeGroupId[]);
+    const groupOrder: readonly PracticeGroupId[] = CURRENT_PRACTICE_GROUP_IDS;
+    const selected = new Set(
+      normalizeCurrentPracticeGroupIds(selectedRangeIds as readonly PracticeGroupId[])
+    );
     return groupOrder.some(
       (groupId, index) => selected.has(groupId) && selected.has(groupOrder[index + 1]!)
     );

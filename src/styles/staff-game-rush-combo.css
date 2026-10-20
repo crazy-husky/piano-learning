@@ -55,6 +55,16 @@
   animation: staff-game-rush-score-pulse 680ms ease-in-out infinite alternate;
 }
 
+.staff-game-shell.is-rush-mode .staff-game-rush-score-flight {
+  visibility: hidden;
+}
+
+@media (min-width: 821px) {
+  .staff-game-hud.is-rush-mode .staff-game-score-card strong.is-rush-score {
+    font-size: clamp(44px, 5.5vw, 64px);
+  }
+}
+
 .staff-game-rush-score-flight {
   position: absolute;
   z-index: 130;

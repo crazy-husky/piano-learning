@@ -967,6 +967,22 @@
   opacity: 0.76;
 }
 
+.staff-game-virtual-key.is-pressed {
+  filter: brightness(0.9);
+}
+
+.staff-game-virtual-key.is-correct:not(.staff-game-black-key) {
+  border-color: #44a86c;
+  background: linear-gradient(180deg, #e8fff0 0%, #c9f1d8 100%);
+  color: #22653c;
+}
+
+.staff-game-virtual-key.is-wrong:not(.staff-game-black-key) {
+  border-color: #d76862;
+  background: linear-gradient(180deg, #fff0ed 0%, #f4d1ca 100%);
+  color: #9a2d22;
+}
+
 .staff-game-black-key {
   position: absolute;
   z-index: 2;
@@ -1029,6 +1045,10 @@
 }
 .staff-game-black-key.key-as {
   left: calc(85.7142% - 4.5%);
+}
+
+.practice-virtual-piano-keyboard .staff-game-keybed {
+  width: min(100%, 760px);
 }
 
 @media (max-width: 820px) {

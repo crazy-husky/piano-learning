@@ -1,4 +1,4 @@
-import { ALL_NOTES, NOTE_NAMES } from "./notes";
+import { ALL_NOTES, NOTE_NAMES, normalizeCurrentPracticeGroupIds } from "./notes";
 import { isStatisticalReview } from "./reviews";
 import adaptiveV2Spec from "./adaptiveV2Spec.json";
 import type {
@@ -469,7 +469,10 @@ export function buildNoteStats(
   reviews: ReviewRecord[],
   groupFilter?: PracticeGroupId[]
 ): NoteStat[] {
-  const allowedGroups = groupFilter && groupFilter.length > 0 ? new Set(groupFilter) : undefined;
+  const allowedGroups =
+    groupFilter && groupFilter.length > 0
+      ? new Set(normalizeCurrentPracticeGroupIds(groupFilter))
+      : undefined;
   return ALL_NOTES.filter((note) => !allowedGroups || allowedGroups.has(note.groupId)).map(
     (note) => {
       const noteReviews = reviews.filter(

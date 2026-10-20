@@ -336,15 +336,17 @@ export function StaffGameSummaryDialog({
                         <small>
                           错答 {wrongNoteCount} 题 · 漏答 {missedNoteCount} 题
                         </small>
-                        <button
-                          aria-label="查看错漏音明细"
-                          className="staff-game-learning-details-button"
-                          onClick={() => setShowWrongAnswerDetails(true)}
-                          ref={detailsTriggerRef}
-                          type="button"
-                        >
-                          查看明细
-                        </button>
+                        {weakNoteCount > 0 ? (
+                          <button
+                            aria-label="查看错漏音明细"
+                            className="staff-game-learning-details-button"
+                            onClick={() => setShowWrongAnswerDetails(true)}
+                            ref={detailsTriggerRef}
+                            type="button"
+                          >
+                            查看明细
+                          </button>
+                        ) : null}
                       </div>
                       <div className="is-response">
                         <span>平均反应时间</span>

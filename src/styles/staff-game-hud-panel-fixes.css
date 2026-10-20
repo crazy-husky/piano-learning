@@ -562,6 +562,24 @@
   font-size: 14px;
 }
 
+.staff-game-dialog-backdrop.is-help-dialog-backdrop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  overflow-y: auto;
+}
+
+.staff-game-dialog-backdrop.is-help-dialog-backdrop .staff-game-help-dialog {
+  margin-block: 16px;
+}
+
+@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  .staff-game-dialog-backdrop.is-help-dialog-backdrop .staff-game-help-dialog {
+    margin-block-start: clamp(72px, 12dvh, 180px);
+  }
+}
+
 :root[data-app-theme="dark"] .staff-game-help-tabs {
   border-color: rgba(151, 190, 178, 0.24);
   background: rgba(20, 40, 43, 0.78);
@@ -649,5 +667,24 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 2px;
     font-size: 13px;
+  }
+}
+
+@media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  .staff-game-settings-layout.is-arcade-virtual-layout .staff-game-difficulty-setting {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .staff-game-settings-layout.is-arcade-virtual-layout .staff-game-difficulty-setting select {
+    width: min(100%, 180px);
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  .staff-game-settings-layout.is-arcade-virtual-layout
+    .staff-game-difficulty-setting
+    .staff-game-difficulty-summary {
+    grid-column: 1 / -1;
   }
 }

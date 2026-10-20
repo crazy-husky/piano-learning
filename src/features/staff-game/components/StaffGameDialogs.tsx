@@ -15,7 +15,6 @@ import {
   GAME_NOTE_PROGRESSION,
   type GameDifficulty,
   type StaffGameNotePoolScope,
-  type StaffGameNoteSchedulingStrategy,
 } from "../logic/staffGameRules";
 import { STAFF_GAME_ART } from "../logic/staffGameResources";
 
@@ -57,7 +56,6 @@ interface StaffGameDialogsProps {
   onToggleGameEffects: () => void;
   onDifficultyChange: (difficulty: GameDifficulty) => void;
   onNotePoolScopeChange: (scope: StaffGameNotePoolScope) => void;
-  onNoteSchedulingStrategyChange: (strategy: StaffGameNoteSchedulingStrategy) => void;
   onToggleWrongNoteStatistics: () => void;
   onToggleAutoArchiveWrongNotes: () => void;
   applyGameSettings: () => void;
@@ -155,7 +153,7 @@ function StaffGameHelpGuide({
               <strong>关卡进度</strong>
               <span>
                 共 <b>60 关</b>：第 1–35 关逐步加入白键，第 36–60
-                关加入黑键。可通过「跳级」自选关卡。
+                关加入黑键。可通过「选择关卡」打开关卡列表。
               </span>
             </li>
             <li>
@@ -211,8 +209,8 @@ function StaffGameHelpGuide({
               </h3>
               <ul>
                 <li>整局倒计时结束后结算。</li>
-                <li>题袋打完会循环补题。</li>
-                <li>适合追求高分和连击。</li>
+                <li>把握每一秒，连续作答，冲击更高分数和连击。</li>
+                <li>挑战自己的最高分纪录。</li>
               </ul>
             </article>
           </div>
@@ -255,7 +253,6 @@ export function StaffGameDialogs({
   onToggleGameEffects,
   onDifficultyChange,
   onNotePoolScopeChange,
-  onNoteSchedulingStrategyChange,
   onToggleWrongNoteStatistics,
   onToggleAutoArchiveWrongNotes,
   applyGameSettings,
@@ -391,7 +388,7 @@ export function StaffGameDialogs({
       {dialog && typeof document !== "undefined"
         ? createPortal(
             <div
-              className="staff-game-dialog-backdrop"
+              className={`staff-game-dialog-backdrop${dialog === "help" ? " is-help-dialog-backdrop" : ""}`}
               role="presentation"
               onClick={(event) => {
                 if (
@@ -693,11 +690,11 @@ export function StaffGameDialogs({
                       {!isSongMode ? (
                         <section className="staff-game-settings-section staff-game-settings-row staff-game-note-pool-setting">
                           <div>
-                            <h3>音符池范围</h3>
-                            <p>当前谱号全部按当前关卡重点音，练习已解锁的全部高音或低音音符。</p>
+                            <h3>练习音域</h3>
+                            <p>选择练习范围，可练当前组、当前谱号或全部已解锁音符。</p>
                           </div>
                           <select
-                            aria-label="音符池范围"
+                            aria-label="练习音域"
                             className="staff-game-difficulty-select"
                             onChange={(event) =>
                               onNotePoolScopeChange(
@@ -710,44 +707,6 @@ export function StaffGameDialogs({
                             <option value="all-history-current-clef">当前谱号全部</option>
                             <option value="current-group">仅当前组</option>
                           </select>
-                        </section>
-                      ) : null}
-                      {!isSongMode && !isArcadeMode ? (
-                        <section
-                          aria-describedby="staff-game-note-scheduling-description"
-                          aria-labelledby="staff-game-note-scheduling-title"
-                          className="staff-game-settings-section staff-game-note-scheduling-setting"
-                        >
-                          <h3 id="staff-game-note-scheduling-title">出题策略</h3>
-                          <p id="staff-game-note-scheduling-description">
-                            决定当前音符池内，下落音符的安排方式。
-                          </p>
-                          <div
-                            aria-label="出题策略"
-                            className="staff-game-input-options staff-game-note-scheduling-options"
-                            role="group"
-                          >
-                            <button
-                              aria-pressed={settingsDraft.noteSchedulingStrategy === "random"}
-                              className={`staff-game-input-option${settingsDraft.noteSchedulingStrategy === "random" ? " is-selected" : ""}`}
-                              onClick={() => onNoteSchedulingStrategyChange("random")}
-                              type="button"
-                            >
-                              <strong>随机练习</strong>
-                              <small>池内音符等机会随机抽取；尽量避免三连同音和 ABAB 循环。</small>
-                            </button>
-                            <button
-                              aria-pressed={settingsDraft.noteSchedulingStrategy === "system"}
-                              className={`staff-game-input-option${settingsDraft.noteSchedulingStrategy === "system" ? " is-selected" : ""}`}
-                              onClick={() => onNoteSchedulingStrategyChange("system")}
-                              type="button"
-                            >
-                              <strong>系统编排（推荐）</strong>
-                              <small>
-                                以本关重点音为主，穿插旧音复习；近期薄弱音会适度多出现。
-                              </small>
-                            </button>
-                          </div>
                         </section>
                       ) : null}
                       {isSongMode && settingsDraft.inputMode === "virtual" ? (

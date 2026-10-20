@@ -7,12 +7,7 @@ import {
   normalizeEnabledPitchIds,
   normalizePracticeGroupIds,
 } from "../domain/notes";
-import {
-  DEFAULT_ANSWER_KEYBOARD_SCALE,
-  DEFAULT_PIANO_VOLUME,
-  normalizeAnswerKeyboardScale,
-  normalizePianoVolume,
-} from "../domain/settings";
+import { DEFAULT_PIANO_VOLUME, normalizePianoVolume } from "../domain/settings";
 import type {
   AppSettings,
   AnswerEvent,
@@ -711,7 +706,6 @@ export function makeDefaultSettings(): AppSettings {
     playAnswerNote: true,
     answerPitchMode: "note-name",
     includeInterStaffLedgerSpellings: false,
-    answerKeyboardScale: DEFAULT_ANSWER_KEYBOARD_SCALE,
     pianoVolume: DEFAULT_PIANO_VOLUME,
     queueStrategy: "adaptive",
     drillNoteNames: ["C"],
@@ -758,7 +752,12 @@ function normalizeStaffRangeProfiles(
 }
 
 export function normalizeAppSettings(existing: StoredAppSettings): AppSettings {
-  const { selectedStaffs: _discardedStaffs, ...stored } = existing as StoredAppSettings & {
+  const {
+    answerKeyboardScale: _discardedKeyboardScale,
+    selectedStaffs: _discardedStaffs,
+    ...stored
+  } = existing as StoredAppSettings & {
+    answerKeyboardScale?: unknown;
     selectedStaffs?: unknown;
   };
   const defaults = makeDefaultSettings();
@@ -801,7 +800,6 @@ export function normalizeAppSettings(existing: StoredAppSettings): AppSettings {
       existing.schemaVersion === 2
         ? (existing.includeInterStaffLedgerSpellings ?? defaults.includeInterStaffLedgerSpellings)
         : (existing.includeLedgerVariants ?? true),
-    answerKeyboardScale: normalizeAnswerKeyboardScale(existing.answerKeyboardScale),
     pianoVolume: normalizePianoVolume(existing.pianoVolume),
     queueStrategy,
     drillNoteNames: resolveDrillNoteNames(existing),

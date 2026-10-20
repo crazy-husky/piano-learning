@@ -213,11 +213,20 @@ function getStudyLabelOffset(
     STUDY_STAFF_LAYOUT.labels.noteNameYPx +
     STUDY_STAFF_LAYOUT.labels.lineGapPx * 2 +
     STUDY_STAFF_LAYOUT.labels.fixedDoNumberFontSizePx * 0.4;
-  const noteHeadAndBreathingRoomPx = 12;
-  return Math.max(
-    0,
-    logicalPx(labelsBottomPx + noteHeadAndBreathingRoomPx, scale) - highestNoteCenter
+  const noteHeadAndBreathingRoomPx = 8;
+  const labelBottomWithBreathingRoom = logicalPx(
+    labelsBottomPx + noteHeadAndBreathingRoomPx,
+    scale
   );
+  const noteOffset = labelBottomWithBreathingRoom - highestNoteCenter;
+  const trebleTopLineY =
+    staves === undefined
+      ? undefined
+      : new Stave(0, staves.trebleY, 100).addClef("treble").getYForLine(0);
+  const staffTopOffset =
+    trebleTopLineY === undefined ? 0 : labelBottomWithBreathingRoom - trebleTopLineY;
+
+  return Math.max(0, noteOffset, staffTopOffset);
 }
 
 function extendStudySurfaceForNotation(surface: StaffRenderSurface, lowestContentY: number): void {

@@ -118,7 +118,7 @@ export function StaffGameHud({
     <header
       className={`staff-game-hud${isSongMode ? " is-song-mode" : ""}${isLearningChallenge ? " is-learning-test" : ""}${rushModeActive ? " is-rush-mode" : ""}${isWrongNoteReview ? " is-wrong-note-review" : ""}${isReady ? " is-ready" : ""}`}
     >
-      {!isWrongNoteReview ? (
+      {!rushModeActive && !isWrongNoteReview ? (
         <div
           aria-hidden={rushModeActive}
           className="staff-game-hud-card hud-panel-css staff-game-display-card"
@@ -133,10 +133,10 @@ export function StaffGameHud({
           </strong>
         </div>
       ) : null}
-      {isQuestionCountProgress || !isWrongNoteReview ? (
+      {!rushModeActive && (isQuestionCountProgress || !isWrongNoteReview) ? (
         canJumpFromMedal ? (
           <button
-            aria-label={`${medalLabel}，点击打开跳级选择`}
+            aria-label={`${medalLabel}，点击选择关卡`}
             className={`${medalClassName} is-jump-trigger`}
             onClick={onOpenLevels}
             type="button"
@@ -164,7 +164,7 @@ export function StaffGameHud({
       <div className="staff-game-score-group">
         {showScore ? (
           <div className="staff-game-hud-card hud-panel-css staff-game-score-card">
-            <span>{scoreLabel}</span>
+            {!rushModeActive ? <span>{scoreLabel}</span> : null}
             <strong
               aria-label={`当前得分 ${Math.round(displayedScore)}`}
               className={rushModeActive ? "is-rush-score" : undefined}
@@ -172,18 +172,18 @@ export function StaffGameHud({
             >
               {Math.round(displayedScore)}
             </strong>
-            {scoreDetail ? <small>{scoreDetail}</small> : null}
+            {!rushModeActive && scoreDetail ? <small>{scoreDetail}</small> : null}
           </div>
         ) : null}
-        {showLevelJump && !isWrongNoteReview ? (
+        {showLevelJump && !rushModeActive && !isWrongNoteReview ? (
           <button
-            aria-label="选择关卡跳级"
+            aria-label="选择关卡"
             className="staff-game-jump-button"
             onClick={onOpenLevels}
             type="button"
           >
             <SkipForward aria-hidden="true" size={14} />
-            跳级
+            选择关卡
           </button>
         ) : null}
       </div>

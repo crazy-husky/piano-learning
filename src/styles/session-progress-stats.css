@@ -1563,7 +1563,6 @@
   min-height: var(--control-height);
 }
 
-.settings-shell .keyboard-settings-panel .setting-row > button,
 .settings-shell .app-version-panel .setting-row > button {
   min-height: var(--control-height);
 }
@@ -1630,14 +1629,6 @@ button.primary kbd {
   box-shadow: 0 1px 0 color-mix(in srgb, var(--accent-strong) 42%, transparent);
 }
 
-.settings-piano-keyboard {
-  margin-top: 16px;
-}
-
-.settings-piano-keyboard.piano-keyboard-overflowing {
-  margin-top: 32px;
-}
-
 .setting-row {
   min-height: 62px;
   border-bottom: 1px solid var(--line);
@@ -1664,28 +1655,6 @@ button.primary kbd {
 .backup-status > div {
   display: grid;
   gap: 4px;
-}
-
-.settings-range-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 220px;
-}
-
-.settings-range-control input[type="range"] {
-  accent-color: var(--accent);
-  border: 0;
-  min-height: 28px;
-  padding: 0;
-  width: 160px;
-}
-
-.settings-range-control span {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  min-width: 42px;
-  text-align: right;
 }
 
 .toggle {

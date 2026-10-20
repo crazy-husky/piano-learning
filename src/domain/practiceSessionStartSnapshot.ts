@@ -130,7 +130,6 @@ export function buildPracticeSessionStartSnapshot({
         startPausedReading,
       },
       interactionConfig: {
-        answerKeyboardScale: settings.answerKeyboardScale,
         correctDelayMs: settings.correctDelayMs,
         inactivityThresholdSeconds: settings.inactivityThresholdSeconds,
         pianoVolume: settings.pianoVolume,

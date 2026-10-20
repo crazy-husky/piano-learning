@@ -12,17 +12,62 @@
   gap: 8px;
 }
 
+.practice-topline .topline-actions > button {
+  box-sizing: border-box;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .practice-return-home {
   flex: 0 0 auto;
 }
 
 @media (min-width: 821px) {
   .practice-topline .topline-actions > button {
-    min-height: var(--control-height);
+    min-height: 44px;
+  }
+}
+
+.practice-running-title {
+  display: none;
+}
+
+@media (max-width: 1100px), (hover: none) and (pointer: coarse) {
+  .practice-topline {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title title"
+      "progress actions";
+    align-items: center;
+    row-gap: 6px;
+  }
+
+  .practice-running-title {
+    display: block;
+    grid-area: title;
+    margin: 0;
+    color: var(--text);
+    font-size: 20px;
+    font-weight: 850;
+    line-height: 1.2;
+  }
+
+  .practice-topline .progress-readout {
+    grid-area: progress;
+    justify-self: start;
+  }
+
+  .practice-topline .topline-actions {
+    grid-area: actions;
+    justify-self: end;
   }
 }
 
 .progress-readout {
+  box-sizing: border-box;
   min-width: 118px;
   min-height: 40px;
   border: 1px solid var(--border);
@@ -31,9 +76,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 14px;
+  padding: 0 10px;
   font-weight: 800;
+  white-space: nowrap;
+  flex-shrink: 0;
   box-shadow: 0 10px 28px rgba(66, 50, 34, 0.06);
+}
+
+@media (max-width: 600px) {
+  .practice-topline .topline-actions {
+    gap: 4px;
+  }
+
+  .practice-topline .topline-actions > button {
+    gap: 5px;
+    padding-inline: 8px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
 }
 
 .prompt-stage {
@@ -161,20 +221,17 @@
 
 .practice-running-shell {
   --practice-available-height: 100dvh;
-  --piano-fit-reserve: 364px;
   height: var(--practice-available-height);
   min-height: 562px;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
 .practice-running-shell.practice-staff-page {
-  --piano-fit-reserve: 344px;
   min-height: 542px;
 }
 
 .practice-running-shell.practice-staff-page-rows-2 {
-  --piano-fit-reserve: 594px;
   min-height: 792px;
 }
 
@@ -184,196 +241,19 @@
   padding-block: 0;
 }
 
-.piano-keyboard {
-  --piano-white-key-width: var(--piano-preferred-white-key-width);
+.practice-virtual-piano-keyboard {
+  grid-column: 1 / -1;
   width: 100%;
   min-width: 0;
-  position: relative;
-  display: grid;
-  justify-items: stretch;
-  user-select: none;
+  align-self: stretch;
+  padding: 4px 0 max(7px, env(safe-area-inset-bottom));
 }
 
-.practice-piano-keyboard {
-  --piano-white-key-width: max(
-    44px,
-    min(
-      var(--piano-preferred-white-key-width),
-      calc((var(--practice-available-height) - var(--piano-fit-reserve)) * 0.222222)
-    )
-  );
-  align-self: center;
-}
-
-.piano-keyboard-drag-handle {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  z-index: 3;
-  width: 100%;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  color: var(--muted);
-  cursor: grab;
-  font-size: 13px;
-  font-weight: 700;
-  touch-action: none;
-}
-
-.piano-keyboard-drag-handle span {
-  color: var(--accent);
-  font-size: 18px;
-  line-height: 1;
-}
-
-.piano-keyboard-dragging .piano-keyboard-drag-handle {
-  cursor: grabbing;
-}
-
-.piano-keyboard-viewport {
-  position: relative;
-  width: 100%;
-  height: calc(var(--piano-white-key-width) * 4.5);
-  overflow: hidden;
-  touch-action: none;
-}
-
-.piano-keyboard-keybed {
-  position: relative;
-  width: calc(var(--piano-white-key-width) * var(--piano-white-key-count));
-  height: calc(var(--piano-white-key-width) * 4.5);
-  transform-origin: left top;
-}
-
-.piano-key {
-  position: absolute;
-  top: 0;
-  min-height: 0;
-  padding: 0;
-  border-radius: 0 0 5px 5px;
-  transition:
-    background 0.08s ease,
-    border-color 0.08s ease,
-    box-shadow 0.08s ease,
-    transform 0.08s ease;
-  touch-action: none;
-}
-
-.piano-key-white {
-  z-index: 1;
-  width: var(--piano-white-key-width);
-  height: calc(var(--piano-white-key-width) * 4.5);
-  border: 1px solid #8d8984;
-  border-top-color: #bbb7b1;
-  background: linear-gradient(90deg, #f4f2ec 0, #fff 12%, #fff 84%, #e8e5df 100%);
-  color: #403a34;
-  align-items: flex-end;
-  padding-bottom: max(10px, calc(var(--piano-white-key-width) * 0.22));
-  font-size: clamp(16px, calc(var(--piano-white-key-width) * 0.3), 24px);
-  font-weight: 800;
-  box-shadow:
-    inset 0 -7px 10px rgba(71, 63, 53, 0.1),
-    0 2px 2px rgba(40, 34, 29, 0.16);
-}
-
-.piano-key-white:hover:not(:disabled) {
-  border-color: #8d8984;
-  background: linear-gradient(90deg, #f4f2ec 0, #fff 12%, #fff 84%, #e8e5df 100%);
-  box-shadow:
-    inset 0 -7px 10px rgba(71, 63, 53, 0.1),
-    0 2px 2px rgba(40, 34, 29, 0.16);
-}
-
-.piano-key-white:active:not(:disabled) {
-  transform: none;
-}
-
-.piano-key-black {
-  z-index: 2;
-  width: calc(var(--piano-white-key-width) * 0.62);
-  height: calc(var(--piano-white-key-width) * 2.925);
-  border: 1px solid #090908;
-  border-top-color: #353330;
-  background: linear-gradient(90deg, #080807 0, #272522 64%, #050504 100%);
-  color: #fff;
-  box-shadow:
-    inset 0 -8px 8px rgba(255, 255, 255, 0.05),
-    2px 5px 7px rgba(31, 26, 22, 0.36);
-  transform: translateX(-50%);
-}
-
-.piano-keyboard-touch-labels .piano-touch-note-label {
-  position: absolute;
-  bottom: 9px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: clamp(9px, calc(var(--piano-white-key-width) * 0.17), 12px);
-  font-weight: 800;
-  line-height: 1;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.piano-keyboard-touch-labels .piano-key-black .piano-touch-note-label {
-  bottom: 6px;
-  font-size: 9px;
-}
-
-.piano-key-black:hover:not(:disabled) {
-  border-color: #090908;
-  border-top-color: #353330;
-  background: linear-gradient(90deg, #080807 0, #272522 64%, #050504 100%);
-  box-shadow:
-    inset 0 -8px 8px rgba(255, 255, 255, 0.05),
-    2px 5px 7px rgba(31, 26, 22, 0.36);
-  transform: translateX(-50%);
-}
-
-.piano-key-black:active:not(:disabled) {
-  transform: translate(-50%, 2px);
-}
-
-.piano-key-black:disabled {
-  background: linear-gradient(90deg, #080807 0, #272522 64%, #050504 100%);
-  color: #fff;
-  cursor: default;
-}
-
-.piano-key-white.piano-key-pressed,
-.piano-key-white.piano-key-pressed:hover:not(:disabled) {
-  background: linear-gradient(90deg, #e7e4dc 0, #f7f5ef 16%, #ece9e2 100%);
-  box-shadow:
-    inset 0 7px 12px rgba(66, 56, 45, 0.2),
-    inset 0 -3px 5px rgba(71, 63, 53, 0.08);
-  transform: none;
-}
-
-.piano-key-black.piano-key-pressed,
-.piano-key-black.piano-key-pressed:hover:not(:disabled) {
-  background: linear-gradient(90deg, #050504 0, #171614 70%, #020202 100%);
-  border-bottom-color: #77716a;
-  box-shadow:
-    inset 0 5px 9px rgba(0, 0, 0, 0.8),
-    inset 0 -2px 2px rgba(255, 255, 255, 0.15),
-    1px 2px 3px rgba(31, 26, 22, 0.3);
-  transform: translate(-50%, 2px);
-}
-
-.piano-key-white.piano-key-wrong,
-.piano-key-white.piano-key-wrong:hover:not(:disabled) {
-  border-color: var(--danger);
-  background: linear-gradient(90deg, #f7dcd6, #fff0ed 18%, #f4d1ca 100%);
-  color: #9a2d22;
-}
-
-.piano-key-white.piano-key-correct,
-.piano-key-white.piano-key-correct:hover:not(:disabled) {
-  border-color: var(--success);
-  background: linear-gradient(90deg, #d9eee2, #ecf8f1 18%, #cce7d8 100%);
-  color: #22653c;
+@media (min-width: 821px) {
+  .practice-running-shell.practice-staff-page .practice-virtual-piano-keyboard {
+    align-self: end;
+    height: max-content;
+  }
 }
 
 .pause-overlay {
@@ -452,44 +332,14 @@
 }
 
 .pause-overlay-touch-actions .pause-overlay-resume {
-  border: 1px solid var(--primary);
-  background: var(--primary);
-  color: var(--primary-contrast, #fff);
+  border: 1px solid var(--accent-fill);
+  background: var(--accent-fill);
+  color: #fff;
 }
 
 .pause-overlay-touch-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.56;
-}
-
-.pause-playback-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.pause-playback-controls label {
-  height: 42px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.pause-playback-controls input,
-.setting-number-input {
-  width: 88px;
-  min-height: 34px;
-  padding: 5px 8px;
-  font-variant-numeric: tabular-nums;
 }
 
 .metric-grid {

@@ -27,7 +27,7 @@ const columnActiveMs: Record<NoteName, number> = {
 };
 
 function makeRun(overrides: Partial<StaffRecallRunRecordV1> = {}): StaffRecallRunRecordV1 {
-  const notes = getNotesForGroups(["G3-F4"], true);
+  const notes = getNotesForGroups(["C4-B4"], true);
   const targetNoteIds = buildStaffRecallTargetNoteIds(notes);
   return {
     id: "recall-1",
@@ -45,16 +45,16 @@ function makeRun(overrides: Partial<StaffRecallRunRecordV1> = {}): StaffRecallRu
 describe("staff recall", () => {
   it("uses the same note-name columns as the study map", () => {
     const withoutLedger = buildNoteNameColumns(
-      getNotesForGroups(["G3-F4"], false),
+      getNotesForGroups(["C4-B4"], false),
       columnDefinitionsForNoteNames(noteNames)
     );
     const withLedger = buildNoteNameColumns(
-      getNotesForGroups(["G3-F4"], true),
+      getNotesForGroups(["C4-B4"], true),
       columnDefinitionsForNoteNames(noteNames)
     );
 
     expect(withoutLedger.every((column) => column.notes.length === 1)).toBe(true);
-    expect(withLedger.every((column) => column.notes.length === 2)).toBe(true);
+    expect(withLedger.map((column) => column.notes.length)).toEqual([2, 2, 2, 2, 2, 2, 1]);
   });
 
   it("compares runs by exact answer-set key and derives total active time", () => {

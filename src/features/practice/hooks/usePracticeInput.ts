@@ -15,7 +15,7 @@ import { MIDI_START_NOTE_NUMBER } from "../../../midi/midiInput";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { getPausedKeyboardAction } from "../logic/practiceKeyboard";
 import { isInteractiveShortcutTarget } from "../../../shared/keyboard/keyboardShortcuts";
-import { isNaturalPianoKey } from "../../../shared/components/PianoKeyboard";
+import { isNaturalPianoKey } from "../../../shared/components/pianoKeyNames";
 
 type PracticeInputOptions = {
   answerPitchMode: AnswerPitchMode;

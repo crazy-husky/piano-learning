@@ -236,12 +236,10 @@
 
   .practice-running-shell {
     --practice-available-height: calc(100dvh - 64px);
-    --piano-fit-reserve: 340px;
     min-height: 538px;
   }
 
   .practice-running-shell.practice-staff-page {
-    --piano-fit-reserve: 320px;
     min-height: 518px;
   }
 
@@ -267,7 +265,7 @@
     overflow: hidden;
   }
 
-  .practice-running-mobile.practice-staff-page .practice-piano-keyboard {
+  .practice-running-mobile.practice-staff-page .practice-virtual-piano-keyboard {
     grid-row: 4;
   }
 
@@ -278,6 +276,14 @@
 
   .practice-running-mobile .practice-return-home {
     display: none;
+    box-sizing: border-box;
+    min-height: 44px;
+    padding-block: 0;
+    align-items: center;
+  }
+
+  .practice-running-mobile:not(.practice-without-touch-keyboard) .practice-return-home {
+    display: inline-flex;
   }
 
   .backup-reminder {
@@ -503,15 +509,6 @@
   .setting-row {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .settings-range-control {
-    width: 100%;
-  }
-
-  .settings-range-control input[type="range"] {
-    flex: 1 1 auto;
-    width: auto;
   }
 
   .heatmap-weekdays {
