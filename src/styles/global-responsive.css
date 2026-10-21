@@ -555,10 +555,6 @@
     justify-content: flex-start;
   }
 
-  .practice-midi-heading-status span {
-    max-width: min(65vw, 280px);
-  }
-
   .prompt-note-duration-options {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

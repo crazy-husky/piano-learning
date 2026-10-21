@@ -205,6 +205,61 @@ export function App({
   useBlurButtonAfterPointerClick();
   const appUpdateController = useAppUpdateNotice();
   const midi = useMidiInput();
+  const previousMidiStatusRef = useRef({
+    initialized: false,
+    inputId: midi.selectedInputId,
+    isConnected: midi.isConnected,
+    status: midi.status,
+  });
+
+  useEffect(() => {
+    const previous = previousMidiStatusRef.current;
+    const next = {
+      inputId: midi.selectedInputId,
+      isConnected: midi.isConnected,
+      status: midi.status,
+    };
+
+    if (previous.initialized) {
+      if (!previous.isConnected && next.isConnected) {
+        const name = midi.selectedInput?.name;
+        toast.success(name ? `MIDI 已连接：${name}` : "MIDI 已连接", {
+          duration: 2000,
+          id: "midi-device-status",
+        });
+      } else if (previous.isConnected && !next.isConnected) {
+        toast.info("MIDI 已断开", { duration: 2000, id: "midi-device-status" });
+      } else if (previous.isConnected && next.isConnected && previous.inputId !== next.inputId) {
+        const previousInputWasRemoved = !midi.inputs.some((input) => input.id === previous.inputId);
+        const name = midi.selectedInput?.name;
+        toast.success(
+          previousInputWasRemoved
+            ? `原 MIDI 已断开，已切换到${name ? `：${name}` : "其他设备"}`
+            : `已切换 MIDI${name ? `：${name}` : "设备"}`,
+          { duration: 2000, id: "midi-device-status" }
+        );
+      } else if (previous.status === "requesting" && next.status === "error") {
+        toast.error(midi.errorMessage ?? "MIDI 连接失败", {
+          duration: 2000,
+          id: "midi-device-status",
+        });
+      } else if (previous.status === "requesting" && next.status === "ready" && !next.isConnected) {
+        toast.info("未检测到 MIDI 输入设备", {
+          duration: 2000,
+          id: "midi-device-status",
+        });
+      }
+    }
+
+    previousMidiStatusRef.current = { ...next, initialized: true };
+  }, [
+    midi.errorMessage,
+    midi.inputs,
+    midi.isConnected,
+    midi.selectedInput?.name,
+    midi.selectedInputId,
+    midi.status,
+  ]);
 
   useEffect(() => {
     try {
@@ -321,12 +376,10 @@ export function App({
   const isStaffGamePage = route.page === "game";
   const [practiceExitRequest, setPracticeExitRequest] =
     useState<PracticeNavigationExitRequest | null>(null);
-  const [audioInputSectionRequest, setAudioInputSectionRequest] = useState(0);
   const [vocalExitRequest, setVocalExitRequest] = useState<PracticeNavigationExitRequest | null>(
     null
   );
   const practiceExitRequestIdRef = useRef(0);
-  const audioInputSectionRequestIdRef = useRef(0);
   const vocalExitRequestIdRef = useRef(0);
 
   useEffect(() => {
@@ -907,23 +960,6 @@ export function App({
     [navigateToRoute, practiceExitRequest, practiceRunning, practiceStageActive, route.path, view]
   );
 
-  const openAudioInputSettings = useCallback((): void => {
-    audioInputSectionRequestIdRef.current += 1;
-    setAudioInputSectionRequest(audioInputSectionRequestIdRef.current);
-    selectView("settings");
-  }, [selectView]);
-
-  const handleAudioInputSectionRequestHandled = useCallback((request: number): void => {
-    setAudioInputSectionRequest((current) => (current === request ? 0 : current));
-  }, []);
-
-  useEffect(() => {
-    if (audioInputSectionRequest === 0 || view === "settings" || practiceExitRequest) {
-      return;
-    }
-    setAudioInputSectionRequest(0);
-  }, [audioInputSectionRequest, practiceExitRequest, view]);
-
   const handleNavigationExit = useCallback(
     (targetView: PracticeNavigationExitTarget): void => {
       const returnToSetup = practiceExitRequest?.returnToSetup === true;
@@ -1343,7 +1379,6 @@ export function App({
                   onDataChanged={refreshPracticeHistory}
                   onNavigationExit={handleNavigationExit}
                   onOpenStats={() => selectView("stats")}
-                  onOpenSettings={openAudioInputSettings}
                   onBeforePracticeStart={preflightBeforePracticeStart}
                   onPracticeFinished={showBackupReminderAfterActivity}
                   onRunningChange={setPracticeRunning}
@@ -1416,7 +1451,6 @@ export function App({
             ) : null}
             {view === "settings" ? (
               <SettingsView
-                audioInputSectionRequest={audioInputSectionRequest}
                 appUpdateStatus={appUpdateController.status}
                 appUpdateMessage={appUpdateController.message}
                 hasUpdateAvailable={appUpdateController.hasUpdateAvailable}
@@ -1429,7 +1463,6 @@ export function App({
                 midi={midi}
                 onCheckForUpdates={appUpdateController.checkForUpdates}
                 onApplyUpdate={appUpdateController.applyUpdate}
-                onAudioInputSectionRequestHandled={handleAudioInputSectionRequestHandled}
                 onDataChanged={refresh}
                 onPageAppearancePreferencesChange={setPageAppearancePreferences}
                 onPracticeMicrophonePreferencesChange={setPracticeMicrophonePreferences}

@@ -29,6 +29,7 @@ import type {
 } from "../../../domain/types";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
@@ -62,7 +63,6 @@ interface StaffDistancePracticeViewProps {
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   onBeforePracticeStart: () => Promise<{ proceed: boolean; settings?: AppSettings }>;
   onDistanceModeChange: (mode: PracticeDistanceMode, replace?: boolean) => void;
-  onOpenSettings: () => void;
   onDataChanged: () => Promise<void>;
   onMicrophoneAnswerHandlerChange: (
     handler: ((answer: PracticeAnswerInput) => void) | null
@@ -241,7 +241,6 @@ export function StaffDistancePracticeView({
   navigationExitRequest,
   onBeforePracticeStart,
   onDistanceModeChange,
-  onOpenSettings,
   onDataChanged,
   onMicrophoneAnswerHandlerChange,
   onNavigationExit,
@@ -465,15 +464,6 @@ export function StaffDistancePracticeView({
   const toggleUnison = (includeUnison: boolean): void =>
     setPreferences((current) => ({ ...current, includeUnison }));
 
-  const connectMidi = async (): Promise<void> => {
-    setStartError(null);
-    try {
-      await midi.connect();
-    } catch (error) {
-      setStartError(error instanceof Error ? error.message : "MIDI 连接失败，请重试。");
-    }
-  };
-
   if (runSession?.staffDistance) {
     const sessionSettings = {
       includeUnison: runSession.staffDistance.includeUnison,
@@ -619,14 +609,7 @@ export function StaffDistancePracticeView({
         </div>
         <div className="practice-setup-heading-meta">
           <div className="practice-midi-heading-status staff-distance-midi-status">
-            <span title={midi.selectedInput?.name}>
-              {midi.isConnected
-                ? `MIDI 已连接${midi.selectedInput?.name ? `：${midi.selectedInput.name}` : ""}`
-                : "MIDI 未连接"}
-            </span>
-            <button onClick={onOpenSettings} type="button">
-              设备设置
-            </button>
+            <MidiInputControl ariaLabel="间距练习 MIDI 输入设备" midi={midi} />
           </div>
         </div>
       </header>
@@ -711,15 +694,6 @@ export function StaffDistancePracticeView({
                     <Cable aria-hidden="true" size={14} /> MIDI
                   </button>
                 </div>
-                {preferences.inputMethod === "midi" && !midi.isConnected ? (
-                  <button
-                    className="staff-distance-connect-midi"
-                    onClick={() => void connectMidi()}
-                    type="button"
-                  >
-                    连接
-                  </button>
-                ) : null}
               </div>
             ) : null}
           </div>

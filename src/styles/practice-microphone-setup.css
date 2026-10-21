@@ -894,18 +894,6 @@
   justify-content: flex-end;
 }
 
-.practice-midi-heading-status button {
-  min-height: 30px;
-  padding: 4px 10px;
-}
-
-.practice-midi-heading-status span {
-  max-width: 360px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .note-name-options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
@@ -2270,12 +2258,6 @@
     min-width: 0;
     min-height: var(--practice-free-touch-target);
     padding-inline: 4px;
-    font-size: 13px;
-  }
-
-  .practice-setup-shell.is-free-practice-setup .practice-midi-heading-status button {
-    min-height: var(--practice-free-touch-target);
-    padding: 8px 12px;
     font-size: 13px;
   }
 

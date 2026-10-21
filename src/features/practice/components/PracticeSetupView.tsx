@@ -17,6 +17,7 @@ import {
   getStaffSelectedPitchIds,
 } from "../../../domain/notes";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import {
@@ -57,7 +58,6 @@ interface PracticeSetupActions {
   onFixedCountChange: (count: number) => void;
   onFixedDurationSecondsChange: (seconds: number) => void;
   onModeChange: (mode: PracticeMode) => void;
-  onOpenSettings: () => void;
   onOpenStats: () => void;
   onPlayAnswerNoteChange: (enabled: boolean) => void;
   onPromptDisplayModeChange: (mode: PromptDisplayMode) => void;
@@ -80,7 +80,7 @@ interface PracticeSetupViewProps {
   distanceStageActive: boolean;
   isBusy: boolean;
   microphoneError: string | null;
-  midi: Pick<MidiInputController, "isConnected" | "selectedInput">;
+  midi: MidiInputController;
   overlay?: ReactNode;
   preferences: PracticeSetupUiPreferences;
   setupDisabledReason?: string;
@@ -230,7 +230,6 @@ export function PracticeSetupView({
     onFixedCountChange: setFixedCount,
     onFixedDurationSecondsChange: setFixedDurationSeconds,
     onModeChange: setMode,
-    onOpenSettings,
     onOpenStats,
     onPlayAnswerNoteChange: setPlayAnswerNote,
     onPromptDisplayModeChange: setPromptDisplayMode,
@@ -427,10 +426,7 @@ export function PracticeSetupView({
             </div>
             <div className="practice-setup-heading-meta">
               <div className="practice-midi-heading-status">
-                <span title={midi.selectedInput?.name}>
-                  {midi.isConnected ? `MIDI 已连接：${midi.selectedInput?.name}` : "MIDI 未连接"}
-                </span>
-                <button onClick={onOpenSettings}>设备设置</button>
+                <MidiInputControl ariaLabel="自由练习 MIDI 输入设备" midi={midi} />
               </div>
             </div>
           </div>
@@ -901,10 +897,7 @@ export function PracticeSetupView({
               </p>
             </div>
             <div className="practice-midi-heading-status">
-              <span title={midi.selectedInput?.name}>
-                {midi.isConnected ? `MIDI 已连接：${midi.selectedInput?.name}` : "MIDI 未连接"}
-              </span>
-              <button onClick={onOpenSettings}>设备设置</button>
+              <MidiInputControl ariaLabel="歌曲练习 MIDI 输入设备" midi={midi} />
             </div>
           </header>
 

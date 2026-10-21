@@ -120,7 +120,6 @@ interface PracticeViewProps {
   ) => void | Promise<void>;
   onDataChanged: () => Promise<void>;
   onOpenStats: () => void;
-  onOpenSettings: () => void;
   onBeforePracticeStart: () => Promise<PracticeStartPreflightResult>;
   onPracticeDistanceModeChange: (mode: PracticeDistanceMode, replace?: boolean) => void;
   onPracticeTabChange: (tab: PracticeSetupTab) => void;
@@ -306,7 +305,6 @@ export function PracticeView({
   onSettingsSaved,
   onDataChanged,
   onOpenStats,
-  onOpenSettings,
   onBeforePracticeStart,
   onPracticeDistanceModeChange,
   onPracticeTabChange,
@@ -1533,7 +1531,6 @@ export function PracticeView({
             onDataChanged={onDataChanged}
             onNavigationExit={onNavigationExit}
             onDistanceModeChange={onPracticeDistanceModeChange}
-            onOpenSettings={onOpenSettings}
             onPracticeFinished={onPracticeFinished}
             onPracticeSingleNote={() => {
               onPracticeTabChange("free");
@@ -1556,7 +1553,6 @@ export function PracticeView({
           onFixedCountChange: setFixedCount,
           onFixedDurationSecondsChange: setFixedDurationSeconds,
           onModeChange: setMode,
-          onOpenSettings,
           onOpenStats,
           onPlayAnswerNoteChange: setPlayAnswerNote,
           onPromptDisplayModeChange: setPromptDisplayMode,

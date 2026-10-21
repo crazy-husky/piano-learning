@@ -1,5 +1,6 @@
 import { BookOpen, Flame, Keyboard, Mic, Music2, RefreshCw, X } from "lucide-react";
 import { createPortal } from "react-dom";
+import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { useEffect, useRef, useState, type AnimationEventHandler, type CSSProperties } from "react";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { ToggleSwitch } from "../../../shared/components/ui/ToggleSwitch";
@@ -47,7 +48,7 @@ interface StaffGameDialogsProps {
   draftDifficulty: (typeof GAME_DIFFICULTIES)[number];
   virtualKeyboardAvailable: boolean;
   midiOptionAvailable: boolean;
-  midi: Pick<MidiInputController, "isConnected" | "selectedInput" | "status">;
+  midi: MidiInputController;
   selectInputMode: (mode: StaffGameInputMode) => void;
   onToggleSoundEffects: () => void;
   onToggleBackgroundMusic: () => void;
@@ -613,6 +614,13 @@ export function StaffGameDialogs({
                             </button>
                           ) : null}
                         </div>
+                        {settingsDraft.inputMode === "midi" ? (
+                          <MidiInputControl
+                            ariaLabel="设置弹窗 MIDI 输入设备"
+                            className="staff-game-midi-settings-picker"
+                            midi={midi}
+                          />
+                        ) : null}
                       </section>
                       <div
                         className={`staff-game-settings-layout${isArcadeMode && settingsDraft.inputMode === "virtual" ? " is-arcade-virtual-layout" : ""}`}

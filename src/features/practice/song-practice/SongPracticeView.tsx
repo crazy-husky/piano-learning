@@ -16,6 +16,7 @@ import type {
   TargetNoteId,
 } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import { MidiInputControl } from "../../../midi/MidiInputControl";
 import type { MidiNoteInputEvent } from "../../../midi/midiInput";
 import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import { StaffPagePrompt } from "../components/StaffPagePrompt";
@@ -326,8 +327,6 @@ export function SongPracticeView({
   const stopMicrophone = microphone.stop;
   const lastNotifiedMicrophoneErrorRef = useRef<string | null>(null);
   const microphoneReconnectInFlightRef = useRef(false);
-  const midiErrorRef = useRef(midi.errorMessage);
-  midiErrorRef.current = midi.errorMessage;
   const beginProgressSession = useCallback((): void => {
     sessionStartedAtRef.current = Date.now();
     songSessionIdRef.current = createUuid();
@@ -595,29 +594,6 @@ export function SongPracticeView({
   const totalPages = pageStarts.length;
   const subscribeMidi = midi.subscribe;
 
-  const requestMidiConnection = async (): Promise<void> => {
-    toast.message("正在查找 MIDI 键盘…", {
-      id: "song-practice-midi-connect",
-      duration: 2000,
-    });
-    try {
-      await midi.connect();
-      window.setTimeout(() => {
-        if (!midiConnectionLiveRef.current) {
-          toast.error(midiErrorRef.current ?? "未检测到 MIDI 键盘，仍在使用麦克风。", {
-            id: "song-practice-midi-connect",
-            duration: 3500,
-          });
-        }
-      }, 1200);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "MIDI 连接失败，仍在使用麦克风。", {
-        id: "song-practice-midi-connect",
-        duration: 3500,
-      });
-    }
-  };
-
   useEffect(() => {
     const wasConnected = midiConnectionRef.current;
     if (wasConnected === midi.isConnected) return;
@@ -669,10 +645,6 @@ export function SongPracticeView({
       activeInputModeRef.current = "midi";
       setActiveInputMode("midi");
       setSongPreferences((current) => ({ ...current, inputMode: "midi" }));
-      toast.success(
-        `已切换到 MIDI 键盘${midi.selectedInput?.name ? `：${midi.selectedInput.name}` : ""}。`,
-        { duration: 3000 }
-      );
       inputTransitionRef.current = false;
       setIsInputSwitching(false);
       return;
@@ -1377,20 +1349,12 @@ export function SongPracticeView({
                   <span>{arrangement.partName}</span>
                 </div>
               </div>
-              {midi.isConnected ? (
-                <span className="song-practice-midi-status" role="status">
-                  MIDI 已连接{midi.selectedInput?.name ? ` · ${midi.selectedInput.name}` : ""}
-                </span>
-              ) : (
-                <button
-                  className="song-connect-midi"
-                  disabled={isInputSwitching}
-                  type="button"
-                  onClick={() => void requestMidiConnection()}
-                >
-                  连接 MIDI
-                </button>
-              )}
+              <MidiInputControl
+                ariaLabel="歌曲跟弹 MIDI 输入设备"
+                className="song-practice-midi-control"
+                disabled={isInputSwitching}
+                midi={midi}
+              />
             </div>
             <p className="song-practice-reading-note">
               <span>本模式只判断音高顺序，不评节奏。谱面上的时值和间距用于熟悉真实乐谱；</span>

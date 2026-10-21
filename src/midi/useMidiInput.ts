@@ -92,7 +92,6 @@ export function useMidiInput(): MidiInputController {
   const [lastNote, setLastNote] = useState<MidiNoteInput>();
   const selectedInputIdRef = useRef(selectedInputId);
   const statusRef = useRef(status);
-  const initialSelectionResolvedRef = useRef(false);
   const pressedNotesRef = useRef(new Map<string, MidiNoteInput>());
   const subscribersRef = useRef(new Set<(event: MidiNoteInputEvent) => void>());
   const inputListenersRef = useRef<Listener[]>([]);
@@ -196,29 +195,26 @@ export function useMidiInput(): MidiInputController {
     ];
   }, [detachInputListeners, handleNoteOff, handleNoteOn, resetPressedNotes]);
 
-  const refreshInputs = useCallback(
-    (resolveInitialSelection = false): void => {
-      const nextInputs = WebMidi.inputs.map(toDevice);
-      setInputs(nextInputs);
-      if (resolveInitialSelection && !initialSelectionResolvedRef.current) {
-        initialSelectionResolvedRef.current = true;
-        const storedSelection = selectedInputIdRef.current;
-        const nextSelection = nextInputs.some((input) => input.id === storedSelection)
-          ? storedSelection
-          : nextInputs[0]?.id;
-        selectedInputIdRef.current = nextSelection;
-        setSelectedInputId(nextSelection);
-        if (nextSelection) {
-          storeInputId(nextSelection);
-        }
+  const refreshInputs = useCallback((): void => {
+    const nextInputs = WebMidi.inputs.map(toDevice);
+    setInputs(nextInputs);
+    const selectedInputIsAvailable = nextInputs.some(
+      (input) => input.id === selectedInputIdRef.current
+    );
+    if (nextInputs.length > 0 && !selectedInputIsAvailable) {
+      const nextSelection = nextInputs[0]?.id;
+      selectedInputIdRef.current = nextSelection;
+      setSelectedInputId(nextSelection);
+      if (nextSelection) {
+        storeInputId(nextSelection);
+        announceLocalStoragePreferenceChange(MIDI_INPUT_ID_STORAGE_KEY);
       }
-      if (!nextInputs.some((input) => input.id === selectedInputIdRef.current)) {
-        setLastNote(undefined);
-      }
-      syncSelectedInputListeners();
-    },
-    [syncSelectedInputListeners]
-  );
+    }
+    if (nextInputs.length === 0 || !selectedInputIsAvailable) {
+      setLastNote(undefined);
+    }
+    syncSelectedInputListeners();
+  }, [syncSelectedInputListeners]);
 
   const attachWebMidiListeners = useCallback((): void => {
     if (webMidiListenersRef.current.length > 0) {
@@ -251,7 +247,7 @@ export function useMidiInput(): MidiInputController {
       try {
         await WebMidi.enable({ sysex: false });
         attachWebMidiListeners();
-        refreshInputs(true);
+        refreshInputs();
         setStatus("ready");
       } catch (error) {
         if (silentFailure) {
@@ -289,7 +285,7 @@ export function useMidiInput(): MidiInputController {
       return;
     }
     attachWebMidiListeners();
-    refreshInputs(true);
+    refreshInputs();
     setStatus("ready");
   }, [attachWebMidiListeners, refreshInputs]);
 

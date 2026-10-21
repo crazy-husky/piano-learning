@@ -3527,7 +3527,7 @@ export function StaffGameView({
           ? `MIDI 已连接${midi.selectedInput?.name ? `：${midi.selectedInput.name}` : ""}`
           : midi.status === "requesting"
             ? "正在连接 MIDI 键盘…"
-            : "点击开始后连接 MIDI 键盘"
+            : "连接 MIDI 键盘后即可开始"
         : inputStatusText;
   const gameInputStatusState =
     (settings.inputMode === "physical" && microphone.error) ||
@@ -3995,6 +3995,7 @@ export function StaffGameView({
               focusNote={focusNote}
               difficulty={settings.difficulty}
               inputMode={settings.inputMode}
+              midi={midi}
               midiInputAvailable={midiOptionAvailable}
               virtualKeyboardAvailable={virtualKeyboardAvailable}
               inputStatusActivity={gameInputStatusActivity}

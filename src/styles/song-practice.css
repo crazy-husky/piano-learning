@@ -151,7 +151,6 @@
   font-size: 11px;
 }
 
-.song-connect-midi,
 .song-practice-restart {
   display: inline-flex;
   align-items: center;
@@ -266,13 +265,7 @@
   overflow-wrap: anywhere;
 }
 
-.song-connect-midi {
-  width: fit-content;
-  border-color: var(--line);
-}
-
-.song-practice-topline .practice-return-home,
-.song-practice-heading-row > .song-connect-midi {
+.song-practice-topline .practice-return-home {
   box-sizing: border-box;
   min-height: 44px;
   padding-block: 8px;
@@ -783,8 +776,7 @@
   gap: 16px;
 }
 
-.song-practice-heading-row > .song-practice-midi-status,
-.song-practice-heading-row > .song-connect-midi {
+.song-practice-heading-row > .song-practice-midi-control {
   grid-column: 3;
   justify-self: end;
 }
@@ -801,12 +793,8 @@
   margin-top: 4px;
 }
 
-.song-practice-midi-status {
-  justify-self: end;
-  color: var(--accent-strong);
-  font-size: 12px;
-  font-weight: 700;
-  text-align: right;
+.song-practice-heading-row > .song-practice-midi-control .midi-input-control-select {
+  max-width: min(240px, 28vw);
 }
 
 .song-practice-heading .song-practice-reading-note {
@@ -947,8 +935,7 @@
     justify-self: start;
   }
 
-  .song-practice-heading-row > .song-practice-midi-status,
-  .song-practice-heading-row > .song-connect-midi {
+  .song-practice-heading-row > .song-practice-midi-control {
     grid-column: 2;
     grid-row: 2;
     justify-self: end;

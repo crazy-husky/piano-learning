@@ -1006,12 +1006,6 @@
     font-size: 13px;
   }
 
-  .practice-setup-shell.is-distance-practice-setup .practice-midi-heading-status button {
-    min-height: var(--practice-free-touch-target);
-    padding: 8px 12px;
-    font-size: 13px;
-  }
-
   .practice-setup-shell.is-distance-practice-setup
     .practice-free-range-section
     .global-range-staffs.segmented

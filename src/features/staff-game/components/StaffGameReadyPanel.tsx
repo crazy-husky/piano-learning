@@ -11,6 +11,8 @@ import {
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { MidiInputControl } from "../../../midi/MidiInputControl";
+import type { MidiInputController } from "../../../midi/useMidiInput";
 import type {
   StaffGameSong,
   StaffGameSongProgress,
@@ -70,6 +72,7 @@ type StaffGameReadyPanelProps = SharedArtwork &
         reviewWeakNoteCount: number;
         wrongNoteArchiveDateCount: number;
         inputMode: StaffGameReadyInputMode;
+        midi: MidiInputController;
         midiInputAvailable: boolean;
         virtualKeyboardAvailable: boolean;
         inputStatusActivity: LoadingActivityKind | null;
@@ -387,7 +390,18 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
           娱乐模式
         </button>
       </div>
-      <div className="staff-game-ready-input-row">{renderInputSetting()}</div>
+      <div
+        className={`staff-game-ready-input-row${props.inputMode === "midi" ? " has-midi-picker" : ""}`}
+      >
+        {renderInputSetting()}
+        {props.inputMode === "midi" ? (
+          <MidiInputControl
+            ariaLabel="闯关 MIDI 输入设备"
+            className="staff-game-ready-midi-picker"
+            midi={props.midi}
+          />
+        ) : null}
+      </div>
       {props.readyMode === "level" ? (
         <div className="staff-game-challenge-setup">
           <div className="staff-game-challenge-settings">

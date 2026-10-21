@@ -291,6 +291,13 @@
   margin: 0 auto;
 }
 
+.staff-game-shell.is-ready .staff-game-ready-input-row.has-midi-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: var(--staff-ready-space-3);
+}
+
 .staff-game-shell.is-ready .staff-game-ready-input-setting select {
   box-sizing: border-box;
   width: calc((100% - var(--staff-ready-space-6) - var(--staff-ready-control-height)) / 2);
@@ -307,6 +314,35 @@
   font-weight: 500;
   line-height: 1.2;
   padding: 0 var(--staff-ready-space-4) 0 var(--staff-ready-space-3);
+}
+
+.staff-game-shell.is-ready
+  .staff-game-ready-input-row.has-midi-picker
+  .staff-game-ready-input-setting
+  select {
+  width: 100%;
+}
+
+.staff-game-shell.is-ready .staff-game-ready-midi-picker {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--staff-ready-control-height);
+}
+
+.staff-game-shell.is-ready .staff-game-ready-midi-picker .midi-input-control-select,
+.staff-game-shell.is-ready .staff-game-ready-midi-picker .midi-input-control-button {
+  width: 100%;
+  min-height: var(--staff-ready-control-height);
+  border-color: var(--staff-ready-border);
+  border-radius: var(--staff-ready-radius-sm);
+  background-color: var(--staff-ready-surface);
+  color: var(--staff-ready-text);
+  font-size: var(--staff-ready-text-sm);
+}
+
+.staff-game-midi-settings-picker {
+  margin-top: 10px;
 }
 
 .staff-game-shell.is-ready .staff-game-challenge-mode-description {
@@ -1000,5 +1036,11 @@
 
   .staff-game-shell.is-ready .staff-game-ready-card.is-arcade-ready .staff-game-level-detail {
     width: 100%;
+  }
+}
+
+@media (max-width: 540px) {
+  .staff-game-shell.is-ready .staff-game-ready-input-row.has-midi-picker {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

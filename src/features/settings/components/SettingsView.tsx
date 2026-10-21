@@ -8,7 +8,7 @@ import {
   X,
 } from "lucide-react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import { type Dispatch, type SetStateAction, useEffect, useRef, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   chooseBackupDirectory,
@@ -26,6 +26,7 @@ import {
 import { backupText, formatBackupConflictDetail } from "../../../domain/backupText";
 import type { AppSettings, BackupState } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import { MidiInputControl } from "../../../midi/MidiInputControl";
 import type { PageAppearancePreferences } from "../../../shared/appearance/pageAppearance";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
 import { ToggleSwitch } from "../../../shared/components/ui/ToggleSwitch";
@@ -93,8 +94,6 @@ interface SettingsViewProps {
   midi: MidiInputController;
   onCheckForUpdates: () => void;
   onApplyUpdate: () => void;
-  audioInputSectionRequest: number;
-  onAudioInputSectionRequestHandled: (request: number) => void;
 }
 
 export function SettingsView({
@@ -116,8 +115,6 @@ export function SettingsView({
   midi,
   onCheckForUpdates,
   onApplyUpdate,
-  audioInputSectionRequest,
-  onAudioInputSectionRequestHandled,
 }: SettingsViewProps): JSX.Element {
   const confirmDialog = useConfirmDialog();
   const [busy, setBusy] = useState(false);
@@ -127,26 +124,10 @@ export function SettingsView({
   );
   const [isRestoringConfiguration, setIsRestoringConfiguration] = useState(false);
   const [globalDebugEnabled, setGlobalDebugEnabledState] = useState(isGlobalDebugEnabled);
-  const handledAudioInputSectionRequestRef = useRef(0);
   const isAppUpdateBusy =
     appUpdateStatus === "checking" ||
     appUpdateStatus === "preparing" ||
     appUpdateStatus === "reloading";
-
-  useEffect(() => {
-    if (
-      audioInputSectionRequest === 0 ||
-      handledAudioInputSectionRequestRef.current === audioInputSectionRequest
-    ) {
-      return;
-    }
-
-    handledAudioInputSectionRequestRef.current = audioInputSectionRequest;
-    document
-      .getElementById("settings-audio-input-devices")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    onAudioInputSectionRequestHandled(audioInputSectionRequest);
-  }, [audioInputSectionRequest, onAudioInputSectionRequestHandled]);
 
   useEffect(() => {
     const syncGlobalDebugEnabled = (event?: Event): void => {
@@ -504,7 +485,7 @@ export function SettingsView({
                 ))}
               </select>
             </div>
-            <div className="setting-row">
+            <div className={`setting-row${midi.isConnected ? " has-midi-test-input" : ""}`}>
               <div>
                 <strong>MIDI 键盘</strong>
                 <span>
@@ -523,37 +504,7 @@ export function SettingsView({
                             : (midi.errorMessage ?? "连接后可选择设备并测试按键")}
                 </span>
               </div>
-              {midi.status === "ready" && midi.inputs.length > 0 ? (
-                <select
-                  aria-label="MIDI 输入设备"
-                  value={midi.selectedInput ? midi.selectedInputId : ""}
-                  onChange={(event) => midi.selectInput(event.target.value)}
-                >
-                  {!midi.selectedInput ? (
-                    <option disabled value="">
-                      请选择 MIDI 输入
-                    </option>
-                  ) : null}
-                  {midi.inputs.map((input) => (
-                    <option key={input.id} value={input.id}>
-                      {input.manufacturer ? `${input.manufacturer} · ` : ""}
-                      {input.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <button
-                  disabled={
-                    midi.status === "requesting" ||
-                    midi.status === "insecure-context" ||
-                    midi.status === "unsupported"
-                  }
-                  onClick={() => void midi.connect()}
-                  type="button"
-                >
-                  {midi.status === "denied" || midi.status === "error" ? "重新连接" : "连接 MIDI"}
-                </button>
-              )}
+              <MidiInputControl midi={midi} />
             </div>
             {midi.isConnected ? (
               <p className="keyboard-settings-description" aria-live="polite">

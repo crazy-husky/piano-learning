@@ -109,6 +109,10 @@
   padding: 14px 0 0;
 }
 
+.settings-category-card .setting-row.has-midi-test-input {
+  border-bottom: 0;
+}
+
 .settings-backup-card {
   grid-column: 1 / -1;
 }
