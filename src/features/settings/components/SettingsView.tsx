@@ -442,6 +442,7 @@ export function SettingsView({
                 }
               >
                 <option value={0}>立刻</option>
+                <option value={5}>5 秒</option>
                 <option value={10}>10 秒</option>
                 <option value={20}>20 秒</option>
                 <option value={30}>30 秒</option>

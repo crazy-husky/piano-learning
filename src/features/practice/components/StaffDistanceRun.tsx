@@ -1056,6 +1056,9 @@ export function StaffDistanceRun({
           visibleRowCount={isContinuousScore ? scoreRowCount : 1}
           virtualizeRows={isContinuousScore}
           followRowIndex={followScoreRowIndex}
+          isFiniteScore={
+            isContinuousScore && mode === "fixed-count" && resultsRef.current.length >= fixedCount
+          }
           trackedNoteIndex={trackedScoreNoteIndex}
           getAudioTime={isContinuousScore ? getPianoAudioTime : undefined}
           chaseCursor={isContinuousScore ? chaseCursor : null}

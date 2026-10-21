@@ -1361,6 +1361,7 @@ export function SongPracticeView({
                 noteOnsets={scoreOnsets}
                 beatsPerMeasure={selection.score.meter.quarterBeatsPerMeasure}
                 followRowIndex={followRowIndex}
+                isFiniteScore
                 trackedNoteIndex={currentIndex}
                 onTrackedNoteVisibilityChange={handleCurrentTargetVisibilityChange}
                 maxRowCount={scoreRowCount}

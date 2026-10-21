@@ -78,6 +78,7 @@ interface StaffPagePromptProps {
   minDisplayWidthPx?: number;
   visibleRowCount?: number;
   virtualizeRows?: boolean;
+  isFiniteScore?: boolean;
   followRowIndex?: number;
   trackedNoteIndex?: number;
   onTrackedNoteVisibilityChange?: (isVisible: boolean) => void;
@@ -1266,6 +1267,7 @@ export function StaffPagePrompt({
   minDisplayWidthPx = layout.width.minPx,
   visibleRowCount = layout.multirow.rows,
   virtualizeRows = false,
+  isFiniteScore = false,
   followRowIndex,
   trackedNoteIndex,
   onTrackedNoteVisibilityChange,
@@ -1287,7 +1289,9 @@ export function StaffPagePrompt({
   const [virtualRowWindow, setVirtualRowWindow] = useState({ start: 0, end: 6 });
   const [rowPlaybackButtonCenters, setRowPlaybackButtonCenters] = useState<readonly number[]>([]);
   const lastManualScrollAtRef = useRef(0);
-  const trackedNoteIsVisibleRef = useRef(true);
+  const manualScrollAwayRef = useRef(false);
+  const previousFollowRowIndexRef = useRef<number | undefined>(undefined);
+  const autoScrollAnimationFrameRef = useRef(0);
   const trackedNoteIndexRef = useRef(trackedNoteIndex);
   const onTrackedNoteVisibilityChangeRef = useRef(onTrackedNoteVisibilityChange);
   const diagnosticSampleIdRef = useRef(diagnosticSampleId);
@@ -1436,58 +1440,162 @@ export function StaffPagePrompt({
 
   useEffect(() => {
     const markManualScroll = (): void => {
-      lastManualScrollAtRef.current = Date.now();
+      lastManualScrollAtRef.current = performance.now();
+      if (autoScrollAnimationFrameRef.current !== 0) {
+        window.cancelAnimationFrame(autoScrollAnimationFrameRef.current);
+        autoScrollAnimationFrameRef.current = 0;
+      }
     };
     window.addEventListener("wheel", markManualScroll, { passive: true });
     window.addEventListener("touchmove", markManualScroll, { passive: true });
     return () => {
       window.removeEventListener("wheel", markManualScroll);
       window.removeEventListener("touchmove", markManualScroll);
+      if (autoScrollAnimationFrameRef.current !== 0) {
+        window.cancelAnimationFrame(autoScrollAnimationFrameRef.current);
+        autoScrollAnimationFrameRef.current = 0;
+      }
     };
   }, []);
 
   useEffect(() => {
-    if (followRowIndex === undefined || followRowIndex < 0) return;
-    if (trackedNoteIndexRef.current !== undefined && !trackedNoteIsVisibleRef.current) return;
-    if (Date.now() - lastManualScrollAtRef.current < 900) return;
-    const row = rendererTargetRef.current?.querySelector(
+    if (autoScrollAnimationFrameRef.current !== 0) {
+      window.cancelAnimationFrame(autoScrollAnimationFrameRef.current);
+      autoScrollAnimationFrameRef.current = 0;
+    }
+    const previousRowIndex = previousFollowRowIndexRef.current;
+    previousFollowRowIndexRef.current = followRowIndex;
+    if (
+      followRowIndex === undefined ||
+      followRowIndex < 0 ||
+      previousRowIndex === undefined ||
+      previousRowIndex === followRowIndex
+    ) {
+      return;
+    }
+    if (manualScrollAwayRef.current) return;
+    if (
+      lastManualScrollAtRef.current > 0 &&
+      performance.now() - lastManualScrollAtRef.current < 900
+    ) {
+      return;
+    }
+
+    const frame = frameRef.current;
+    const row = rendererTargetRef.current?.querySelector<SVGElement>(
       `[data-staff-row-index="${followRowIndex}"]`
     );
-    if (!row) return;
+    if (!frame || !row) return;
 
-    const bounds = row.getBoundingClientRect();
-    const scrollViewport = rendererTargetRef.current?.closest<HTMLElement>(
-      ".staff-page-scroll-viewport"
-    );
-    const usesNestedScroll =
+    const scrollViewport = frame.closest<HTMLElement>(".staff-page-scroll-viewport");
+    const isNestedScrollViewport =
       scrollViewport !== null &&
-      scrollViewport !== undefined &&
-      scrollViewport.scrollHeight > scrollViewport.clientHeight + 1;
+      ["auto", "scroll", "overlay"].includes(window.getComputedStyle(scrollViewport).overflowY);
     const viewportBounds =
-      scrollViewport && usesNestedScroll ? scrollViewport.getBoundingClientRect() : null;
-    const safeTop = viewportBounds
-      ? viewportBounds.top + 12
-      : Math.min(88, window.innerHeight * 0.14);
-    const safeBottom = viewportBounds
-      ? viewportBounds.bottom - 12
-      : window.innerHeight - Math.min(92, window.innerHeight * 0.14);
-    const scrollDelta =
-      bounds.bottom > safeBottom
-        ? bounds.bottom - safeBottom
-        : bounds.top < safeTop
-          ? bounds.top - safeTop
-          : 0;
-    if (Math.abs(scrollDelta) < 1) return;
+      isNestedScrollViewport && scrollViewport ? scrollViewport.getBoundingClientRect() : null;
+    const viewportTop = viewportBounds ? viewportBounds.top + scrollViewport!.clientTop : 0;
+    const viewportHeight = viewportBounds ? scrollViewport!.clientHeight : window.innerHeight;
+    const rowBounds = row.getBoundingClientRect();
+    const delta = (rowBounds.top + rowBounds.bottom) / 2 - (viewportTop + viewportHeight / 2);
+    if (Math.abs(delta) < 1) return;
 
-    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? "auto"
-      : "smooth";
-    if (usesNestedScroll && scrollViewport) {
-      scrollViewport.scrollBy({ top: scrollDelta, behavior });
-    } else {
-      window.scrollBy({ top: scrollDelta, behavior });
+    const scrollingElement = document.scrollingElement ?? document.documentElement;
+    const currentScrollTop =
+      isNestedScrollViewport && scrollViewport ? scrollViewport.scrollTop : window.scrollY;
+    const maxScrollTop =
+      isNestedScrollViewport && scrollViewport
+        ? Math.max(0, scrollViewport.scrollHeight - scrollViewport.clientHeight)
+        : Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
+    const targetScrollTop = Math.max(0, Math.min(maxScrollTop, currentScrollTop + delta));
+    if (Math.abs(targetScrollTop - currentScrollTop) < 1) return;
+
+    const setScrollTop = (scrollTop: number): void => {
+      if (isNestedScrollViewport && scrollViewport) {
+        scrollViewport.scrollTop = scrollTop;
+      } else {
+        scrollingElement.scrollTop = scrollTop;
+      }
+    };
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setScrollTop(targetScrollTop);
+      return;
     }
+
+    const startTime = performance.now();
+    const durationMs = 420;
+    const animateScroll = (now: number): void => {
+      const progress = Math.min(1, (now - startTime) / durationMs);
+      const easedProgress = progress * progress * (3 - 2 * progress);
+      setScrollTop(currentScrollTop + (targetScrollTop - currentScrollTop) * easedProgress);
+      if (progress < 1) {
+        autoScrollAnimationFrameRef.current = window.requestAnimationFrame(animateScroll);
+      } else {
+        autoScrollAnimationFrameRef.current = 0;
+      }
+    };
+    autoScrollAnimationFrameRef.current = window.requestAnimationFrame(animateScroll);
   }, [followRowIndex]);
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    const rendererTarget = rendererTargetRef.current;
+    if (!frame || !rendererTarget) return undefined;
+
+    const originalMarginBottom = frame.style.marginBottom;
+    const baseMarginBottom = Number.parseFloat(window.getComputedStyle(frame).marginBottom) || 0;
+    let animationFrameId = 0;
+    const updateTailSpace = (): void => {
+      animationFrameId = 0;
+      if (!isFiniteScore || rows.length === 0) {
+        frame.style.marginBottom = originalMarginBottom;
+        return;
+      }
+
+      const finalRow = rendererTarget.querySelector<SVGElement>(
+        `[data-staff-row-index="${rows.length - 1}"]`
+      );
+      if (!finalRow) return;
+
+      const scrollViewport = frame.closest<HTMLElement>(".staff-page-scroll-viewport");
+      const isNestedScrollViewport =
+        scrollViewport !== null &&
+        ["auto", "scroll", "overlay"].includes(window.getComputedStyle(scrollViewport).overflowY);
+      const viewportBounds =
+        isNestedScrollViewport && scrollViewport ? scrollViewport.getBoundingClientRect() : null;
+      const viewportTop = viewportBounds ? viewportBounds.top + scrollViewport!.clientTop : 0;
+      const viewportHeight = viewportBounds ? scrollViewport!.clientHeight : window.innerHeight;
+      const finalRowBounds = finalRow.getBoundingClientRect();
+      const desiredScrollTop =
+        (isNestedScrollViewport && scrollViewport ? scrollViewport.scrollTop : window.scrollY) +
+        (finalRowBounds.top + finalRowBounds.bottom) / 2 -
+        (viewportTop + viewportHeight / 2);
+      const scrollingElement = document.scrollingElement ?? document.documentElement;
+      const maxScrollTop =
+        isNestedScrollViewport && scrollViewport
+          ? Math.max(0, scrollViewport.scrollHeight - scrollViewport.clientHeight)
+          : Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
+      const extraSpace = Math.max(0, desiredScrollTop - maxScrollTop);
+      frame.style.marginBottom = `${baseMarginBottom + extraSpace}px`;
+    };
+    const scheduleUpdate = (): void => {
+      if (animationFrameId !== 0) return;
+      animationFrameId = window.requestAnimationFrame(updateTailSpace);
+    };
+    const resizeObserver = new ResizeObserver(scheduleUpdate);
+    resizeObserver.observe(frame);
+    resizeObserver.observe(rendererTarget);
+    const scrollViewport = frame.closest<HTMLElement>(".staff-page-scroll-viewport");
+    if (scrollViewport) resizeObserver.observe(scrollViewport);
+    window.addEventListener("resize", scheduleUpdate, { passive: true });
+    scheduleUpdate();
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+      if (animationFrameId !== 0) window.cancelAnimationFrame(animationFrameId);
+      frame.style.marginBottom = originalMarginBottom;
+    };
+  }, [isFiniteScore, rows.length]);
 
   useEffect(() => {
     let animationFrameId = 0;
@@ -1500,22 +1608,76 @@ export function StaffPagePrompt({
         const noteHeads = trackedNoteHeadElementsRef.current.get(noteIndex);
         if (!noteHeads?.length) return;
 
-        const safeTop = Math.min(84, window.innerHeight * 0.12);
-        const safeBottom = window.innerHeight - Math.min(92, window.innerHeight * 0.14);
-        const safeLeft = 4;
-        const safeRight = window.innerWidth - 4;
+        const visibleBounds = {
+          left: 0,
+          top: 0,
+          right: window.innerWidth,
+          bottom: window.innerHeight,
+        };
+        const intersectBounds = (
+          rect: DOMRect,
+          clipX: boolean,
+          clipY: boolean,
+          insetLeft = 0,
+          insetTop = 0,
+          insetRight = 0,
+          insetBottom = 0
+        ): void => {
+          if (clipX) {
+            visibleBounds.left = Math.max(visibleBounds.left, rect.left + insetLeft);
+            visibleBounds.right = Math.min(visibleBounds.right, rect.right - insetRight);
+          }
+          if (clipY) {
+            visibleBounds.top = Math.max(visibleBounds.top, rect.top + insetTop);
+            visibleBounds.bottom = Math.min(visibleBounds.bottom, rect.bottom - insetBottom);
+          }
+        };
+        const svgViewport = noteHeads[0]?.ownerSVGElement;
+        if (svgViewport) {
+          intersectBounds(svgViewport.getBoundingClientRect(), true, true);
+        }
+        for (
+          let ancestor = svgViewport?.parentElement;
+          ancestor && ancestor !== document.documentElement;
+          ancestor = ancestor.parentElement
+        ) {
+          if (!(ancestor instanceof HTMLElement)) continue;
+          const style = window.getComputedStyle(ancestor);
+          const clipsX = style.overflowX !== "visible";
+          const clipsY = style.overflowY !== "visible";
+          if (!clipsX && !clipsY) continue;
+          const rect = ancestor.getBoundingClientRect();
+          intersectBounds(
+            rect,
+            clipsX,
+            clipsY,
+            clipsX ? ancestor.clientLeft : 0,
+            clipsY ? ancestor.clientTop : 0,
+            clipsX ? rect.width - ancestor.clientLeft - ancestor.clientWidth : 0,
+            clipsY ? rect.height - ancestor.clientTop - ancestor.clientHeight : 0
+          );
+        }
         const isVisible = noteHeads.every((noteHead) => {
           const bounds = noteHead.getBoundingClientRect();
+          const centerX = (bounds.left + bounds.right) / 2;
+          const centerY = (bounds.top + bounds.bottom) / 2;
           return (
             bounds.width > 0 &&
             bounds.height > 0 &&
-            bounds.top >= safeTop &&
-            bounds.bottom <= safeBottom &&
-            bounds.left >= safeLeft &&
-            bounds.right <= safeRight
+            centerX >= visibleBounds.left &&
+            centerX <= visibleBounds.right &&
+            centerY >= visibleBounds.top &&
+            centerY <= visibleBounds.bottom
           );
         });
-        trackedNoteIsVisibleRef.current = isVisible;
+        if (
+          lastManualScrollAtRef.current > 0 &&
+          performance.now() - lastManualScrollAtRef.current < 900
+        ) {
+          manualScrollAwayRef.current = !isVisible;
+        } else if (isVisible) {
+          manualScrollAwayRef.current = false;
+        }
         onTrackedNoteVisibilityChangeRef.current?.(isVisible);
       });
     };
@@ -1595,6 +1757,7 @@ export function StaffPagePrompt({
             ),
             ...cursorRowsToRender,
             ...(followRowIndex !== undefined ? [followRowIndex] : []),
+            ...(isFiniteScore && rows.length > 0 ? [rows.length - 1] : []),
           ])
         : new Set(rows.map((_, rowIndex) => rowIndex));
       [...rowsToRender]
@@ -2194,6 +2357,7 @@ export function StaffPagePrompt({
     cursorRowsKey,
     cursorRowsToRender,
     followRowIndex,
+    isFiniteScore,
     visibleRowCount,
     virtualizeRows,
     virtualRowWindow.end,

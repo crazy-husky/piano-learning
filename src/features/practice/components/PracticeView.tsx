@@ -2006,6 +2006,11 @@ export function PracticeView({
               }
               getAudioTime={getPianoAudioTime}
               followRowIndex={freePracticeFollowRowIndex}
+              isFiniteScore={
+                isContinuousStaffPage &&
+                mode === "fixed-count" &&
+                staffPageFirstNoteOffset + staffPageNotes.length >= fixedCount
+              }
               layout={isMobileStaffPage ? MOBILE_PRACTICE_PAGE_STAFF_LAYOUT : undefined}
               noteDuration={effectivePromptNoteDuration}
               noteDurations={visibleStaffPageRhythm?.durations}
