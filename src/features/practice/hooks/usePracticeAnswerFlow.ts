@@ -86,6 +86,7 @@ interface PracticeAnswerFlowServices {
   markCurrentStaffPageNoteComplete: () => void;
   markPromptInput: () => void;
   maybeBackupDuringOpenEnded: (nextCompletedCount: number) => Promise<void>;
+  recordStaffPageChaseTarget: () => void;
   resumeActiveTimers: () => void;
   selectAndStartNext: (nextCompletedCount: number) => void;
   startStaffPage: (input: PracticeStaffPageStartInput) => void;
@@ -142,6 +143,7 @@ export function usePracticeAnswerFlow({
     markCurrentStaffPageNoteComplete,
     markPromptInput,
     maybeBackupDuringOpenEnded,
+    recordStaffPageChaseTarget,
     resumeActiveTimers,
     selectAndStartNext,
     startStaffPage,
@@ -254,6 +256,7 @@ export function usePracticeAnswerFlow({
       setCompletedCount(nextCompletedCount);
       if (promptDisplayMode === "staff-page") {
         markCurrentStaffPageNoteComplete();
+        recordStaffPageChaseTarget();
       }
       await maybeBackupDuringOpenEnded(nextCompletedCount);
       const reviewSessionId = review.sessionId;
@@ -315,6 +318,7 @@ export function usePracticeAnswerFlow({
       pendingAfterPauseRef,
       playAnswerNote,
       promptDisplayMode,
+      recordStaffPageChaseTarget,
       promptRef,
       queueStrategy,
       resumeActiveTimers,

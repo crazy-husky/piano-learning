@@ -1,4 +1,5 @@
 import { BarChart3, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
 import { formatTargetNoteLabel, getNoteById } from "../../../domain/notes";
 import { isCompletedReview } from "../../../domain/reviews";
 import { formatMs, type NoteStat } from "../../../domain/stats";
@@ -57,12 +58,34 @@ export function PracticeSummaryView({
   summaryHasTooManyErrors,
   weakestNotes,
 }: PracticeSummaryViewProps): JSX.Element {
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || dialog.open) return undefined;
+
+    dialog.showModal();
+    dialog.querySelector<HTMLElement>("#practice-summary-title")?.focus({ preventScroll: true });
+    return () => {
+      if (dialog.open) dialog.close();
+    };
+  }, []);
+
   return (
-    <section className="practice-shell">
-      <div className="panel summary-panel">
+    <dialog
+      aria-labelledby="practice-summary-title"
+      className="practice-summary-overlay"
+      ref={dialogRef}
+      onCancel={(event) => event.preventDefault()}
+    >
+      <div className="panel summary-panel practice-summary-dialog">
         <div className="panel-heading summary-result-heading">
-          <h1>本次结果</h1>
-          <p>{summary.session.endReason === "manual-stop" ? "手动结束" : "已完成"}</p>
+          <h1 id="practice-summary-title" tabIndex={-1}>
+            本次结果
+          </h1>
+          <p className="summary-end-status">
+            {summary.session.endReason === "manual-stop" ? "手动结束" : "已完成"}
+          </p>
           {summaryHasTooManyErrors ? (
             <p className="summary-quality-warning">
               错音有点多{">_<"} 这次先不算~ <br />
@@ -70,7 +93,7 @@ export function PracticeSummaryView({
             </p>
           ) : null}
         </div>
-        <div className="metric-grid">
+        <div className="metric-grid practice-summary-metrics">
           <div className="metric">
             <span>答对</span>
             <strong>{summary.reviews.filter(isCompletedReview).length}</strong>
@@ -157,6 +180,6 @@ export function PracticeSummaryView({
           </button>
         </div>
       </div>
-    </section>
+    </dialog>
   );
 }

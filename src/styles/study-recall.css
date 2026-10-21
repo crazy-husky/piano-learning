@@ -963,6 +963,157 @@ main.has-backup-reminder .setup-grid::after {
   margin: 0 auto;
 }
 
+.practice-summary-overlay {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  box-sizing: border-box;
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  height: 100dvh;
+  margin: 0;
+  max-height: none;
+  max-width: none;
+  min-height: 100dvh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 24px;
+  position: fixed;
+  width: 100%;
+}
+
+.practice-summary-overlay:not([open]) {
+  display: none;
+}
+
+.practice-summary-overlay::backdrop {
+  background: var(--modal-overlay);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+}
+
+.practice-summary-dialog {
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--accent-soft) 34%, transparent),
+      transparent 55%
+    ),
+    var(--panel-surface-strong);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  border-radius: 22px;
+  box-shadow:
+    0 28px 80px rgba(10, 18, 16, 0.3),
+    inset 0 1px 0 color-mix(in srgb, var(--surface) 80%, transparent);
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: clamp(20px, 3vw, 30px);
+  width: min(780px, 100%);
+}
+
+.practice-summary-dialog:focus {
+  outline: none;
+}
+
+.practice-summary-dialog .summary-result-heading {
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.practice-summary-dialog .summary-result-heading h1 {
+  font-size: clamp(23px, 3vw, 30px);
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.practice-summary-dialog .summary-end-status {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 999px;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 750;
+  padding: 6px 11px;
+  white-space: nowrap;
+}
+
+.practice-summary-dialog .summary-quality-warning {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.practice-summary-dialog .practice-summary-metrics {
+  gap: 10px;
+}
+
+.practice-summary-dialog .metric {
+  background: color-mix(in srgb, var(--surface-soft) 84%, var(--accent-soft));
+  border-color: color-mix(in srgb, var(--border) 72%, var(--accent));
+  border-radius: 14px;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 15px;
+}
+
+.practice-summary-dialog .metric span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.practice-summary-dialog .metric strong {
+  font-size: clamp(20px, 3vw, 26px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.practice-summary-dialog .metric:first-child strong {
+  color: var(--success);
+}
+
+.practice-summary-dialog .metric:nth-child(2) strong {
+  color: var(--danger);
+}
+
+.practice-summary-dialog .summary-section {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+
+.practice-summary-dialog .summary-section-heading h2 {
+  font-size: 17px;
+  margin: 0;
+}
+
+.practice-summary-dialog .note-row {
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.practice-summary-dialog .note-row:not(.note-row-header) {
+  background: color-mix(in srgb, var(--surface-soft) 65%, var(--surface));
+  font-weight: 650;
+}
+
+.practice-summary-dialog .action-row {
+  border-top: 1px solid var(--line);
+  justify-content: flex-end;
+  margin-top: 22px;
+  padding-top: 18px;
+}
+
+.practice-summary-dialog .action-row > button {
+  border-radius: 10px;
+  min-height: 44px;
+}
+
+.practice-summary-dialog .action-row > button.primary {
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--accent-fill) 22%, transparent);
+}
+
 .panel-heading.summary-result-heading {
   align-items: flex-start;
   display: grid;
@@ -1281,5 +1432,73 @@ main.has-backup-reminder .setup-grid::after {
 
   .study-shell--study .study-learning-strategy .study-strategy-help {
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 600px) {
+  .practice-summary-overlay {
+    padding: max(12px, env(safe-area-inset-top)) 12px calc(50px + env(safe-area-inset-bottom));
+  }
+
+  .practice-summary-dialog {
+    border-radius: 18px;
+    max-height: 82dvh;
+    padding: 18px;
+  }
+
+  .practice-summary-dialog .summary-result-heading {
+    margin-bottom: 16px;
+  }
+
+  .practice-summary-dialog .practice-summary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .practice-summary-dialog .metric {
+    padding: 12px;
+  }
+
+  .practice-summary-dialog .note-row {
+    gap: 4px;
+    grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(0, 0.8fr));
+    overflow-wrap: anywhere;
+    padding-inline: 8px;
+  }
+
+  .practice-summary-dialog .note-row > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .practice-summary-dialog .note-row-header {
+    font-size: 10px;
+  }
+
+  .practice-summary-dialog .note-row:not(.note-row-header) {
+    font-size: 12px;
+  }
+
+  .practice-summary-dialog .action-row {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  }
+
+  .practice-summary-dialog .action-row > button {
+    font-size: 13px;
+    gap: 6px;
+    min-width: 0;
+    padding-inline: 8px;
+    white-space: nowrap;
+  }
+
+  .practice-summary-dialog .action-row > button:last-child {
+    grid-column: 1 / -1;
+    justify-self: center;
+    min-width: 142px;
+  }
+
+  .practice-summary-dialog .action-row kbd {
+    padding-inline: 4px;
   }
 }

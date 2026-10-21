@@ -251,6 +251,20 @@
     grid-template-rows: auto auto minmax(0, 1fr) auto;
   }
 
+  .practice-running-mobile.practice-staff-page.is-free-score-stream {
+    overflow: hidden;
+  }
+
+  .practice-running-mobile.practice-staff-page.is-free-score-stream .prompt-stage,
+  .practice-running-mobile.practice-staff-page.is-free-score-stream .staff-page-stage {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .practice-running-mobile.practice-staff-page.is-free-score-stream .staff-page-scroll-viewport {
+    height: 100%;
+  }
+
   .practice-running-mobile.practice-staff-page .practice-topline {
     grid-row: 1;
   }

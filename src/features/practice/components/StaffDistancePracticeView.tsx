@@ -29,6 +29,7 @@ import type {
 } from "../../../domain/types";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import type { PracticeChaseSettings } from "./PracticeChaseSettingsDialog";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
@@ -39,6 +40,11 @@ import {
 } from "../../../shared/keyboard/keyboardShortcuts";
 import { StaffDistanceRun, type StaffDistanceMicrophoneInput } from "./StaffDistanceRun";
 import type { PracticeDistanceMode } from "../../../routing/appRoutes";
+import {
+  DEFAULT_SCORE_CHASE_PREFERENCES,
+  SCORE_CHASE_SPEED_OPTIONS,
+  type ChaseHandMode,
+} from "../logic/scoreChase";
 
 interface PracticeNavigationExitRequest {
   id: number;
@@ -47,6 +53,10 @@ interface PracticeNavigationExitRequest {
 }
 
 interface StaffDistancePreferences extends StaffDistancePracticeSettings {
+  chaseEnabled: boolean;
+  chaseHandMode: ChaseHandMode;
+  chaseSpeedMultiplier: number;
+  chaseStartCount: number;
   fixedCount: number;
   fixedDurationSeconds: number;
   inputMethod: StaffDistanceInputMethod;
@@ -78,6 +88,10 @@ interface StaffDistancePracticeViewProps {
 
 const STAFF_DISTANCE_PREFERENCES_KEY = "anki-note.staffDistancePracticePreferences";
 const DEFAULT_PREFERENCES: StaffDistancePreferences = {
+  chaseEnabled: DEFAULT_SCORE_CHASE_PREFERENCES.enabled,
+  chaseHandMode: "both",
+  chaseSpeedMultiplier: DEFAULT_SCORE_CHASE_PREFERENCES.speedMultiplier,
+  chaseStartCount: DEFAULT_SCORE_CHASE_PREFERENCES.startCount,
   includeUnison: false,
   inputMethod: "midi",
   maxDistance: 2,
@@ -124,7 +138,28 @@ function normalizePreferences(value: unknown): StaffDistancePreferences {
   const selectedDurations = NOTE_DURATION_OPTIONS.filter((option) =>
     savedDurations.includes(option.value)
   ).map((option) => option.value);
+  const savedChaseSpeed = Number(record.chaseSpeedMultiplier);
+  const chaseSpeedMultiplier = SCORE_CHASE_SPEED_OPTIONS.includes(
+    savedChaseSpeed as (typeof SCORE_CHASE_SPEED_OPTIONS)[number]
+  )
+    ? savedChaseSpeed
+    : DEFAULT_SCORE_CHASE_PREFERENCES.speedMultiplier;
   return {
+    chaseEnabled:
+      typeof record.chaseEnabled === "boolean"
+        ? record.chaseEnabled
+        : DEFAULT_SCORE_CHASE_PREFERENCES.enabled,
+    chaseHandMode:
+      record.chaseHandMode === "left" || record.chaseHandMode === "right"
+        ? record.chaseHandMode
+        : "both",
+    chaseSpeedMultiplier,
+    chaseStartCount: numberInRange(
+      record.chaseStartCount,
+      DEFAULT_SCORE_CHASE_PREFERENCES.startCount,
+      2,
+      12
+    ),
     includeUnison: typeof record.includeUnison === "boolean" ? record.includeUnison : false,
     maxDistance: numberInRange(record.maxDistance, 2, 1, 7),
     fixedCount: numberInRange(record.fixedCount, 20, 1, 500),
@@ -472,6 +507,12 @@ export function StaffDistancePracticeView({
     const sessionNotes = getDistanceNotes(runSession.staffDistance);
     return (
       <StaffDistanceRun
+        chaseSettings={{
+          enabled: preferences.chaseEnabled,
+          handMode: preferences.chaseHandMode,
+          speedMultiplier: preferences.chaseSpeedMultiplier,
+          startCount: preferences.chaseStartCount,
+        }}
         fixedCount={runSession.fixedCount ?? preferences.fixedCount}
         fixedDurationSeconds={runSession.fixedDurationSeconds ?? preferences.fixedDurationSeconds}
         mode={runSession.mode}
@@ -483,6 +524,15 @@ export function StaffDistancePracticeView({
         navigationExitRequest={navigationExitRequest}
         notes={sessionNotes}
         onFinish={finishSession}
+        onSaveChaseSettings={(chaseSettings: PracticeChaseSettings) =>
+          setPreferences((current) => ({
+            ...current,
+            chaseEnabled: chaseSettings.enabled,
+            chaseHandMode: chaseSettings.handMode,
+            chaseSpeedMultiplier: chaseSettings.speedMultiplier,
+            chaseStartCount: chaseSettings.startCount,
+          }))
+        }
         onNavigationExit={onNavigationExit}
         onRunningChange={onRunningChange}
         session={runSession}

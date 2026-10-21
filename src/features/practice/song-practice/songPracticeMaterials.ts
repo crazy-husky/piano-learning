@@ -1,8 +1,9 @@
 import type { NoteName } from "../../../domain/types";
+import type { ChaseHandMode } from "../logic/scoreChase";
 
 export type SongPracticeInputMode = "virtual" | "midi" | "microphone";
 export type SongPracticeTrackMode = "treble" | "bass" | "mixed";
-export type SongPracticeHandMode = "left" | "right" | "both";
+export type SongPracticeHandMode = ChaseHandMode;
 export type SongPracticeKeyVersion = "c" | "original" | "source";
 export type SongPracticeStaff = "treble" | "bass";
 export type SongPracticeDuration =

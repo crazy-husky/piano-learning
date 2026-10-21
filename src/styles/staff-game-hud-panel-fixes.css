@@ -362,6 +362,20 @@
   }
 }
 
+@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  .staff-game-shell
+    .staff-game-hud:is(.is-learning-test, .is-arcade-mode):not(.is-ready):not(.is-rush-mode)
+    .staff-game-hud-card.hud-panel-css {
+    --staff-game-active-side-card-height: max(
+      var(--staff-game-mode-hud-side-card-height),
+      clamp(72px, calc(var(--staff-game-mode-hud-level-size) + 10px), 84px)
+    );
+    height: var(--staff-game-active-side-card-height);
+    min-height: var(--staff-game-active-side-card-height);
+    max-height: var(--staff-game-active-side-card-height);
+  }
+}
+
 /* Keep the ready panel anchored to the same top edge as its content changes. */
 @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
   .staff-game-shell.is-ready .staff-game-playfield.is-ready {

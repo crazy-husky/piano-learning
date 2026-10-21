@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { startTargetNote, type SustainedPianoNote } from "../../../audio/piano";
-import type { TargetNote } from "../../../domain/types";
+import { getPianoAudioTime, startTargetNote, type SustainedPianoNote } from "../../../audio/piano";
+import type { Staff, TargetNote } from "../../../domain/types";
+import type { ScorePlaybackCursor, ScorePlaybackStaffCursor } from "../logic/scorePlayback";
 
 export interface SongRowPlaybackNote {
   durationBeats: number;
@@ -23,6 +24,9 @@ export interface SongRowPlaybackTiming {
   ticksPerQuarter?: number;
 }
 
+export type SongRowPlaybackStaffCursor = ScorePlaybackStaffCursor;
+export type SongRowPlaybackCursor = ScorePlaybackCursor;
+
 interface ActivePlaybackNote {
   note: SustainedPianoNote;
 }
@@ -34,6 +38,7 @@ interface SongRowPlaybackRuntime {
   notes: readonly SongRowPlaybackNote[];
   releaseTimeoutIds: Set<number>;
   rowIndex: number;
+  staffCursors: Partial<Record<Staff, SongRowPlaybackStaffCursor>>;
   timing: SongRowPlaybackTiming;
   timeoutId?: number;
 }
@@ -110,8 +115,14 @@ function intervalMs(
   return Math.max(0, next.startBeat - current.startBeat) * (60_000 / Math.max(1, timing.tempoBpm));
 }
 
+function eventIndices(notes: readonly SongRowPlaybackNote[]): number[] {
+  return [...new Set(notes.map(({ eventIndex }) => eventIndex))];
+}
+
 export function useSongRowPlayback(): {
   cancel: () => void;
+  getAudioTime: () => number;
+  playbackCursor: SongRowPlaybackCursor | null;
   playingNoteIndex: number | null;
   playingRowIndex: number | null;
   toggleRow: (
@@ -122,6 +133,7 @@ export function useSongRowPlayback(): {
 } {
   const [playingRowIndex, setPlayingRowIndex] = useState<number | null>(null);
   const [playingNoteIndex, setPlayingNoteIndex] = useState<number | null>(null);
+  const [playbackCursor, setPlaybackCursor] = useState<SongRowPlaybackCursor | null>(null);
   const runtimeRef = useRef<SongRowPlaybackRuntime | null>(null);
 
   const cancel = useCallback((expectedRuntime?: SongRowPlaybackRuntime): void => {
@@ -139,6 +151,7 @@ export function useSongRowPlayback(): {
     runtimeRef.current = null;
     setPlayingRowIndex(null);
     setPlayingNoteIndex(null);
+    setPlaybackCursor(null);
   }, []);
 
   const toggleRow = useCallback(
@@ -161,6 +174,7 @@ export function useSongRowPlayback(): {
         notes,
         releaseTimeoutIds: new Set(),
         rowIndex,
+        staffCursors: {},
         timing: { ...timing, tempoBpm: Math.max(1, timing.tempoBpm) },
       };
       runtimeRef.current = runtime;
@@ -182,6 +196,10 @@ export function useSongRowPlayback(): {
           groupEndIndex += 1;
         }
         const chord = runtime.notes.slice(noteIndex, groupEndIndex);
+        const nextNote = runtime.notes[groupEndIndex];
+        const interval = nextNote
+          ? intervalMs(playbackNote, nextNote, runtime.timing)
+          : Math.max(...chord.map((note) => noteDurationMs(note, runtime.timing)));
 
         setPlayingNoteIndex(noteIndex);
         const generation = ++runtime.generation;
@@ -194,6 +212,42 @@ export function useSongRowPlayback(): {
 
             const activeGroup = activeNotes.map((note) => ({ note }));
             runtime.activeNotes.push(...activeGroup);
+            const nextStaffCursors = { ...runtime.staffCursors };
+            (["treble", "bass"] as const).forEach((staff) => {
+              const staffChord = chord.filter(({ note }) => note.staff === staff);
+              if (staffChord.length === 0) return;
+
+              const firstStaffNote = staffChord[0]!;
+              const nextStaffNote = runtime.notes
+                .slice(groupEndIndex)
+                .find(({ note }) => note.staff === staff);
+              const nextStaffChord = nextStaffNote
+                ? runtime.notes.filter(
+                    (candidate) =>
+                      candidate.note.staff === staff && hasSameOnset(nextStaffNote, candidate)
+                  )
+                : [];
+              const staffStartAudioTime = Math.min(
+                ...staffChord.map((staffNote) => {
+                  const chordIndex = chord.indexOf(staffNote);
+                  return activeNotes[chordIndex]?.startedAtAudioTime ?? 0;
+                })
+              );
+              const staffInterval = nextStaffNote
+                ? intervalMs(firstStaffNote, nextStaffNote, runtime.timing)
+                : 0;
+
+              nextStaffCursors[staff] = {
+                currentEventIndices: eventIndices(staffChord),
+                endAudioTime: nextStaffNote ? staffStartAudioTime + staffInterval / 1_000 : null,
+                nextEventIndices: nextStaffNote ? eventIndices(nextStaffChord) : null,
+                rowIndex: runtime.rowIndex,
+                staff,
+                startAudioTime: staffStartAudioTime,
+              };
+            });
+            runtime.staffCursors = nextStaffCursors;
+            setPlaybackCursor({ staffCursors: nextStaffCursors });
             activeGroup.forEach((activeNote, chordIndex) => {
               const releaseAfterMs = noteDurationMs(chord[chordIndex]!, runtime.timing);
               const timeoutId = window.setTimeout(
@@ -207,10 +261,6 @@ export function useSongRowPlayback(): {
               runtime.releaseTimeoutIds.add(timeoutId);
             });
 
-            const nextNote = runtime.notes[groupEndIndex];
-            const interval = nextNote
-              ? intervalMs(playbackNote, nextNote, runtime.timing)
-              : Math.max(...chord.map((note) => noteDurationMs(note, runtime.timing)));
             runtime.timeoutId = window.setTimeout(
               () => {
                 if (runtimeRef.current !== runtime || runtime.generation !== generation) return;
@@ -242,5 +292,12 @@ export function useSongRowPlayback(): {
     []
   );
 
-  return { cancel, playingNoteIndex, playingRowIndex, toggleRow };
+  return {
+    cancel,
+    getAudioTime: getPianoAudioTime,
+    playbackCursor,
+    playingNoteIndex,
+    playingRowIndex,
+    toggleRow,
+  };
 }

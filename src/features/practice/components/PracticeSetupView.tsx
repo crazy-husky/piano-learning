@@ -11,6 +11,7 @@ import type {
   PromptDisplayMode,
   PromptNoteDuration,
 } from "../../../domain/types";
+import type { ChaseHandMode } from "../logic/scoreChase";
 import {
   ANSWER_BUTTONS,
   AVAILABLE_PITCH_IDS,
@@ -41,6 +42,11 @@ import { getSongPracticeProgressEntries } from "../song-practice/songPracticePro
 export interface PracticeSetupUiPreferences {
   answerPitchMode: AnswerPitchMode;
   autoPlayTarget: boolean;
+  chaseEnabled: boolean;
+  chaseHandMode: ChaseHandMode;
+  chasePreferencesVersion: 2;
+  chaseSpeedMultiplier: number;
+  chaseStartCount: number;
   playAnswerNote: boolean;
   drillNoteNames: NoteName[];
   fixedCount: number;

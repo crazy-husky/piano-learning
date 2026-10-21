@@ -23,9 +23,31 @@ import { generateStaffPageRhythm } from "../logic/staffPageNotation";
 import type { GeneratedStaffPageRhythm } from "../logic/staffPageNotation";
 import type { PracticeStaffPageRuntime } from "./usePracticeSessionLifecycle";
 
+const CROSS_GROUP_NOTE_RATE = 0.08;
 const STAFF_PAGE_SIZE =
   PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows * PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow;
-const CROSS_GROUP_NOTE_RATE = 0.08;
+const MOBILE_STAFF_ROW_HEIGHT_PX = 220;
+const MOBILE_SCORE_VIEWPORT_RESERVED_HEIGHT_PX = 260;
+const MAX_MOBILE_STAFF_BUFFER_ROWS = 4;
+
+function initialStaffPageBufferRowCount(isMobileViewport: boolean): number {
+  if (!isMobileViewport || typeof window === "undefined") {
+    return PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows;
+  }
+
+  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+  const estimatedScoreHeight = Math.max(
+    MOBILE_STAFF_ROW_HEIGHT_PX * 2,
+    viewportHeight - MOBILE_SCORE_VIEWPORT_RESERVED_HEIGHT_PX
+  );
+  return Math.max(
+    PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows,
+    Math.min(
+      MAX_MOBILE_STAFF_BUFFER_ROWS,
+      Math.ceil(estimatedScoreHeight / MOBILE_STAFF_ROW_HEIGHT_PX)
+    )
+  );
+}
 
 function addOccasionalRangeNotes(
   notes: readonly TargetNote[],
@@ -52,6 +74,7 @@ interface PracticeStaffPageFlowValues {
   pageNoteCount: number;
   promptNoteDurations: PromptNoteDuration[];
   rangeExtensionNotes: TargetNote[];
+  retainHistory: boolean;
   queueStrategy: PracticeQueueStrategy;
   schedulerReviews: ReviewRecord[];
   sessions: PracticeSessionRecord[];
@@ -105,6 +128,7 @@ export function usePracticeStaffPageFlow({
     pageNoteCount,
     promptNoteDurations,
     rangeExtensionNotes,
+    retainHistory,
     queueStrategy,
     schedulerReviews,
     sessions,
@@ -168,12 +192,15 @@ export function usePracticeStaffPageFlow({
 
   const getNextStaffPageCount = useCallback(
     (nextCompletedCount: number): number => {
+      const initialBufferCount = retainHistory
+        ? pageNoteCount * initialStaffPageBufferRowCount(isMobileViewport)
+        : STAFF_PAGE_SIZE;
       if (mode !== "fixed-count") {
-        return STAFF_PAGE_SIZE;
+        return initialBufferCount;
       }
-      return Math.min(STAFF_PAGE_SIZE, Math.max(0, fixedCount - nextCompletedCount));
+      return Math.min(initialBufferCount, Math.max(0, fixedCount - nextCompletedCount));
     },
-    [fixedCount, mode]
+    [fixedCount, isMobileViewport, mode, pageNoteCount, retainHistory]
   );
 
   const markCurrentStaffPageNoteComplete = useCallback((): void => {
@@ -293,6 +320,7 @@ export function usePracticeStaffPageFlow({
         nextIndex,
         pageNoteCount,
         plannedNoteCount: page.notes.length,
+        refillNoteCount: retainHistory ? pageNoteCount : undefined,
       });
       const hasNextPageOnDesktop =
         !isMobileViewport &&
@@ -357,6 +385,22 @@ export function usePracticeStaffPageFlow({
           return;
         }
         const scrolledPage = staffPageRef.current;
+        if (retainHistory) {
+          setIsStaffPageScrolling(false);
+          if (!scrolledPage) return;
+          const nextNote = scrolledPage.notes[scrolledPage.index];
+          if (!nextNote) return;
+          const startNextPrompt = (): void => {
+            resumeActiveTimers();
+            startPrompt(nextNote);
+          };
+          if (isPausedRef.current) {
+            pendingAfterPauseRef.current = startNextPrompt;
+            return;
+          }
+          startNextPrompt();
+          return;
+        }
         if (
           !scrolledPage ||
           scrolledPage.notes.length <= PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
@@ -407,7 +451,7 @@ export function usePracticeStaffPageFlow({
       clearStaffPageScrollSchedule();
       staffPageScrollFrameRef.current = window.requestAnimationFrame(() => {
         staffPageScrollFrameRef.current = null;
-        setIsStaffPageScrolling(true);
+        if (!retainHistory) setIsStaffPageScrolling(true);
         staffPageScrollTimeoutRef.current = window.setTimeout(
           finishScroll,
           staffPageScrollDurationMs
@@ -430,6 +474,7 @@ export function usePracticeStaffPageFlow({
       queueStrategy,
       promptNoteDurations,
       rangeExtensionNotes,
+      retainHistory,
       resumeActiveTimers,
       schedulerReviews,
       sessionRef,

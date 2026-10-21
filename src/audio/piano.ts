@@ -41,6 +41,7 @@ interface GetSamplerOptions {
 }
 
 export interface SustainedPianoNote {
+  startedAtAudioTime: number;
   release: () => void;
 }
 
@@ -178,6 +179,11 @@ export async function unlockAudio(): Promise<void> {
   getSampler({ retryFailed: true });
 }
 
+/** Return Tone's audio-context clock in seconds for playback-synchronized visuals. */
+export function getPianoAudioTime(): number {
+  return Tone.now();
+}
+
 const NATURAL_NOTE_SEMITONES: Record<NoteName, number> = {
   C: 0,
   D: 2,
@@ -215,10 +221,12 @@ async function startToneNote(note: string): Promise<SustainedPianoNote> {
   await unlockAudio();
   const sampledPiano = getLoadedSampler();
   let released = false;
+  const startedAtAudioTime = Tone.now();
 
   if (sampledPiano) {
-    sampledPiano.triggerAttack(note, undefined, getPianoVolume());
+    sampledPiano.triggerAttack(note, startedAtAudioTime, getPianoVolume());
     return {
+      startedAtAudioTime,
       release: () => {
         if (released) return;
         released = true;
@@ -228,8 +236,9 @@ async function startToneNote(note: string): Promise<SustainedPianoNote> {
   }
 
   const synth = getFallbackSynth();
-  synth.triggerAttack(note, undefined, getPianoVolume());
+  synth.triggerAttack(note, startedAtAudioTime, getPianoVolume());
   return {
+    startedAtAudioTime,
     release: () => {
       if (released) return;
       released = true;

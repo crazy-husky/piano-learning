@@ -1,11 +1,13 @@
-import { Pause, Play, Square } from "lucide-react";
+import { Pause, Play, Settings2, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getPianoAudioTime } from "../../../audio/piano";
 import type {
   StaffDistanceInputMethod,
   PitchId,
   PracticeMode,
   PracticeSessionRecord,
   PromptNoteDuration,
+  Staff,
   StaffDistanceTrainingMode,
   StaffDistancePracticeSettings,
   StaffNotationMode,
@@ -30,10 +32,20 @@ import {
 } from "../../../domain/staffDistancePractice";
 import { appendStaffDistanceRhythm, createStaffDistanceRhythm } from "../logic/staffDistanceRhythm";
 import { StaffPagePrompt } from "./StaffPagePrompt";
+import {
+  DESKTOP_STAFF_PAGE_NOTE_COUNT,
+  MOBILE_STAFF_PAGE_NOTE_COUNT,
+} from "../logic/staffPageFlow";
 import { MOBILE_PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
 import { estimateStaffGameSystemDelayMs } from "../../staff-game/logic/staffGameProficiency";
 import { practiceMicrophoneDebugParametersForSensitivityLevel } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
+import { uniformFreePracticeChaseSegmentDuration, type ScoreChaseEvent } from "../logic/scoreChase";
+import { useScoreChase } from "../hooks/useScoreChase";
+import {
+  PracticeChaseSettingsDialog,
+  type PracticeChaseSettings,
+} from "./PracticeChaseSettingsDialog";
 
 interface PracticeNavigationExitRequest {
   id: number;
@@ -42,6 +54,7 @@ interface PracticeNavigationExitRequest {
 }
 
 interface StaffDistanceRunProps {
+  chaseSettings: PracticeChaseSettings;
   fixedCount: number;
   fixedDurationSeconds: number;
   inputMethod: StaffDistanceInputMethod;
@@ -50,6 +63,7 @@ interface StaffDistanceRunProps {
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   notes: TargetNote[];
   onFinish: (session: PracticeSessionRecord, showSummary: boolean) => Promise<void>;
+  onSaveChaseSettings: (settings: PracticeChaseSettings) => void;
   onNavigationExit?: (
     targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal"
   ) => void;
@@ -107,7 +121,6 @@ const DISTANCE_SCORE_MIN_NOTE_GAP_PX = 39;
 const DISTANCE_SCORE_BEAT_WIDTH_PX = 58;
 const DISTANCE_SCORE_BARLINE_GAP_PX = 12;
 const DISTANCE_SCORE_FIXED_WIDTH_RESERVE_PX = 220;
-const DISTANCE_SCORE_EXTENSION_BUFFER = 32;
 const GRAND_STAFF_SEGMENT_TRANSITIONS = 6;
 const EMPTY_EXTRA_PITCH_IDS: readonly PitchId[] = [];
 
@@ -192,6 +205,17 @@ function createStaffDistanceRunSequence(
   return generatedTransitions === transitionCount ? result : createSingleStaffSequence();
 }
 
+function limitStaffDistanceRunSequence(
+  sequence: StaffDistanceRunSequence,
+  maxNoteCount: number
+): StaffDistanceRunSequence {
+  if (sequence.notes.length <= maxNoteCount) return sequence;
+  return {
+    breakIndices: sequence.breakIndices.filter((index) => index < maxNoteCount - 1),
+    notes: sequence.notes.slice(0, maxNoteCount),
+  };
+}
+
 function createStaffDistanceScorePages(
   onsets: readonly number[],
   measures: readonly number[],
@@ -233,6 +257,7 @@ function createStaffDistanceScorePages(
 }
 
 export function StaffDistanceRun({
+  chaseSettings,
   fixedCount,
   fixedDurationSeconds,
   inputMethod,
@@ -241,6 +266,7 @@ export function StaffDistanceRun({
   navigationExitRequest,
   notes,
   onFinish,
+  onSaveChaseSettings,
   onNavigationExit,
   onRunningChange,
   onMicrophoneAnswerHandlerChange,
@@ -252,19 +278,32 @@ export function StaffDistanceRun({
   trainingMode,
   useLedgerGap,
 }: StaffDistanceRunProps): JSX.Element {
+  const [isChaseSettingsOpen, setIsChaseSettingsOpen] = useState(false);
   const subscribeMidi = midi.subscribe;
   const extraPitchIds = session.staffDistance?.crossGroupPitchIds ?? EMPTY_EXTRA_PITCH_IDS;
-  const [initialSequence] = useState(() =>
-    createStaffDistanceRunSequence(
+  const initialScoreNotesPerRow =
+    typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches
+      ? MOBILE_STAFF_PAGE_NOTE_COUNT
+      : DESKTOP_STAFF_PAGE_NOTE_COUNT;
+  const initialScoreNoteCapacity = initialScoreNotesPerRow * 2;
+  const [initialSequence] = useState(() => {
+    const transitionCount = Math.min(
+      trainingMode === "play" ? initialScoreNoteCapacity - 1 : 128,
+      intervalCountForRun(mode, fixedCount, fixedDurationSeconds)
+    );
+    const generatedSequence = createStaffDistanceRunSequence(
       notes,
       settings,
-      Math.min(128, intervalCountForRun(mode, fixedCount, fixedDurationSeconds)),
+      transitionCount,
       staffNotationMode,
       Math.random,
       undefined,
       extraPitchIds
-    )
-  );
+    );
+    return trainingMode === "play"
+      ? limitStaffDistanceRunSequence(generatedSequence, initialScoreNoteCapacity)
+      : generatedSequence;
+  });
   const [sequence, setSequence] = useState(initialSequence.notes);
   const sequenceRef = useRef(sequence);
   const [sequenceRhythm, setSequenceRhythm] = useState(() =>
@@ -284,6 +323,33 @@ export function StaffDistanceRun({
   >(null);
   const [inputError, setInputError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const chaseEvents = useMemo<ScoreChaseEvent[]>(
+    () =>
+      sequence.map((note, eventIndex) => ({
+        eventIndex,
+        beatPosition: eventIndex,
+        staves: [note.staff],
+      })),
+    [sequence]
+  );
+  const chaseStaves = useMemo<readonly Staff[]>(() => {
+    if (staffNotationMode === "bass-only") return ["bass"];
+    if (staffNotationMode === "treble-only") return ["treble"];
+    if (chaseSettings.handMode === "left") return ["bass"];
+    if (chaseSettings.handMode === "right") return ["treble"];
+    return ["treble", "bass"];
+  }, [chaseSettings.handMode, staffNotationMode]);
+  const { cursor: chaseCursor, recordCorrectTarget: recordChaseTarget } = useScoreChase({
+    activeStaves: chaseStaves,
+    enabled: trainingMode === "play" && chaseSettings.enabled,
+    events: chaseEvents,
+    getAudioTime: getPianoAudioTime,
+    paused: isPaused || trainingMode !== "play",
+    segmentDurationSeconds: uniformFreePracticeChaseSegmentDuration,
+    speedMultiplier: chaseSettings.speedMultiplier,
+    startCount: chaseSettings.startCount,
+    tempoBpm: 120,
+  });
   const [isMobile, setIsMobile] = useState(
     () => typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches
   );
@@ -315,12 +381,14 @@ export function StaffDistanceRun({
   const measuredScoreWidth = scoreWidth || (isMobile ? 360 : 980);
   const scorePages = useMemo(
     () =>
-      createStaffDistanceScorePages(
-        sequenceRhythm.onsets,
-        sequenceRhythm.measures,
-        measuredScoreWidth
-      ),
-    [measuredScoreWidth, sequenceRhythm.measures, sequenceRhythm.onsets]
+      trainingMode === "play"
+        ? [{ endIndex: sequenceRhythm.onsets.length, startIndex: 0 }]
+        : createStaffDistanceScorePages(
+            sequenceRhythm.onsets,
+            sequenceRhythm.measures,
+            measuredScoreWidth
+          ),
+    [measuredScoreWidth, sequenceRhythm.measures, sequenceRhythm.onsets, trainingMode]
   );
   const activeScorePage =
     scorePages.find(
@@ -338,17 +406,45 @@ export function StaffDistanceRun({
     .map((onset) => onset - (sequenceRhythm.onsets[pageStartIndex] ?? 0));
   const pageMeasures = sequenceRhythm.measures.slice(pageStartIndex, pageEndIndex);
   const pageBeamGroupIds = sequenceRhythm.beamGroupIds.slice(pageStartIndex, pageEndIndex);
+  const isContinuousScore = trainingMode === "play";
+  const scoreStartIndex = isContinuousScore ? 0 : pageStartIndex;
+  const scoreNotes = isContinuousScore ? sequence : notesOnPage;
+  const scoreDurations = isContinuousScore
+    ? sequenceRhythm.durations
+    : sequenceRhythm.durations.slice(pageStartIndex, pageEndIndex);
+  const scoreMeasures = isContinuousScore ? sequenceRhythm.measures : pageMeasures;
+  const scoreOnsets = isContinuousScore ? sequenceRhythm.onsets : pageOnsets;
+  const scoreBeamGroupIds = isContinuousScore ? sequenceRhythm.beamGroupIds : pageBeamGroupIds;
+  const scoreCompletedNoteIndices = isContinuousScore
+    ? completedNoteIndices
+    : completedNoteIndicesOnPage;
+  const scoreNotesPerRow = isContinuousScore
+    ? isMobile
+      ? MOBILE_STAFF_PAGE_NOTE_COUNT
+      : DESKTOP_STAFF_PAGE_NOTE_COUNT
+    : pageSize;
+  const scoreRowCount = Math.max(1, Math.ceil(scoreNotes.length / scoreNotesPerRow));
+  const trackedScoreNoteIndex =
+    isContinuousScore && trainingMode === "play"
+      ? hasPlayedStartingNote
+        ? questionIndex + 1
+        : 0
+      : undefined;
+  const followScoreRowIndex =
+    trackedScoreNoteIndex === undefined
+      ? undefined
+      : Math.floor(trackedScoreNoteIndex / scoreNotesPerRow);
   const pageBarlineAfterNoteIndices = Array.from(
     new Set([
-      ...pageMeasures.flatMap((measure, index) =>
-        index < pageMeasures.length - 1 && pageMeasures[index + 1] !== measure ? [index] : []
+      ...scoreMeasures.flatMap((measure, index) =>
+        index < scoreMeasures.length - 1 && scoreMeasures[index + 1] !== measure ? [index] : []
       ),
-      ...Array.from({ length: Math.max(0, pageSize - 1) }, (_, index) => index).filter((index) =>
-        breakIndicesRef.current.has(pageStartIndex + index)
+      ...Array.from({ length: Math.max(0, scoreNotes.length - 1) }, (_, index) => index).filter(
+        (index) => breakIndicesRef.current.has(scoreStartIndex + index)
       ),
     ])
   );
-  const activePairStartIndex = questionIndex - pageStartIndex;
+  const activePairStartIndex = questionIndex - scoreStartIndex;
   const currentFrom = sequence[questionIndex];
   const currentTo = sequence[questionIndex + 1];
   const answerOptions = Array.from({ length: details.maxDistance + 1 }, (_, index) => index).filter(
@@ -411,22 +507,27 @@ export function StaffDistanceRun({
     (requestedNextIndex: number): void => {
       let nextIndex = requestedNextIndex;
       while (breakIndicesRef.current.has(nextIndex)) nextIndex += 1;
-      const extensionBuffer = Math.min(
-        DISTANCE_SCORE_EXTENSION_BUFFER,
-        Math.max(2, Math.ceil(sequenceRef.current.length / 3))
-      );
+      const extensionChunkSize = trainingMode === "play" ? scoreNotesPerRow : 128;
+      const extensionBuffer =
+        trainingMode === "play"
+          ? Math.max(2, scoreNotesPerRow)
+          : Math.min(32, Math.max(2, Math.ceil(sequenceRef.current.length / 3)));
       if (nextIndex >= sequenceRef.current.length - extensionBuffer) {
         const lastNote = sequenceRef.current[sequenceRef.current.length - 1];
         if (lastNote) {
-          const extension = createStaffDistanceRunSequence(
+          const generatedExtension = createStaffDistanceRunSequence(
             notes,
             settings,
-            128,
+            extensionChunkSize,
             staffNotationMode,
             Math.random,
             lastNote,
             extraPitchIds
           );
+          const extension =
+            trainingMode === "play"
+              ? limitStaffDistanceRunSequence(generatedExtension, scoreNotesPerRow + 1)
+              : generatedExtension;
           const extensionStartIndex = sequenceRef.current.length - 1;
           extension.breakIndices.forEach((index) =>
             breakIndicesRef.current.add(extensionStartIndex + index)
@@ -459,7 +560,15 @@ export function StaffDistanceRun({
       questionElapsedRef.current = 0;
       questionStartedAtRef.current = isPausedRef.current ? 0 : performance.now();
     },
-    [extraPitchIds, noteDurations, notes, settings, staffNotationMode]
+    [
+      extraPitchIds,
+      noteDurations,
+      notes,
+      scoreNotesPerRow,
+      settings,
+      staffNotationMode,
+      trainingMode,
+    ]
   );
 
   const schedulePendingAdvance = useCallback((): void => {
@@ -516,6 +625,8 @@ export function StaffDistanceRun({
         }
         return;
       }
+
+      if (trainingMode === "play") recordChaseTarget(questionIndex + 1);
 
       const pair = summarizeStaffDistancePair(currentFrom, currentTo);
       const firstResponse = firstResponseRef.current;
@@ -619,6 +730,7 @@ export function StaffDistanceRun({
       inputMethod,
       mode,
       questionIndex,
+      recordChaseTarget,
       schedulePendingAdvance,
       session.id,
       trainingMode,
@@ -848,7 +960,7 @@ export function StaffDistanceRun({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [answerDistance, answerOptions, details.maxDistance, togglePause, trainingMode]);
 
-  if (!currentFrom || !currentTo || notesOnPage.length < 2) {
+  if (!currentFrom || !currentTo || scoreNotes.length < 2) {
     return (
       <section className="staff-distance-run-shell" role="alert">
         <h1>无法生成这段间距</h1>
@@ -898,35 +1010,55 @@ export function StaffDistanceRun({
             <Square size={15} />
             结束
           </button>
+          {trainingMode === "play" ? (
+            <button
+              aria-label="追逐游戏设置"
+              className="song-chase-settings-button"
+              title="追逐游戏设置"
+              type="button"
+              onClick={() => setIsChaseSettingsOpen(true)}
+            >
+              <Settings2 aria-hidden="true" size={16} />
+              追逐游戏设置
+              <span aria-hidden="true" className="song-chase-new-badge">
+                NEW
+              </span>
+            </button>
+          ) : null}
         </div>
       </header>
 
       <div
         ref={scoreWrapRef}
         aria-label={liveQuestionLabel}
-        className="staff-distance-score-wrap"
+        className={`staff-distance-score-wrap${isContinuousScore ? " staff-distance-score-stream" : ""}`}
         role="group"
       >
         <StaffPagePrompt
           completedCount={activePairStartIndex}
-          completedNoteIndices={completedNoteIndicesOnPage}
-          notes={notesOnPage}
+          completedNoteIndices={scoreCompletedNoteIndices}
+          notes={scoreNotes}
           monophonicGrandStaff
           showGrandStaffRightConnector={false}
           layout={isMobile ? MOBILE_PRACTICE_PAGE_STAFF_LAYOUT : undefined}
           noteDuration="quarter"
-          noteDurations={sequenceRhythm.durations.slice(pageStartIndex, pageEndIndex)}
-          noteMeasures={pageMeasures}
-          noteOnsets={pageOnsets}
-          noteBeamGroups={pageBeamGroupIds}
+          noteDurations={scoreDurations}
+          noteMeasures={scoreMeasures}
+          noteOnsets={scoreOnsets}
+          noteBeamGroups={scoreBeamGroupIds}
           beatsPerMeasure={4}
           timeSignature="4/4"
           barlineAfterNoteIndices={pageBarlineAfterNoteIndices}
           staffNotationMode={staffNotationMode}
           useLedgerGap={useLedgerGap}
-          notesPerRow={pageSize}
-          maxRowCount={1}
-          visibleRowCount={1}
+          notesPerRow={scoreNotesPerRow}
+          maxRowCount={isContinuousScore ? scoreRowCount : 1}
+          visibleRowCount={isContinuousScore ? scoreRowCount : 1}
+          virtualizeRows={isContinuousScore}
+          followRowIndex={followScoreRowIndex}
+          trackedNoteIndex={trackedScoreNoteIndex}
+          getAudioTime={isContinuousScore ? getPianoAudioTime : undefined}
+          chaseCursor={isContinuousScore ? chaseCursor : null}
           minDisplayWidthPx={0}
           wrongIndex={
             !hasPlayedStartingNote && startingNoteWrong
@@ -1048,6 +1180,17 @@ export function StaffDistanceRun({
             继续
           </button>
         </div>
+      ) : null}
+      {trainingMode === "play" ? (
+        <PracticeChaseSettingsDialog
+          hideHandMode={staffNotationMode !== "grand"}
+          isMidiConnected={midi.isConnected}
+          isOpen={isChaseSettingsOpen}
+          mode="distance"
+          settings={chaseSettings}
+          onClose={() => setIsChaseSettingsOpen(false)}
+          onSave={onSaveChaseSettings}
+        />
       ) : null}
     </section>
   );

@@ -1,6 +1,6 @@
-import { ArrowLeft, Pause, Play, Volume2 } from "lucide-react";
+import { ArrowLeft, Pause, Play, Settings2, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { playTargetNote } from "../../../audio/piano";
+import { getPianoAudioTime, playTargetNote } from "../../../audio/piano";
 import { resolveDrillNoteNames, resolveQueueStrategy } from "../../../data/db";
 import { writeBackupIfSafe } from "../../../data/backup";
 import {
@@ -66,7 +66,19 @@ import {
   DESKTOP_STAFF_PAGE_NOTE_COUNT,
   MOBILE_STAFF_PAGE_NOTE_COUNT,
 } from "../logic/staffPageFlow";
-import { PROMPT_NOTE_DURATIONS, type GeneratedStaffPageRhythm } from "../logic/staffPageNotation";
+import {
+  getQuarterNoteBeats,
+  PROMPT_NOTE_DURATIONS,
+  type GeneratedStaffPageRhythm,
+} from "../logic/staffPageNotation";
+import type { ScoreChaseEvent } from "../logic/scoreChase";
+import {
+  DEFAULT_SCORE_CHASE_PREFERENCES,
+  SCORE_CHASE_SPEED_OPTIONS,
+  uniformFreePracticeChaseSegmentDuration,
+} from "../logic/scoreChase";
+import { useScoreChase } from "../hooks/useScoreChase";
+import { useSongRowPlayback, type SongRowPlaybackNote } from "../song-practice/useSongRowPlayback";
 import {
   DEFAULT_STAFF_PAGE_UI_PREFERENCES,
   parseStaffPageUiPreferences,
@@ -94,6 +106,10 @@ import {
   type PracticeSetupUiPreferences,
 } from "./PracticeSetupView";
 import { SongPracticeView } from "../song-practice/SongPracticeView";
+import {
+  PracticeChaseSettingsDialog,
+  type PracticeChaseSettings,
+} from "./PracticeChaseSettingsDialog";
 import type {
   SongPracticeInputMode,
   SongPracticeSelection,
@@ -104,6 +120,8 @@ import {
   ensurePracticeMicrophoneForResume,
   releasePracticeMicrophoneOnPause,
 } from "../logic/practiceInputLifecycle";
+
+const FREE_STAFF_ROW_PREVIEW_TEMPO_BPM = 60;
 
 interface PracticeViewProps {
   midi: MidiInputController;
@@ -237,6 +255,11 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
   return {
     answerPitchMode: settings.answerPitchMode,
     autoPlayTarget: settings.autoPlayTarget,
+    chaseEnabled: DEFAULT_SCORE_CHASE_PREFERENCES.enabled,
+    chaseHandMode: "both",
+    chasePreferencesVersion: 2,
+    chaseSpeedMultiplier: DEFAULT_SCORE_CHASE_PREFERENCES.speedMultiplier,
+    chaseStartCount: DEFAULT_SCORE_CHASE_PREFERENCES.startCount,
     playAnswerNote: settings.playAnswerNote,
     drillNoteNames: resolveDrillNoteNames(settings),
     fixedCount: settings.fixedCount,
@@ -258,6 +281,10 @@ function parsePracticeSetupUiPreferences(
     return fallback;
   }
 
+  const migrateLegacyChaseDefaults =
+    value.chasePreferencesVersion !== 2 &&
+    value.chaseSpeedMultiplier === 1.5 &&
+    value.chaseStartCount === 4;
   const promptNoteDurations = normalizePromptNoteDurations(value.promptNoteDurations, [
     isPromptNoteDuration(value.promptNoteDuration)
       ? value.promptNoteDuration
@@ -268,6 +295,31 @@ function parsePracticeSetupUiPreferences(
     answerPitchMode: normalizeAnswerPitchMode(value.answerPitchMode, fallback.answerPitchMode),
     autoPlayTarget:
       typeof value.autoPlayTarget === "boolean" ? value.autoPlayTarget : fallback.autoPlayTarget,
+    chaseEnabled:
+      typeof value.chaseEnabled === "boolean"
+        ? value.chaseEnabled
+        : DEFAULT_SCORE_CHASE_PREFERENCES.enabled,
+    chaseHandMode:
+      value.chaseHandMode === "left" ||
+      value.chaseHandMode === "right" ||
+      value.chaseHandMode === "both"
+        ? value.chaseHandMode
+        : "both",
+    chasePreferencesVersion: 2,
+    chaseSpeedMultiplier:
+      !migrateLegacyChaseDefaults &&
+      typeof value.chaseSpeedMultiplier === "number" &&
+      SCORE_CHASE_SPEED_OPTIONS.some((speed) => speed === value.chaseSpeedMultiplier)
+        ? value.chaseSpeedMultiplier
+        : DEFAULT_SCORE_CHASE_PREFERENCES.speedMultiplier,
+    chaseStartCount:
+      !migrateLegacyChaseDefaults &&
+      typeof value.chaseStartCount === "number" &&
+      Number.isInteger(value.chaseStartCount) &&
+      value.chaseStartCount >= 2 &&
+      value.chaseStartCount <= 12
+        ? value.chaseStartCount
+        : DEFAULT_SCORE_CHASE_PREFERENCES.startCount,
     playAnswerNote:
       typeof value.playAnswerNote === "boolean" ? value.playAnswerNote : fallback.playAnswerNote,
     drillNoteNames: normalizeDrillNoteNames(value.drillNoteNames, fallback.drillNoteNames),
@@ -360,6 +412,7 @@ export function PracticeView({
   midiConnectedRef.current = midi.isConnected;
   const [isStaffDistanceRunning, setIsStaffDistanceRunning] = useState(false);
   const [isStaffDistanceStageActive, setIsStaffDistanceStageActive] = useState(false);
+  const [isChaseSettingsOpen, setIsChaseSettingsOpen] = useState(false);
   const handleStaffDistanceStageChange = useCallback(
     (active: boolean): void => {
       setIsStaffDistanceStageActive(active);
@@ -368,6 +421,7 @@ export function PracticeView({
     [onPracticeStageChange]
   );
   const songPracticeMicrophoneAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => {});
+  const freeRowPlaybackActiveRef = useRef<number | null>(null);
   const [tick, setTick] = useState(0);
   const [staffPageNotes, setStaffPageNotes] = useState<TargetNote[]>([]);
   const [staffPageRhythm, setStaffPageRhythm] = useState<GeneratedStaffPageRhythm | undefined>();
@@ -603,7 +657,13 @@ export function PracticeView({
 
   const applySettingsSnapshot = useCallback(
     (nextSettings: AppSettings): void => {
-      setPracticeSetupPreferences(makeDefaultPracticeSetupUiPreferences(nextSettings));
+      setPracticeSetupPreferences((current) => ({
+        ...makeDefaultPracticeSetupUiPreferences(nextSettings),
+        chaseEnabled: current.chaseEnabled,
+        chaseHandMode: current.chaseHandMode,
+        chaseSpeedMultiplier: current.chaseSpeedMultiplier,
+        chaseStartCount: current.chaseStartCount,
+      }));
     },
     [setPracticeSetupPreferences]
   );
@@ -992,6 +1052,7 @@ export function PracticeView({
       enabledNotes: coreEnabledNotes,
       promptNoteDurations,
       rangeExtensionNotes,
+      retainHistory: practiceTab === "free" && promptDisplayMode === "staff-page",
       fixedCount,
       isMobileViewport,
       mode,
@@ -1222,6 +1283,123 @@ export function PracticeView({
     await playTargetNote(prompt.note).catch(() => undefined);
   }, [answerPitchMode, markPromptInput]);
 
+  const freePlaybackNotesPerRow = isMobileViewport
+    ? MOBILE_STAFF_PAGE_NOTE_COUNT
+    : DESKTOP_STAFF_PAGE_NOTE_COUNT;
+  const freePlaybackRows = useMemo<SongRowPlaybackNote[][]>(() => {
+    const rows: SongRowPlaybackNote[][] = [];
+    staffPageNotes.forEach((note, noteIndex) => {
+      const rowIndex = Math.floor(noteIndex / freePlaybackNotesPerRow);
+      const row = rows[rowIndex] ?? (rows[rowIndex] = []);
+      const duration = staffPageRhythm?.durations[noteIndex] ?? effectivePromptNoteDuration;
+      row.push({
+        durationBeats: getQuarterNoteBeats(duration),
+        eventIndex: staffPageFirstNoteOffset + noteIndex,
+        note,
+        startBeat:
+          staffPageRhythm?.onsets[noteIndex] ??
+          noteIndex * getQuarterNoteBeats(effectivePromptNoteDuration),
+      });
+    });
+    return rows;
+  }, [
+    effectivePromptNoteDuration,
+    freePlaybackNotesPerRow,
+    staffPageFirstNoteOffset,
+    staffPageNotes,
+    staffPageRhythm,
+  ]);
+  const {
+    cancel: cancelFreeRowPlayback,
+    playbackCursor: freePlaybackCursor,
+    playingNoteIndex: freePlayingNoteIndex,
+    playingRowIndex: freePlayingRowIndex,
+    toggleRow: toggleFreeScoreRow,
+  } = useSongRowPlayback();
+  const toggleFreeScoreRowPlayback = useCallback(
+    (rowIndex: number): void => {
+      if (freeRowPlaybackActiveRef.current === rowIndex) {
+        freeRowPlaybackActiveRef.current = null;
+        cancelFreeRowPlayback();
+        return;
+      }
+      const rowNotes = freePlaybackRows[rowIndex] ?? [];
+      if (rowNotes.length === 0) return;
+      freeRowPlaybackActiveRef.current = rowIndex;
+      toggleFreeScoreRow(rowIndex, rowNotes, { tempoBpm: FREE_STAFF_ROW_PREVIEW_TEMPO_BPM });
+    },
+    [cancelFreeRowPlayback, freePlaybackRows, toggleFreeScoreRow]
+  );
+  useEffect(() => {
+    if (freePlayingRowIndex === null) freeRowPlaybackActiveRef.current = null;
+  }, [freePlayingRowIndex]);
+  useEffect(() => {
+    if (
+      phase === "running" &&
+      !isPaused &&
+      practiceTab === "free" &&
+      promptDisplayMode === "staff-page"
+    ) {
+      return;
+    }
+    freeRowPlaybackActiveRef.current = null;
+    cancelFreeRowPlayback();
+  }, [cancelFreeRowPlayback, isPaused, phase, practiceTab, promptDisplayMode]);
+
+  const freeChaseEvents = useMemo<ScoreChaseEvent[]>(
+    () =>
+      staffPageNotes.map((note, index) => {
+        const eventIndex = staffPageFirstNoteOffset + index;
+        return {
+          eventIndex,
+          beatPosition: index,
+          staves: [note.staff],
+        };
+      }),
+    [staffPageFirstNoteOffset, staffPageNotes]
+  );
+  const freeChaseStaves = useMemo(() => {
+    if (staffNotationMode === "bass-only") return ["bass"] as const;
+    if (staffNotationMode === "treble-only") return ["treble"] as const;
+    if (practiceSetupPreferences.chaseHandMode === "left") return ["bass"] as const;
+    if (practiceSetupPreferences.chaseHandMode === "right") return ["treble"] as const;
+    return ["treble", "bass"] as const;
+  }, [practiceSetupPreferences.chaseHandMode, staffNotationMode]);
+  const isFreeScoreChaseEnabled =
+    practiceTab === "free" &&
+    phase === "running" &&
+    promptDisplayMode === "staff-page" &&
+    practiceSetupPreferences.chaseEnabled;
+  const { cursor: freeChaseCursor, recordCorrectTarget: recordFreeChaseTarget } = useScoreChase({
+    activeStaves: freeChaseStaves,
+    enabled: isFreeScoreChaseEnabled,
+    events: freeChaseEvents,
+    getAudioTime: getPianoAudioTime,
+    paused: isPaused || phase !== "running" || freePlayingRowIndex !== null,
+    segmentDurationSeconds: uniformFreePracticeChaseSegmentDuration,
+    speedMultiplier: practiceSetupPreferences.chaseSpeedMultiplier,
+    startCount: practiceSetupPreferences.chaseStartCount,
+    tempoBpm: 120,
+  });
+  const visibleFreeChaseCursor = freePlayingRowIndex === null ? freeChaseCursor : null;
+  const recordFreeStaffPageChaseTarget = useCallback((): void => {
+    const page = staffPageRef.current;
+    if (!page) return;
+    recordFreeChaseTarget(staffPageFirstNoteOffset + page.index);
+  }, [recordFreeChaseTarget, staffPageFirstNoteOffset, staffPageRef]);
+  const saveFreeChaseSettings = useCallback(
+    (next: PracticeChaseSettings): void => {
+      setPracticeSetupPreferences((current) => ({
+        ...current,
+        chaseEnabled: next.enabled,
+        chaseHandMode: next.handMode,
+        chaseSpeedMultiplier: next.speedMultiplier,
+        chaseStartCount: next.startCount,
+      }));
+    },
+    [setPracticeSetupPreferences]
+  );
+
   const { submitAnswer } = usePracticeAnswerFlow({
     values: {
       answerPitchMode,
@@ -1253,6 +1431,7 @@ export function PracticeView({
       markCurrentStaffPageNoteComplete,
       markPromptInput,
       maybeBackupDuringOpenEnded,
+      recordStaffPageChaseTarget: recordFreeStaffPageChaseTarget,
       resumeActiveTimers,
       selectAndStartNext,
       startStaffPage,
@@ -1265,7 +1444,14 @@ export function PracticeView({
       setWrongAnswerCount,
     },
   });
-  submitAnswerRef.current = (answer) => void submitAnswer(answer);
+  const submitPracticeAnswer = useCallback(
+    (answer: PracticeAnswerInput): void => {
+      if (freeRowPlaybackActiveRef.current !== null) return;
+      void submitAnswer(answer);
+    },
+    [submitAnswer]
+  );
+  submitAnswerRef.current = submitPracticeAnswer;
 
   const handleInputEscape = useCallback((): void => {
     void completeSession("manual-stop", "manual-stop");
@@ -1279,7 +1465,7 @@ export function PracticeView({
     onEscape: handleInputEscape,
     onResume: () => void resumePractice(),
     onStartSession: () => void startSession(),
-    onSubmitAnswer: (answer) => void submitAnswer(answer),
+    onSubmitAnswer: submitPracticeAnswer,
     onTogglePause: togglePause,
   });
 
@@ -1412,27 +1598,35 @@ export function PracticeView({
 
   const remainingMs =
     mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
+  const isContinuousStaffPage = practiceTab === "free" && promptDisplayMode === "staff-page";
   const mobileStaffPageRowCount = 1;
   const mobileStaffPageNoteCount = MOBILE_STAFF_PAGE_NOTE_COUNT * mobileStaffPageRowCount;
   const staffPageRowCount = 1;
   const showPracticeKeyboard =
     answerPitchMode !== "microphone" && (!isMobileViewport || answerPitchMode === "note-name");
   const isMobileStaffPage = isMobileViewport && promptDisplayMode === "staff-page";
-  const mobileStaffPageStartIndex =
-    Math.floor(Math.max(0, staffPageIndex) / mobileStaffPageNoteCount) * mobileStaffPageNoteCount;
+  const mobileStaffPageStartIndex = isContinuousStaffPage
+    ? 0
+    : Math.floor(Math.max(0, staffPageIndex) / mobileStaffPageNoteCount) * mobileStaffPageNoteCount;
   const mobileStaffPageNotes = useMemo(
     () =>
-      isMobileStaffPage
+      isMobileStaffPage && !isContinuousStaffPage
         ? staffPageNotes.slice(
             mobileStaffPageStartIndex,
             mobileStaffPageStartIndex + mobileStaffPageNoteCount
           )
         : staffPageNotes,
-    [isMobileStaffPage, mobileStaffPageNoteCount, mobileStaffPageStartIndex, staffPageNotes]
+    [
+      isContinuousStaffPage,
+      isMobileStaffPage,
+      mobileStaffPageNoteCount,
+      mobileStaffPageStartIndex,
+      staffPageNotes,
+    ]
   );
   const visibleStaffPageRhythm = useMemo(() => {
     if (!staffPageRhythm) return undefined;
-    if (!isMobileStaffPage) return staffPageRhythm;
+    if (!isMobileStaffPage || isContinuousStaffPage) return staffPageRhythm;
     const start = mobileStaffPageStartIndex;
     const end = start + mobileStaffPageNoteCount;
     return {
@@ -1442,7 +1636,13 @@ export function PracticeView({
       noteBeamGroups: staffPageRhythm.noteBeamGroups.slice(start, end),
       onsets: staffPageRhythm.onsets.slice(start, end),
     };
-  }, [isMobileStaffPage, mobileStaffPageNoteCount, mobileStaffPageStartIndex, staffPageRhythm]);
+  }, [
+    isContinuousStaffPage,
+    isMobileStaffPage,
+    mobileStaffPageNoteCount,
+    mobileStaffPageStartIndex,
+    staffPageRhythm,
+  ]);
   const staffPageBarlineAfterNoteIndices = useMemo(() => {
     if (!visibleStaffPageRhythm) return undefined;
     return visibleStaffPageRhythm.measures.flatMap((measure, index) =>
@@ -1455,6 +1655,25 @@ export function PracticeView({
   const staffPageNoteCount = isMobileStaffPage
     ? mobileStaffPageNoteCount
     : DESKTOP_STAFF_PAGE_NOTE_COUNT;
+  const staffPageRenderedRowCount = Math.max(
+    1,
+    Math.ceil(staffPageNotes.length / staffPageNoteCount)
+  );
+  const shouldShowStaffPageContinuationHint =
+    isContinuousStaffPage &&
+    (mode !== "fixed-count" || staffPageFirstNoteOffset + staffPageNotes.length < fixedCount);
+  const freeCursorIndexOffset =
+    staffPageFirstNoteOffset + (isMobileStaffPage ? mobileStaffPageStartIndex : 0);
+  const freeChaseCurrentIndex =
+    freeChaseCursor?.staffCursors.treble?.currentEventIndices[0] ??
+    freeChaseCursor?.staffCursors.bass?.currentEventIndices[0];
+  const freeChaseLocalIndex =
+    freeChaseCurrentIndex === undefined ? -1 : freeChaseCurrentIndex - freeCursorIndexOffset;
+  const freeChaseFollowRowIndex =
+    freeChaseLocalIndex >= 0 ? Math.floor(freeChaseLocalIndex / staffPageNoteCount) : undefined;
+  const freePracticeFollowRowIndex = isContinuousStaffPage
+    ? Math.floor(Math.max(0, staffPageIndex) / staffPageNoteCount)
+    : freeChaseFollowRowIndex;
   const staffPageView = useMemo(
     () =>
       promptDisplayMode === "staff-page"
@@ -1634,6 +1853,7 @@ export function PracticeView({
       className={[
         "practice-shell",
         "practice-running-shell",
+        isContinuousStaffPage ? "is-free-score-stream" : "",
         isMobileViewport ? "practice-running-mobile" : "",
         isMobileViewport && answerPitchMode !== "note-name"
           ? "practice-without-touch-keyboard"
@@ -1698,6 +1918,21 @@ export function PracticeView({
             {isPaused ? "继续" : "暂停"}
             <kbd>空格</kbd>
           </button>
+          {practiceTab === "free" && promptDisplayMode === "staff-page" ? (
+            <button
+              aria-label="追逐游戏设置"
+              className="song-chase-settings-button"
+              title="追逐游戏设置"
+              type="button"
+              onClick={() => setIsChaseSettingsOpen(true)}
+            >
+              <Settings2 aria-hidden="true" size={16} />
+              追逐游戏设置
+              <span aria-hidden="true" className="song-chase-new-badge">
+                NEW
+              </span>
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -1747,18 +1982,30 @@ export function PracticeView({
         }
       >
         {promptDisplayMode === "staff-page" ? (
-          <div className={isMobileStaffPage ? "staff-page-mobile-view" : "staff-page-desktop-view"}>
+          <div
+            className={[
+              isMobileStaffPage ? "staff-page-mobile-view" : "staff-page-desktop-view",
+              isContinuousStaffPage ? "staff-page-scroll-viewport" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
             <StaffPagePrompt
               notes={mobileStaffPageNotes}
               barlineAfterNoteIndices={staffPageBarlineAfterNoteIndices}
               beatsPerMeasure={visibleStaffPageRhythm ? 4 : undefined}
               completedCount={
-                isMobileStaffPage
+                isMobileStaffPage && !isContinuousStaffPage
                   ? (staffPageView?.completedCount ?? staffPageCompletedCount)
                   : staffPageCompletedCount
               }
+              cursorIndexOffset={freeCursorIndexOffset}
               diagnosticSampleId={feedback?.diagnosticSampleId}
-              isScrolling={isMobileStaffPage ? false : isStaffPageScrolling}
+              isScrolling={
+                isContinuousStaffPage ? false : isMobileStaffPage ? false : isStaffPageScrolling
+              }
+              getAudioTime={getPianoAudioTime}
+              followRowIndex={freePracticeFollowRowIndex}
               layout={isMobileStaffPage ? MOBILE_PRACTICE_PAGE_STAFF_LAYOUT : undefined}
               noteDuration={effectivePromptNoteDuration}
               noteDurations={visibleStaffPageRhythm?.durations}
@@ -1766,23 +2013,51 @@ export function PracticeView({
               noteOnsets={visibleStaffPageRhythm?.onsets}
               noteBeamGroups={visibleStaffPageRhythm?.noteBeamGroups}
               monophonicGrandStaff
+              onToggleRowPlayback={toggleFreeScoreRowPlayback}
               scrollDurationMs={staffPageScrollDurationMs}
               staffNotationMode={staffNotationMode}
               useLedgerGap={useLedgerGap}
+              virtualizeRows={isContinuousStaffPage}
               distributeNotesEvenly={isMobileStaffPage && !visibleStaffPageRhythm}
               timeSignature={visibleStaffPageRhythm ? "4/4" : undefined}
               notesPerRow={isMobileStaffPage ? MOBILE_STAFF_PAGE_NOTE_COUNT : undefined}
-              maxRowCount={isMobileStaffPage ? mobileStaffPageRowCount : undefined}
+              maxRowCount={
+                isContinuousStaffPage
+                  ? staffPageRenderedRowCount
+                  : isMobileStaffPage
+                    ? mobileStaffPageRowCount
+                    : undefined
+              }
               minDisplayWidthPx={isMobileStaffPage ? 0 : undefined}
-              visibleRowCount={isMobileStaffPage ? mobileStaffPageRowCount : staffPageRowCount}
+              visibleRowCount={
+                isContinuousStaffPage
+                  ? staffPageRenderedRowCount
+                  : isMobileStaffPage
+                    ? mobileStaffPageRowCount
+                    : staffPageRowCount
+              }
+              playingRowIndex={freePlayingRowIndex}
+              playbackCursor={freePlaybackCursor}
+              playbackProgressIndex={
+                freePlayingRowIndex !== null && freePlayingNoteIndex !== null
+                  ? (freePlaybackRows[freePlayingRowIndex]?.[freePlayingNoteIndex]?.eventIndex ??
+                    null)
+                  : null
+              }
+              chaseCursor={visibleFreeChaseCursor}
               wrongIndex={
                 feedback?.type === "wrong"
-                  ? isMobileStaffPage
+                  ? isMobileStaffPage && !isContinuousStaffPage
                     ? (staffPageView?.noteIndexInPage ?? staffPageIndex)
                     : staffPageIndex
                   : undefined
               }
             />
+            {shouldShowStaffPageContinuationHint ? (
+              <p className="staff-page-continuation-hint">
+                音符补给正在路上！继续弹，快到末尾时新谱就接上啦～
+              </p>
+            ) : null}
           </div>
         ) : currentNote ? (
           <StaffPrompt
@@ -1800,7 +2075,7 @@ export function PracticeView({
         <VirtualPianoKeyboard
           ariaLabel="答案琴键"
           className="practice-virtual-piano-keyboard"
-          disabled={isPaused}
+          disabled={isPaused || freePlayingRowIndex !== null}
           enabledKeys={
             answerPitchMode === "note-name" ? NATURAL_PIANO_KEYS : new Set<PianoKeyName>()
           }
@@ -1810,7 +2085,7 @@ export function PracticeView({
           getKeyAriaLabel={(keyName) => `${keyName.replace("#", "♯")} 音键`}
           onKeyPress={(keyName) => {
             if (answerPitchMode === "note-name" && isNaturalPianoKey(keyName)) {
-              void submitAnswer({ noteName: keyName, source: "screen-keyboard" });
+              submitPracticeAnswer({ noteName: keyName, source: "screen-keyboard" });
             }
           }}
           onKeyTransitionEnd={
@@ -1863,6 +2138,20 @@ export function PracticeView({
           showKeyboardShortcuts={!isMobileViewport}
         />
       ) : null}
+      <PracticeChaseSettingsDialog
+        hideHandMode={staffNotationMode !== "grand"}
+        isMidiConnected={midi.isConnected}
+        isOpen={isChaseSettingsOpen}
+        mode="free"
+        settings={{
+          enabled: practiceSetupPreferences.chaseEnabled,
+          handMode: practiceSetupPreferences.chaseHandMode,
+          speedMultiplier: practiceSetupPreferences.chaseSpeedMultiplier,
+          startCount: practiceSetupPreferences.chaseStartCount,
+        }}
+        onClose={() => setIsChaseSettingsOpen(false)}
+        onSave={saveFreeChaseSettings}
+      />
     </section>
   );
 }

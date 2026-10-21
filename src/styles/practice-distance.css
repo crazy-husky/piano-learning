@@ -1093,6 +1093,12 @@
     padding-top: 6px;
   }
 
+  .staff-distance-run-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
   .staff-distance-run-header h1 {
     font-size: 18px;
   }
@@ -1103,6 +1109,10 @@
   }
 
   .staff-distance-run-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, max-content);
+    justify-content: end;
     gap: 5px;
   }
 
@@ -1110,6 +1120,11 @@
     min-height: 36px;
     padding-inline: 8px;
     font-size: 12px;
+  }
+
+  .staff-distance-run-actions > .song-chase-settings-button {
+    grid-column: 1 / -1;
+    justify-self: end;
   }
 
   .staff-distance-answer-row {

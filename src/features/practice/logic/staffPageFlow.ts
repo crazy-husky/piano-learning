@@ -1,7 +1,5 @@
 import { PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
 
-const STAFF_PAGE_SIZE =
-  PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows * PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow;
 export const DESKTOP_STAFF_PAGE_NOTE_COUNT = PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow;
 export const MOBILE_STAFF_PAGE_NOTE_COUNT = 8;
 
@@ -52,20 +50,22 @@ export function getStaffPageRefillCount({
   nextIndex,
   plannedNoteCount,
   pageNoteCount = MOBILE_STAFF_PAGE_NOTE_COUNT,
+  refillNoteCount = PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
 }: {
   completedSessionCount: number;
   fixedSessionCount?: number;
   nextIndex: number;
   plannedNoteCount: number;
   pageNoteCount?: number;
+  refillNoteCount?: number;
 }): number {
   const remainingVisibleCount = plannedNoteCount - nextIndex;
-  if (plannedNoteCount !== STAFF_PAGE_SIZE || remainingVisibleCount !== pageNoteCount) {
+  if (remainingVisibleCount !== pageNoteCount || remainingVisibleCount <= 0) {
     return 0;
   }
   const availableFutureCount =
     fixedSessionCount === undefined
-      ? PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
+      ? refillNoteCount
       : Math.max(0, fixedSessionCount - completedSessionCount - remainingVisibleCount);
-  return Math.min(PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow, availableFutureCount);
+  return Math.min(refillNoteCount, availableFutureCount);
 }
