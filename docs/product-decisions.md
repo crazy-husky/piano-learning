@@ -336,10 +336,18 @@
 - 理由：固定题量的学习诊断和持续循环的娱乐刷分代表不同练习目标，成绩与统计必须可区分。
 - 不要改回：不要在学习测试中循环补题；不要把学习测试和娱乐模式的进度或统计混为一组；不要把歌曲事件或中断样本计入闯关熟练度。
 
-### 学习测试显示关卡徽章并支持选择关卡
+### 学习测试等待页显示题目进度并支持选择关卡
 
 - 日期：2026-10-20
-- 决策：学习测试顶部中央使用与娱乐模式一致的 `LEVEL + 当前关卡` 徽章；点击整枚徽章打开现有关卡选择弹窗。关卡环继续表示本局首次答对表现，题目完成数保留在得分卡说明中。娱乐模式徽章也可打开关卡选择；错题复习保留题数进度显示。
-- 理由：学习测试固定题袋的题数牌遮住了当前关卡信息；复用娱乐模式徽章后，关卡状态与关卡选择入口保持一致。
-- 影响文件：`src/features/staff-game/components/StaffGameHud.tsx`、`src/features/staff-game/components/StaffGameView.tsx`、`src/styles/staff-game-controls-hud.css`
-- 不要改回：不要让学习测试等待页失去当前关卡编号；不要将关卡徽章降为仅展示，学习测试和娱乐模式均应可从徽章打开关卡选择。
+- 决策：学习测试等待页左侧卡片显示“进度”和 `0/n` 题，右侧保留本关得分与选择关卡入口。顶部中央 `LEVEL + 当前关卡` 徽章仍可打开关卡选择；娱乐模式徽章也可打开关卡选择。
+- 理由：等待页需要同时展示当前关卡、题量进度和分数，并保留快捷选关入口。
+- 影响文件：`src/features/staff-game/components/StaffGameHud.tsx`、`src/features/staff-game/components/StaffGameView.tsx`、`src/styles/staff-game-hud-panel-fixes.css`
+- 不要改回：学习测试等待页左侧卡片必须显示数字题量进度，不显示星星；关卡徽章仍可打开关卡选择。
+
+### 错题复习 HUD 只显示进度与剩余时间
+
+- 日期：2026-10-21
+- 决策：错题复习隐藏本局得分，将题数进度和剩余秒数合并到顶部居中的胶囊中，使用半透明深色背景和模糊效果，以细竖线分隔，不使用高亮发光边框。
+- 理由：复习时玩家只需关注完成进度和可用时间。
+- 影响文件：`src/features/staff-game/components/StaffGameHud.tsx`、`src/features/staff-game/components/StaffGameView.tsx`、`src/styles/staff-game-hud-panel-fixes.css`
+- 不要改回：错题复习 HUD 不展示分数，也不恢复独立的两侧方块。

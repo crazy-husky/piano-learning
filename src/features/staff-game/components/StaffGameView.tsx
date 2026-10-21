@@ -1,5 +1,5 @@
 // ⚠️ [归档规则]。详见 docs/product-decisions.md
-import { Square, Volume2 } from "lucide-react";
+import { Volume2 } from "lucide-react";
 import "vexflow/bravura";
 import { toast } from "sonner";
 import {
@@ -324,11 +324,11 @@ interface StaffGameModeProgress {
   bestStars: number[];
   bestAccuracy: Array<Record<GameDifficulty, number | null>>;
   bestResponseMs: Array<Record<GameDifficulty, number | null>>;
+  maxCombos: number[];
 }
 
 interface StaffGameArcadeProgress extends StaffGameModeProgress {
   bestScores: number[];
-  maxCombos: number[];
 }
 
 interface StaffGameProgress {
@@ -429,6 +429,7 @@ function defaultProgress(): StaffGameProgress {
     bestStars: Array(GAME_LEVEL_COUNT).fill(0),
     bestAccuracy: createDifficultyMetricSlots(),
     bestResponseMs: createDifficultyMetricSlots(),
+    maxCombos: Array(GAME_LEVEL_COUNT).fill(0),
   });
   return {
     version: 6,
@@ -437,7 +438,6 @@ function defaultProgress(): StaffGameProgress {
       arcade: {
         ...defaultModeProgress(),
         bestScores: Array(GAME_LEVEL_COUNT).fill(0),
-        maxCombos: Array(GAME_LEVEL_COUNT).fill(0),
       },
     },
     _debugLastRound: null,
@@ -694,10 +694,10 @@ function readProgress(): StaffGameProgress {
         bestStars: readArray(record.bestStars, 3),
         bestAccuracy: readMetricSlots(record.bestAccuracy, 1),
         bestResponseMs: readMetricSlots(record.bestResponseMs, Number.MAX_SAFE_INTEGER),
+        maxCombos: readArray(record.maxCombos),
         ...(includeArcadeRecords
           ? {
               bestScores: readArray(record.bestScores),
-              maxCombos: readArray(record.maxCombos),
             }
           : {}),
       };
@@ -1735,13 +1735,13 @@ export function StaffGameView({
             }
           : bestByDifficulty
       ),
+      maxCombos: currentMode.maxCombos.map((best, itemIndex) =>
+        itemIndex === index ? Math.max(best, maxComboRef.current) : best
+      ),
       ...(isArcadeRound
         ? {
             bestScores: (currentMode as StaffGameArcadeProgress).bestScores.map(
               (best, itemIndex) => (itemIndex === index ? Math.max(best, scoreRef.current) : best)
-            ),
-            maxCombos: (currentMode as StaffGameArcadeProgress).maxCombos.map((best, itemIndex) =>
-              itemIndex === index ? Math.max(best, maxComboRef.current) : best
             ),
           }
         : {}),
@@ -1945,7 +1945,10 @@ export function StaffGameView({
       const validPlayerResponses = proficiencySamples
         .filter((sample) => sample.firstInputCorrect === true)
         .map((sample) => sample.playerResponseTimeMs)
-        .filter((response): response is number => response !== null);
+        .filter(
+          (response): response is number =>
+            typeof response === "number" && Number.isFinite(response) && response > 0
+        );
       setSummaryAveragePlayerResponseMs(
         validPlayerResponses.length
           ? validPlayerResponses.reduce((sum, response) => sum + response, 0) /
@@ -2978,15 +2981,6 @@ export function StaffGameView({
     wrongNoteReviewDifficultyOverrideRef,
   ]);
 
-  const handleExitWrongNoteReview = useCallback((): void => {
-    if (
-      roundPurposeRef.current !== "wrong-note-review" ||
-      (phaseRef.current !== "running" && phaseRef.current !== "paused")
-    )
-      return;
-    exitWrongNoteReview();
-  }, [exitWrongNoteReview, phaseRef, roundPurposeRef]);
-
   const retryLevel = useCallback((): void => {
     if (roundPurposeRef.current === "wrong-note-review") {
       const retryPlan = buildStaffGameWrongNoteReviewPlan(
@@ -3470,7 +3464,9 @@ export function StaffGameView({
   ).size;
   const learningQuestionTargetCount = challengePoolSize * 2;
   const questionTargetCount =
-    roundMetricsRef.current.targetQuestionCount || learningQuestionTargetCount;
+    phase === "ready"
+      ? learningQuestionTargetCount
+      : roundMetricsRef.current.targetQuestionCount || learningQuestionTargetCount;
   const isLearningChallenge =
     !isSongMode &&
     !isWrongNoteReview &&
@@ -3480,6 +3476,8 @@ export function StaffGameView({
       ? wrongNoteReviewPlan.totalQuestionCount
       : roundReviewQuestionCountRef.current;
   const reviewQuestionProgressResolvedCount =
+    phase === "ready" ? 0 : roundMetricsRef.current.resolvedQuestionCount;
+  const learningQuestionProgressResolvedCount =
     phase === "ready" ? 0 : roundMetricsRef.current.resolvedQuestionCount;
   const activeProgress = isSongMode
     ? songProgressRatio
@@ -3495,6 +3493,15 @@ export function StaffGameView({
       ((isWrongNoteReview ? roundReviewDurationMsRef.current : gameDurationMs) - elapsedMs) / 1000
     )
   );
+  const reviewHudTimeSeconds =
+    phase === "ready"
+      ? Math.ceil(
+          staffGameWrongNoteReviewDurationMs(
+            wrongNoteReviewPlan.totalQuestionCount,
+            bubbleDurationMs
+          ) / 1000
+        )
+      : remainingSeconds;
   const gameArtStyle = {
     "--staff-game-bg-desktop": `url("${gameBackgroundDesktop}")`,
     "--staff-game-bg-mobile": `url("${gameBackgroundMobile}")`,
@@ -3560,7 +3567,6 @@ export function StaffGameView({
       ? Math.round((loadedResourceCount / resourceProgress.length) * 100)
       : 0;
   const showPauseControl = phase === "running" || phase === "paused";
-  const showWrongNoteEndControl = isWrongNoteReview && showPauseControl;
   const backButtonLabel = isSongMode
     ? isSongPlayRoute
       ? "返回歌曲选择"
@@ -3738,9 +3744,18 @@ export function StaffGameView({
           isLearningChallenge={isLearningChallenge}
           isQuestionCountProgress={isWrongNoteReview}
           isReady={phase === "ready" && gameMode === "levels"}
+          learningProgressValue={`${learningQuestionProgressResolvedCount}/${questionTargetCount}`}
           currentRoundStars={currentRoundStars}
           displayedScore={displayedScore}
-          historyLabel={isSongMode ? "歌曲最佳" : isLearningChallenge ? "本关星级" : "历史最高"}
+          historyLabel={
+            isLearningChallenge && phase === "ready"
+              ? "进度"
+              : isSongMode
+                ? "歌曲最佳"
+                : isLearningChallenge
+                  ? "本关星级"
+                  : "历史最高"
+          }
           historyStars={
             isSongMode ? selectedSongRecord.bestStars : activeChallengeProgress.bestStars[level - 1]
           }
@@ -3752,7 +3767,7 @@ export function StaffGameView({
               : isWrongNoteReview
                 ? `错题复习，已完成 ${reviewQuestionProgressResolvedCount}/${reviewQuestionProgressTarget} 题`
                 : isLearningChallenge
-                  ? `第 ${level} 关学习测试，已完成 ${roundMetricsRef.current.resolvedQuestionCount}/${questionTargetCount} 题`
+                  ? `第 ${level} 关学习测试，已完成 ${learningQuestionProgressResolvedCount}/${questionTargetCount} 题`
                   : `第 ${level} 关，当前获得 ${currentRoundStars} 颗星`
           }
           onOpenLevels={() => openGameDialog("levels")}
@@ -3764,7 +3779,8 @@ export function StaffGameView({
                 ? `${reviewQuestionProgressResolvedCount}/${reviewQuestionProgressTarget}`
                 : level
           }
-          showScore={!isWrongNoteReview || phase !== "ready"}
+          reviewTimeSeconds={reviewHudTimeSeconds}
+          showScore={!isWrongNoteReview}
           rushModeActive={rushModeActive}
           scoreDetail={
             isWrongNoteReview
@@ -3775,8 +3791,8 @@ export function StaffGameView({
                 ? `最佳 ${Math.round(selectedSongRecord.bestScore)}\u3000·\u3000${songNotesCompleted}/${selectedSong.noteMidis.length} 音\u3000·\u3000${Math.round(songAccuracy)}%`
                 : isLearningChallenge
                   ? phase === "ready"
-                    ? `进度 0/${questionTargetCount} 题`
-                    : `已完成 ${roundMetricsRef.current.resolvedQuestionCount}/${questionTargetCount} 题`
+                    ? ""
+                    : `已完成 ${learningQuestionProgressResolvedCount}/${questionTargetCount} 题`
                   : phase === "ready"
                     ? ""
                     : `最高 ${Math.round(progress.modes.arcade.bestScores[level - 1])}\u3000·\u3000${remainingSeconds} 秒`
@@ -3986,7 +4002,7 @@ export function StaffGameView({
               inputStatusText={gameInputStatusText}
               isPreparingMicrophone={microphone.isPreparingSwiftF0}
               isStarting={isStarting}
-              maxCombo={progress.modes.arcade.maxCombos[level - 1]}
+              maxCombo={progress.modes[settings.challengeMode].maxCombos[level - 1]}
               onChangeReviewRange={handleWrongNoteReviewRangeChange}
               onChangeArcadeDuration={(arcadeDuration) =>
                 updateReadyChallengeSettings({ arcadeDuration })
@@ -4081,7 +4097,6 @@ export function StaffGameView({
               isFinalLevel={level >= GAME_LEVEL_COUNT}
               isWrongNoteReview={summaryIsWrongNoteReview}
               wrongNoteReviewTimedOut={summaryWrongNoteReviewTimedOut}
-              reviewQuestionCount={roundReviewQuestionCountRef.current}
               wrongNoteComparison={summaryWrongNoteComparison}
               reviewPerformance={summaryReviewPerformance}
               wrongNoteArchiveDate={summaryArchiveDate}
@@ -4157,7 +4172,7 @@ export function StaffGameView({
           />
         ) : null}
         <footer
-          className={`staff-game-controls${touchGameLayout ? " is-touch-layout" : ""}${isSongMode ? " is-song-mode" : ""}${showWrongNoteEndControl ? " is-wrong-note-review" : ""}`}
+          className={`staff-game-controls${touchGameLayout ? " is-touch-layout" : ""}${isSongMode ? " is-song-mode" : ""}`}
         >
           <button
             aria-label={backButtonLabel}
@@ -4179,10 +4194,7 @@ export function StaffGameView({
               <span>{feedback}</span>
             )}
           </div>
-          <div
-            aria-label="游戏操作"
-            className={`staff-game-toolbar is-desktop-control${showWrongNoteEndControl ? " is-wrong-note-review" : ""}`}
-          >
+          <div aria-label="游戏操作" className="staff-game-toolbar is-desktop-control">
             <button
               aria-label="游戏提示"
               title="游戏提示"
@@ -4233,22 +4245,8 @@ export function StaffGameView({
                 />
               </button>
             ) : null}
-            {showWrongNoteEndControl ? (
-              <button
-                aria-label="退出复习"
-                className="staff-game-action-button staff-game-review-end-button"
-                onClick={handleExitWrongNoteReview}
-                title="退出复习"
-                type="button"
-              >
-                <Square aria-hidden="true" size={20} strokeWidth={3} />
-              </button>
-            ) : null}
           </div>
-          <div
-            aria-label="游戏操作"
-            className={`staff-game-toolbar is-mobile-control${showWrongNoteEndControl ? " is-wrong-note-review" : ""}`}
-          >
+          <div aria-label="游戏操作" className="staff-game-toolbar is-mobile-control">
             <button
               aria-label={backButtonLabel}
               title={backButtonLabel}
@@ -4306,17 +4304,6 @@ export function StaffGameView({
                   aria-hidden="true"
                   src={phase === "paused" ? actionResumeArt : actionPauseArt}
                 />
-              </button>
-            ) : null}
-            {showWrongNoteEndControl ? (
-              <button
-                aria-label="退出复习"
-                className="staff-game-action-button staff-game-review-end-button"
-                onClick={handleExitWrongNoteReview}
-                title="退出复习"
-                type="button"
-              >
-                <Square aria-hidden="true" size={20} strokeWidth={3} />
               </button>
             ) : null}
           </div>

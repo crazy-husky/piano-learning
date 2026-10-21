@@ -239,10 +239,6 @@
   color: var(--staff-game-night-text);
 }
 
-:root[data-app-theme="dark"] .staff-game-shell .staff-game-review-end-button {
-  color: #ffaaa0;
-}
-
 :root[data-app-theme="dark"] .staff-game-shell .staff-game-review-preview li small {
   color: var(--staff-game-night-muted);
 }
@@ -666,6 +662,32 @@
   .staff-game-review-summary-comparison
   .staff-game-review-comparison-metric {
   border-color: rgba(160, 196, 182, 0.22);
+}
+
+:root[data-app-theme="dark"] .staff-game-review-current-metric {
+  background: rgba(48, 76, 77, 0.72);
+}
+
+:root[data-app-theme="dark"] .staff-game-review-current-metric > span,
+:root[data-app-theme="dark"] .staff-game-review-summary-result-line > p,
+:root[data-app-theme="dark"] .staff-game-review-summary-footnote,
+:root[data-app-theme="dark"] .staff-game-review-summary-baseline {
+  color: var(--staff-game-night-muted);
+}
+
+:root[data-app-theme="dark"] .staff-game-review-summary-detail-button {
+  color: var(--staff-game-night-mint);
+}
+
+:root[data-app-theme="dark"] .staff-game-review-summary-sample-hint {
+  border-color: rgba(230, 193, 111, 0.22);
+  background: rgba(230, 193, 111, 0.1);
+  color: #d2bd88;
+}
+
+:root[data-app-theme="dark"] .staff-game-review-summary-baseline {
+  border-color: rgba(160, 196, 182, 0.38);
+  background: rgba(48, 76, 77, 0.24);
 }
 
 :root[data-app-theme="dark"] .staff-game-review-comparison-primary-line strong {

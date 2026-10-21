@@ -93,8 +93,8 @@
 
 .staff-game-shell .staff-game-score-group {
   box-sizing: border-box;
-  width: 100%;
-  max-width: min(270px, 45vw);
+  width: min(100%, 168px);
+  max-width: min(168px, 45vw);
   min-width: 0;
   align-self: start;
   align-items: center;
@@ -104,8 +104,8 @@
 }
 
 .staff-game-shell .staff-game-score-card.hud-panel-css {
-  width: min(100%, 168px);
-  max-width: min(100%, 270px, 45vw);
+  width: 100%;
+  max-width: 100%;
   min-width: min(120px, 100%);
   min-height: clamp(68px, 7vw, 84px);
   align-self: center;
@@ -712,5 +712,163 @@
     grid-column: 2;
     justify-self: end;
     width: min(100%, 180px);
+  }
+}
+
+/* Wrong-note review needs only a centered progress-and-time capsule. */
+.staff-game-shell .staff-game-hud.is-wrong-note-review.is-review-capsule {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  justify-content: center;
+  pointer-events: none;
+  grid-template-columns: none;
+  justify-items: initial;
+  gap: 0;
+}
+
+.staff-game-review-hud-capsule {
+  box-sizing: border-box;
+  display: flex;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  align-items: center;
+  gap: clamp(12px, 3vw, 24px);
+  border: 0;
+  border-radius: 50px;
+  background: rgba(0, 0, 0, 0.4);
+  box-shadow: none;
+  color: #fff;
+  padding: 10px clamp(16px, 3vw, 26px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.staff-game-review-hud-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: clamp(12px, 1.6vw, 15px);
+  font-weight: 750;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.staff-game-review-hud-item strong {
+  color: #fff;
+  font-size: clamp(14px, 1.8vw, 17px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.staff-game-review-hud-divider {
+  width: 1px;
+  height: 22px;
+  flex: 0 0 1px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.staff-game-shell .staff-game-display-card .staff-game-learning-ready-progress {
+  min-height: 24px;
+  color: #ddb445;
+  font-size: clamp(19px, 2.2vw, 25px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(126, 82, 17, 0.2);
+}
+
+/* Keep the learning and arcade level HUD close to the top and align its side panels. */
+.staff-game-shell .staff-game-hud:is(.is-learning-test, .is-arcade-mode):not(.is-rush-mode) {
+  --staff-game-mode-hud-level-size: clamp(78px, 7vw, 100px);
+  --staff-game-mode-hud-side-card-height: calc(var(--staff-game-mode-hud-level-size) - 16px);
+  --staff-game-mode-hud-safe-top: max(5px, env(safe-area-inset-top, 0px));
+  box-sizing: border-box;
+  align-items: start;
+  top: calc(5px - var(--staff-game-mode-hud-safe-top));
+  padding-block: var(--staff-game-mode-hud-safe-top) 4px;
+}
+
+.staff-game-shell .staff-game-hud:is(.is-learning-test, .is-arcade-mode).is-ready {
+  --staff-game-mode-hud-side-card-height: calc(var(--staff-game-mode-hud-level-size) - 18px);
+}
+
+.staff-game-shell
+  .staff-game-hud:is(.is-learning-test, .is-arcade-mode):not(.is-rush-mode)
+  .staff-game-level-medal {
+  box-sizing: border-box;
+  width: var(--staff-game-mode-hud-level-size);
+  height: var(--staff-game-mode-hud-level-size);
+  min-height: var(--staff-game-mode-hud-level-size);
+  aspect-ratio: 1;
+  align-self: start;
+  justify-self: center;
+  /* Offset the SVG's transparent top inset so the visible medal artwork starts at 5px. */
+  transform: translateY(-14%);
+}
+
+.staff-game-shell
+  .staff-game-hud:is(.is-learning-test, .is-arcade-mode):not(.is-rush-mode)
+  .staff-game-hud-card.hud-panel-css {
+  box-sizing: border-box;
+  height: var(--staff-game-mode-hud-side-card-height);
+  min-height: var(--staff-game-mode-hud-side-card-height);
+  max-height: var(--staff-game-mode-hud-side-card-height);
+  align-self: start;
+  gap: 2px;
+  padding: 6px 8px;
+}
+
+.staff-game-shell
+  .staff-game-hud:is(.is-learning-test, .is-arcade-mode).is-ready
+  .staff-game-hud-card.hud-panel-css {
+  gap: 1px;
+  padding-block: 3px;
+}
+
+@media (max-width: 820px) {
+  .staff-game-shell .staff-game-hud:is(.is-learning-test, .is-arcade-mode):not(.is-rush-mode) {
+    --staff-game-mode-hud-level-size: clamp(58px, 14vw, 74px);
+  }
+}
+
+@media (max-width: 460px) {
+  .staff-game-shell .staff-game-hud:is(.is-learning-test, .is-arcade-mode):not(.is-rush-mode) {
+    --staff-game-mode-hud-level-size: 62px;
+  }
+
+  .staff-game-shell .staff-game-hud:is(.is-learning-test, .is-arcade-mode).is-ready {
+    --staff-game-mode-hud-side-card-height: calc(var(--staff-game-mode-hud-level-size) - 16px);
+  }
+
+  .staff-game-shell
+    .staff-game-hud:is(.is-learning-test, .is-arcade-mode).is-ready
+    .staff-game-hud-card.hud-panel-css {
+    padding-block: 2px;
+  }
+}
+
+@media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  .staff-game-dialog-backdrop.is-help-dialog-backdrop .staff-game-help-dialog {
+    margin-block-start: 46px;
+  }
+}
+
+@media (max-width: 420px) {
+  .staff-game-review-hud-capsule {
+    gap: 12px;
+    padding: 9px 16px;
+  }
+
+  .staff-game-review-hud-item {
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .staff-game-review-hud-item strong {
+    font-size: 14px;
   }
 }

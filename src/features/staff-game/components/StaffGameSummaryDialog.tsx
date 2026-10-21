@@ -33,7 +33,6 @@ export interface StaffGameSummaryDialogProps {
   wrongNoteStatisticsEnabled: boolean;
   isWrongNoteReview: boolean;
   wrongNoteReviewTimedOut: boolean;
-  reviewQuestionCount: number;
   wrongNoteArchiveStatus: "idle" | "manual" | "saving" | "saved" | "error";
   wrongNoteArchiveRetryQueued: boolean;
   wrongNoteArchiveMode: "automatic" | "manual" | "trend" | null;
@@ -81,7 +80,6 @@ export function StaffGameSummaryDialog({
   wrongNoteStatisticsEnabled,
   isWrongNoteReview,
   wrongNoteReviewTimedOut,
-  reviewQuestionCount,
   wrongNoteArchiveStatus,
   wrongNoteArchiveRetryQueued,
   wrongNoteArchiveMode,
@@ -124,6 +122,7 @@ export function StaffGameSummaryDialog({
   ).length;
   const weakReasonCount = wrongNoteCount + missedNoteCount;
   const isLearningTest = mode === "challenge" && challengeMode === "learning";
+  const isEntertainmentMode = mode === "challenge" && challengeMode === "arcade";
   const archiveDateLabel = wrongNoteArchiveDate
     ? (() => {
         const [, month, day] = wrongNoteArchiveDate.split("-");
@@ -258,7 +257,7 @@ export function StaffGameSummaryDialog({
         aria-hidden={showWrongAnswerDetails}
         aria-label={ariaLabel}
         aria-modal={!showWrongAnswerDetails}
-        className={`staff-game-summary-backdrop${isWrongNoteReview ? " has-review-comparison" : ""}${gameEffectsEnabled ? "" : " effects-disabled"}`}
+        className={`staff-game-summary-backdrop${isWrongNoteReview ? " has-review-comparison" : ""}${isLearningTest ? " is-learning-test" : ""}${isEntertainmentMode ? " is-entertainment-mode" : ""}${gameEffectsEnabled ? "" : " effects-disabled"}`}
         role="dialog"
         style={gameArtStyle}
       >
@@ -315,12 +314,11 @@ export function StaffGameSummaryDialog({
             {mode === "review" ? (
               <StaffGameReviewSummaryContent
                 timedOut={wrongNoteReviewTimedOut}
-                questionCount={reviewQuestionCount}
-                generatedQuestionCount={generatedNoteCount}
                 archiveMode={wrongNoteArchiveMode}
                 archiveDateLabel={archiveDateLabel}
                 archiveRetryQueued={wrongNoteArchiveRetryQueued}
                 archiveStatus={wrongNoteArchiveStatus}
+                averageResponseMs={averagePlayerResponseMs}
                 comparison={wrongNoteComparison}
                 detailsTriggerRef={detailsTriggerRef}
                 onExit={onExitWrongNoteReview}

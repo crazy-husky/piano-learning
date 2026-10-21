@@ -16,6 +16,8 @@ export interface StaffGameHudProps {
   currentRoundStars: number;
   progressLabel: string;
   progressValue: string | number;
+  learningProgressValue: string;
+  reviewTimeSeconds: number;
   showScore: boolean;
   scoreLabel: string;
   displayedScore: number;
@@ -40,6 +42,8 @@ export function StaffGameHud({
   currentRoundStars,
   progressLabel,
   progressValue,
+  learningProgressValue,
+  reviewTimeSeconds,
   showScore,
   scoreLabel,
   displayedScore,
@@ -61,7 +65,32 @@ export function StaffGameHud({
     );
   }
 
+  if (isWrongNoteReview) {
+    return (
+      <header
+        className={`staff-game-hud is-wrong-note-review is-review-capsule${isReady ? " is-ready" : ""}`}
+      >
+        <div
+          aria-label="错题复习进度和剩余时间"
+          className="staff-game-review-hud-capsule"
+          role="group"
+        >
+          <div className="staff-game-review-hud-item">
+            <span>{progressLabel}</span>
+            <strong>{progressValue}</strong>
+          </div>
+          <span aria-hidden="true" className="staff-game-review-hud-divider" />
+          <div className="staff-game-review-hud-item">
+            <span>剩余</span>
+            <strong>{reviewTimeSeconds}s</strong>
+          </div>
+        </div>
+      </header>
+    );
+  }
+
   const medalClassName = `staff-game-level-medal${isSongMode ? " is-song-progress" : ""}${isQuestionCountProgress ? " is-learning-test" : ""}${isWrongNoteReview ? " is-review-question-progress" : ""}`;
+  const isArcadeMode = !isSongMode && !isLearningChallenge;
   const medalContent = isQuestionCountProgress ? (
     <>
       <span>{progressLabel}</span>
@@ -116,21 +145,39 @@ export function StaffGameHud({
 
   return (
     <header
-      className={`staff-game-hud${isSongMode ? " is-song-mode" : ""}${isLearningChallenge ? " is-learning-test" : ""}${rushModeActive ? " is-rush-mode" : ""}${isWrongNoteReview ? " is-wrong-note-review" : ""}${isReady ? " is-ready" : ""}`}
+      className={`staff-game-hud${isSongMode ? " is-song-mode" : ""}${isLearningChallenge ? " is-learning-test" : ""}${isArcadeMode ? " is-arcade-mode" : ""}${rushModeActive ? " is-rush-mode" : ""}${isWrongNoteReview ? " is-wrong-note-review" : ""}${isReady ? " is-ready" : ""}`}
     >
       {!rushModeActive && !isWrongNoteReview ? (
         <div
           aria-hidden={rushModeActive}
           className="staff-game-hud-card hud-panel-css staff-game-display-card"
         >
-          <span>{historyLabel}</span>
-          <strong aria-label={`${historyStars} 颗星`} className="staff-game-history-stars">
-            {[1, 2, 3].map((star) => (
-              <span aria-hidden="true" className={historyStars >= star ? "earned" : ""} key={star}>
-                ★
-              </span>
-            ))}
-          </strong>
+          {isLearningChallenge && isReady ? (
+            <>
+              <span>{historyLabel}</span>
+              <strong
+                aria-label={`进度 ${learningProgressValue}`}
+                className="staff-game-learning-ready-progress"
+              >
+                {learningProgressValue}
+              </strong>
+            </>
+          ) : (
+            <>
+              <span>{historyLabel}</span>
+              <strong aria-label={`${historyStars} 颗星`} className="staff-game-history-stars">
+                {[1, 2, 3].map((star) => (
+                  <span
+                    aria-hidden="true"
+                    className={historyStars >= star ? "earned" : ""}
+                    key={star}
+                  >
+                    ★
+                  </span>
+                ))}
+              </strong>
+            </>
+          )}
         </div>
       ) : null}
       {!rushModeActive && (isQuestionCountProgress || !isWrongNoteReview) ? (

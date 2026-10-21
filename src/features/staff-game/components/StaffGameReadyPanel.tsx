@@ -1,4 +1,4 @@
-import { BookOpen, Keyboard, Lightbulb, Mic, Music2, Play, Sparkles } from "lucide-react";
+import { BookOpen, FolderArchive, Keyboard, Mic, Music2, Play, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import type {
   StaffGameSong,
@@ -407,7 +407,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
           )}
         </button>
       ) : null}
-      {props.readyMode === "level" ? inputStatusContent : null}
+      {props.readyMode === "level" && props.inputMode !== "virtual" ? inputStatusContent : null}
       {props.readyMode === "review" ? (
         <div className="staff-game-review-picker">
           <div className="staff-game-review-filters">
@@ -453,7 +453,11 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
               title="详情与管理错题集"
               type="button"
             >
-              <Lightbulb aria-hidden="true" className="staff-game-archive-manage-icon" size={22} />
+              <FolderArchive
+                aria-hidden="true"
+                className="staff-game-archive-manage-icon"
+                size={22}
+              />
             </button>
           </div>
           <div className="staff-game-review-preview" aria-live="polite">
@@ -477,7 +481,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
                   <strong>优先复习的音</strong>
                   {props.reviewNotes.length > 0 ? (
                     <ol>
-                      {props.reviewNotes.slice(0, 3).map((note, index) => (
+                      {props.reviewNotes.slice(0, 4).map((note, index) => (
                         <li className={`is-priority-${index + 1}`} key={note.label}>
                           <strong>{note.label}</strong>
                           <small
@@ -511,7 +515,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             )}
           </div>
         </div>
-      ) : (
+      ) : props.challengeMode === "learning" ? null : (
         <div className="staff-game-level-detail">
           <div className="staff-game-stat">
             <span>本关重点音符</span>
@@ -531,7 +535,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             </strong>
           </div>
           <div className="staff-game-stat">
-            <span>{props.challengeMode === "learning" ? "娱乐最高连击" : "最高连击"}</span>
+            <span>最高连击</span>
             <strong>{props.maxCombo} 次</strong>
           </div>
         </div>
@@ -566,7 +570,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
               )}
             </button>
           </div>
-          {inputStatusContent}
+          {props.inputMode !== "virtual" ? inputStatusContent : null}
         </div>
       ) : null}
     </div>
