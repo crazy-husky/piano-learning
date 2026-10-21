@@ -1,5 +1,16 @@
-import { BookOpen, FolderArchive, Keyboard, Mic, Music2, Play, Sparkles } from "lucide-react";
+import {
+  BookOpen,
+  CircleHelp,
+  FolderArchive,
+  Keyboard,
+  Mic,
+  Music2,
+  Play,
+  Sparkles,
+} from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type {
   StaffGameSong,
   StaffGameSongProgress,
@@ -87,7 +98,71 @@ type StaffGameReadyPanelProps = SharedArtwork &
       }
   );
 
+function formatDifficultyTime(durationMs: number): string {
+  const seconds = durationMs / 1_000;
+  return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)} 秒`;
+}
+
 export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
+  const difficultySelectId = useId();
+  const difficultyHelpId = useId();
+  const difficultyHelpTriggerRef = useRef<HTMLButtonElement>(null);
+  const difficultyHelpPopoverRef = useRef<HTMLDivElement>(null);
+  const [isDifficultyHelpOpen, setIsDifficultyHelpOpen] = useState(false);
+  const [difficultyHelpPosition, setDifficultyHelpPosition] = useState({ top: 16, left: 16 });
+
+  useEffect(() => {
+    if (!isDifficultyHelpOpen) return;
+
+    const dismissIfOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        (difficultyHelpTriggerRef.current?.contains(target) ||
+          difficultyHelpPopoverRef.current?.contains(target))
+      ) {
+        return;
+      }
+      setIsDifficultyHelpOpen(false);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsDifficultyHelpOpen(false);
+    };
+    const dismissOnScroll = () => setIsDifficultyHelpOpen(false);
+
+    document.addEventListener("pointerdown", dismissIfOutside);
+    document.addEventListener("keydown", dismissOnEscape);
+    window.addEventListener("scroll", dismissOnScroll, true);
+    window.addEventListener("resize", dismissOnScroll);
+    return () => {
+      document.removeEventListener("pointerdown", dismissIfOutside);
+      document.removeEventListener("keydown", dismissOnEscape);
+      window.removeEventListener("scroll", dismissOnScroll, true);
+      window.removeEventListener("resize", dismissOnScroll);
+    };
+  }, [isDifficultyHelpOpen]);
+
+  const toggleDifficultyHelp = () => {
+    if (isDifficultyHelpOpen) {
+      setIsDifficultyHelpOpen(false);
+      return;
+    }
+
+    const triggerRect = difficultyHelpTriggerRef.current?.getBoundingClientRect();
+    if (triggerRect && typeof window !== "undefined") {
+      const popoverWidth = Math.min(300, window.innerWidth - 32);
+      const popoverHeight = Math.min(270, window.innerHeight - 32);
+      const preferredTop = triggerRect.bottom + 8;
+      const top =
+        preferredTop + popoverHeight <= window.innerHeight - 16
+          ? preferredTop
+          : Math.max(16, triggerRect.top - popoverHeight - 8);
+      const left = Math.min(Math.max(16, triggerRect.left), window.innerWidth - popoverWidth - 16);
+      setDifficultyHelpPosition({ top, left });
+    }
+    setIsDifficultyHelpOpen(true);
+  };
+
   if (props.variant === "song-list") {
     return (
       <section aria-label="选择游戏歌曲" className="staff-game-card staff-game-song-card">
@@ -316,9 +391,23 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
       {props.readyMode === "level" ? (
         <div className="staff-game-challenge-setup">
           <div className="staff-game-challenge-settings">
-            <label>
-              <span>难度</span>
+            <div className="staff-game-challenge-difficulty-field">
+              <div className="staff-game-challenge-difficulty-heading">
+                <label htmlFor={difficultySelectId}>难度</label>
+                <button
+                  aria-controls={difficultyHelpId}
+                  aria-expanded={isDifficultyHelpOpen}
+                  aria-label="查看不同难度的下落和连击时间"
+                  className="staff-game-difficulty-help"
+                  onClick={toggleDifficultyHelp}
+                  ref={difficultyHelpTriggerRef}
+                  type="button"
+                >
+                  <CircleHelp aria-hidden="true" size={15} />
+                </button>
+              </div>
               <select
+                id={difficultySelectId}
                 aria-label="闯关难度"
                 onChange={(event) =>
                   props.onChangeDifficulty(event.currentTarget.value as GameDifficulty)
@@ -331,7 +420,42 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
+            {isDifficultyHelpOpen && typeof document !== "undefined"
+              ? createPortal(
+                  <div
+                    aria-label="不同难度的时间规则"
+                    className="staff-game-difficulty-help-popover"
+                    id={difficultyHelpId}
+                    ref={difficultyHelpPopoverRef}
+                    role="region"
+                    style={{
+                      left: `${difficultyHelpPosition.left}px`,
+                      top: `${difficultyHelpPosition.top}px`,
+                    }}
+                  >
+                    <table>
+                      <thead>
+                        <tr>
+                          <th scope="col">难度</th>
+                          <th scope="col">下落超时</th>
+                          <th scope="col">连击超时</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {GAME_DIFFICULTIES.map((difficulty) => (
+                          <tr key={difficulty.id}>
+                            <th scope="row">{difficulty.label}</th>
+                            <td>{formatDifficultyTime(difficulty.bubbleDurationMs)}</td>
+                            <td>{formatDifficultyTime(difficulty.comboWindowMs)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>,
+                  document.body
+                )
+              : null}
             <label>
               <span>音域</span>
               <select

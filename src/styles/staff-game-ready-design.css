@@ -133,6 +133,128 @@
   font-weight: 600;
 }
 
+.staff-game-shell.is-ready .staff-game-challenge-difficulty-field {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: var(--staff-ready-space-1);
+  color: var(--staff-ready-muted);
+  font-size: var(--staff-ready-text-xs);
+  font-weight: 600;
+}
+
+.staff-game-shell.is-ready .staff-game-challenge-difficulty-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--staff-ready-space-2);
+}
+
+.staff-game-shell.is-ready .staff-game-challenge-difficulty-heading > label {
+  display: inline;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.staff-game-shell.is-ready .staff-game-difficulty-help {
+  appearance: none;
+  box-sizing: border-box;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--staff-ready-border);
+  border-radius: 50%;
+  background: var(--staff-ready-soft);
+  color: var(--staff-ready-accent-text);
+  cursor: pointer;
+  padding: 0;
+}
+
+.staff-game-shell.is-ready .staff-game-difficulty-help:hover {
+  border-color: var(--staff-ready-accent);
+  background: var(--staff-ready-accent-soft);
+}
+
+.staff-game-shell.is-ready .staff-game-difficulty-help:focus-visible {
+  outline: 2px solid rgba(38, 126, 120, 0.52);
+  outline-offset: 2px;
+}
+
+.staff-game-difficulty-help-popover {
+  position: fixed;
+  z-index: 5000;
+  box-sizing: border-box;
+  width: min(300px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  border: 1px solid #d8e2de;
+  border-radius: 8px;
+  background: #fffefa;
+  box-shadow: 0 8px 24px rgba(22, 42, 44, 0.2);
+  color: #344f54;
+  padding: 12px;
+}
+
+.staff-game-difficulty-help-popover table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.staff-game-difficulty-help-popover th,
+.staff-game-difficulty-help-popover td {
+  border-bottom: 1px solid #d8e2de;
+  padding: 5px 3px;
+  white-space: nowrap;
+}
+
+.staff-game-difficulty-help-popover thead {
+  color: #718286;
+  font-size: 11px;
+}
+
+.staff-game-difficulty-help-popover tbody th {
+  font-weight: 700;
+  text-align: left;
+}
+
+.staff-game-difficulty-help-popover td {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.staff-game-difficulty-help-popover tbody tr:last-child th,
+.staff-game-difficulty-help-popover tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.staff-game-difficulty-help-popover p {
+  margin: 8px 0 0;
+  color: #718286;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+:root[data-app-theme="dark"] .staff-game-difficulty-help-popover {
+  border-color: rgba(155, 190, 180, 0.24);
+  background: #203a3f;
+  color: #e4efeb;
+}
+
+:root[data-app-theme="dark"] .staff-game-difficulty-help-popover th,
+:root[data-app-theme="dark"] .staff-game-difficulty-help-popover td {
+  border-bottom-color: rgba(155, 190, 180, 0.24);
+}
+
+:root[data-app-theme="dark"] .staff-game-difficulty-help-popover thead,
+:root[data-app-theme="dark"] .staff-game-difficulty-help-popover p {
+  color: #a9b9b7;
+}
+
 .staff-game-shell.is-ready .staff-game-challenge-settings select,
 .staff-game-shell.is-ready .staff-game-review-filters select {
   box-sizing: border-box;

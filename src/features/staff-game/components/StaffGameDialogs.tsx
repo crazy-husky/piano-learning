@@ -168,7 +168,7 @@ function StaffGameHelpGuide({
             </li>
             <li>
               <strong>得分机制</strong>
-              <span>难度影响基础分和音符下落速度；连击可增加额外分数。</span>
+              <span>难度影响基础分、下落超时和连击超时；连击可增加额外分数。</span>
             </li>
           </ul>
         ) : null}
@@ -443,7 +443,7 @@ export function StaffGameDialogs({
                           <li>
                             <strong>得分与输入</strong>
                             <span>
-                              可用麦克风、MIDI 或虚拟琴键；难度影响基础分、下落速度和连击时限。
+                              可用麦克风、MIDI 或虚拟琴键；难度影响基础分、下落超时和连击超时。
                             </span>
                           </li>
                         </ul>
@@ -652,8 +652,8 @@ export function StaffGameDialogs({
                               aria-live="polite"
                             >
                               <span>
-                                下落 {(draftDifficulty.bubbleDurationMs / 1000).toFixed(1)} 秒 ·
-                                连击等待 {(draftDifficulty.comboWindowMs / 1000).toFixed(1)} 秒
+                                下落超时 {(draftDifficulty.bubbleDurationMs / 1000).toFixed(1)} 秒 ·
+                                连击超时 {(draftDifficulty.comboWindowMs / 1000).toFixed(1)} 秒
                               </span>
                             </p>
                           </section>
