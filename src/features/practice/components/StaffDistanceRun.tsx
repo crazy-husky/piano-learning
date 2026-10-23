@@ -434,15 +434,19 @@ export function StaffDistanceRun({
     trackedScoreNoteIndex === undefined
       ? undefined
       : Math.floor(trackedScoreNoteIndex / scoreNotesPerRow);
-  const pageBarlineAfterNoteIndices = Array.from(
-    new Set([
-      ...scoreMeasures.flatMap((measure, index) =>
-        index < scoreMeasures.length - 1 && scoreMeasures[index + 1] !== measure ? [index] : []
+  const pageBarlineAfterNoteIndices = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...scoreMeasures.flatMap((measure, index) =>
+            index < scoreMeasures.length - 1 && scoreMeasures[index + 1] !== measure ? [index] : []
+          ),
+          ...Array.from({ length: Math.max(0, scoreNotes.length - 1) }, (_, index) => index).filter(
+            (index) => breakIndicesRef.current.has(scoreStartIndex + index)
+          ),
+        ])
       ),
-      ...Array.from({ length: Math.max(0, scoreNotes.length - 1) }, (_, index) => index).filter(
-        (index) => breakIndicesRef.current.has(scoreStartIndex + index)
-      ),
-    ])
+    [scoreMeasures, scoreNotes, scoreStartIndex]
   );
   const activePairStartIndex = questionIndex - scoreStartIndex;
   const currentFrom = sequence[questionIndex];
