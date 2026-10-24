@@ -14,6 +14,7 @@ import {
 export const MAX_STAFF_DISTANCE = 7;
 const LONG_LEAP_MIN_DISTANCE = 5;
 const DISTANCE_BALANCE_WINDOW = 20;
+const RECENT_PAIR_HISTORY_LENGTH = 6;
 
 export type StaffDistanceValidation =
   | { ok: true }
@@ -246,6 +247,38 @@ function chooseBalancedDirection(
   return leastUsed[Math.min(leastUsed.length - 1, Math.floor(random() * leastUsed.length))]!;
 }
 
+function notePairKey(from: TargetNote, to: TargetNote): string {
+  const pitches = [String(from.pitchId), String(to.pitchId)].sort();
+  return `${pitches[0]}:${pitches[1]}`;
+}
+
+function getRecentPairKeys(notes: readonly TargetNote[]): string[] {
+  const keys: string[] = [];
+  for (let index = 1; index < notes.length; index += 1) {
+    const from = notes[index - 1]!;
+    const to = notes[index]!;
+    if (from.staff === to.staff) keys.push(notePairKey(from, to));
+  }
+  return keys.slice(-RECENT_PAIR_HISTORY_LENGTH);
+}
+
+function routeAvoidsRecentPairs(
+  start: TargetNote,
+  route: readonly TargetNote[],
+  recentPairKeys: readonly string[]
+): boolean {
+  const pairHistory = [...recentPairKeys];
+  let current = start;
+  for (const note of route) {
+    const key = notePairKey(current, note);
+    if (pairHistory.includes(key)) return false;
+    pairHistory.push(key);
+    if (pairHistory.length > RECENT_PAIR_HISTORY_LENGTH) pairHistory.shift();
+    current = note;
+  }
+  return true;
+}
+
 function findNotePath(
   start: TargetNote,
   target: TargetNote,
@@ -282,6 +315,7 @@ function findBalancedLongLeapRoute(
   notes: readonly TargetNote[],
   edgesById: ReadonlyMap<TargetNote["id"], readonly StaffDistanceEdge[]>,
   maxTransitions: number,
+  recentPairKeys: readonly string[],
   random: () => number
 ): TargetNote[] | undefined {
   const longUpEdges = notes.flatMap((lowNote) =>
@@ -301,6 +335,7 @@ function findBalancedLongLeapRoute(
     return pathCache.get(key);
   };
   const routes: TargetNote[][] = [];
+  const fallbackRoutes: TargetNote[][] = [];
   for (const up of longUpEdges) {
     const pathToUp = pathBetween(current, up.lowNote);
     if (!pathToUp) continue;
@@ -309,26 +344,40 @@ function findBalancedLongLeapRoute(
       const pathToDown = pathBetween(up.highNote, down.highNote);
       if (!pathToDown) continue;
       const route = [...pathToUp.slice(1), up.highNote, ...pathToDown.slice(1), down.lowNote];
-      if (route.length <= maxTransitions) routes.push(route);
+      if (route.length <= maxTransitions) {
+        fallbackRoutes.push(route);
+        if (routeAvoidsRecentPairs(current, route, recentPairKeys)) routes.push(route);
+      }
     }
   }
-  if (routes.length > 0) {
-    return routes[Math.min(routes.length - 1, Math.max(0, Math.floor(random() * routes.length)))];
+  const selectableRoutes = routes.length > 0 ? routes : fallbackRoutes;
+  if (selectableRoutes.length > 0) {
+    return selectableRoutes[
+      Math.min(
+        selectableRoutes.length - 1,
+        Math.max(0, Math.floor(random() * selectableRoutes.length))
+      )
+    ];
   }
 
   // A very narrow selection may have only one long-leap pair. Use it both ways
   // so each 20-question block still practices both directions when possible.
-  const fallbackRoutes = longUpEdges.flatMap((edge) => {
+  const reverseRoutes = longUpEdges.flatMap((edge) => {
     const path = pathBetween(current, edge.lowNote);
     if (!path || path.length - 1 + 2 > maxTransitions) return [];
     return [[...path.slice(1), edge.highNote, edge.lowNote]];
   });
-  return fallbackRoutes.length === 0
+  const novelReverseRoutes = reverseRoutes.filter((route) =>
+    routeAvoidsRecentPairs(current, route, recentPairKeys)
+  );
+  const selectableReverseRoutes =
+    novelReverseRoutes.length > 0 ? novelReverseRoutes : reverseRoutes;
+  return selectableReverseRoutes.length === 0
     ? undefined
-    : fallbackRoutes[
+    : selectableReverseRoutes[
         Math.min(
-          fallbackRoutes.length - 1,
-          Math.max(0, Math.floor(random() * fallbackRoutes.length))
+          selectableReverseRoutes.length - 1,
+          Math.max(0, Math.floor(random() * selectableReverseRoutes.length))
         )
       ];
 }
@@ -339,7 +388,8 @@ export function createStaffDistanceSequence(
   transitionCount: number,
   random: () => number = Math.random,
   initialNote?: TargetNote,
-  extraPitchIds: readonly PitchId[] = []
+  extraPitchIds: readonly PitchId[] = [],
+  recentNotes: readonly TargetNote[] = []
 ): TargetNote[] {
   if (transitionCount <= 0 || notes.length === 0) return [];
   const extraPitchIdSet = new Set(extraPitchIds);
@@ -365,6 +415,13 @@ export function createStaffDistanceSequence(
   if (starts.length === 0) return [];
   let current = weightedPick(starts, targetWeight, random);
   const sequence = [current];
+  const recentPairKeys = getRecentPairKeys(recentNotes);
+  const appendNote = (note: TargetNote): void => {
+    recentPairKeys.push(notePairKey(current, note));
+    if (recentPairKeys.length > RECENT_PAIR_HISTORY_LENGTH) recentPairKeys.shift();
+    current = note;
+    sequence.push(note);
+  };
   const directionCounts = new Map<"up" | "down", number>([
     ["up", 0],
     ["down", 0],
@@ -397,6 +454,7 @@ export function createStaffDistanceSequence(
         longLeapNotes,
         longLeapEdgesById,
         Math.min(remainingTransitions, transitionsLeftInWindow),
+        recentPairKeys,
         random
       );
       if (route) {
@@ -405,8 +463,7 @@ export function createStaffDistanceSequence(
           if (pair.direction !== "same") {
             directionCounts.set(pair.direction, (directionCounts.get(pair.direction) ?? 0) + 1);
           }
-          current = note;
-          sequence.push(note);
+          appendNote(note);
         }
         forcedLongLeapWindow = balanceWindow;
         continue;
@@ -419,7 +476,8 @@ export function createStaffDistanceSequence(
             (phrase) =>
               phrase.notes.every((note) => !extraPitchIdSet.has(note.pitchId)) &&
               phrase.notes.length - 1 <= remainingTransitions &&
-              phrase.notes.length - 1 <= DISTANCE_BALANCE_WINDOW - transitionInWindow
+              phrase.notes.length - 1 <= DISTANCE_BALANCE_WINDOW - transitionInWindow &&
+              routeAvoidsRecentPairs(current, phrase.notes.slice(1), recentPairKeys)
           )
         : [];
     if (bassPhrases.length > 0 && random() < 0.45) {
@@ -432,27 +490,29 @@ export function createStaffDistanceSequence(
       const phrase = weightedPick(directionalPhrases, () => 1, random);
       for (const note of phrase.notes.slice(1)) {
         directionCounts.set(phrase.direction, (directionCounts.get(phrase.direction) ?? 0) + 1);
-        current = note;
-        sequence.push(current);
+        appendNote(note);
       }
       continue;
     }
 
-    const distances = [...new Set(edges.map((edge) => edge.distance))];
+    const freshEdges = edges.filter(
+      (edge) => !recentPairKeys.includes(notePairKey(current, edge.note))
+    );
+    const candidateEdges = freshEdges.length > 0 ? freshEdges : edges;
+    const distances = [...new Set(candidateEdges.map((edge) => edge.distance))];
     const distance = weightedPick(
       distances,
       (candidate) => distanceWeight(candidate, current.staff, distances),
       random
     );
-    const sameDistanceEdges = edges.filter((edge) => edge.distance === distance);
+    const sameDistanceEdges = candidateEdges.filter((edge) => edge.distance === distance);
     const direction = chooseBalancedDirection(sameDistanceEdges, directionCounts, random);
     const directionEdges = sameDistanceEdges.filter((edge) => edge.direction === direction);
     const edge = weightedPick(directionEdges, (candidate) => targetWeight(candidate.note), random);
     if (edge.direction !== "same") {
       directionCounts.set(edge.direction, (directionCounts.get(edge.direction) ?? 0) + 1);
     }
-    current = edge.note;
-    sequence.push(current);
+    appendNote(edge.note);
   }
   return sequence;
 }

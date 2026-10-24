@@ -1242,6 +1242,17 @@ main.has-backup-reminder .setup-grid::after {
   min-width: 64px;
 }
 
+.practice-microphone-recovery-reload {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+}
+
 .practice-microphone-debug-trigger {
   align-items: center;
   display: inline-flex;

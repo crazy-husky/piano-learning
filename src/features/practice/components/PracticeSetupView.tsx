@@ -12,6 +12,7 @@ import type {
   PromptNoteDuration,
 } from "../../../domain/types";
 import type { ChaseHandMode } from "../logic/scoreChase";
+import { PRACTICE_FIXED_COUNT_PRESETS } from "../logic/practiceLengthOptions";
 import {
   ANSWER_BUTTONS,
   AVAILABLE_PITCH_IDS,
@@ -20,6 +21,7 @@ import {
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
+import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import {
   resolveSongPracticeArrangement,
@@ -94,12 +96,12 @@ interface PracticeSetupViewProps {
   settings: AppSettings;
 }
 
-function durationSecondsToInputMinutes(seconds: number): string {
-  return Number((seconds / 60).toFixed(2)).toString();
+function durationSecondsToInputMinutes(seconds: number): number {
+  return Number((seconds / 60).toFixed(2));
 }
 
-function inputMinutesToDurationSeconds(value: string): number {
-  return Math.max(60, Math.round(Number(value) * 60));
+function inputMinutesToDurationSeconds(value: number): number {
+  return Math.max(60, Math.round(value * 60));
 }
 
 function formatSelectedPitchRanges(pitchIds: readonly PitchId[]): string {
@@ -162,8 +164,6 @@ const PROMPT_NOTE_DURATION_OPTIONS: Array<{
   { ariaLabel: "八分音符", label: "八分 ♪", value: "eighth" },
   { ariaLabel: "十六分音符", label: "十六分 𝅘𝅥𝅯", value: "sixteenth" },
 ];
-
-const FIXED_COUNT_PRESETS = [10, 20, 50] as const;
 
 const PRACTICE_QUEUE_OPTIONS: Array<{
   strategy: PracticeQueueStrategy;
@@ -262,16 +262,25 @@ export function PracticeSetupView({
   const [songStartError, setSongStartError] = useState<string | null>(null);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isCustomCountSelected, setIsCustomCountSelected] = useState(
-    () => !FIXED_COUNT_PRESETS.includes(fixedCount as (typeof FIXED_COUNT_PRESETS)[number])
+    () =>
+      !PRACTICE_FIXED_COUNT_PRESETS.includes(
+        fixedCount as (typeof PRACTICE_FIXED_COUNT_PRESETS)[number]
+      )
   );
   const [customFixedCount, setCustomFixedCount] = useState(() =>
-    FIXED_COUNT_PRESETS.includes(fixedCount as (typeof FIXED_COUNT_PRESETS)[number])
-      ? 30
+    PRACTICE_FIXED_COUNT_PRESETS.includes(
+      fixedCount as (typeof PRACTICE_FIXED_COUNT_PRESETS)[number]
+    )
+      ? PRACTICE_FIXED_COUNT_PRESETS[0]
       : fixedCount
   );
   const customFixedCountInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
-    if (!FIXED_COUNT_PRESETS.includes(fixedCount as (typeof FIXED_COUNT_PRESETS)[number])) {
+    if (
+      !PRACTICE_FIXED_COUNT_PRESETS.includes(
+        fixedCount as (typeof PRACTICE_FIXED_COUNT_PRESETS)[number]
+      )
+    ) {
       setIsCustomCountSelected(true);
       setCustomFixedCount(fixedCount);
     }
@@ -485,7 +494,7 @@ export function PracticeSetupView({
                     <div className="practice-free-mode-values">
                       <ConditionalReveal visible={mode === "fixed-count"}>
                         <div aria-label="练习题数" className="practice-free-value-options">
-                          {FIXED_COUNT_PRESETS.map((count) => (
+                          {PRACTICE_FIXED_COUNT_PRESETS.map((count) => (
                             <button
                               aria-pressed={!isCustomCountSelected && fixedCount === count}
                               className={
@@ -502,19 +511,18 @@ export function PracticeSetupView({
                             </button>
                           ))}
                           {isCustomCountSelected ? (
-                            <label className="practice-free-custom-count-control is-active">
-                              <input
+                            <label
+                              className="practice-free-custom-count-control is-active"
+                              htmlFor="practice-free-custom-count"
+                            >
+                              <BoundedNumberInput
                                 aria-label="自定义题数"
+                                id="practice-free-custom-count"
+                                inputRef={customFixedCountInputRef}
                                 max={500}
                                 min={1}
-                                ref={customFixedCountInputRef}
-                                type="number"
                                 value={fixedCount}
-                                onChange={(event) => {
-                                  const count = Math.min(
-                                    500,
-                                    Math.max(1, Number(event.target.value) || 1)
-                                  );
+                                onCommit={(count) => {
                                   setCustomFixedCount(count);
                                   setFixedCount(count);
                                 }}
@@ -551,18 +559,19 @@ export function PracticeSetupView({
                               {seconds / 60}分钟
                             </button>
                           ))}
-                          <label className="practice-free-inline-input">
-                            <input
+                          <label
+                            className="practice-free-inline-input"
+                            htmlFor="practice-free-duration"
+                          >
+                            <BoundedNumberInput
                               aria-label="自定义时长，分钟"
+                              id="practice-free-duration"
                               min={1}
                               max={120}
                               step={0.5}
-                              type="number"
                               value={durationSecondsToInputMinutes(fixedDurationSeconds)}
-                              onChange={(event) =>
-                                setFixedDurationSeconds(
-                                  inputMinutesToDurationSeconds(event.target.value)
-                                )
+                              onCommit={(minutes) =>
+                                setFixedDurationSeconds(inputMinutesToDurationSeconds(minutes))
                               }
                             />
                             分钟

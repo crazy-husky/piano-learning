@@ -32,6 +32,7 @@ import type { MidiInputController } from "../../../midi/useMidiInput";
 import type { PracticeChaseSettings } from "./PracticeChaseSettingsDialog";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
+import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import {
@@ -40,6 +41,7 @@ import {
 } from "../../../shared/keyboard/keyboardShortcuts";
 import { StaffDistanceRun, type StaffDistanceMicrophoneInput } from "./StaffDistanceRun";
 import type { PracticeDistanceMode } from "../../../routing/appRoutes";
+import { PRACTICE_FIXED_COUNT_PRESETS } from "../logic/practiceLengthOptions";
 import {
   DEFAULT_SCORE_CHASE_PREFERENCES,
   SCORE_CHASE_SPEED_OPTIONS,
@@ -95,7 +97,7 @@ const DEFAULT_PREFERENCES: StaffDistancePreferences = {
   includeUnison: false,
   inputMethod: "midi",
   maxDistance: 2,
-  fixedCount: 20,
+  fixedCount: 30,
   fixedDurationSeconds: 60,
   mode: "fixed-count",
   noteDurations: ["quarter"],
@@ -162,7 +164,7 @@ function normalizePreferences(value: unknown): StaffDistancePreferences {
     ),
     includeUnison: typeof record.includeUnison === "boolean" ? record.includeUnison : false,
     maxDistance: numberInRange(record.maxDistance, 2, 1, 7),
-    fixedCount: numberInRange(record.fixedCount, 20, 1, 500),
+    fixedCount: numberInRange(record.fixedCount, 30, 1, 500),
     fixedDurationSeconds: numberInRange(record.fixedDurationSeconds, 60, 60, 7200),
     inputMethod: record.inputMethod === "microphone" ? "microphone" : "midi",
     mode:
@@ -291,12 +293,36 @@ export function StaffDistancePracticeView({
     DEFAULT_PREFERENCES,
     { parse: normalizePreferences }
   );
+  const [isCustomCountSelected, setIsCustomCountSelected] = useState(
+    () =>
+      !PRACTICE_FIXED_COUNT_PRESETS.includes(
+        preferences.fixedCount as (typeof PRACTICE_FIXED_COUNT_PRESETS)[number]
+      )
+  );
+  const [customFixedCount, setCustomFixedCount] = useState(() =>
+    PRACTICE_FIXED_COUNT_PRESETS.includes(
+      preferences.fixedCount as (typeof PRACTICE_FIXED_COUNT_PRESETS)[number]
+    )
+      ? PRACTICE_FIXED_COUNT_PRESETS[0]
+      : preferences.fixedCount
+  );
+  const customFixedCountInputRef = useRef<HTMLInputElement | null>(null);
   const trainingMode = distanceMode ?? preferences.trainingMode;
   const [runSession, setRunSession] = useState<PracticeSessionRecord | null>(null);
   const [summarySession, setSummarySession] = useState<PracticeSessionRecord | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const handledSummaryNavigationRequestRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (
+      !PRACTICE_FIXED_COUNT_PRESETS.includes(
+        preferences.fixedCount as (typeof PRACTICE_FIXED_COUNT_PRESETS)[number]
+      )
+    ) {
+      setIsCustomCountSelected(true);
+      setCustomFixedCount(preferences.fixedCount);
+    }
+  }, [preferences.fixedCount]);
   const distanceCrossGroupPitchIds = settings.crossGroupPitchIds;
   const distanceEnabledGroupIds = settings.enabledGroupIds;
   const distanceEnabledPitchIds = settings.enabledPitchIds;
@@ -816,37 +842,75 @@ export function StaffDistancePracticeView({
               ))}
             </div>
             {preferences.mode === "fixed-count" ? (
-              <div aria-label="常用题数" className="staff-distance-count-presets" role="group">
-                {[10, 20, 50, 100].map((count) => (
+              <div
+                aria-label="练习题数"
+                className="practice-free-value-options staff-distance-count-presets"
+                role="group"
+              >
+                {PRACTICE_FIXED_COUNT_PRESETS.map((count) => (
                   <button
-                    aria-pressed={preferences.fixedCount === count}
-                    className={preferences.fixedCount === count ? "active" : ""}
+                    aria-pressed={!isCustomCountSelected && preferences.fixedCount === count}
+                    className={
+                      !isCustomCountSelected && preferences.fixedCount === count ? "active" : ""
+                    }
                     key={count}
-                    onClick={() => setPreferences((current) => ({ ...current, fixedCount: count }))}
+                    onClick={() => {
+                      setIsCustomCountSelected(false);
+                      setPreferences((current) => ({ ...current, fixedCount: count }));
+                    }}
                     type="button"
                   >
-                    {count}
+                    {count}题
                   </button>
                 ))}
+                {isCustomCountSelected ? (
+                  <label
+                    className="practice-free-custom-count-control is-active"
+                    htmlFor="staff-distance-custom-count"
+                  >
+                    <BoundedNumberInput
+                      aria-label="自定义题数"
+                      id="staff-distance-custom-count"
+                      inputRef={customFixedCountInputRef}
+                      max={500}
+                      min={1}
+                      value={preferences.fixedCount}
+                      onCommit={(fixedCount) => {
+                        setCustomFixedCount(fixedCount);
+                        setPreferences((current) => ({ ...current, fixedCount }));
+                      }}
+                    />
+                    <span aria-hidden="true">题</span>
+                  </label>
+                ) : (
+                  <button
+                    aria-pressed={false}
+                    onClick={() => {
+                      setIsCustomCountSelected(true);
+                      setPreferences((current) => ({ ...current, fixedCount: customFixedCount }));
+                      window.requestAnimationFrame(() => customFixedCountInputRef.current?.focus());
+                    }}
+                    type="button"
+                  >
+                    自定义
+                  </button>
+                )}
               </div>
             ) : null}
             {preferences.mode === "fixed-duration" ? (
               <label className="staff-distance-duration-input" htmlFor="staff-distance-duration">
                 <span>时长</span>
-                <input
+                <BoundedNumberInput
+                  aria-label="时长，分钟"
                   id="staff-distance-duration"
                   max={120}
                   min={1}
                   step={1}
-                  type="number"
                   value={Math.round(preferences.fixedDurationSeconds / 60)}
-                  onChange={(event) =>
+                  onCommit={(minutes) =>
                     setPreferences((current) => ({
                       ...current,
-                      fixedDurationSeconds: Math.min(
-                        7200,
-                        Math.max(60, Number(event.target.value) * 60 || 60)
-                      ),
+                      fixedDurationSeconds: minutes * 60,
                     }))
                   }
                 />
@@ -930,24 +994,6 @@ export function StaffDistancePracticeView({
                 />
                 <span>练同音重复（0 步）</span>
               </label>
-              {preferences.mode === "fixed-count" ? (
-                <label className="staff-distance-count-input">
-                  <span>自定义题数</span>
-                  <input
-                    aria-label="自定义题数"
-                    max={500}
-                    min={1}
-                    type="number"
-                    value={preferences.fixedCount}
-                    onChange={(event) =>
-                      setPreferences((current) => ({
-                        ...current,
-                        fixedCount: Math.min(500, Math.max(1, Number(event.target.value) || 1)),
-                      }))
-                    }
-                  />
-                </label>
-              ) : null}
             </section>
           </div>
         </div>

@@ -279,6 +279,7 @@
 - 理由：高音谱练近距离视读，低音谱提前熟悉常见和弦分解；不同音符时值用于熟悉谱面记号。
 - 影响文件：`docs/specs/staff-distance-practice.md`、`src/domain/staffDistancePractice.ts`、`src/features/practice/components/StaffDistancePracticeView.tsx`、`src/features/practice/components/StaffDistanceRun.tsx`
 - 不要改回：高音谱的非同音距离基础概率为 1 步 30%、2 步 30%、3 步 20%、4 步 10%，5–7 步各约 3.3%；启用 0 步时同音占 5%，其余非同音距离按比例缩放。实际出题还受当前音域可用音对、方向平衡和每 20 题段远跳覆盖规则影响。低音谱可出现自然大、小三和弦的分解音型，仍按单音逐题输入距离；最大间距和音域允许时，每个完整 20 题段覆盖上行、下行远跳；全音符、四分、八分、十六分时值支持多选，作为 4/4 节奏生成器的可用音符值；显示 4/4 拍号，节奏连续，不显示休止符或空拍；拍内连梁和小节线按时值生成；每页按可用宽度、节奏间隔和最小可读音符间距计算音符数，利用整段谱面空间并在空间不足时换页，重复上一页末音以保留页边距离题。时值不改变题数、练习计时或距离答案。
+- 出题避免短期内重复已经出现过的同一组实际音高，A→B 与 B→A 视为同一组；默认回看最近 6 个音对。可选音过少而无法避免重复时，允许重复以保证练习继续进行。此限制同时适用于常规随机音型、低音和弦型、远跳和后续谱面续接。
 
 ### 高低音谱表分开保存音域，大谱表按音高分谱
 
@@ -308,10 +309,10 @@
 
 ### 固定题数提供统一快捷档位
 
-- 日期：2026-10-19
-- 决策：自由练习的固定题数快捷选项统一为 10、20、50 题和自定义；当前可练音符数量不再动态生成题数选项。
+- 日期：2026-10-24 更新
+- 决策：自由练习和间距推导的固定题数快捷选项统一为 30、70、200 题，并提供自定义输入；当前可练音符数量不再动态生成题数选项。自由练习和间距推导的新默认题数均为 30。
 - 理由：题数选项应代表练习长度，而不是随选中的音域变化；音符池大小不限制用户想练的题量。
-- 影响文件：`src/features/practice/components/PracticeSetupView.tsx`
+- 影响文件：`src/features/practice/components/PracticeSetupView.tsx`、`src/features/practice/components/StaffDistancePracticeView.tsx`、`src/features/practice/logic/practiceLengthOptions.ts`
 
 ## 麦克风参数基准测试
 

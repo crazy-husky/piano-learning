@@ -4,6 +4,8 @@ interface PauseOverlayProps {
   allowBackdropResume?: boolean;
   resumeBlockedMessage?: string;
   resumeMessage?: string;
+  recoveryReloadAvailable?: boolean;
+  onReloadAfterRecoveryFailure?: () => void;
   showKeyboardShortcuts?: boolean;
 }
 
@@ -13,6 +15,8 @@ export function PauseOverlay({
   allowBackdropResume = true,
   resumeBlockedMessage,
   resumeMessage,
+  recoveryReloadAvailable = false,
+  onReloadAfterRecoveryFailure,
   showKeyboardShortcuts = true,
 }: PauseOverlayProps): JSX.Element {
   return (
@@ -53,6 +57,24 @@ export function PauseOverlay({
               继续练习
             </button>
           </div>
+        ) : null}
+        {showKeyboardShortcuts && recoveryReloadAvailable && onReloadAfterRecoveryFailure ? (
+          <button
+            className="practice-microphone-recovery-reload"
+            onClick={onReloadAfterRecoveryFailure}
+            type="button"
+          >
+            刷新页面重试
+          </button>
+        ) : null}
+        {!showKeyboardShortcuts && recoveryReloadAvailable && onReloadAfterRecoveryFailure ? (
+          <button
+            className="practice-microphone-recovery-reload"
+            onClick={onReloadAfterRecoveryFailure}
+            type="button"
+          >
+            刷新页面重试
+          </button>
         ) : null}
       </div>
     </div>

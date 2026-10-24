@@ -80,10 +80,14 @@ interface StaffDistanceRunProps {
   useLedgerGap: boolean;
 }
 
+const WRONG_FEEDBACK_DURATION_MS = 450;
+
 export interface StaffDistanceMicrophoneInput {
   error: string | null;
   isListening: boolean;
   isPreparingSwiftF0?: boolean;
+  recoveryReloadAvailable?: boolean;
+  reloadAfterRecoveryFailure?: () => Promise<void>;
   start: (options?: { includeAccidentals?: boolean }) => Promise<boolean>;
   status: PracticeMicrophoneStatus;
   stop: () => void;
@@ -129,6 +133,24 @@ interface StaffDistanceRunSequence {
   notes: TargetNote[];
 }
 
+function getRecentStaffNoteHistories(
+  notes: readonly TargetNote[],
+  breakIndices: readonly number[]
+): Partial<Record<TargetNote["staff"], TargetNote[]>> {
+  const histories: Partial<Record<TargetNote["staff"], TargetNote[]>> = {};
+  let segmentStart = 0;
+  const boundaries = [...breakIndices].sort((left, right) => left - right);
+  for (const boundary of [...boundaries, notes.length - 1]) {
+    const segment = notes.slice(segmentStart, boundary + 1);
+    const staff = segment[0]?.staff;
+    if (staff && segment.every((note) => note.staff === staff)) {
+      histories[staff] = segment.slice(-7);
+    }
+    segmentStart = boundary + 1;
+  }
+  return histories;
+}
+
 function createStaffDistanceRunSequence(
   notes: readonly TargetNote[],
   settings: StaffDistancePracticeSettings,
@@ -136,7 +158,8 @@ function createStaffDistanceRunSequence(
   staffNotationMode: StaffNotationMode,
   random: () => number = Math.random,
   initialNote?: TargetNote,
-  extraPitchIds: readonly PitchId[] = []
+  extraPitchIds: readonly PitchId[] = [],
+  recentNotesByStaff: Partial<Record<TargetNote["staff"], readonly TargetNote[]>> = {}
 ): StaffDistanceRunSequence {
   const createSingleStaffSequence = (): StaffDistanceRunSequence => ({
     breakIndices: [],
@@ -146,7 +169,8 @@ function createStaffDistanceRunSequence(
       transitionCount,
       random,
       initialNote,
-      extraPitchIds
+      extraPitchIds,
+      recentNotesByStaff[initialNote?.staff ?? notes[0]?.staff ?? "treble"]
     ),
   });
   if (staffNotationMode !== "grand" || transitionCount <= 0) {
@@ -160,7 +184,8 @@ function createStaffDistanceRunSequence(
       transitionCount,
       random,
       initialNote?.staff === "bass" ? initialNote : undefined,
-      extraPitchIds
+      extraPitchIds,
+      recentNotesByStaff.bass
     ),
     treble: createStaffDistanceSequence(
       notes.filter((note) => note.staff === "treble"),
@@ -168,7 +193,8 @@ function createStaffDistanceRunSequence(
       transitionCount,
       random,
       initialNote?.staff === "treble" ? initialNote : undefined,
-      extraPitchIds
+      extraPitchIds,
+      recentNotesByStaff.treble
     ),
   };
   if (sequences.treble.length < 2 || sequences.bass.length < 2) {
@@ -323,6 +349,9 @@ export function StaffDistanceRun({
   >(null);
   const [inputError, setInputError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  useEffect(() => {
+    if (isPaused) setIsChaseSettingsOpen(false);
+  }, [isPaused]);
   const chaseEvents = useMemo<ScoreChaseEvent[]>(
     () =>
       sequence.map((note, eventIndex) => ({
@@ -372,6 +401,7 @@ export function StaffDistanceRun({
   const questionStartedAtRef = useRef(performance.now());
   const questionElapsedRef = useRef(0);
   const advanceTimerRef = useRef<number | undefined>();
+  const wrongFeedbackTimerRef = useRef<number | undefined>();
   const endingRef = useRef(false);
   const handledExitRequestRef = useRef<number | null>(null);
   const finishRef = useRef<
@@ -481,6 +511,10 @@ export function StaffDistanceRun({
       endingRef.current = true;
       if (advanceTimerRef.current !== undefined) window.clearTimeout(advanceTimerRef.current);
       advanceTimerRef.current = undefined;
+      if (wrongFeedbackTimerRef.current !== undefined) {
+        window.clearTimeout(wrongFeedbackTimerRef.current);
+        wrongFeedbackTimerRef.current = undefined;
+      }
       pendingAdvanceRef.current = null;
       const activeNow = activeStartedAtRef.current;
       const finalActiveMs =
@@ -526,7 +560,8 @@ export function StaffDistanceRun({
             staffNotationMode,
             Math.random,
             lastNote,
-            extraPitchIds
+            extraPitchIds,
+            getRecentStaffNoteHistories(sequenceRef.current, [...breakIndicesRef.current])
           );
           const extension =
             trainingMode === "play"
@@ -557,6 +592,11 @@ export function StaffDistanceRun({
       setAttemptCount(0);
       setShowHint(false);
       setFeedback(null);
+      setStartingNoteWrong(false);
+      if (wrongFeedbackTimerRef.current !== undefined) {
+        window.clearTimeout(wrongFeedbackTimerRef.current);
+        wrongFeedbackTimerRef.current = undefined;
+      }
       firstResponseRef.current = null;
       questionAttemptsRef.current = [];
       wrongAttemptsRef.current = 0;
@@ -623,6 +663,13 @@ export function StaffDistanceRun({
         wrongAttemptsRef.current += 1;
         setAttemptCount(wrongAttemptsRef.current);
         setFeedback({ type: "wrong" });
+        if (wrongFeedbackTimerRef.current !== undefined) {
+          window.clearTimeout(wrongFeedbackTimerRef.current);
+        }
+        wrongFeedbackTimerRef.current = window.setTimeout(() => {
+          wrongFeedbackTimerRef.current = undefined;
+          setFeedback((current) => (current?.type === "wrong" ? null : current));
+        }, WRONG_FEEDBACK_DURATION_MS);
         if (wrongAttemptsRef.current >= 2) {
           usedHintRef.current = true;
           setShowHint(true);
@@ -714,6 +761,10 @@ export function StaffDistanceRun({
       setCompletedNoteIndices((current) =>
         current.includes(completedNoteIndex) ? current : [...current, completedNoteIndex]
       );
+      if (wrongFeedbackTimerRef.current !== undefined) {
+        window.clearTimeout(wrongFeedbackTimerRef.current);
+        wrongFeedbackTimerRef.current = undefined;
+      }
       setFeedback({ type: "correct", distance: targetDistance });
       pendingAdvanceRef.current = () => {
         if (mode === "fixed-count" && nextResults.length >= fixedCount) {
@@ -766,9 +817,20 @@ export function StaffDistanceRun({
         if (!isStartingNoteCorrect) {
           setStartingNoteWrong(true);
           setInputError("音高不对，请先弹奏谱面上的第一个音。");
+          if (wrongFeedbackTimerRef.current !== undefined) {
+            window.clearTimeout(wrongFeedbackTimerRef.current);
+          }
+          wrongFeedbackTimerRef.current = window.setTimeout(() => {
+            wrongFeedbackTimerRef.current = undefined;
+            setStartingNoteWrong(false);
+          }, WRONG_FEEDBACK_DURATION_MS);
           return;
         }
 
+        if (wrongFeedbackTimerRef.current !== undefined) {
+          window.clearTimeout(wrongFeedbackTimerRef.current);
+          wrongFeedbackTimerRef.current = undefined;
+        }
         hasPlayedStartingNoteRef.current = true;
         setHasPlayedStartingNote(true);
         setStartingNoteWrong(false);
@@ -882,6 +944,9 @@ export function StaffDistanceRun({
       pointerQuery.removeEventListener("change", onPointerChange);
       onRunningChange(false);
       if (advanceTimerRef.current !== undefined) window.clearTimeout(advanceTimerRef.current);
+      if (wrongFeedbackTimerRef.current !== undefined) {
+        window.clearTimeout(wrongFeedbackTimerRef.current);
+      }
       pendingAdvanceRef.current = null;
     };
   }, [onRunningChange]);
@@ -1006,11 +1071,15 @@ export function StaffDistanceRun({
           <p>{progressLabel}</p>
         </div>
         <div className="staff-distance-run-actions">
-          <button onClick={togglePause} type="button">
+          <button disabled={isPaused} onClick={togglePause} type="button">
             {isPaused ? <Play size={16} /> : <Pause size={16} />}
             {isPaused ? "继续" : "暂停"}
           </button>
-          <button onClick={() => void finish("manual-stop", true)} type="button">
+          <button
+            disabled={isPaused}
+            onClick={() => void finish("manual-stop", true)}
+            type="button"
+          >
             <Square size={15} />
             结束
           </button>
@@ -1018,6 +1087,7 @@ export function StaffDistanceRun({
             <button
               aria-label="追逐游戏设置"
               className="song-chase-settings-button"
+              disabled={isPaused}
               title="追逐游戏设置"
               type="button"
               onClick={() => setIsChaseSettingsOpen(true)}
@@ -1132,6 +1202,17 @@ export function StaffDistanceRun({
           )}
         </div>
       )}
+      {trainingMode === "play" && microphone.recoveryReloadAvailable ? (
+        !isPaused ? (
+          <button
+            className="practice-microphone-recovery-reload"
+            type="button"
+            onClick={() => void microphone.reloadAfterRecoveryFailure?.()}
+          >
+            刷新页面重试
+          </button>
+        ) : null
+      ) : null}
       {trainingMode === "look" ? (
         <aside aria-label="读谱提示" className="staff-distance-question-hints">
           <strong className="staff-distance-question-hints-title">读谱提示</strong>
@@ -1186,6 +1267,15 @@ export function StaffDistanceRun({
             <Play size={16} />
             继续
           </button>
+          {trainingMode === "play" && microphone.recoveryReloadAvailable ? (
+            <button
+              className="practice-microphone-recovery-reload"
+              type="button"
+              onClick={() => void microphone.reloadAfterRecoveryFailure?.()}
+            >
+              刷新页面重试
+            </button>
+          ) : null}
         </div>
       ) : null}
       {trainingMode === "play" ? (

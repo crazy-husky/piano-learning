@@ -169,9 +169,8 @@ export function PracticeChaseSettingsDialog({
           <input
             disabled={!draft.enabled}
             id="song-chase-start-count"
-            max={12}
-            min={2}
-            type="number"
+            inputMode="numeric"
+            type="text"
             value={startCountInput}
             onBlur={() => {
               const nextStartCount = normalizedStartCount();
@@ -179,6 +178,7 @@ export function PracticeChaseSettingsDialog({
               setDraft((current) => ({ ...current, startCount: nextStartCount }));
             }}
             onChange={(event) => setStartCountInput(event.target.value)}
+            onFocus={(event) => event.currentTarget.select()}
           />
           <span>个目标</span>
         </label>

@@ -369,6 +369,8 @@ type MicrophoneController = Pick<
   | "isListening"
   | "isPreparingSwiftF0"
   | "prepare"
+  | "recoveryReloadAvailable"
+  | "reloadAfterRecoveryFailure"
   | "start"
   | "suppressRecognizedNotes"
   | "status"
@@ -4404,6 +4406,7 @@ export function StaffGameView({
         isMidiInput={settings.inputMode === "midi"}
         wrongNoteExitLabel={roundPurposeRef.current === "wrong-note-review" ? "退出复习" : null}
         isStarting={isStarting}
+        isMicrophoneReloadAvailable={microphone.recoveryReloadAvailable}
         onDisableEffects={() => {
           const nextSettings = { ...settingsRef.current, gameEffectsEnabled: false };
           settingsRef.current = nextSettings;
@@ -4420,6 +4423,7 @@ export function StaffGameView({
         onResume={() => void resumeRound()}
         onExitWrongNoteReview={exitWrongNoteReview}
         onRetryInput={() => void (phase === "paused" ? resumeRound() : beginRound())}
+        onReloadMicrophone={() => void microphone.reloadAfterRecoveryFailure()}
         onRetryLevel={retryLevel}
         showLowFpsPrompt={showLowFpsPrompt}
         showPauseDialog={phase === "paused" && dialog === null && !gameError}

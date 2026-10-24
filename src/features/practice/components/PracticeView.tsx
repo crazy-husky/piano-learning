@@ -1973,6 +1973,15 @@ export function PracticeView({
               )}
             </span>
           )}
+          {practiceMicrophone.recoveryReloadAvailable ? (
+            <button
+              className="practice-microphone-recovery-reload"
+              type="button"
+              onClick={() => void practiceMicrophone.reloadAfterRecoveryFailure()}
+            >
+              刷新页面重试
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -2140,6 +2149,8 @@ export function PracticeView({
                       : "暂停期间麦克风已释放；点击空白处或按空格重新连接"
               : undefined
           }
+          recoveryReloadAvailable={practiceMicrophone.recoveryReloadAvailable}
+          onReloadAfterRecoveryFailure={() => void practiceMicrophone.reloadAfterRecoveryFailure()}
           showKeyboardShortcuts={!isMobileViewport}
         />
       ) : null}

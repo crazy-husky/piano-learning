@@ -262,6 +262,23 @@
   color: var(--accent-strong);
 }
 
+.staff-distance-count-presets .practice-free-custom-count-control {
+  min-height: 32px;
+  padding: 4px 10px;
+}
+
+.staff-distance-count-presets .practice-free-custom-count-control input {
+  width: 3em;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  outline: none;
+  padding: 0;
+  text-align: right;
+}
+
 .staff-distance-duration-input {
   display: inline-flex;
   align-items: center;
@@ -437,19 +454,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-
-.staff-distance-count-input {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.staff-distance-count-input input {
-  width: 80px;
-  min-height: 34px;
 }
 
 .staff-distance-action-controls {
@@ -694,7 +698,7 @@
 .staff-distance-pause-overlay {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 4;
   display: grid;
   align-content: center;
   justify-items: center;
@@ -1063,14 +1067,13 @@
     min-height: var(--practice-free-touch-target);
   }
 
-  .staff-distance-count-presets {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .staff-distance-count-presets button {
+    min-height: var(--practice-free-touch-target);
   }
 
-  .staff-distance-count-presets button {
-    min-width: 0;
+  .staff-distance-count-presets .practice-free-custom-count-control {
     min-height: var(--practice-free-touch-target);
+    padding-inline: 9px;
   }
 
   .staff-distance-action-controls {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DEFAULT_VOCAL_PITCH_CONFIG } from "../../../domain/vocalPitch";
+import { DEFAULT_VOCAL_PITCH_CONFIG, midiToFrequency } from "../../../domain/vocalPitch";
 import { classifyPitchFrame } from "./pitchFrameClassifier";
 import type { PitchFrameDetector } from "./pitchFrameTypes";
 import { createPracticeYinDetector, getPracticeYinInputFrameSize } from "./practiceYinDetector";
@@ -61,6 +61,7 @@ interface PracticeMicrophoneState {
   detectedNote: string | null;
   error: string | null;
   inputLevel: number;
+  recoveryReloadAvailable: boolean;
   status: PracticeMicrophoneStatus;
 }
 
@@ -127,7 +128,7 @@ const SWIFT_F0_ANALYSIS_TIMEOUT_MS = 10000;
 const PITCH_ANALYSIS_TIMEOUT_MS = 3000;
 const MICROPHONE_RECOVERY_TIMEOUT_MS = 8_000;
 const MICROPHONE_RECOVERY_RETRY_DELAY_MS = 350;
-const MICROPHONE_RECOVERY_RELOAD_DELAY_MS = 1_200;
+const MICROPHONE_RECOVERY_SELF_TEST_TIMEOUT_MS = 2_000;
 const MICROPHONE_BACKGROUND_RECOVERY_MIN_DURATION_MS = 1_200;
 const MICROPHONE_RECOVERY_RELOAD_KEY = "piano-learning.microphone-recovery-reload-attempted";
 const REQUESTED_AUDIO_CONSTRAINTS: MediaTrackConstraints = {
@@ -233,6 +234,31 @@ function calculateRms(samples: Float32Array): number {
   return Math.sqrt(energy / samples.length);
 }
 
+function createRecoverySelfTestSamples(
+  sampleRate: number,
+  sampleCount: number,
+  analysisGain: PracticeMicrophoneAnalysisGain
+): Float32Array<ArrayBuffer> {
+  const samples = new Float32Array(sampleCount);
+  const fundamentalHz = midiToFrequency(60);
+  const amplitude = 0.24 / Math.max(1, analysisGain) / 1.64;
+  for (let index = 0; index < sampleCount; index += 1) {
+    const timeSeconds = index / sampleRate;
+    const phase = 2 * Math.PI * fundamentalHz * timeSeconds;
+    const attack = Math.min(1, timeSeconds / 0.015);
+    const decay = Math.exp(-timeSeconds * 1.15);
+    samples[index] =
+      amplitude *
+      attack *
+      decay *
+      (Math.sin(phase) +
+        0.38 * Math.sin(phase * 2) +
+        0.18 * Math.sin(phase * 3) +
+        0.08 * Math.sin(phase * 4));
+  }
+  return samples;
+}
+
 function formatStartError(error: unknown): string {
   return error instanceof DOMException
     ? microphoneErrorMessage(error)
@@ -317,17 +343,19 @@ export function usePracticeMicrophoneInput(
     detectedNote: null,
     error: null,
     inputLevel: 0,
+    recoveryReloadAvailable: false,
     status: "idle",
   });
   const [isPreparingSwiftF0, setIsPreparingSwiftF0] = useState(false);
   const stateRef = useRef<PracticeMicrophoneStatus>("idle");
+  const recoveryReloadAvailableRef = useRef(false);
+  recoveryReloadAvailableRef.current = state.recoveryReloadAvailable;
   const mountedRef = useRef(false);
   const inputReconnectRequiredRef = useRef(false);
   const audioContextWasInterruptedRef = useRef(false);
   const lifecycleRecoveryPendingRef = useRef(false);
   const lifecycleRecoveryAttemptCountRef = useRef(0);
   const backgroundedAtRef = useRef<number | null>(null);
-  const recoveryReloadTimeoutRef = useRef<number | null>(null);
   const startGenerationRef = useRef(0);
   const inputGenerationRef = useRef(0);
   const startPromiseRef = useRef<Promise<boolean> | null>(null);
@@ -377,6 +405,10 @@ export function usePracticeMicrophoneInput(
   const captureMetadataRef = useRef<PracticeMicrophoneCaptureMetadata | null>(null);
   const recordedMetadataRef = useRef<PracticeMicrophoneCaptureMetadata | null>(null);
   const captureRecordingRef = useRef(false);
+  const recoverySelfTestRef = useRef<{
+    cancel: () => void;
+    onRecognized: (midiNoteNumber: number) => void;
+  } | null>(null);
   const captureStartedAtMonotonicRef = useRef(0);
   const captureLifecycleCleanupRef = useRef<(() => void) | null>(null);
   const activeFrameIntervalRef = useRef(30);
@@ -514,7 +546,12 @@ export function usePracticeMicrophoneInput(
       stateRef.current = status;
       errorRef.current = error;
       if (mountedRef.current) {
-        setState((current) => ({ ...current, error, status }));
+        setState((current) => ({
+          ...current,
+          error,
+          recoveryReloadAvailable: status === "error" ? current.recoveryReloadAvailable : false,
+          status,
+        }));
       }
     },
     []
@@ -522,6 +559,7 @@ export function usePracticeMicrophoneInput(
 
   const releaseDevices = useCallback(
     (captureStopReason: PracticeMicrophoneCaptureStopReason = "input-released"): void => {
+      recoverySelfTestRef.current?.cancel();
       if (animationRef.current !== null) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
@@ -624,11 +662,13 @@ export function usePracticeMicrophoneInput(
         : frequencyToNaturalPracticeNote;
       const candidateNote = convertFrequency(frequencyHz ?? 0);
       const liveNote = acceptedFrequency === null ? null : convertFrequency(acceptedFrequency);
+      const recoverySelfTest = recoverySelfTestRef.current;
       const suppressionWindows = recognizedNoteSuppressionWindowsRef.current.filter(
         (window) => window.endAtMs >= timeMs
       );
       recognizedNoteSuppressionWindowsRef.current = suppressionWindows;
       const isSuppressedPromptPitch = Boolean(
+        !recoverySelfTest &&
         candidateNote &&
         suppressionWindows.some(
           (window) =>
@@ -645,6 +685,11 @@ export function usePracticeMicrophoneInput(
         rms: analysisRms,
         timeMs,
       });
+
+      if (recoverySelfTest) {
+        if (recognized) recoverySelfTest.onRecognized(recognized.midiNoteNumber);
+        return;
+      }
 
       const outcome = describePracticeMicrophoneObservation(
         confidence,
@@ -1189,6 +1234,79 @@ export function usePracticeMicrophoneInput(
     animationRef.current = requestAnimationFrame(runLiveAnalysis);
   }, [postAnalysisFrame, postPracticePitchFrame, processObservation, recordInputFrame]);
 
+  const runRecoverySelfTest = useCallback(async (): Promise<boolean> => {
+    if (captureRecordingRef.current) return true;
+    const context = audioContextRef.current;
+    const stream = streamRef.current;
+    const analyser = analyserRef.current;
+    const silentGain = silentGainRef.current;
+    const track = stream?.getAudioTracks()[0];
+    if (
+      !context ||
+      context.state !== "running" ||
+      !stream?.active ||
+      !track ||
+      track.readyState !== "live" ||
+      track.muted ||
+      !track.enabled ||
+      !analyser ||
+      !silentGain ||
+      silentGain.gain.value !== 0
+    ) {
+      return false;
+    }
+
+    const sampleCount = Math.max(SWIFTF0_INPUT_FRAME_SIZE, Math.ceil(context.sampleRate * 0.5));
+    const audioBuffer = context.createBuffer(1, sampleCount, context.sampleRate);
+    audioBuffer.copyToChannel(
+      createRecoverySelfTestSamples(
+        context.sampleRate,
+        sampleCount,
+        activeConfigurationRef.current.analysisGain
+      ),
+      0
+    );
+    const source = context.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(analyser);
+
+    return await new Promise<boolean>((resolve) => {
+      let settled = false;
+      let timeoutId: number | null = null;
+      let probe: {
+        cancel: () => void;
+        onRecognized: (midiNoteNumber: number) => void;
+      } | null = null;
+      const finish = (passed: boolean): void => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId !== null) window.clearTimeout(timeoutId);
+        if (recoverySelfTestRef.current === probe) recoverySelfTestRef.current = null;
+        try {
+          source.stop();
+        } catch {
+          // The source may already have finished naturally.
+        }
+        source.disconnect();
+        resolve(passed);
+      };
+      probe = {
+        cancel: () => finish(false),
+        onRecognized: (midiNoteNumber: number): void => {
+          if (midiNoteNumber === 60) finish(true);
+        },
+      };
+      timeoutId = window.setTimeout(() => finish(false), MICROPHONE_RECOVERY_SELF_TEST_TIMEOUT_MS);
+      recoverySelfTestRef.current = probe;
+      source.onended = () => source.disconnect();
+      try {
+        source.start(context.currentTime);
+      } catch {
+        finish(false);
+      }
+    });
+  }, []);
+
   const start = useCallback(
     (options: { includeAccidentals?: boolean } = {}): Promise<boolean> => {
       includeAccidentalsRef.current = options.includeAccidentals === true;
@@ -1489,6 +1607,9 @@ export function usePracticeMicrophoneInput(
           }
           updateStatus("listening");
           animationRef.current = requestAnimationFrame(runLiveAnalysis);
+          if (recoveringFromBackground && !(await runRecoverySelfTest())) {
+            throw new Error("后台恢复后的无声识别自检未通过。");
+          }
           return true;
         } catch (error) {
           stream?.getTracks().forEach((track) => track.stop());
@@ -1516,10 +1637,6 @@ export function usePracticeMicrophoneInput(
           lifecycleRecoveryAttemptCountRef.current = 0;
           backgroundedAtRef.current = null;
           inputReconnectRequiredRef.current = false;
-          if (recoveryReloadTimeoutRef.current !== null) {
-            window.clearTimeout(recoveryReloadTimeoutRef.current);
-            recoveryReloadTimeoutRef.current = null;
-          }
           try {
             window.sessionStorage.removeItem(MICROPHONE_RECOVERY_RELOAD_KEY);
           } catch {
@@ -1560,44 +1677,10 @@ export function usePracticeMicrophoneInput(
           return false;
         }
 
-        let recoveryCheckpointSaved = true;
-        try {
-          await recoveryOptionsRef.current.beforeRecoveryReload?.();
-        } catch {
-          recoveryCheckpointSaved = false;
+        updateStatus("error", "麦克风自动恢复和识别检测都没成功，请刷新页面后再试。");
+        if (mountedRef.current) {
+          setState((current) => ({ ...current, recoveryReloadAvailable: true }));
         }
-        if (
-          !mountedRef.current ||
-          !lifecycleRecoveryPendingRef.current ||
-          stateRef.current !== "error"
-        ) {
-          return false;
-        }
-        try {
-          window.sessionStorage.setItem(MICROPHONE_RECOVERY_RELOAD_KEY, "1");
-        } catch {
-          updateStatus("error", "麦克风无法恢复，请关闭当前页面后重新进入。");
-          return false;
-        }
-        updateStatus(
-          "error",
-          recoveryCheckpointSaved
-            ? "麦克风恢复失败，正在刷新页面；练习会记为中断，游戏本局会重新开始。"
-            : "练习中断记录未能保存，仍会刷新页面尝试恢复麦克风…"
-        );
-        recoveryReloadTimeoutRef.current = window.setTimeout(() => {
-          recoveryReloadTimeoutRef.current = null;
-          if (!mountedRef.current || !lifecycleRecoveryPendingRef.current) return;
-          if (stateRef.current !== "error") {
-            try {
-              window.sessionStorage.removeItem(MICROPHONE_RECOVERY_RELOAD_KEY);
-            } catch {
-              // A later recovery attempt can still proceed without session storage.
-            }
-            return;
-          }
-          window.location.reload();
-        }, MICROPHONE_RECOVERY_RELOAD_DELAY_MS);
         return false;
       })();
       pendingRef.current = pending;
@@ -1613,10 +1696,29 @@ export function usePracticeMicrophoneInput(
       fail,
       recordCaptureLifecycleEvent,
       releaseDevices,
+      runRecoverySelfTest,
       runLiveAnalysis,
       updateStatus,
     ]
   );
+  const startRef = useRef(start);
+  startRef.current = start;
+
+  const reloadAfterRecoveryFailure = useCallback(async (): Promise<void> => {
+    if (!state.recoveryReloadAvailable) return;
+    try {
+      await recoveryOptionsRef.current.beforeRecoveryReload?.();
+    } catch {
+      // Reload can still proceed; the next page will report if recovery failed again.
+    }
+    if (!mountedRef.current) return;
+    try {
+      window.sessionStorage.setItem(MICROPHONE_RECOVERY_RELOAD_KEY, "1");
+    } catch {
+      // Session storage prevents a repeated reload loop but is not required to refresh.
+    }
+    window.location.reload();
+  }, [state.recoveryReloadAvailable]);
 
   useEffect(() => {
     const configuration = resolvePracticeMicrophoneConfiguration(preferences);
@@ -1698,16 +1800,13 @@ export function usePracticeMicrophoneInput(
         preserveError?: boolean;
       } = {}
     ): void => {
+      const keepRecoveryReloadAction = recoveryReloadAvailableRef.current;
       const recoveryWasPending = lifecycleRecoveryPendingRef.current;
-      lifecycleRecoveryPendingRef.current = false;
+      if (!keepRecoveryReloadAction) lifecycleRecoveryPendingRef.current = false;
       lifecycleRecoveryAttemptCountRef.current = 0;
       backgroundedAtRef.current = null;
       inputReconnectRequiredRef.current = false;
-      if (recoveryReloadTimeoutRef.current !== null) {
-        window.clearTimeout(recoveryReloadTimeoutRef.current);
-        recoveryReloadTimeoutRef.current = null;
-      }
-      if (recoveryWasPending) {
+      if (recoveryWasPending && !keepRecoveryReloadAction) {
         try {
           window.sessionStorage.removeItem(MICROPHONE_RECOVERY_RELOAD_KEY);
         } catch {
@@ -1717,6 +1816,9 @@ export function usePracticeMicrophoneInput(
       startGenerationRef.current += 1;
       releaseDevices(options.captureStopReason ?? "input-released");
       updateStatus("idle", options.preserveError ? errorRef.current : null);
+      if (keepRecoveryReloadAction && mountedRef.current) {
+        setState((current) => ({ ...current, recoveryReloadAvailable: true }));
+      }
     },
     [releaseDevices, updateStatus]
   );
@@ -2024,6 +2126,7 @@ export function usePracticeMicrophoneInput(
       }
       if (!lifecycleRecoveryPendingRef.current) return;
       const status = stateRef.current;
+      if (status === "requesting" && startPromiseRef.current) return;
       const isListening = status === "listening";
       const isConnectingWithStream = status === "requesting" && streamRef.current !== null;
       if (!isListening && !isConnectingWithStream) {
@@ -2057,7 +2160,7 @@ export function usePracticeMicrophoneInput(
         return;
       }
       if (isListening || isConnectingWithStream) {
-        fail("页面从后台恢复后，麦克风连接已中断，需要重新连接。", "microphone-interrupted");
+        void startRef.current({ includeAccidentals: includeAccidentalsRef.current });
       }
     };
     const handleVisibilityChange = (): void => recoverInterruptedInput();
@@ -2076,10 +2179,6 @@ export function usePracticeMicrophoneInput(
       window.removeEventListener("blur", handleWindowBlur);
       window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener("pagehide", markInputForReconnect);
-      if (recoveryReloadTimeoutRef.current !== null) {
-        window.clearTimeout(recoveryReloadTimeoutRef.current);
-        recoveryReloadTimeoutRef.current = null;
-      }
       startGenerationRef.current += 1;
       releaseDevices("component-unmounted");
       workerUnsubscribeRef.current?.();
@@ -2089,7 +2188,7 @@ export function usePracticeMicrophoneInput(
       pitchWorkerRef.current?.terminate();
       pitchWorkerRef.current = null;
     };
-  }, [fail, releaseDevices]);
+  }, [releaseDevices]);
 
   const activeAlgorithm =
     state.status === "listening" || state.status === "requesting"
@@ -2103,6 +2202,7 @@ export function usePracticeMicrophoneInput(
     copyDiagnosticSummary,
     isListening: state.status === "listening",
     isPreparingSwiftF0,
+    reloadAfterRecoveryFailure,
     resetCapture,
     saveRecentCapture,
     startCapture,

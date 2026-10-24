@@ -8,6 +8,7 @@ interface StaffGameStatusOverlaysProps {
   isMidiInput: boolean;
   gameArtStyle: CSSProperties;
   isStarting: boolean;
+  isMicrophoneReloadAvailable: boolean;
   showLowFpsPrompt: boolean;
   showPauseDialog: boolean;
   wrongNoteExitLabel: string | null;
@@ -15,6 +16,7 @@ interface StaffGameStatusOverlaysProps {
   touchGameLayout: boolean;
   onReturnToReady: () => void;
   onRetryInput: () => void;
+  onReloadMicrophone: () => void;
   onKeepEffects: () => void;
   onDisableEffects: () => void;
   onResume: () => void;
@@ -31,6 +33,7 @@ export function StaffGameStatusOverlays({
   isMidiInput,
   gameArtStyle,
   isStarting,
+  isMicrophoneReloadAvailable,
   showLowFpsPrompt,
   showPauseDialog,
   wrongNoteExitLabel,
@@ -38,6 +41,7 @@ export function StaffGameStatusOverlays({
   touchGameLayout,
   onReturnToReady,
   onRetryInput,
+  onReloadMicrophone,
   onKeepEffects,
   onDisableEffects,
   onResume,
@@ -82,6 +86,15 @@ export function StaffGameStatusOverlays({
                       "重新检测"
                     )}
                   </button>
+                  {!isMidiInput && isMicrophoneReloadAvailable ? (
+                    <button
+                      className="staff-game-secondary"
+                      onClick={onReloadMicrophone}
+                      type="button"
+                    >
+                      刷新页面
+                    </button>
+                  ) : null}
                 </div>
               </section>
             </div>,

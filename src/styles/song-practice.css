@@ -1051,7 +1051,7 @@
   font-weight: 750;
 }
 
-.song-chase-start-count input[type="number"] {
+.song-chase-start-count input {
   width: 76px;
   min-height: 38px;
   box-sizing: border-box;

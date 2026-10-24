@@ -700,7 +700,7 @@ export function makeDefaultSettings(): AppSettings {
     defaultMode: "fixed-duration",
     promptDisplayMode: "staff-page",
     promptNoteDuration: "quarter",
-    fixedCount: 20,
+    fixedCount: 30,
     fixedDurationSeconds: 60,
     autoPlayTarget: false,
     playAnswerNote: true,
