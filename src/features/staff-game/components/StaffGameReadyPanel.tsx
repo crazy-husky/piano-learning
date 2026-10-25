@@ -83,6 +83,7 @@ type StaffGameReadyPanelProps = SharedArtwork &
         difficulty: GameDifficulty;
         notePoolScope: StaffGameNotePoolScope;
         learningQuestionCount: number;
+        learningPitchCount: number;
         arcadeDefaultDurationMs: number;
         isPreparingMicrophone: boolean;
         isStarting: boolean;
@@ -479,9 +480,9 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
                 }
                 value={props.notePoolScope}
               >
-                <option value="current-group">当前组</option>
-                <option value="all-history-current-clef">当前谱号全部音域</option>
-                <option value="all-history">全部已解锁音</option>
+                <option value="current-group">仅当前组已解锁音符</option>
+                <option value="all-history-current-clef">当前谱号全部已解锁音符</option>
+                <option value="all-history">全部已解锁音符</option>
               </select>
             </label>
             {props.challengeMode === "arcade" ? (
@@ -515,8 +516,11 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             {props.challengeMode === "learning" ? (
               <>
                 <span>
-                  覆盖 {props.learningQuestionCount / 2} 个音，每个音出现 2 次，共{" "}
-                  {props.learningQuestionCount} 题；
+                  覆盖 {props.learningPitchCount} 个音高
+                  {props.learningQuestionCount / 2 > props.learningPitchCount
+                    ? `（${props.learningQuestionCount / 2} 种写法）`
+                    : ""}
+                  ，每种写法出现 2 次，共 {props.learningQuestionCount} 题；
                 </span>
                 <span>完成全部题目后生成学习报告。</span>
               </>

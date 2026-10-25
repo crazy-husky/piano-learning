@@ -126,12 +126,17 @@ import {
   PITCH_NAMES,
   RUSH_FALL_SPEED_MULTIPLIER,
   RUSH_MODE_COMBO_THRESHOLD,
+  learningTestQuestionCount,
   learningTestNoteSequence,
   gameDurationMsForLevel,
   gameLevelForNotePoolScope,
   gameDifficultyPreset,
   gameNoteFromMidi,
   notePoolCandidates,
+  staffGamePitchLabel,
+  staffGamePitchLevelLabel,
+  staffGamePitchSpellingName,
+  staffGamePitchStaffLetter,
   staffGameSolfegeLabel,
   starsForAccuracy,
   type StaffGameNotePoolScope,
@@ -283,9 +288,9 @@ interface StaffGameWrongNoteReviewCondition {
 }
 
 const STAFF_GAME_REVIEW_SCOPE_LABELS: Record<StaffGameNotePoolScope, string> = {
-  "current-group": "当前组",
-  "all-history": "全部音域",
-  "all-history-current-clef": "当前谱号全部",
+  "current-group": "仅当前组已解锁音符",
+  "all-history": "全部已解锁音符",
+  "all-history-current-clef": "当前谱号全部已解锁音符",
 };
 
 function staffGameWrongNoteReviewConditionId(
@@ -769,7 +774,7 @@ function saveProgress(progress: StaffGameProgress): boolean {
 }
 
 function noteLabel(note: GameNote): string {
-  return `${note.name}${note.octave}`;
+  return staffGamePitchLabel(note);
 }
 
 function virtualKeyLabel(pitch: PianoKeyName, mode: GameDisplayMode): string {
@@ -782,7 +787,7 @@ function virtualKeyLabel(pitch: PianoKeyName, mode: GameDisplayMode): string {
 }
 
 function NoteStaff({ note }: { note: GameNote }): JSX.Element {
-  const noteLetter = note.name[0] as NoteName;
+  const noteLetter = staffGamePitchStaffLetter(note);
   const diatonicStep = (note.octave - 4) * 7 + NOTE_NAMES.indexOf(noteLetter);
   const clef = note.midi < 60 ? "bass" : "treble";
   const staffBottomStep = clef === "bass" ? -10 : 2;
@@ -802,7 +807,8 @@ function NoteStaff({ note }: { note: GameNote }): JSX.Element {
   const noteX = 132;
   const stemX = stemGoesUp ? noteX + 9 : noteX - 9;
   const stemEndY = yForStep(displayStep + (stemGoesUp ? 6 : -6));
-  const accidental = note.name.includes("#") ? "♯" : note.name.includes("b") ? "♭" : null;
+  const spelledName = staffGamePitchSpellingName(note);
+  const accidental = note.spelling === "flat" ? "♭" : spelledName.includes("#") ? "♯" : null;
   const clefFontSize = stepSpacing * 8;
   const clefAnchorStep = clef === "bass" ? staffTopStep - 2 : staffBottomStep + 2;
   const staffLines = Array.from({ length: 5 }, (_, index) => staffBottomStep + index * 2);
@@ -847,9 +853,10 @@ function NoteStaff({ note }: { note: GameNote }): JSX.Element {
         <text
           className="staff-game-accidental"
           dominantBaseline="central"
-          x="92"
+          textAnchor="end"
+          x="113"
           y={noteY}
-          style={{ fontSize: stepSpacing * 3.4 }}
+          style={{ fontSize: stepSpacing * 4.4 }}
         >
           {accidental}
         </text>
@@ -3425,7 +3432,7 @@ export function StaffGameView({
   }, [closeGameDialog, dialog, handleVirtualKey, pauseRound, resumeRound]);
 
   const focusPitch = GAME_NOTE_PROGRESSION[level - 1];
-  const focusNote = `${focusPitch.name}${focusPitch.octave}`;
+  const focusNote = staffGamePitchLevelLabel(focusPitch);
   const selectedSong =
     STAFF_GAME_SONGS.find((song) => song.id === selectedSongId) ?? STAFF_GAME_SONGS[0];
   const selectedSongPreviewNote = {
@@ -3461,10 +3468,8 @@ export function StaffGameView({
     selectedSong.noteMidis.length > 0
       ? (songFirstTryHits * 100) / selectedSong.noteMidis.length
       : 0;
-  const challengePoolSize = new Set(
-    notePoolCandidates(level, settings.notePoolScope).map((note) => note.midi)
-  ).size;
-  const learningQuestionTargetCount = challengePoolSize * 2;
+  const learningQuestionTargetCount = learningTestQuestionCount(level, settings.notePoolScope);
+  const learningPitchTargetCount = notePoolCandidates(level, settings.notePoolScope).length;
   const questionTargetCount =
     phase === "ready"
       ? learningQuestionTargetCount
@@ -4025,6 +4030,7 @@ export function StaffGameView({
               onStartReview={startWrongNoteReview}
               onSelectReadyMode={setReadyWrongNoteMode}
               learningQuestionCount={learningQuestionTargetCount}
+              learningPitchCount={learningPitchTargetCount}
               notePoolScope={settings.notePoolScope}
               readyMode={readyWrongNoteMode}
               reviewNotes={wrongNoteReviewPreviewNotes.map((note) => ({

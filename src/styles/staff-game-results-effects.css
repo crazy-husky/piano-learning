@@ -1977,7 +1977,7 @@ body.rush-mode .staff-game-rush-vignette {
 
 .staff-game-settings-dialog .staff-game-note-pool-setting .staff-game-difficulty-select {
   flex: 0 0 auto;
-  width: min(180px, 48%);
+  width: min(220px, 58%);
 }
 
 .staff-game-wrong-note-notice-backdrop {

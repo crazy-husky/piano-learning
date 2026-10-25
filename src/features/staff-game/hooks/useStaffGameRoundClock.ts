@@ -18,6 +18,7 @@ import {
   type StaffGameNotePoolScope,
   type StaffGameNoteSchedulingStrategy,
   type StaffGamePitch,
+  type StaffGamePitchSpelling,
 } from "../logic/staffGameRules";
 import type { StaffGameSoundName } from "./useStaffGameAudio";
 
@@ -27,6 +28,7 @@ export interface StaffGameTarget {
   midi: number;
   name: PianoKeyName;
   octave: number;
+  spelling?: StaffGamePitchSpelling;
   token: number;
   centerX: number;
   spawnAt: number;
@@ -245,7 +247,7 @@ export function useStaffGameRoundClock({
       roundMetricsRef.current.firstInputByToken.set(next.token, {
         token: next.token,
         midi: next.midi,
-        note: noteLabel(next),
+        note: `${next.name}${next.octave}`,
         firstInputCorrect: null,
         missed: false,
         attempts: [],
@@ -273,7 +275,6 @@ export function useStaffGameRoundClock({
       playfieldRef,
       notePoolScopeRef,
       noteSchedulingStrategyRef,
-      noteLabel,
       recentNoteMidisRef,
       roundMetricsRef,
       runSegmentStartedAtRef,

@@ -6,11 +6,114 @@ export type { StaffGameChallengeMode };
 export type StaffGameArcadeDuration = "level-default" | 60_000 | 120_000 | 180_000;
 export type StaffGameNotePoolScope = "current-group" | "all-history" | "all-history-current-clef";
 export type StaffGameNoteSchedulingStrategy = "random" | "system";
+export type StaffGamePitchSpelling = "sharp" | "flat";
 
 export interface StaffGamePitch {
   midi: number;
   name: PianoKeyName;
   octave: number;
+  /** The displayed spelling for a black key; the pitch name stays canonical for scoring and data. */
+  spelling?: StaffGamePitchSpelling;
+}
+
+const BLACK_KEY_PITCH_CLASSES = new Set([1, 3, 6, 8, 10]);
+const FLAT_PITCH_NAMES: Partial<Record<PianoKeyName, string>> = {
+  "C#": "Db",
+  "D#": "Eb",
+  "F#": "Gb",
+  "G#": "Ab",
+  "A#": "Bb",
+};
+const FLAT_STAFF_LETTERS: Partial<Record<PianoKeyName, NoteName>> = {
+  "C#": "D",
+  "D#": "E",
+  "F#": "G",
+  "G#": "A",
+  "A#": "B",
+};
+
+export function isStaffGameBlackKey(note: Pick<StaffGamePitch, "midi">): boolean {
+  return BLACK_KEY_PITCH_CLASSES.has(((note.midi % 12) + 12) % 12);
+}
+
+export function staffGamePitchSpellingVariants(note: StaffGamePitch): StaffGamePitch[] {
+  if (!isStaffGameBlackKey(note)) return [{ ...note }];
+  return [
+    { ...note, spelling: "sharp" },
+    { ...note, spelling: "flat" },
+  ];
+}
+
+export function randomStaffGamePitchSpelling(note: StaffGamePitch): StaffGamePitch {
+  const variants = staffGamePitchSpellingVariants(note);
+  return { ...(variants[Math.floor(Math.random() * variants.length)] ?? note) };
+}
+
+export function staffGamePitchSpellingName(note: StaffGamePitch): string {
+  return note.spelling === "flat" ? (FLAT_PITCH_NAMES[note.name] ?? note.name) : note.name;
+}
+
+export function staffGamePitchLabel(note: StaffGamePitch): string {
+  return `${staffGamePitchSpellingName(note).replace("#", "♯").replace("b", "♭")}${note.octave}`;
+}
+
+export function staffGamePitchLevelLabel(note: StaffGamePitch): string {
+  const sharpLabel = staffGamePitchLabel({ ...note, spelling: "sharp" });
+  if (!isStaffGameBlackKey(note)) return sharpLabel;
+  const flatLabel = staffGamePitchLabel({ ...note, spelling: "flat" });
+  return `${sharpLabel} / ${flatLabel}`;
+}
+
+export function staffGamePitchStaffLetter(note: StaffGamePitch): NoteName {
+  return note.spelling === "flat"
+    ? (FLAT_STAFF_LETTERS[note.name] ?? (note.name[0] as NoteName))
+    : (note.name[0] as NoteName);
+}
+
+export function learningTestQuestionCount(
+  level: number,
+  notePoolScope: StaffGameNotePoolScope
+): number {
+  return notePoolCandidates(level, notePoolScope).reduce(
+    (total, note) => total + staffGamePitchSpellingVariants(note).length * 2,
+    0
+  );
+}
+
+function shuffledLearningTargets(notes: StaffGamePitch[]): StaffGamePitch[] {
+  const hasAdjacentMatch = (
+    items: StaffGamePitch[],
+    key: (note: StaffGamePitch) => string
+  ): boolean => items.some((note, index) => key(note) === key(items[(index + 1) % items.length]!));
+  const midiKey = (note: StaffGamePitch): string => String(note.midi);
+  const spellingKey = (note: StaffGamePitch): string =>
+    `${note.midi}:${note.spelling ?? "natural"}`;
+
+  // Avoid consecutive enharmonic spellings of the same sounding key whenever
+  // the selected pool makes that possible, including across the repeated half.
+  for (let attempt = 0; attempt < 128; attempt += 1) {
+    const shuffled = shuffledItems(notes);
+    if (!hasAdjacentMatch(shuffled, midiKey)) return shuffled;
+  }
+
+  // A one-pitch pool cannot avoid repeating its MIDI value. Still alternate
+  // enharmonic labels where possible so the same displayed target does not repeat.
+  for (let attempt = 0; attempt < 128; attempt += 1) {
+    const shuffled = shuffledItems(notes);
+    if (!hasAdjacentMatch(shuffled, spellingKey)) return shuffled;
+  }
+
+  return shuffledItems(notes);
+}
+
+function balanceBlackKeySpellings(notes: StaffGamePitch[]): StaffGamePitch[] {
+  const occurrencesByMidi = new Map<number, number>();
+  return notes.map((note) => {
+    if (!isStaffGameBlackKey(note)) return { ...note };
+    const occurrence = occurrencesByMidi.get(note.midi) ?? 0;
+    occurrencesByMidi.set(note.midi, occurrence + 1);
+    return { ...note, spelling: occurrence % 2 === 0 ? "sharp" : "flat" };
+  });
 }
 
 export const GAME_LEVEL_COUNT = 60;
@@ -194,10 +297,11 @@ export function learningTestNoteSequence(
   level: number,
   notePoolScope: StaffGameNotePoolScope
 ): StaffGamePitch[] {
-  const uniqueNotes = new Map(
+  const uniqueNotes = new Map<number, StaffGamePitch>(
     notePoolCandidates(level, notePoolScope).map((note) => [note.midi, note] as const)
   );
-  const shuffledNotes = shuffledItems([...uniqueNotes.values()]);
+  const spelledNotes = [...uniqueNotes.values()].flatMap(staffGamePitchSpellingVariants);
+  const shuffledNotes = shuffledLearningTargets(spelledNotes);
   const sequence =
     shuffledNotes.length > 1
       ? [...shuffledNotes, ...shuffledNotes]
@@ -234,7 +338,10 @@ export function notePoolCandidates(
   if (!focusNote) return [];
   if (notePoolScope === "current-group") {
     return unlockedNotes.filter(
-      (note) => note.octave === focusNote.octave && note.midi <= focusNote.midi
+      (note) =>
+        note.octave === focusNote.octave &&
+        note.name.includes("#") === focusNote.name.includes("#") &&
+        note.midi <= focusNote.midi
     );
   }
   if (notePoolScope === "all-history-current-clef") {
@@ -263,7 +370,7 @@ export function shuffledNoteBag(
   if (!focusNote) return [];
   const poolNotes = notePoolCandidates(level, notePoolScope);
   if (noteSchedulingStrategy === "random") {
-    return shuffledItems(poolNotes.map((note) => ({ ...note })));
+    return shuffledItems(poolNotes.map(randomStaffGamePitchSpelling));
   }
 
   const bag: typeof GAME_NOTE_PROGRESSION = [];
@@ -302,7 +409,7 @@ export function shuffledNoteBag(
     }
   }
 
-  return shuffledItems(bag);
+  return balanceBlackKeySpellings(shuffledItems(bag));
 }
 
 function systemNoteWeights(
@@ -374,7 +481,9 @@ export function drawNextWrongNoteReviewNote(
   const chosenIndex = eligibleIndices.length
     ? eligibleIndices[Math.floor(Math.random() * eligibleIndices.length)]!
     : allowedIndices[allowedIndices.length - 1]!;
-  return noteBag.splice(chosenIndex, 1)[0] ?? null;
+  const selected = noteBag.splice(chosenIndex, 1)[0];
+  if (!selected) return null;
+  return randomStaffGamePitchSpelling(selected);
 }
 
 export function drawNextNote(
@@ -401,7 +510,7 @@ export function drawNextNote(
   );
   if (allowedCandidates.length === 0) return null;
   // A pool with one distinct note has no legal alternative, so the repeat guard must yield.
-  if (candidates.length <= 1) {
+  if (new Set(candidates.map((note) => note.midi)).size <= 1) {
     let index = notePool.length - 1;
     while (index >= 0 && temporarilyExcludedMidiNotes.has(notePool[index]!.midi)) index -= 1;
     return index < 0 ? null : (notePool.splice(index, 1)[0] ?? null);
@@ -418,7 +527,7 @@ export function drawNextNote(
       const notesAlreadyInBag = new Set(notePool.map((note) => note.midi));
       const missingNotes = allowedCandidates
         .filter((note) => !notesAlreadyInBag.has(note.midi))
-        .map((note) => ({ ...note }));
+        .map(randomStaffGamePitchSpelling);
       notePool.push(...shuffledItems(missingNotes));
       eligibleIndices = notePool.flatMap((note, index) =>
         !temporarilyExcludedMidiNotes.has(note.midi) &&
@@ -453,7 +562,7 @@ export function drawNextNote(
     );
     const fallbackNote = chooseSystemWeightedNote(safeCandidates, level, notePoolScope);
     if (!fallbackNote) return null;
-    notePool.push(fallbackNote);
+    notePool.push(randomStaffGamePitchSpelling(fallbackNote));
     return notePool.pop() ?? null;
   }
   const chosenIndex = eligibleIndices[Math.floor(Math.random() * eligibleIndices.length)];

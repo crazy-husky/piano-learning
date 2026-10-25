@@ -133,6 +133,7 @@ const STAFF_VEX_DURATIONS: Record<StaffPageNoteDuration, string> = {
 const NEUTRAL_COLOR = "#211c18";
 const COMPLETE_COLOR = "#2f8f5f";
 const WRONG_COLOR = "#c84c3d";
+const AUTO_FOLLOW_RESUME_DELAY_MS = 2000;
 type StaffPageTickable = GhostNote | StaveNote;
 interface StaffPagePalette {
   active: string;
@@ -1288,9 +1289,13 @@ export function StaffPagePrompt({
   const rendererTargetRef = useRef<HTMLDivElement | null>(null);
   const [virtualRowWindow, setVirtualRowWindow] = useState({ start: 0, end: 6 });
   const [rowPlaybackButtonCenters, setRowPlaybackButtonCenters] = useState<readonly number[]>([]);
+  const [playbackFollowDelayComplete, setPlaybackFollowDelayComplete] = useState(true);
   const lastManualScrollAtRef = useRef(0);
   const manualScrollAwayRef = useRef(false);
   const previousFollowRowIndexRef = useRef<number | undefined>(undefined);
+  const previousPlayingRowIndexRef = useRef<number | null>(null);
+  const pendingPlaybackFollowRef = useRef(false);
+  const playbackFollowDelayTimerRef = useRef<number | null>(null);
   const autoScrollAnimationFrameRef = useRef(0);
   const trackedNoteIndexRef = useRef(trackedNoteIndex);
   const onTrackedNoteVisibilityChangeRef = useRef(onTrackedNoteVisibilityChange);
@@ -1451,6 +1456,10 @@ export function StaffPagePrompt({
     return () => {
       window.removeEventListener("wheel", markManualScroll);
       window.removeEventListener("touchmove", markManualScroll);
+      if (playbackFollowDelayTimerRef.current !== null) {
+        window.clearTimeout(playbackFollowDelayTimerRef.current);
+        playbackFollowDelayTimerRef.current = null;
+      }
       if (autoScrollAnimationFrameRef.current !== 0) {
         window.cancelAnimationFrame(autoScrollAnimationFrameRef.current);
         autoScrollAnimationFrameRef.current = 0;
@@ -1459,24 +1468,50 @@ export function StaffPagePrompt({
   }, []);
 
   useEffect(() => {
+    if (playingRowIndex !== null) {
+      previousPlayingRowIndexRef.current = playingRowIndex;
+      if (playbackFollowDelayTimerRef.current !== null) {
+        window.clearTimeout(playbackFollowDelayTimerRef.current);
+        playbackFollowDelayTimerRef.current = null;
+      }
+      setPlaybackFollowDelayComplete(false);
+      return;
+    }
+
+    if (previousPlayingRowIndexRef.current === null) return;
+    previousPlayingRowIndexRef.current = null;
+    setPlaybackFollowDelayComplete(false);
+    playbackFollowDelayTimerRef.current = window.setTimeout(() => {
+      playbackFollowDelayTimerRef.current = null;
+      setPlaybackFollowDelayComplete(true);
+    }, AUTO_FOLLOW_RESUME_DELAY_MS);
+  }, [playingRowIndex]);
+
+  useEffect(() => {
     if (autoScrollAnimationFrameRef.current !== 0) {
       window.cancelAnimationFrame(autoScrollAnimationFrameRef.current);
       autoScrollAnimationFrameRef.current = 0;
     }
     const previousRowIndex = previousFollowRowIndexRef.current;
     previousFollowRowIndexRef.current = followRowIndex;
+    const didFollowRowChange =
+      previousRowIndex !== undefined && previousRowIndex !== followRowIndex;
     if (
       followRowIndex === undefined ||
       followRowIndex < 0 ||
-      previousRowIndex === undefined ||
-      previousRowIndex === followRowIndex
+      (!didFollowRowChange && !pendingPlaybackFollowRef.current)
     ) {
       return;
     }
+    if (playingRowIndex !== null || !playbackFollowDelayComplete) {
+      pendingPlaybackFollowRef.current = true;
+      return;
+    }
+    pendingPlaybackFollowRef.current = false;
     if (manualScrollAwayRef.current) return;
     if (
       lastManualScrollAtRef.current > 0 &&
-      performance.now() - lastManualScrollAtRef.current < 900
+      performance.now() - lastManualScrollAtRef.current < AUTO_FOLLOW_RESUME_DELAY_MS
     ) {
       return;
     }
@@ -1534,7 +1569,7 @@ export function StaffPagePrompt({
       }
     };
     autoScrollAnimationFrameRef.current = window.requestAnimationFrame(animateScroll);
-  }, [followRowIndex]);
+  }, [followRowIndex, playbackFollowDelayComplete, playingRowIndex]);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -1672,7 +1707,7 @@ export function StaffPagePrompt({
         });
         if (
           lastManualScrollAtRef.current > 0 &&
-          performance.now() - lastManualScrollAtRef.current < 900
+          performance.now() - lastManualScrollAtRef.current < AUTO_FOLLOW_RESUME_DELAY_MS
         ) {
           manualScrollAwayRef.current = !isVisible;
         } else if (isVisible) {
@@ -2399,6 +2434,25 @@ export function StaffPagePrompt({
         ? null
         : (cursorRowsRef.current.get(firstEventIndex) ?? null);
     };
+    const chaseVisualRowIndex = (
+      staffCursor: ScoreChaseCursor["staffCursors"][Staff]
+    ): number | null => {
+      if (!staffCursor) return null;
+      const currentRowIndex = rowIndexFor(staffCursor.currentEventIndices);
+      if (currentRowIndex === null || staffCursor.caught) return currentRowIndex;
+      const nextRowIndex = rowIndexFor(staffCursor.nextEventIndices ?? []);
+      const hasNextTarget =
+        staffCursor.nextEventIndices !== null &&
+        targetPointFor(staffCursor.staff, staffCursor.nextEventIndices) !== null;
+      const hasTimedSegment =
+        staffCursor.endAudioTime !== null && staffCursor.endAudioTime > staffCursor.startAudioTime;
+      return hasTimedSegment &&
+        hasNextTarget &&
+        nextRowIndex !== null &&
+        nextRowIndex !== currentRowIndex
+        ? nextRowIndex
+        : currentRowIndex;
+    };
 
     const landOnEvent = (
       staff: Staff,
@@ -2617,8 +2671,8 @@ export function StaffPagePrompt({
       } else if (chaseCursor) {
         cursorLayersRef.current.forEach((layer) => {
           const staffCursor = chaseCursor.staffCursors[layer.staff];
-          const currentRowIndex = staffCursor ? rowIndexFor(staffCursor.currentEventIndices) : null;
-          const isActiveRow = currentRowIndex === layer.rowIndex;
+          const visibleRowIndex = chaseVisualRowIndex(staffCursor);
+          const isActiveRow = visibleRowIndex === layer.rowIndex;
           setPlaybackCursorLayerVisibility(layer, isActiveRow);
           if (!isActiveRow) layer.element.classList.remove("is-catching");
         });
@@ -2639,8 +2693,6 @@ export function StaffPagePrompt({
           }
           const rowIndex = rowIndexFor(staffCursor.currentEventIndices);
           if (rowIndex === null) return;
-          const layer = cursorLayersRef.current.get(playbackCursorLayerKey(rowIndex, staff));
-          if (!layer) return;
           const startPoint = targetPointFor(staff, staffCursor.currentEventIndices);
           if (!startPoint) return;
           const nextRowIndex = staffCursor.nextEventIndices
@@ -2656,6 +2708,9 @@ export function StaffPagePrompt({
             nextRowIndex !== null &&
             staffCursor.endAudioTime !== null &&
             staffCursor.endAudioTime > staffCursor.startAudioTime;
+          const visibleRowIndex = canMove && nextRowIndex !== rowIndex ? nextRowIndex : rowIndex;
+          const layer = cursorLayersRef.current.get(playbackCursorLayerKey(visibleRowIndex, staff));
+          if (!layer) return;
           const endPoint = canMove ? nextPoint : startPoint;
           let motion = activeMotions.get(staff);
           if (!motion) {

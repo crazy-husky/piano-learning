@@ -1051,6 +1051,11 @@
   stroke: #263b3d;
 }
 
+:root[data-app-theme="dark"] .staff-game-note-staff .staff-game-accidental {
+  fill: var(--staff-game-night-note);
+  color: var(--staff-game-night-note);
+}
+
 :root[data-app-theme="dark"] .staff-game-note-staff .staff-game-note-stem,
 :root[data-app-theme="dark"] .staff-game-note-staff .staff-game-ledger {
   stroke: var(--staff-game-night-note);

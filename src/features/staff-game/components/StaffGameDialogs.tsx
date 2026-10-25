@@ -14,6 +14,7 @@ import {
 import {
   GAME_DIFFICULTIES,
   GAME_NOTE_PROGRESSION,
+  staffGamePitchLevelLabel,
   type GameDifficulty,
   type StaffGameNotePoolScope,
 } from "../logic/staffGameRules";
@@ -154,7 +155,8 @@ function StaffGameHelpGuide({
               <strong>关卡进度</strong>
               <span>
                 共 <b>60 关</b>：第 1–35 关逐步加入白键，第 36–60
-                关加入黑键。可通过「选择关卡」打开关卡列表。
+                关加入黑键，每个黑键会练习两种等音写法，例如 C♯4 /
+                D♭4。可通过「选择关卡」打开关卡列表。
               </span>
             </li>
             <li>
@@ -495,7 +497,7 @@ export function StaffGameDialogs({
                               const isCurrent = level === selectedLevel;
                               return (
                                 <button
-                                  aria-label={`第 ${selectedLevel} 关，${note.name}${note.octave}${isCurrent ? "，当前关卡" : ""}`}
+                                  aria-label={`第 ${selectedLevel} 关，${staffGamePitchLevelLabel(note)}${isCurrent ? "，当前关卡" : ""}`}
                                   aria-pressed={isCurrent}
                                   className={`staff-game-level-choice${isCurrent ? " is-current" : ""}${bestStars[index] > 0 ? " has-stars" : ""}`}
                                   disabled={isStarting}
@@ -504,9 +506,8 @@ export function StaffGameDialogs({
                                   type="button"
                                 >
                                   <strong>{selectedLevel}</strong>
-                                  <span>
-                                    {note.name}
-                                    {note.octave}
+                                  <span className="staff-game-level-choice-note">
+                                    {staffGamePitchLevelLabel(note)}
                                   </span>
                                   {isCurrent ? <small>当前</small> : null}
                                 </button>
@@ -523,7 +524,7 @@ export function StaffGameDialogs({
                               const isCurrent = level === selectedLevel;
                               return (
                                 <button
-                                  aria-label={`第 ${selectedLevel} 关，${note.name}${note.octave}${isCurrent ? "，当前关卡" : ""}`}
+                                  aria-label={`第 ${selectedLevel} 关，${staffGamePitchLevelLabel(note)}${isCurrent ? "，当前关卡" : ""}`}
                                   aria-pressed={isCurrent}
                                   className={`staff-game-level-choice is-black-key${isCurrent ? " is-current" : ""}${bestStars[progressIndex] > 0 ? " has-stars" : ""}`}
                                   disabled={isStarting}
@@ -532,9 +533,8 @@ export function StaffGameDialogs({
                                   type="button"
                                 >
                                   <strong>{selectedLevel}</strong>
-                                  <span>
-                                    {note.name}
-                                    {note.octave}
+                                  <span className="staff-game-level-choice-note">
+                                    {staffGamePitchLevelLabel(note)}
                                   </span>
                                   {isCurrent ? <small>当前</small> : null}
                                 </button>
@@ -699,7 +699,7 @@ export function StaffGameDialogs({
                         <section className="staff-game-settings-section staff-game-settings-row staff-game-note-pool-setting">
                           <div>
                             <h3>练习音域</h3>
-                            <p>选择练习范围，可练当前组、当前谱号或全部已解锁音符。</p>
+                            <p>可练当前组或当前谱号内已解锁的音符，也可练全部已解锁音符。</p>
                           </div>
                           <select
                             aria-label="练习音域"
@@ -712,8 +712,8 @@ export function StaffGameDialogs({
                             value={settingsDraft.notePoolScope}
                           >
                             <option value="all-history">全部已解锁音符</option>
-                            <option value="all-history-current-clef">当前谱号全部</option>
-                            <option value="current-group">仅当前组</option>
+                            <option value="all-history-current-clef">当前谱号全部已解锁音符</option>
+                            <option value="current-group">仅当前组已解锁音符</option>
                           </select>
                         </section>
                       ) : null}

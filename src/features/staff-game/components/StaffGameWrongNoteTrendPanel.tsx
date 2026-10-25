@@ -37,9 +37,9 @@ const INPUT_MODE_LABELS: Record<string, string> = {
 };
 
 const NOTE_POOL_SCOPE_LABELS: Record<string, string> = {
-  "current-group": "当前组",
+  "current-group": "仅当前组已解锁音符",
   "all-history": "全部已解锁音符",
-  "all-history-current-clef": "当前谱号全部",
+  "all-history-current-clef": "当前谱号全部已解锁音符",
 };
 
 const NOTE_SCHEDULING_LABELS: Record<string, string> = {
