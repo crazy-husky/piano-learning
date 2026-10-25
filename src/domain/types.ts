@@ -99,7 +99,8 @@ export interface ReviewRecord {
   ignored?: boolean;
 }
 
-export type AnswerEventMode = "free-practice" | "staff-game" | "song" | "staff-distance";
+export type AnswerEventMode =
+  "free-practice" | "staff-game" | "song" | "staff-distance" | "name-to-key";
 export type AnswerInputMode = "microphone" | "midi" | "virtual-keyboard" | "computer-keyboard";
 export type StaffGameChallengeMode = "learning" | "arcade";
 
@@ -127,6 +128,14 @@ export interface AnswerEvent {
   targetGroupId?: PracticeGroupId;
   targetNoteName?: NoteName;
   targetOctave?: Octave;
+  targetDisplayName?: string;
+  nameToKeyConfig?: {
+    includeOctaveNumbers: boolean;
+    includeBlackKeys: boolean;
+    randomEnharmonics: boolean;
+    inputMode: AnswerInputMode;
+    range: "C4-B4" | "F1-B6";
+  };
   recognizedMidi?: number;
   confidence?: number;
   attempts: AnswerAttempt[];

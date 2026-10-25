@@ -1,0 +1,92 @@
+.practice-setup-framed-page {
+  position: relative;
+  box-sizing: border-box;
+  width: min(100%, 1120px);
+  min-width: 0;
+  margin-inline: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: clamp(18px, 3vw, 34px);
+  container-name: practice-setup-frame;
+  container-type: inline-size;
+}
+
+@container practice-setup-frame (max-width: 760px) {
+  .practice-setup-framed-page .practice-free-page-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .practice-setup-framed-page .practice-free-page-header .practice-setup-heading-meta,
+  .practice-setup-framed-page .practice-midi-heading-status {
+    width: 100%;
+  }
+
+  .practice-setup-framed-page .practice-midi-heading-status {
+    justify-content: flex-start;
+  }
+
+  .practice-setup-framed-page .practice-free-basics-grid,
+  .practice-setup-framed-page .staff-distance-basic-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .practice-setup-framed-page .practice-free-advanced-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .practice-setup-framed-page .staff-distance-interval-block,
+  .practice-setup-framed-page .staff-distance-training-block,
+  .practice-setup-framed-page .staff-distance-length-block {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .practice-setup-framed-page
+    :is(.practice-free-range-section, .staff-distance-range-base)
+    .global-range-controls-base {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .practice-setup-framed-page
+    :is(.practice-free-range-section, .staff-distance-range-base)
+    .global-range-staff-section {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .practice-setup-framed-page
+    :is(.practice-free-range-section, .staff-distance-range-base)
+    .global-range-pitch-section {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .practice-setup-framed-page .practice-free-answer-options {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  }
+
+  .practice-setup-framed-page .song-selection-song-section {
+    width: 100%;
+  }
+
+  .practice-setup-framed-page .song-selection-config-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .practice-setup-framed-page .song-selection-config-grid > .song-selection-section {
+    grid-column: 1;
+  }
+}
+
+@container practice-setup-frame (max-width: 520px) {
+  .practice-setup-framed-page
+    :is(.practice-free-range-section, .staff-distance-range-base)
+    .global-range-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -106,6 +106,7 @@ import {
   type PracticeSetupUiPreferences,
 } from "./PracticeSetupView";
 import { SongPracticeView } from "../song-practice/SongPracticeView";
+import { NameToKeyPracticeView } from "../name-to-key/NameToKeyPracticeView";
 import {
   PracticeChaseSettingsDialog,
   type PracticeChaseSettings,
@@ -412,6 +413,8 @@ export function PracticeView({
   midiConnectedRef.current = midi.isConnected;
   const [isStaffDistanceRunning, setIsStaffDistanceRunning] = useState(false);
   const [isStaffDistanceStageActive, setIsStaffDistanceStageActive] = useState(false);
+  const [isNameToKeyRunning, setIsNameToKeyRunning] = useState(false);
+  const [isNameToKeyStageActive, setIsNameToKeyStageActive] = useState(false);
   const [isChaseSettingsOpen, setIsChaseSettingsOpen] = useState(false);
   const handleStaffDistanceStageChange = useCallback(
     (active: boolean): void => {
@@ -420,7 +423,15 @@ export function PracticeView({
     },
     [onPracticeStageChange]
   );
+  const handleNameToKeyStageChange = useCallback(
+    (active: boolean): void => {
+      setIsNameToKeyStageActive(active);
+      onPracticeStageChange(active);
+    },
+    [onPracticeStageChange]
+  );
   const songPracticeMicrophoneAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => {});
+  const nameToKeyMicrophoneAnswerRef = useRef<((answer: PracticeAnswerInput) => void) | null>(null);
   const freeRowPlaybackActiveRef = useRef<number | null>(null);
   const [tick, setTick] = useState(0);
   const [staffPageNotes, setStaffPageNotes] = useState<TargetNote[]>([]);
@@ -596,6 +607,8 @@ export function PracticeView({
         staffDistanceMicrophoneAnswerRef.current(answer);
       } else if (songPracticeSelection) {
         songPracticeMicrophoneAnswerRef.current(answer);
+      } else if (nameToKeyMicrophoneAnswerRef.current) {
+        nameToKeyMicrophoneAnswerRef.current(answer);
       } else {
         submitAnswerRef.current(answer);
       }
@@ -615,6 +628,12 @@ export function PracticeView({
   const registerSongPracticeMicrophoneAnswer = useCallback(
     (handler: (answer: PracticeAnswerInput) => void): void => {
       songPracticeMicrophoneAnswerRef.current = handler;
+    },
+    []
+  );
+  const registerNameToKeyMicrophoneAnswer = useCallback(
+    (handler: ((answer: PracticeAnswerInput) => void) | null): void => {
+      nameToKeyMicrophoneAnswerRef.current = handler;
     },
     []
   );
@@ -645,8 +664,8 @@ export function PracticeView({
   }, []);
 
   useEffect(() => {
-    onRunningChange(phase === "running" || isStaffDistanceRunning);
-  }, [isStaffDistanceRunning, onRunningChange, phase]);
+    onRunningChange(phase === "running" || isStaffDistanceRunning || isNameToKeyRunning);
+  }, [isNameToKeyRunning, isStaffDistanceRunning, onRunningChange, phase]);
 
   useLayoutEffect(() => {
     onVirtualKeyboardActiveChange(phase === "running" && answerPitchMode === "note-name");
@@ -1765,7 +1784,28 @@ export function PracticeView({
             distanceMode={practiceDistanceMode}
           />
         }
-        distanceStageActive={isStaffDistanceStageActive}
+        nameKeyContent={
+          <NameToKeyPracticeView
+            isActive={practiceTab === "name-key"}
+            midi={midi}
+            microphone={{
+              error: practiceMicrophone.error,
+              inputLevel: practiceMicrophone.inputLevel,
+              isListening: practiceMicrophone.isListening,
+              start: practiceMicrophone.start,
+              status: practiceMicrophone.status,
+              stop: practiceMicrophone.stop,
+              suppressRecognizedNotes: practiceMicrophone.suppressRecognizedNotes,
+            }}
+            onBeforePracticeStart={onBeforePracticeStart}
+            onDataChanged={onDataChanged}
+            onPracticeFinished={onPracticeFinished}
+            onRegisterMicrophoneAnswer={registerNameToKeyMicrophoneAnswer}
+            onRunningChange={setIsNameToKeyRunning}
+            onStageChange={handleNameToKeyStageChange}
+          />
+        }
+        distanceStageActive={isStaffDistanceStageActive || isNameToKeyStageActive}
         actions={{
           onAnswerPitchModeChange: setAnswerPitchMode,
           onAutoPlayTargetChange: setAutoPlayTarget,

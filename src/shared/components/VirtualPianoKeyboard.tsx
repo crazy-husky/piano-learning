@@ -17,7 +17,9 @@ export interface VirtualPianoKeyboardProps {
   className?: string;
   disabled?: boolean;
   enabledKeys: ReadonlySet<PianoKeyName>;
+  showBlackKeys?: boolean;
   feedback?: { keyName: PianoKeyName; type: "correct" | "wrong" };
+  feedbackKeys?: ReadonlyMap<PianoKeyName, "correct" | "wrong">;
   getKeyLabel?: (keyName: PianoKeyName) => string;
   getKeyAriaLabel?: (keyName: PianoKeyName) => string;
   onKeyPress: (keyName: PianoKeyName) => void;
@@ -34,7 +36,9 @@ export function VirtualPianoKeyboard({
   className,
   disabled = false,
   enabledKeys,
+  showBlackKeys = true,
   feedback,
+  feedbackKeys,
   getKeyLabel,
   getKeyAriaLabel,
   onKeyPress,
@@ -42,7 +46,8 @@ export function VirtualPianoKeyboard({
   pressedKeys,
 }: VirtualPianoKeyboardProps): JSX.Element {
   const renderKey = (keyName: PianoKeyName, isBlack = false, extraClass = "") => {
-    const feedbackType = feedback?.keyName === keyName ? feedback.type : undefined;
+    const feedbackType =
+      feedbackKeys?.get(keyName) ?? (feedback?.keyName === keyName ? feedback.type : undefined);
     const label = getKeyLabel?.(keyName) ?? keyName;
 
     return (
@@ -82,9 +87,11 @@ export function VirtualPianoKeyboard({
     >
       <div className="staff-game-keybed">
         {VIRTUAL_PIANO_WHITE_KEYS.map((keyName) => renderKey(keyName))}
-        {VIRTUAL_PIANO_BLACK_KEYS.map(({ pitch, className: keyClassName }) =>
-          renderKey(pitch, true, keyClassName)
-        )}
+        {showBlackKeys
+          ? VIRTUAL_PIANO_BLACK_KEYS.map(({ pitch, className: keyClassName }) =>
+              renderKey(pitch, true, keyClassName)
+            )
+          : null}
       </div>
     </div>
   );

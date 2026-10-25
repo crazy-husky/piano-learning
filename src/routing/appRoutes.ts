@@ -9,7 +9,7 @@ export type AppRoutePath =
   | "/vocal"
   | "/settings";
 export type AppRoutePage = "home" | "study" | "practice" | "game" | "stats" | "settings" | "vocal";
-export type PracticeRouteTab = "free" | "distance" | "songs";
+export type PracticeRouteTab = "free" | "distance" | "name-key" | "songs";
 export type PracticeDistanceMode = "look" | "play";
 
 export interface AppRoute {
@@ -47,7 +47,9 @@ export function appRouteFromHash(hash: string): AppRoute {
   const requestedDistanceMode = new URLSearchParams(rawQuery).get("distanceMode");
   const practiceTab: PracticeRouteTab | undefined =
     path === "/practice"
-      ? requestedPracticeTab === "distance" || requestedPracticeTab === "songs"
+      ? requestedPracticeTab === "distance" ||
+        requestedPracticeTab === "name-key" ||
+        requestedPracticeTab === "songs"
         ? requestedPracticeTab
         : "free"
       : undefined;

@@ -5,8 +5,10 @@
 @import "./styles/microphone-parameter-benchmark.css";
 @import "./styles/b6-swiftf0-reminder.css";
 @import "./styles/practice-distance.css";
+@import "./styles/name-to-key-practice.css";
 @import "./styles/practice-session-keyboard.css";
 @import "./styles/song-practice.css";
+@import "./styles/practice-setup-frame.css";
 @import "./styles/session-progress-stats.css";
 @import "./styles/global-responsive.css";
 @import "./styles/vocal-pitch.css";

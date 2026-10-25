@@ -10,7 +10,7 @@ describe("practice route tabs", () => {
     });
   });
 
-  it.each(["free", "distance", "songs"] as const)(
+  it.each(["free", "distance", "name-key", "songs"] as const)(
     "restores the %s tab from the route query",
     (tab) => {
       expect(appRouteFromHash(`#/practice?tab=${tab}`).practiceTab).toBe(tab);

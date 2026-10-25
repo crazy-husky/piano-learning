@@ -675,7 +675,7 @@ export function StaffDistancePracticeView({
   }
 
   return (
-    <div className="practice-free-page staff-distance-page">
+    <div className="practice-free-page practice-setup-framed-page staff-distance-page">
       <header className="practice-free-page-header">
         <div>
           <h1 id="staff-distance-title">间距推导</h1>
@@ -683,11 +683,13 @@ export function StaffDistancePracticeView({
             看清当前音与下一个音的距离，练习快速判断并找到下一个琴键。
           </p>
         </div>
-        <div className="practice-setup-heading-meta">
-          <div className="practice-midi-heading-status staff-distance-midi-status">
-            <MidiInputControl ariaLabel="间距练习 MIDI 输入设备" midi={midi} />
+        {trainingMode === "play" && preferences.inputMethod === "midi" ? (
+          <div className="practice-setup-heading-meta">
+            <div className="practice-midi-heading-status staff-distance-midi-status">
+              <MidiInputControl ariaLabel="间距练习 MIDI 输入设备" midi={midi} />
+            </div>
           </div>
-        </div>
+        ) : null}
       </header>
 
       <section className="practice-free-range-section staff-distance-range-base">

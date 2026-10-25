@@ -79,12 +79,13 @@ interface PracticeSetupActions {
   onToggleDrillNoteName: (noteName: NoteName, checked: boolean) => void;
 }
 
-export type PracticeSetupTab = "free" | "distance" | "songs";
+export type PracticeSetupTab = "free" | "distance" | "name-key" | "songs";
 
 interface PracticeSetupViewProps {
   activeTab: PracticeSetupTab;
   actions: PracticeSetupActions;
   distanceContent: ReactNode;
+  nameKeyContent: ReactNode;
   distanceStageActive: boolean;
   isBusy: boolean;
   microphoneError: string | null;
@@ -208,6 +209,7 @@ export function PracticeSetupView({
   activeTab,
   actions,
   distanceContent,
+  nameKeyContent,
   distanceStageActive,
   isBusy: showStartingSessionStatus,
   microphoneError,
@@ -377,7 +379,7 @@ export function PracticeSetupView({
 
   return (
     <section
-      className={`practice-shell practice-setup-shell${activeTab === "free" ? " is-free-practice-setup" : ""}${activeTab === "distance" ? " is-distance-practice-setup" : ""}${activeTab === "songs" ? " is-song-practice-setup" : ""}`}
+      className={`practice-shell practice-setup-shell${activeTab === "free" ? " is-free-practice-setup" : ""}${activeTab === "distance" ? " is-distance-practice-setup" : ""}${activeTab === "name-key" ? " is-name-key-practice-setup" : ""}${activeTab === "songs" ? " is-song-practice-setup" : ""}`}
     >
       <div aria-label="练习类型" className="practice-kind-tabs" role="tablist">
         <button
@@ -403,6 +405,18 @@ export function PracticeSetupView({
           onClick={() => onSetupTabChange("distance")}
         >
           间距推导
+        </button>
+        <button
+          aria-controls="practice-name-key-panel"
+          aria-selected={activeTab === "name-key"}
+          className={activeTab === "name-key" ? "is-active" : ""}
+          disabled={distanceStageActive || isStartingSongPractice}
+          id="practice-name-key-tab"
+          role="tab"
+          type="button"
+          onClick={() => onSetupTabChange("name-key")}
+        >
+          音名找键
         </button>
         <button
           aria-controls="practice-songs-panel"
@@ -433,17 +447,19 @@ export function PracticeSetupView({
         role="tabpanel"
         aria-labelledby="practice-free-tab"
       >
-        <div className="practice-free-page">
+        <div className="practice-free-page practice-setup-framed-page">
           <div className="practice-free-page-header">
             <div>
               <h1>自由练习</h1>
               <p className="practice-panel-description">看到音符后，快速识别音高并找到对应琴键。</p>
             </div>
-            <div className="practice-setup-heading-meta">
-              <div className="practice-midi-heading-status">
-                <MidiInputControl ariaLabel="自由练习 MIDI 输入设备" midi={midi} />
+            {answerPitchMode === "exact-pitch" ? (
+              <div className="practice-setup-heading-meta">
+                <div className="practice-midi-heading-status">
+                  <MidiInputControl ariaLabel="自由练习 MIDI 输入设备" midi={midi} />
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
           <div className="practice-free-config-content">
             <section className="practice-free-section practice-free-range-section">
@@ -632,7 +648,7 @@ export function PracticeSetupView({
                         <span className="practice-free-answer-option-heading">
                           <strong>虚拟键盘</strong>
                         </span>
-                        <small>无需连接乐器，点击屏幕或敲击键盘作答</small>
+                        <small>无需连接乐器，点击虚拟键盘或敲击键盘作答</small>
                       </span>
                     </button>
                   </div>
@@ -897,13 +913,22 @@ export function PracticeSetupView({
         </div>
       </div>
       <div
+        className="practice-setup-tab-panel"
+        hidden={activeTab !== "name-key"}
+        id="practice-name-key-panel"
+        role="tabpanel"
+        aria-labelledby="practice-name-key-tab"
+      >
+        {nameKeyContent}
+      </div>
+      <div
         className="setup-grid practice-setup-tab-panel"
         hidden={activeTab !== "songs"}
         id="practice-songs-panel"
         role="tabpanel"
         aria-labelledby="practice-songs-tab"
       >
-        <div className="practice-free-page song-selection-panel">
+        <div className="practice-free-page practice-setup-framed-page song-selection-panel">
           <header className="practice-free-page-header">
             <div>
               <h1>歌曲练习</h1>
@@ -911,9 +936,11 @@ export function PracticeSetupView({
                 选择熟悉的旋律，跟随谱面练习读谱与弹奏。
               </p>
             </div>
-            <div className="practice-midi-heading-status">
-              <MidiInputControl ariaLabel="歌曲练习 MIDI 输入设备" midi={midi} />
-            </div>
+            {activeInputMode === "midi" || requiresMidi ? (
+              <div className="practice-midi-heading-status">
+                <MidiInputControl ariaLabel="歌曲练习 MIDI 输入设备" midi={midi} />
+              </div>
+            ) : null}
           </header>
 
           <div className="song-selection-section song-selection-song-section">

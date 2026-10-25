@@ -14,7 +14,8 @@ import {
 export const MAX_STAFF_DISTANCE = 7;
 const LONG_LEAP_MIN_DISTANCE = 5;
 const DISTANCE_BALANCE_WINDOW = 20;
-const RECENT_PAIR_HISTORY_LENGTH = 6;
+const RECENT_PAIR_HISTORY_LENGTH = 4;
+const MAX_CONSECUTIVE_DISTANCE_COUNT = 2;
 
 export type StaffDistanceValidation =
   | { ok: true }
@@ -216,10 +217,7 @@ function distanceWeight(
 ): number {
   const includesUnison = availableDistances.includes(0);
   if (distance === 0) {
-    const nonUnisonTotal = availableDistances
-      .filter((candidate) => candidate > 0)
-      .reduce((total, candidate) => total + nonUnisonDistanceWeight(candidate, staff), 0);
-    return nonUnisonTotal > 0 ? 0.05 : 1;
+    return includesUnison ? 0.05 : 1;
   }
 
   const weight = nonUnisonDistanceWeight(distance, staff);
@@ -279,6 +277,43 @@ function routeAvoidsRecentPairs(
   return true;
 }
 
+function getTrailingDistanceRun(notes: readonly TargetNote[]): {
+  count: number;
+  distance: number | undefined;
+} {
+  let distance: number | undefined;
+  let count = 0;
+  for (let index = notes.length - 1; index > 0; index -= 1) {
+    const from = notes[index - 1]!;
+    const to = notes[index]!;
+    if (from.staff !== to.staff) break;
+    const currentDistance = staffDistance(from, to);
+    if (distance !== undefined && currentDistance !== distance) break;
+    distance = currentDistance;
+    count += 1;
+  }
+  return { count, distance };
+}
+
+function routeAvoidsLongDistanceStreak(
+  start: TargetNote,
+  route: readonly TargetNote[],
+  lastDistance: number | undefined,
+  lastDistanceCount: number
+): boolean {
+  let previousDistance = lastDistance;
+  let distanceCount = lastDistanceCount;
+  let current = start;
+  for (const note of route) {
+    const distance = staffDistance(current, note);
+    distanceCount = distance === previousDistance ? distanceCount + 1 : 1;
+    if (distanceCount > MAX_CONSECUTIVE_DISTANCE_COUNT) return false;
+    previousDistance = distance;
+    current = note;
+  }
+  return true;
+}
+
 function findNotePath(
   start: TargetNote,
   target: TargetNote,
@@ -316,6 +351,8 @@ function findBalancedLongLeapRoute(
   edgesById: ReadonlyMap<TargetNote["id"], readonly StaffDistanceEdge[]>,
   maxTransitions: number,
   recentPairKeys: readonly string[],
+  lastDistance: number | undefined,
+  lastDistanceCount: number,
   random: () => number
 ): TargetNote[] | undefined {
   const longUpEdges = notes.flatMap((lowNote) =>
@@ -335,6 +372,8 @@ function findBalancedLongLeapRoute(
     return pathCache.get(key);
   };
   const routes: TargetNote[][] = [];
+  const streakSafeRoutes: TargetNote[][] = [];
+  const recentSafeRoutes: TargetNote[][] = [];
   const fallbackRoutes: TargetNote[][] = [];
   for (const up of longUpEdges) {
     const pathToUp = pathBetween(current, up.lowNote);
@@ -346,18 +385,32 @@ function findBalancedLongLeapRoute(
       const route = [...pathToUp.slice(1), up.highNote, ...pathToDown.slice(1), down.lowNote];
       if (route.length <= maxTransitions) {
         fallbackRoutes.push(route);
-        if (routeAvoidsRecentPairs(current, route, recentPairKeys)) routes.push(route);
+        const avoidsRecentPairs = routeAvoidsRecentPairs(current, route, recentPairKeys);
+        const avoidsLongStreak = routeAvoidsLongDistanceStreak(
+          current,
+          route,
+          lastDistance,
+          lastDistanceCount
+        );
+        if (avoidsLongStreak) streakSafeRoutes.push(route);
+        if (avoidsRecentPairs) recentSafeRoutes.push(route);
+        if (avoidsRecentPairs && avoidsLongStreak) routes.push(route);
       }
     }
   }
-  const selectableRoutes = routes.length > 0 ? routes : fallbackRoutes;
-  if (selectableRoutes.length > 0) {
-    return selectableRoutes[
-      Math.min(
-        selectableRoutes.length - 1,
-        Math.max(0, Math.floor(random() * selectableRoutes.length))
-      )
-    ];
+  const chooseRoute = (candidates: readonly TargetNote[][]): TargetNote[] | undefined =>
+    candidates.length === 0
+      ? undefined
+      : candidates[
+          Math.min(candidates.length - 1, Math.max(0, Math.floor(random() * candidates.length)))
+        ];
+  const selectableRoutes =
+    chooseRoute(routes) ??
+    chooseRoute(streakSafeRoutes) ??
+    chooseRoute(recentSafeRoutes) ??
+    chooseRoute(fallbackRoutes);
+  if (selectableRoutes) {
+    return selectableRoutes;
   }
 
   // A very narrow selection may have only one long-leap pair. Use it both ways
@@ -367,19 +420,17 @@ function findBalancedLongLeapRoute(
     if (!path || path.length - 1 + 2 > maxTransitions) return [];
     return [[...path.slice(1), edge.highNote, edge.lowNote]];
   });
-  const novelReverseRoutes = reverseRoutes.filter((route) =>
+  const streakSafeReverseRoutes = reverseRoutes.filter((route) =>
+    routeAvoidsLongDistanceStreak(current, route, lastDistance, lastDistanceCount)
+  );
+  const recentSafeReverseRoutes = reverseRoutes.filter((route) =>
     routeAvoidsRecentPairs(current, route, recentPairKeys)
   );
-  const selectableReverseRoutes =
-    novelReverseRoutes.length > 0 ? novelReverseRoutes : reverseRoutes;
-  return selectableReverseRoutes.length === 0
-    ? undefined
-    : selectableReverseRoutes[
-        Math.min(
-          selectableReverseRoutes.length - 1,
-          Math.max(0, Math.floor(random() * selectableReverseRoutes.length))
-        )
-      ];
+  return (
+    chooseRoute(streakSafeReverseRoutes) ??
+    chooseRoute(recentSafeReverseRoutes) ??
+    chooseRoute(reverseRoutes)
+  );
 }
 
 export function createStaffDistanceSequence(
@@ -416,9 +467,15 @@ export function createStaffDistanceSequence(
   let current = weightedPick(starts, targetWeight, random);
   const sequence = [current];
   const recentPairKeys = getRecentPairKeys(recentNotes);
+  const trailingDistanceRun = initialNote ? getTrailingDistanceRun(recentNotes) : null;
+  let lastDistance = trailingDistanceRun?.distance;
+  let lastDistanceCount = trailingDistanceRun?.count ?? 0;
   const appendNote = (note: TargetNote): void => {
     recentPairKeys.push(notePairKey(current, note));
     if (recentPairKeys.length > RECENT_PAIR_HISTORY_LENGTH) recentPairKeys.shift();
+    const distance = staffDistance(current, note);
+    lastDistanceCount = distance === lastDistance ? lastDistanceCount + 1 : 1;
+    lastDistance = distance;
     current = note;
     sequence.push(note);
   };
@@ -455,6 +512,8 @@ export function createStaffDistanceSequence(
         longLeapEdgesById,
         Math.min(remainingTransitions, transitionsLeftInWindow),
         recentPairKeys,
+        lastDistance,
+        lastDistanceCount,
         random
       );
       if (route) {
@@ -477,7 +536,13 @@ export function createStaffDistanceSequence(
               phrase.notes.every((note) => !extraPitchIdSet.has(note.pitchId)) &&
               phrase.notes.length - 1 <= remainingTransitions &&
               phrase.notes.length - 1 <= DISTANCE_BALANCE_WINDOW - transitionInWindow &&
-              routeAvoidsRecentPairs(current, phrase.notes.slice(1), recentPairKeys)
+              routeAvoidsRecentPairs(current, phrase.notes.slice(1), recentPairKeys) &&
+              routeAvoidsLongDistanceStreak(
+                current,
+                phrase.notes.slice(1),
+                lastDistance,
+                lastDistanceCount
+              )
           )
         : [];
     if (bassPhrases.length > 0 && random() < 0.45) {
@@ -495,10 +560,23 @@ export function createStaffDistanceSequence(
       continue;
     }
 
-    const freshEdges = edges.filter(
-      (edge) => !recentPairKeys.includes(notePairKey(current, edge.note))
-    );
-    const candidateEdges = freshEdges.length > 0 ? freshEdges : edges;
+    const distanceSafeEdges = edges.filter((edge) => {
+      const distance = edge.distance;
+      return distance !== lastDistance || lastDistanceCount < MAX_CONSECUTIVE_DISTANCE_COUNT;
+    });
+    const continuationSafeEdges = distanceSafeEdges.filter((edge) => {
+      const nextDistanceCount = edge.distance === lastDistance ? lastDistanceCount + 1 : 1;
+      if (nextDistanceCount < MAX_CONSECUTIVE_DISTANCE_COUNT) return true;
+      return (edgesById.get(edge.note.id) ?? []).some(
+        (nextEdge) => nextEdge.distance > 0 && nextEdge.distance !== edge.distance
+      );
+    });
+    const candidateEdges =
+      continuationSafeEdges.length > 0
+        ? continuationSafeEdges
+        : distanceSafeEdges.length > 0
+          ? distanceSafeEdges
+          : edges;
     const distances = [...new Set(candidateEdges.map((edge) => edge.distance))];
     const distance = weightedPick(
       distances,
@@ -506,8 +584,13 @@ export function createStaffDistanceSequence(
       random
     );
     const sameDistanceEdges = candidateEdges.filter((edge) => edge.distance === distance);
-    const direction = chooseBalancedDirection(sameDistanceEdges, directionCounts, random);
-    const directionEdges = sameDistanceEdges.filter((edge) => edge.direction === direction);
+    const freshSameDistanceEdges = sameDistanceEdges.filter(
+      (edge) => !recentPairKeys.includes(notePairKey(current, edge.note))
+    );
+    const pairSafeEdges =
+      freshSameDistanceEdges.length > 0 ? freshSameDistanceEdges : sameDistanceEdges;
+    const direction = chooseBalancedDirection(pairSafeEdges, directionCounts, random);
+    const directionEdges = pairSafeEdges.filter((edge) => edge.direction === direction);
     const edge = weightedPick(directionEdges, (candidate) => targetWeight(candidate.note), random);
     if (edge.direction !== "same") {
       directionCounts.set(edge.direction, (directionCounts.get(edge.direction) ?? 0) + 1);

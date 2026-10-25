@@ -78,6 +78,56 @@ describe("staff distance practice", () => {
     }
   });
 
+  it("avoids runs of three identical intervals when alternatives are available", () => {
+    const notes = makeNotes();
+    let seed = 987654321;
+    const random = (): number => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 0x100000000;
+    };
+    const sequence = createStaffDistanceSequence(
+      notes,
+      { includeUnison: false, maxDistance: 7 },
+      2_000,
+      random
+    );
+
+    let previousDistance: number | undefined;
+    let consecutiveCount = 0;
+    for (let index = 1; index < sequence.length; index += 1) {
+      const distance = staffDistance(sequence[index - 1]!, sequence[index]!);
+      consecutiveCount = distance === previousDistance ? consecutiveCount + 1 : 1;
+      expect(consecutiveCount).toBeLessThanOrEqual(2);
+      previousDistance = distance;
+    }
+  });
+
+  it("covers both long-leap directions in a complete window when the range allows it", () => {
+    const notes = makeNotes();
+    for (let initialSeed = 1; initialSeed <= 12; initialSeed += 1) {
+      let seed = initialSeed;
+      const random = (): number => {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        return seed / 0x100000000;
+      };
+      const sequence = createStaffDistanceSequence(
+        notes,
+        { includeUnison: false, maxDistance: 7 },
+        20,
+        random
+      );
+      const longLeapDirections = sequence.slice(1).flatMap((note, index) => {
+        const previous = sequence[index]!;
+        const distance = staffDistance(previous, note);
+        if (distance < 5) return [];
+        return [summarizeStaffDistancePair(previous, note).direction];
+      });
+
+      expect(longLeapDirections).toContain("up");
+      expect(longLeapDirections).toContain("down");
+    }
+  });
+
   it("uses the configured treble distance weights", () => {
     const notes = makeNotes().slice(0, 8);
     const distanceAtQuantile = (quantile: number): number => {
