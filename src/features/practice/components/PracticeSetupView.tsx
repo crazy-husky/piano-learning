@@ -20,6 +20,7 @@ import {
 } from "../../../domain/notes";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
+import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
@@ -40,6 +41,7 @@ import {
   SONG_PRACTICE_UI_PREFERENCES_KEY,
 } from "../song-practice/songPracticePreferences";
 import { getSongPracticeProgressEntries } from "../song-practice/songPracticeProgress";
+import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 
 export interface PracticeSetupUiPreferences {
   answerPitchMode: AnswerPitchMode;
@@ -89,6 +91,8 @@ interface PracticeSetupViewProps {
   distanceStageActive: boolean;
   isBusy: boolean;
   microphoneError: string | null;
+  microphoneStatus: PracticeMicrophoneStatus;
+  onRetryMicrophone: () => Promise<boolean>;
   midi: MidiInputController;
   overlay?: ReactNode;
   preferences: PracticeSetupUiPreferences;
@@ -213,6 +217,8 @@ export function PracticeSetupView({
   distanceStageActive,
   isBusy: showStartingSessionStatus,
   microphoneError,
+  microphoneStatus,
+  onRetryMicrophone,
   midi,
   overlay,
   preferences,
@@ -652,10 +658,24 @@ export function PracticeSetupView({
                       </span>
                     </button>
                   </div>
-                  {answerPitchMode === "microphone" && microphoneError ? (
-                    <span className="practice-microphone-error practice-free-warning" role="status">
-                      {microphoneError}
-                    </span>
+                  {answerPitchMode === "microphone" &&
+                  (microphoneError ||
+                    microphoneStatus === "error" ||
+                    microphoneStatus === "requesting") ? (
+                    <div
+                      className="practice-microphone-error-actions practice-free-warning"
+                      aria-live="polite"
+                    >
+                      <span>
+                        {microphoneStatus === "requesting"
+                          ? "正在连接麦克风…"
+                          : (microphoneError ?? "麦克风连接失败，请检查权限和输入设备后重试。")}
+                      </span>
+                      <PracticeMicrophoneRetryButton
+                        isConnecting={microphoneStatus === "requesting"}
+                        onRetry={onRetryMicrophone}
+                      />
+                    </div>
                   ) : null}
                 </div>
               </div>
@@ -1046,8 +1066,24 @@ export function PracticeSetupView({
           </div>
 
           {songStartError || (!midi.isConnected && microphoneError) ? (
-            <div className="song-selection-error" role="status">
-              <p>{songStartError ?? microphoneError}</p>
+            <div aria-live="polite" className="song-selection-error">
+              <p>
+                {microphoneStatus === "requesting"
+                  ? "正在连接麦克风…"
+                  : (songStartError ?? microphoneError)}
+              </p>
+              {microphoneError ||
+              microphoneStatus === "error" ||
+              microphoneStatus === "requesting" ? (
+                <PracticeMicrophoneRetryButton
+                  isConnecting={microphoneStatus === "requesting"}
+                  onRetry={async () => {
+                    const connected = await onRetryMicrophone();
+                    if (connected) setSongStartError(null);
+                    return connected;
+                  }}
+                />
+              ) : null}
             </div>
           ) : null}
 

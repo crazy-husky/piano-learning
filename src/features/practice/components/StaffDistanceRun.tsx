@@ -40,6 +40,7 @@ import { MOBILE_PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLa
 import { estimateStaffGameSystemDelayMs } from "../../staff-game/logic/staffGameProficiency";
 import { practiceMicrophoneDebugParametersForSensitivityLevel } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
+import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { uniformFreePracticeChaseSegmentDuration, type ScoreChaseEvent } from "../logic/scoreChase";
 import { useScoreChase } from "../hooks/useScoreChase";
 import {
@@ -1186,7 +1187,7 @@ export function StaffDistanceRun({
           ))}
         </div>
       ) : (
-        <div className="staff-distance-play-input-status" role="status">
+        <div aria-live="polite" className="staff-distance-play-input-status">
           {inputError ? (
             inputError
           ) : inputMethod === "midi" ? (
@@ -1200,6 +1201,19 @@ export function StaffDistanceRun({
           ) : (
             (microphone.error ?? "麦克风未连接")
           )}
+          {inputMethod === "microphone" &&
+          (microphone.error ||
+            microphone.status === "error" ||
+            microphone.status === "requesting") ? (
+            <PracticeMicrophoneRetryButton
+              isConnecting={microphone.status === "requesting"}
+              onRetry={async () => {
+                const connected = await microphone.start({ includeAccidentals: false });
+                if (connected) setInputError(null);
+                return connected;
+              }}
+            />
+          ) : null}
         </div>
       )}
       {trainingMode === "play" && microphone.recoveryReloadAvailable ? (
@@ -1262,11 +1276,29 @@ export function StaffDistanceRun({
       {isPaused ? (
         <div className="staff-distance-pause-overlay" role="status">
           <strong>已暂停</strong>
-          <span>{inputError ?? "练习计时已停止"}</span>
+          <span>
+            {inputMethod === "microphone" && microphone.status === "requesting"
+              ? "正在连接麦克风…"
+              : (inputError ?? "练习计时已停止")}
+          </span>
           <button className="primary" onClick={togglePause} type="button">
             <Play size={16} />
             继续
           </button>
+          {trainingMode === "play" &&
+          inputMethod === "microphone" &&
+          (microphone.error ||
+            microphone.status === "error" ||
+            microphone.status === "requesting") ? (
+            <PracticeMicrophoneRetryButton
+              isConnecting={microphone.status === "requesting"}
+              onRetry={async () => {
+                const connected = await microphone.start({ includeAccidentals: false });
+                if (connected) setInputError(null);
+                return connected;
+              }}
+            />
+          ) : null}
           {trainingMode === "play" && microphone.recoveryReloadAvailable ? (
             <button
               className="practice-microphone-recovery-reload"

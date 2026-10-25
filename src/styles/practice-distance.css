@@ -621,11 +621,22 @@
 }
 
 .staff-distance-play-input-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
   justify-self: center;
   min-height: 38px;
   color: var(--muted);
   font-size: 14px;
   text-align: center;
+}
+
+.staff-distance-microphone-error {
+  margin-top: 8px;
+  color: var(--danger);
+  font-size: 13px;
 }
 
 .staff-distance-answer-row {

@@ -33,6 +33,7 @@ import type { PracticeChaseSettings } from "./PracticeChaseSettingsDialog";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
+import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import {
@@ -774,6 +775,30 @@ export function StaffDistancePracticeView({
                 </div>
               </div>
             ) : null}
+            {trainingMode === "play" &&
+            preferences.inputMethod === "microphone" &&
+            (microphone.error ||
+              microphone.status === "error" ||
+              microphone.status === "requesting") ? (
+              <div
+                className="practice-microphone-error-actions staff-distance-microphone-error"
+                aria-live="polite"
+              >
+                <span>
+                  {microphone.status === "requesting"
+                    ? "正在连接麦克风…"
+                    : (microphone.error ?? "麦克风连接失败，请检查权限和输入设备后重试。")}
+                </span>
+                <PracticeMicrophoneRetryButton
+                  isConnecting={microphone.status === "requesting"}
+                  onRetry={async () => {
+                    const connected = await microphone.start({ includeAccidentals: false });
+                    if (connected) setStartError(null);
+                    return connected;
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -1014,7 +1039,14 @@ export function StaffDistancePracticeView({
           ) : null}
         </div>
         <div className="practice-free-action-buttons staff-distance-action-controls">
-          {startError ? (
+          {startError &&
+          !(
+            trainingMode === "play" &&
+            preferences.inputMethod === "microphone" &&
+            (microphone.error ||
+              microphone.status === "error" ||
+              microphone.status === "requesting")
+          ) ? (
             <p className="staff-distance-start-error" role="alert">
               {startError}
             </p>

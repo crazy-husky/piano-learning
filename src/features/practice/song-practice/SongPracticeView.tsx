@@ -17,6 +17,7 @@ import type {
 } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
+import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import type { MidiNoteInputEvent } from "../../../midi/midiInput";
 import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import { StaffPagePrompt } from "../components/StaffPagePrompt";
@@ -1309,19 +1310,20 @@ export function SongPracticeView({
                 <span className="song-practice-current-input" role="status">
                   <AudioLines aria-hidden="true" size={15} />
                   当前输入方式：麦克风（连接中）
+                  <PracticeMicrophoneRetryButton
+                    isConnecting
+                    onRetry={() => reconnectMicrophone()}
+                  />
                 </span>
               ) : !microphoneIsListening ? (
                 initialMicrophoneStatusDelayPassed ? (
                   <span className="song-practice-current-input is-error">
                     <AudioLines aria-hidden="true" size={15} />
                     <span>当前输入方式：麦克风未连接，</span>
-                    <button
-                      className="song-practice-reconnect-link"
-                      type="button"
-                      onClick={() => void reconnectMicrophone()}
-                    >
-                      重新连接
-                    </button>
+                    <PracticeMicrophoneRetryButton
+                      isConnecting={false}
+                      onRetry={() => reconnectMicrophone()}
+                    />
                   </span>
                 ) : null
               ) : (

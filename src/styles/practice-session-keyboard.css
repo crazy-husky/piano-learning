@@ -600,6 +600,13 @@
   text-shadow: 0 1px 0 var(--surface);
 }
 
+.pause-overlay-content .practice-microphone-error-actions {
+  max-width: min(680px, calc(100vw - 32px));
+  color: var(--danger);
+  font-size: 14px;
+  text-align: center;
+}
+
 .pause-overlay small {
   color: var(--muted);
   font-size: 15px;

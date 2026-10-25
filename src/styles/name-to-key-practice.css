@@ -206,6 +206,11 @@
   margin: 0;
 }
 
+.name-key-microphone-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+
 .name-key-range-content {
   gap: 8px;
 }

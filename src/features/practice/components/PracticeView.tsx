@@ -52,6 +52,7 @@ import {
   SESSION_PROGRESS_UI_PREFERENCES_KEY,
 } from "../../../shared/preferences/sessionProgressPreferences";
 import { PauseOverlay } from "../../../shared/components/PauseOverlay";
+import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { B6SwiftF0ReminderDialog } from "../../vocal-pitch/components/B6SwiftF0ReminderDialog";
 import type { PracticePagePreferences } from "../../../shared/preferences/practicePagePreferences";
@@ -1843,6 +1844,10 @@ export function PracticeView({
         }}
         isBusy={showStartingSessionStatus}
         microphoneError={practiceMicrophone.error}
+        microphoneStatus={practiceMicrophone.status}
+        onRetryMicrophone={() =>
+          practiceMicrophone.start({ includeAccidentals: practiceTab === "songs" })
+        }
         midi={midi}
         preferences={practiceSetupPreferences}
         setupDisabledReason={setupDisabledReason}
@@ -2013,6 +2018,14 @@ export function PracticeView({
               )}
             </span>
           )}
+          {practiceMicrophone.error ||
+          practiceMicrophone.status === "error" ||
+          practiceMicrophone.status === "requesting" ? (
+            <PracticeMicrophoneRetryButton
+              isConnecting={practiceMicrophone.status === "requesting"}
+              onRetry={() => practiceMicrophone.start()}
+            />
+          ) : null}
           {practiceMicrophone.recoveryReloadAvailable ? (
             <button
               className="practice-microphone-recovery-reload"
@@ -2181,9 +2194,7 @@ export function PracticeView({
                 : practiceMicrophone.isListening
                   ? "麦克风已连接，正在继续练习…"
                   : practiceMicrophone.error
-                    ? isMobileViewport
-                      ? `麦克风重连失败：${practiceMicrophone.error} 点击空白处重试`
-                      : `麦克风重连失败：${practiceMicrophone.error} 点击空白处或按空格重试；按 Esc 退出练习`
+                    ? "麦克风重连失败，点击下方按钮重试"
                     : isMobileViewport
                       ? "暂停期间麦克风已释放；点击空白处重新连接"
                       : "暂停期间麦克风已释放；点击空白处或按空格重新连接"
@@ -2191,6 +2202,18 @@ export function PracticeView({
           }
           recoveryReloadAvailable={practiceMicrophone.recoveryReloadAvailable}
           onReloadAfterRecoveryFailure={() => void practiceMicrophone.reloadAfterRecoveryFailure()}
+          microphoneError={
+            answerPitchMode === "microphone"
+              ? (practiceMicrophone.error ??
+                (practiceMicrophone.status === "requesting"
+                  ? "正在重新连接麦克风…"
+                  : practiceMicrophone.status === "error"
+                    ? "麦克风连接失败，请重试连接。"
+                    : null))
+              : null
+          }
+          microphoneConnecting={practiceMicrophone.status === "requesting"}
+          onRetryMicrophone={answerPitchMode === "microphone" ? resumePractice : undefined}
           showKeyboardShortcuts={!isMobileViewport}
         />
       ) : null}

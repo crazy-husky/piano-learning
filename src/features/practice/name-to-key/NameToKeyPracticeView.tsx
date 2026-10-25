@@ -18,6 +18,7 @@ import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
+import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import {
   VirtualPianoKeyboard,
   VIRTUAL_PIANO_WHITE_KEYS,
@@ -640,6 +641,17 @@ export function NameToKeyPracticeView({
   };
   startRoundRef.current = startRound;
 
+  const retryMicrophone = useCallback(async (): Promise<boolean> => {
+    const connected = await startMicrophone({ includeAccidentals: true });
+    if (connected) {
+      microphoneStartedRef.current = true;
+      setStatusMessage("");
+    } else {
+      setStatusMessage(microphoneError ?? "麦克风连接失败，请检查权限和输入设备后重试。");
+    }
+    return connected;
+  }, [microphoneError, startMicrophone]);
+
   useEffect(() => {
     if (!isActive || stage !== "setup") return undefined;
     function handleEnter(event: KeyboardEvent): void {
@@ -805,6 +817,27 @@ export function NameToKeyPracticeView({
                         ? "连接 MIDI 键盘后，按下琴键作答。"
                         : "点击页面下方的虚拟键盘作答。"}
                   </p>
+                  {preferences.inputMode === "microphone" &&
+                  (microphoneError ||
+                    microphoneStatus === "error" ||
+                    microphoneStatus === "requesting") ? (
+                    <div
+                      className="practice-microphone-error-actions name-key-microphone-error"
+                      aria-live="polite"
+                    >
+                      <span>
+                        {microphoneStatus === "requesting"
+                          ? "正在连接麦克风…"
+                          : statusMessage ||
+                            microphoneError ||
+                            "麦克风连接失败，请检查权限和输入设备后重试。"}
+                      </span>
+                      <PracticeMicrophoneRetryButton
+                        isConnecting={microphoneStatus === "requesting"}
+                        onRetry={retryMicrophone}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </section>
 
@@ -996,7 +1029,11 @@ export function NameToKeyPracticeView({
               </section>
             </div>
 
-            {statusMessage ? (
+            {statusMessage &&
+            !(
+              preferences.inputMode === "microphone" &&
+              (microphoneError || microphoneStatus === "error" || microphoneStatus === "requesting")
+            ) ? (
               <p className="name-key-status-message" role="alert">
                 {statusMessage}
               </p>
@@ -1078,6 +1115,14 @@ export function NameToKeyPracticeView({
                         : (microphoneError ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))}
                     </span>
                   )}
+                  {microphoneError ||
+                  microphoneStatus === "error" ||
+                  microphoneStatus === "requesting" ? (
+                    <PracticeMicrophoneRetryButton
+                      isConnecting={microphoneStatus === "requesting"}
+                      onRetry={retryMicrophone}
+                    />
+                  ) : null}
                 </div>
               ) : (
                 <p>
@@ -1207,9 +1252,22 @@ export function NameToKeyPracticeView({
                 <Play size={17} />
                 继续
               </button>
+              {preferences.inputMode === "microphone" &&
+              (microphoneError ||
+                microphoneStatus === "error" ||
+                microphoneStatus === "requesting") ? (
+                <PracticeMicrophoneRetryButton
+                  isConnecting={microphoneStatus === "requesting"}
+                  onRetry={retryMicrophone}
+                />
+              ) : null}
             </div>
           ) : null}
-          {statusMessage ? (
+          {statusMessage &&
+          !(
+            preferences.inputMode === "microphone" &&
+            (microphoneError || microphoneStatus === "error" || microphoneStatus === "requesting")
+          ) ? (
             <p className="name-key-status-message" role="alert">
               {statusMessage}
             </p>
