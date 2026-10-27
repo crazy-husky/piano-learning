@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { StaffGameWrongNoteComparison } from "../../../domain/staffGameWrongNoteArchives";
 import type { StaffGameChallengeMode } from "../../../domain/types";
+import summaryNoStarCloud from "../assets/ui/summary-no-star-cloud.gif";
 import type { StaffGameWrongAnswerRecord } from "../hooks/useStaffGameScoring";
 import type { StaffGameRoundNoteOutcome } from "../hooks/useStaffGameRoundClock";
 import type { StaffGameWrongNoteRunPerformance } from "../logic/staffGameWrongNoteArchive";
@@ -120,9 +121,9 @@ export function StaffGameSummaryDialog({
     (outcome) =>
       outcome.firstInputCorrect !== true && (outcome.firstInputCorrect === null || outcome.missed)
   ).length;
-  const weakReasonCount = wrongNoteCount + missedNoteCount;
   const isLearningTest = mode === "challenge" && challengeMode === "learning";
   const isEntertainmentMode = mode === "challenge" && challengeMode === "arcade";
+  const showNoStarCloud = !isWrongNoteReview && earnedStars === 0;
   const archiveDateLabel = wrongNoteArchiveDate
     ? (() => {
         const [, month, day] = wrongNoteArchiveDate.split("-");
@@ -257,14 +258,14 @@ export function StaffGameSummaryDialog({
         aria-hidden={showWrongAnswerDetails}
         aria-label={ariaLabel}
         aria-modal={!showWrongAnswerDetails}
-        className={`staff-game-summary-backdrop${isWrongNoteReview ? " has-review-comparison" : ""}${isLearningTest ? " is-learning-test" : ""}${isEntertainmentMode ? " is-entertainment-mode" : ""}${gameEffectsEnabled ? "" : " effects-disabled"}`}
+        className={`staff-game-summary-backdrop${isWrongNoteReview ? " has-review-comparison" : ""}${isLearningTest ? " is-learning-test" : ""}${isEntertainmentMode ? " is-entertainment-mode" : ""}${showNoStarCloud ? " has-no-stars" : ""}${gameEffectsEnabled ? "" : " effects-disabled"}`}
         role="dialog"
         style={gameArtStyle}
       >
         {!isWrongNoteReview ? (
           <div
             aria-label={`${revealedStars} 颗星依次出现，获得 ${earnedStars} 颗星`}
-            className={`staff-game-summary-stars has-star-halo${earnedStars === 0 ? " is-white-star-halo" : ""}${gameEffectsEnabled ? " is-animated" : ""}`}
+            className={`staff-game-summary-stars has-star-halo${earnedStars === 0 ? " is-white-star-halo" : ""}${gameEffectsEnabled && earnedStars > 0 ? " is-animated" : ""}`}
             role="img"
           >
             {[1, 2, 3].map((star) => (
@@ -307,8 +308,20 @@ export function StaffGameSummaryDialog({
             </strong>
           </div>
           <div className={`staff-game-summary-content${mode === "review" ? " is-review" : ""}`}>
-            <div aria-hidden="true" className="staff-game-summary-celebration">
-              {fireworks}
+            <div
+              aria-hidden="true"
+              className={`staff-game-summary-celebration${showNoStarCloud ? " has-no-stars" : ""}`}
+            >
+              {showNoStarCloud ? (
+                <img
+                  alt=""
+                  className="staff-game-summary-fail-cloud"
+                  draggable={false}
+                  src={summaryNoStarCloud}
+                />
+              ) : (
+                fireworks
+              )}
               {mascot}
             </div>
             {mode === "review" ? (
@@ -567,8 +580,7 @@ export function StaffGameSummaryDialog({
             </h2>
             <p className="staff-game-wrong-answer-conclusion">
               本局共出现 <strong>{generatedNoteCount}</strong> {isSongMode ? "个音符" : "道题"}，
-              错答或漏答涉及 <strong>{weakNoteCount}</strong> {isSongMode ? "个" : "道"}，原因共计{" "}
-              <strong>{weakReasonCount}</strong> 次，占比{" "}
+              错答或漏答涉及 <strong>{weakNoteCount}</strong> {isSongMode ? "个" : "道"}，占比{" "}
               <strong>{firstTryFailurePercentage}%</strong>。
             </p>
             <div className="staff-game-wrong-answer-table-wrap">

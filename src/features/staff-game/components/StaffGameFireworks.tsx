@@ -21,8 +21,12 @@ interface Spark {
 }
 
 const FIREWORK_COLORS = ["#fff4c4", "#ffffff", "#ffd45b", "#7de7ff", "#ff94cf"];
+const SUMMARY_LAUNCH_ROW_SELECTOR =
+  ".staff-game-learning-summary-metrics, .staff-game-result-stats";
+const FIREWORK_ASCENT_FRAMES = 52;
+const FIREWORK_GRAVITY = 0.045;
 
-export function StaffGameFireworks({ image }: { image: string }): JSX.Element {
+export function StaffGameFireworks(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -41,24 +45,85 @@ export function StaffGameFireworks({ image }: { image: string }): JSX.Element {
     const sparks: Spark[] = [];
 
     const resize = (): void => {
-      const bounds = canvas.getBoundingClientRect();
+      const container = canvas.parentElement;
+      const bounds = container?.getBoundingClientRect() ?? canvas.getBoundingClientRect();
+      const launchRow = canvas
+        .closest<HTMLElement>(".staff-game-summary-content")
+        ?.querySelector<HTMLElement>(SUMMARY_LAUNCH_ROW_SELECTOR);
+      const launchRowBounds = launchRow?.getBoundingClientRect();
+      const canvasTop = -bounds.height * 0.65;
+      const defaultCanvasHeight = bounds.height * 1.65;
+      const canvasHeight = launchRowBounds
+        ? Math.max(defaultCanvasHeight, launchRowBounds.bottom - bounds.top - canvasTop + 8)
+        : defaultCanvasHeight;
+      const canvasWidth = launchRowBounds
+        ? Math.max(bounds.width * 3, launchRowBounds.width + 48)
+        : bounds.width * 3;
+
+      canvas.style.top = `${canvasTop}px`;
+      canvas.style.left = `${(bounds.width - canvasWidth) / 2}px`;
+      canvas.style.width = `${canvasWidth}px`;
+      canvas.style.height = `${canvasHeight}px`;
+
+      const canvasBounds = canvas.getBoundingClientRect();
       const ratio = Math.min(2, window.devicePixelRatio || 1);
-      width = bounds.width;
-      height = bounds.height;
+      width = canvasBounds.width;
+      height = canvasBounds.height;
       canvas.width = Math.max(1, Math.round(width * ratio));
       canvas.height = Math.max(1, Math.round(height * ratio));
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
     };
 
     const launchRocket = (): void => {
-      const edgeInset = width * 0.05 + 20;
-      const x = edgeInset + Math.random() * Math.max(0, width - edgeInset * 2);
+      const canvasBounds = canvas.getBoundingClientRect();
+      const containerBounds = canvas.parentElement?.getBoundingClientRect();
+      const summaryContent = canvas.closest<HTMLElement>(".staff-game-summary-content");
+      const launchRow = summaryContent?.querySelector<HTMLElement>(SUMMARY_LAUNCH_ROW_SELECTOR);
+      const launchCards = launchRow
+        ? Array.from(launchRow.children).filter(
+            (child): child is HTMLElement => child instanceof HTMLElement
+          )
+        : [];
+      const visibleLaunchCards = launchCards.filter((card) => {
+        const bounds = card.getBoundingClientRect();
+        return bounds.width > 0 && bounds.height > 0;
+      });
+
+      let x: number;
+      let y: number;
+      let targetY: number;
+
+      if (visibleLaunchCards.length > 0 && containerBounds) {
+        const launchCard =
+          visibleLaunchCards[Math.floor(Math.random() * visibleLaunchCards.length)];
+        const launchCardBounds = launchCard.getBoundingClientRect();
+        const cardInset = launchCardBounds.width * 0.18;
+        x =
+          launchCardBounds.left -
+          canvasBounds.left +
+          cardInset +
+          Math.random() * Math.max(0, launchCardBounds.width - cardInset * 2);
+        y = launchCardBounds.bottom + 5 - canvasBounds.top;
+        targetY =
+          containerBounds.top -
+          canvasBounds.top +
+          containerBounds.height * (0.18 + Math.random() * 0.22);
+      } else {
+        const edgeInset = width * 0.05 + 20;
+        x = edgeInset + Math.random() * Math.max(0, width - edgeInset * 2);
+        y = height + 3;
+        targetY = height * (0.3 + Math.random() * 0.12);
+      }
+
+      const ascentDistance = Math.max(30, y - targetY);
+      const launchSpeed =
+        ascentDistance / FIREWORK_ASCENT_FRAMES + (FIREWORK_GRAVITY * FIREWORK_ASCENT_FRAMES) / 2;
       rockets.push({
         x,
-        y: height + 3,
+        y,
         vx: (Math.random() - 0.5) * 0.24,
-        vy: -2.4 - Math.random() * 0.55,
-        targetY: height * (0.3 + Math.random() * 0.12),
+        vy: -launchSpeed,
+        targetY,
         color: FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)],
       });
     };
@@ -118,7 +183,7 @@ export function StaffGameFireworks({ image }: { image: string }): JSX.Element {
 
         rocket.x += rocket.vx * step;
         rocket.y += rocket.vy * step;
-        rocket.vy += 0.045 * step;
+        rocket.vy += FIREWORK_GRAVITY * step;
         if (rocket.y <= rocket.targetY || rocket.vy >= 0) {
           explode(rocket);
           rockets.splice(index, 1);
@@ -162,7 +227,6 @@ export function StaffGameFireworks({ image }: { image: string }): JSX.Element {
 
   return (
     <div aria-hidden="true" className="staff-game-result-fireworks">
-      <img alt="" draggable="false" src={image} />
       <canvas className="staff-game-fireworks-canvas" ref={canvasRef} />
     </div>
   );

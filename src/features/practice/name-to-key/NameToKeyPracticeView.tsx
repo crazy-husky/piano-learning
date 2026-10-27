@@ -74,8 +74,16 @@ interface NameToKeyPracticeViewProps {
   isActive: boolean;
   midi: MidiInputController;
   microphone: NameToKeyMicrophone;
+  navigationExitRequest?: {
+    id: number;
+    returnToSetup?: boolean;
+    targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal";
+  } | null;
   onBeforePracticeStart: () => Promise<{ proceed: boolean }>;
   onDataChanged: () => Promise<void>;
+  onNavigationExit?: (
+    targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal"
+  ) => void;
   onPracticeFinished: () => void;
   onRegisterMicrophoneAnswer: (handler: ((answer: PracticeAnswerInput) => void) | null) => void;
   onRunningChange: (running: boolean) => void;
@@ -221,8 +229,10 @@ export function NameToKeyPracticeView({
   isActive,
   midi,
   microphone,
+  navigationExitRequest,
   onBeforePracticeStart,
   onDataChanged,
+  onNavigationExit,
   onPracticeFinished,
   onRegisterMicrophoneAnswer,
   onRunningChange,
@@ -282,6 +292,7 @@ export function NameToKeyPracticeView({
   const [customFixedCount, setCustomFixedCount] = useState(preferences.fixedCount);
   const finishRoundRef = useRef<() => void>(() => undefined);
   const handlePracticeAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => undefined);
+  const handledNavigationExitRequestRef = useRef<number | null>(null);
 
   const targetPool = useMemo(() => createNameToKeyTargetPool(preferences), [preferences]);
 
@@ -559,6 +570,45 @@ export function NameToKeyPracticeView({
     onRunningChange(stage === "running" && !isPaused);
     return () => onRunningChange(false);
   }, [isPaused, onRunningChange, stage]);
+
+  useEffect(() => {
+    if (
+      !navigationExitRequest ||
+      handledNavigationExitRequestRef.current === navigationExitRequest.id ||
+      stage === "setup"
+    ) {
+      return;
+    }
+
+    handledNavigationExitRequestRef.current = navigationExitRequest.id;
+    if (intervalRef.current !== undefined) window.clearInterval(intervalRef.current);
+    if (advanceTimerRef.current !== undefined) window.clearTimeout(advanceTimerRef.current);
+    intervalRef.current = undefined;
+    advanceTimerRef.current = undefined;
+    onRegisterMicrophoneAnswer(null);
+    if (microphoneStartedRef.current) {
+      microphoneStartedRef.current = false;
+      stopMicrophone();
+    }
+    targetMidiRef.current = null;
+    targetRef.current = null;
+    targetResolvedRef.current = true;
+    setTarget(null);
+    setFeedback(null);
+    setIsPaused(false);
+    setRemainingMs(0);
+    remainingMsRef.current = 0;
+    setStage("setup");
+    onStageChange(false);
+    onNavigationExit?.(navigationExitRequest.targetView);
+  }, [
+    navigationExitRequest,
+    onNavigationExit,
+    onRegisterMicrophoneAnswer,
+    onStageChange,
+    stage,
+    stopMicrophone,
+  ]);
 
   useEffect(() => {
     if (stage !== "running" || isPaused || preferences.mode !== "fixed-duration") return undefined;

@@ -25,7 +25,6 @@ import starParticleArt from "../assets/ui/star-particle.webp";
 import settingsPawArt from "../assets/ui/settings-paw.webp";
 import levelJumpDecorationArt from "../assets/ui/level-jump-decoration.webp";
 import summaryLevelBannerArt from "../assets/ui/summary-level-banner.webp";
-import summaryFireworksArt from "../assets/ui/summary-fireworks.webp";
 import scoreFont from "../../../assets/fonts/fredoka-score-latin.woff2";
 
 export const STAFF_GAME_ART = {
@@ -54,7 +53,6 @@ export const STAFF_GAME_ART = {
   settingsPawArt,
   levelJumpDecorationArt,
   summaryLevelBannerArt,
-  summaryFireworksArt,
 } as const;
 
 const STAFF_GAME_IMAGE_ASSETS = [
@@ -101,11 +99,6 @@ const STAFF_GAME_IMAGE_ASSETS = [
     id: "image:summary-level-banner",
     label: "关卡结算横幅",
     source: STAFF_GAME_ART.summaryLevelBannerArt,
-  },
-  {
-    id: "image:summary-fireworks",
-    label: "结算烟花素材",
-    source: STAFF_GAME_ART.summaryFireworksArt,
   },
 ];
 

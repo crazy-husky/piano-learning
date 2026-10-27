@@ -1789,6 +1789,7 @@ export function PracticeView({
           <NameToKeyPracticeView
             isActive={practiceTab === "name-key"}
             midi={midi}
+            navigationExitRequest={navigationExitRequest}
             microphone={{
               error: practiceMicrophone.error,
               inputLevel: practiceMicrophone.inputLevel,
@@ -1800,6 +1801,7 @@ export function PracticeView({
             }}
             onBeforePracticeStart={onBeforePracticeStart}
             onDataChanged={onDataChanged}
+            onNavigationExit={onNavigationExit}
             onPracticeFinished={onPracticeFinished}
             onRegisterMicrophoneAnswer={registerNameToKeyMicrophoneAnswer}
             onRunningChange={setIsNameToKeyRunning}

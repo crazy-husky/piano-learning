@@ -851,7 +851,21 @@
 
 @media (max-width: 460px) {
   .staff-game-shell .staff-game-hud:is(.is-learning-test, .is-arcade-mode):not(.is-rush-mode) {
-    --staff-game-mode-hud-level-size: 62px;
+    --staff-game-mode-hud-level-size: clamp(78px, 23vw, 92px);
+  }
+
+  .staff-game-shell
+    .staff-game-hud:is(.is-learning-test, .is-arcade-mode):not(.is-rush-mode)
+    .staff-game-level-medal:not(.is-learning-test)
+    > span {
+    font-size: 11px;
+  }
+
+  .staff-game-shell
+    .staff-game-hud:is(.is-learning-test, .is-arcade-mode):not(.is-rush-mode)
+    .staff-game-level-medal:not(.is-learning-test)
+    > strong {
+    font-size: clamp(29px, 8vw, 33px);
   }
 
   .staff-game-shell .staff-game-hud:is(.is-learning-test, .is-arcade-mode).is-ready {

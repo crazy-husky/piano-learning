@@ -131,7 +131,7 @@ export function HomeView({ microphoneAlgorithm, onNavigate }: HomeViewProps): JS
   return (
     <section aria-labelledby="home-title" className="home-shell">
       <header className="home-heading">
-        <span className="home-eyebrow">PIANO LEARNING</span>
+        <span className="home-eyebrow">SIGHT READING</span>
         <h1 id="home-title">识谱视奏</h1>
         <p>选择一个入口，开始今天的音乐练习吧～</p>
       </header>

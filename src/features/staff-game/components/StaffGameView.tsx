@@ -211,7 +211,6 @@ const {
   modalFrameArt,
   starParticleArt,
   summaryLevelBannerArt,
-  summaryFireworksArt,
 } = STAFF_GAME_ART;
 
 const COMBO_EXCELLENT_MILESTONE = 10;
@@ -4096,11 +4095,7 @@ export function StaffGameView({
               }
               comboCount={summaryComboCount}
               earnedStars={earnedStars}
-              fireworks={
-                settings.gameEffectsEnabled ? (
-                  <StaffGameFireworks image={summaryFireworksArt} />
-                ) : null
-              }
+              fireworks={settings.gameEffectsEnabled ? <StaffGameFireworks /> : null}
               gameArtStyle={gameArtStyle}
               gameEffectsEnabled={settings.gameEffectsEnabled}
               isFinalLevel={level >= GAME_LEVEL_COUNT}

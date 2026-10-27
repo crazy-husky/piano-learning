@@ -599,36 +599,6 @@
   margin: 0 auto;
 }
 
-.staff-game-result-fireworks::before {
-  position: absolute;
-  inset: 12% 8%;
-  border-radius: 50%;
-  background: radial-gradient(
-    ellipse,
-    rgba(255, 255, 255, 0.86),
-    rgba(255, 244, 208, 0.38) 38%,
-    rgba(186, 242, 255, 0.18) 62%,
-    transparent 76%
-  );
-  content: "";
-  filter: blur(8px);
-  animation: staff-game-fireworks-glow 2.4s ease-in-out infinite;
-}
-
-.staff-game-result-fireworks img {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 3px 7px rgba(83, 136, 170, 0.16));
-  animation:
-    staff-game-fireworks-bloom 760ms cubic-bezier(0.16, 1, 0.3, 1) both,
-    staff-game-fireworks-image-pulse 2.5s ease-in-out 760ms infinite;
-}
-
 .staff-game-summary-content > .staff-game-result-fireworks {
   width: min(144px, 40%);
   flex: 0 0 auto;
@@ -764,6 +734,11 @@
     padding: max(34px, env(safe-area-inset-top)) 12px max(14px, env(safe-area-inset-bottom));
   }
 
+  .staff-game-summary-backdrop:not(.has-review-comparison) > .staff-game-summary-stars,
+  .staff-game-summary-backdrop:not(.has-review-comparison) > .staff-game-summary-card {
+    translate: 0 -20px;
+  }
+
   .staff-game-summary-card {
     width: min(430px, 100%);
     max-height: calc(100% - 20px);
@@ -863,62 +838,7 @@
   }
 }
 
-@keyframes staff-game-fireworks-glow {
-  0% {
-    opacity: 0.08;
-    transform: scale(0.2);
-  }
-  35% {
-    opacity: 0.95;
-    transform: scale(1.14);
-  }
-  100% {
-    opacity: 0.48;
-    transform: scale(1);
-  }
-}
-
-@keyframes staff-game-fireworks-bloom {
-  0% {
-    opacity: 0;
-    transform: scale(0.12) rotate(-7deg);
-  }
-  48% {
-    opacity: 1;
-    transform: scale(1.16) rotate(2deg);
-  }
-  72% {
-    opacity: 1;
-    transform: scale(0.96) rotate(-1deg);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) rotate(0);
-  }
-}
-
-@keyframes staff-game-fireworks-image-pulse {
-  0%,
-  100% {
-    scale: 1;
-    filter: drop-shadow(0 3px 7px rgba(83, 136, 170, 0.16)) brightness(1);
-  }
-  48% {
-    scale: 1.055;
-    filter: drop-shadow(0 5px 12px rgba(251, 190, 68, 0.35)) brightness(1.14) saturate(1.12);
-  }
-  72% {
-    scale: 1.015;
-    filter: drop-shadow(0 3px 8px rgba(83, 136, 170, 0.2)) brightness(1.05);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .staff-game-result-fireworks::before,
-  .staff-game-result-fireworks img {
-    animation: none;
-  }
-
   .staff-game-summary-star.is-revealed {
     animation-duration: 1ms;
   }
@@ -2555,6 +2475,42 @@ body.rush-mode .staff-game-rush-vignette {
 
 .staff-game-summary-card.is-learning-test .staff-game-summary-mascot {
   width: clamp(48px, 12vw, 62px);
+}
+
+.staff-game-summary-celebration.has-no-stars {
+  z-index: 5;
+  width: min(144px, 40%);
+  aspect-ratio: 560 / 442;
+}
+
+.staff-game-summary-fail-cloud {
+  position: absolute;
+  z-index: 3;
+  top: -32px;
+  left: 50%;
+  display: block;
+  width: clamp(80px, 20vw, 104px);
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.staff-game-summary-card.is-learning-test .staff-game-summary-celebration.has-no-stars {
+  width: 96px;
+  aspect-ratio: 560 / 442;
+}
+
+.staff-game-summary-card.is-learning-test
+  .staff-game-summary-celebration.has-no-stars
+  .staff-game-summary-fail-cloud {
+  width: 74px;
+}
+
+.staff-game-summary-card.is-learning-test
+  .staff-game-summary-celebration.has-no-stars
+  .staff-game-summary-mascot {
+  width: 62px;
 }
 
 @media (max-width: 480px) {
