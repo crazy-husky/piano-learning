@@ -149,7 +149,7 @@ export function StaffGameWrongNoteTrendChart({
               ? y - 12
               : y + 22;
       const labelAnchor: "start" | "end" | "middle" =
-        points.length < 3
+        points.length === 1
           ? "middle"
           : index === 0
             ? "start"

@@ -25,6 +25,8 @@ const SUMMARY_LAUNCH_ROW_SELECTOR =
   ".staff-game-learning-summary-metrics, .staff-game-result-stats";
 const FIREWORK_ASCENT_FRAMES = 52;
 const FIREWORK_GRAVITY = 0.045;
+const FIREWORK_VERTICAL_OFFSET = -10;
+const FIREWORK_LAUNCH_OFFSET = -20;
 
 export function StaffGameFireworks(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -103,16 +105,22 @@ export function StaffGameFireworks(): JSX.Element {
           canvasBounds.left +
           cardInset +
           Math.random() * Math.max(0, launchCardBounds.width - cardInset * 2);
-        y = launchCardBounds.bottom + 5 - canvasBounds.top;
+        y =
+          launchCardBounds.bottom +
+          5 +
+          FIREWORK_VERTICAL_OFFSET +
+          FIREWORK_LAUNCH_OFFSET -
+          canvasBounds.top;
         targetY =
           containerBounds.top -
           canvasBounds.top +
-          containerBounds.height * (0.18 + Math.random() * 0.22);
+          containerBounds.height * (0.18 + Math.random() * 0.22) +
+          FIREWORK_VERTICAL_OFFSET;
       } else {
         const edgeInset = width * 0.05 + 20;
         x = edgeInset + Math.random() * Math.max(0, width - edgeInset * 2);
-        y = height + 3;
-        targetY = height * (0.3 + Math.random() * 0.12);
+        y = height + 3 + FIREWORK_VERTICAL_OFFSET + FIREWORK_LAUNCH_OFFSET;
+        targetY = height * (0.3 + Math.random() * 0.12) + FIREWORK_VERTICAL_OFFSET;
       }
 
       const ascentDistance = Math.max(30, y - targetY);
