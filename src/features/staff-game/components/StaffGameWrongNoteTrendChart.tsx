@@ -10,6 +10,7 @@ export type StaffGameWrongNoteTrendMetric = "accuracy" | "response";
 const CHART_WIDTH = 800;
 const CHART_HEIGHT = 230;
 const PLOT_LEFT = 38;
+const PLOT_DATA_LEFT_INSET = 14;
 const PLOT_RIGHT = 38;
 const PLOT_TOP = 14;
 const Y_TICK_COUNT = 4;
@@ -125,15 +126,16 @@ export function StaffGameWrongNoteTrendChart({
     );
     const plotRight = chartSize.width - PLOT_RIGHT;
     const plotBottom = chartSize.height - 46;
-    const plotWidth = plotRight - PLOT_LEFT;
+    const plotDataLeft = PLOT_LEFT + PLOT_DATA_LEFT_INSET;
+    const plotWidth = plotRight - plotDataLeft;
     const plotHeight = plotBottom - PLOT_TOP;
     const labelStep = Math.max(1, Math.ceil(points.length / 7));
     const coordinates = points.map((point, index) => {
       const value = values[index];
       const x =
         points.length <= 1
-          ? PLOT_LEFT + plotWidth / 2
-          : PLOT_LEFT + (index / (points.length - 1)) * plotWidth;
+          ? PLOT_LEFT + (plotRight - PLOT_LEFT) / 2
+          : plotDataLeft + (index / (points.length - 1)) * plotWidth;
       const y =
         value === null
           ? null
