@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useRef, useState, type ReactNod
 export interface ConfirmDialogOptions {
   cancelLabel?: string;
   confirmLabel?: string;
+  confirmOnly?: boolean;
   description: string;
   destructive?: boolean;
   title: string;
@@ -51,12 +52,18 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }): JS
               <AlertDialog.Description className="ui-confirm-description">
                 {request.description}
               </AlertDialog.Description>
-              <div className="ui-confirm-actions">
-                <AlertDialog.Cancel asChild>
-                  <button className="ui-confirm-cancel" onClick={() => finish(false)} type="button">
-                    {request.cancelLabel ?? "取消"}
-                  </button>
-                </AlertDialog.Cancel>
+              <div className={`ui-confirm-actions${request.confirmOnly ? " is-confirm-only" : ""}`}>
+                {!request.confirmOnly ? (
+                  <AlertDialog.Cancel asChild>
+                    <button
+                      className="ui-confirm-cancel"
+                      onClick={() => finish(false)}
+                      type="button"
+                    >
+                      {request.cancelLabel ?? "取消"}
+                    </button>
+                  </AlertDialog.Cancel>
+                ) : null}
                 <AlertDialog.Action asChild>
                   <button
                     className={

@@ -787,6 +787,10 @@
   margin-top: 4px;
 }
 
+.ui-confirm-actions.is-confirm-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .ui-confirm-actions button {
   min-height: 42px;
   min-width: 92px;

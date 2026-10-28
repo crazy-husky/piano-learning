@@ -29,11 +29,13 @@ import type {
 } from "../../../domain/types";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import { getMidiUnavailableNotice } from "../../../midi/midiUnavailableNotice";
 import type { PracticeChaseSettings } from "./PracticeChaseSettingsDialog";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
+import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
 import { useMidiConnectionAttention } from "../../../shared/hooks/useMidiConnectionAttention";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
@@ -294,6 +296,7 @@ export function StaffDistancePracticeView({
   onSettingsSaved,
   settings,
 }: StaffDistancePracticeViewProps): JSX.Element {
+  const confirmDialog = useConfirmDialog();
   const {
     canRequestConnection: canRequestMidiConnection,
     isActive: isMidiConnectionAttentionActive,
@@ -483,8 +486,14 @@ export function StaffDistancePracticeView({
     let microphoneStarted = false;
     try {
       if (trainingMode === "play" && preferences.inputMethod === "midi" && !midi.isConnected) {
-        showMidiAttention("start");
-        setStartError("尚未连接 MIDI 键盘。请先点击“连接 MIDI”，或切换为麦克风输入。");
+        const notice = getMidiUnavailableNotice(midi.status);
+        if (notice) {
+          setStartError(null);
+          void confirmDialog({ ...notice, confirmLabel: "确认", confirmOnly: true });
+        } else {
+          showMidiAttention("start");
+          setStartError("尚未连接 MIDI 键盘。请先点击“连接 MIDI”，或切换为麦克风输入。");
+        }
         return;
       }
       const preflight = await onBeforePracticeStart();
@@ -534,8 +543,10 @@ export function StaffDistancePracticeView({
     isStarting,
     microphone,
     midi.isConnected,
+    midi.status,
     onBeforePracticeStart,
     preferences,
+    confirmDialog,
     showMidiAttention,
     settings,
     setupDisabledReason,

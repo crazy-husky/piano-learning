@@ -22,9 +22,11 @@ import {
 } from "../../../domain/notes";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
+import { getMidiUnavailableNotice } from "../../../midi/midiUnavailableNotice";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
+import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
 import { useMidiConnectionAttention } from "../../../shared/hooks/useMidiConnectionAttention";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import {
@@ -253,6 +255,7 @@ export function PracticeSetupView({
   settings,
   metronomeBeatsPerBar,
 }: PracticeSetupViewProps): JSX.Element {
+  const confirmDialog = useConfirmDialog();
   const {
     canRequestConnection: canShowMidiAttention,
     isActive: isMidiConnectAttentionActive,
@@ -318,6 +321,12 @@ export function PracticeSetupView({
   ): void => {
     setMidiAttentionSource(source);
     triggerMidiAttention();
+  };
+  const showMidiUnavailableNotice = (): boolean => {
+    const notice = getMidiUnavailableNotice(midi.status);
+    if (!notice) return false;
+    void confirmDialog({ ...notice, confirmLabel: "确认", confirmOnly: true });
+    return true;
   };
   const handleMidiAnswerModeClick = (): void => {
     if (!isDuetPractice) {
@@ -433,9 +442,11 @@ export function PracticeSetupView({
 
   const startSongPractice = async (): Promise<void> => {
     if (requiresMidi && !midi.isConnected) {
-      showMidiAttention("song-start");
       setSongStartError(null);
-      toast.error("混弹需要连接 MIDI 键盘，请连接后再进入练习。", { duration: 3500 });
+      if (!showMidiUnavailableNotice()) {
+        showMidiAttention("song-start");
+        toast.error("混弹需要连接 MIDI 键盘，请连接后再进入练习。", { duration: 3500 });
+      }
       return;
     }
     if (isStartingSongPractice) {
@@ -802,7 +813,9 @@ export function PracticeSetupView({
                         >
                           {midi.isConnected
                             ? "音高与八度精准识别，练习中可切换设备"
-                            : "请先连接并选择 MIDI 设备，再开始练习"}
+                            : getMidiUnavailableNotice(midi.status)
+                              ? "当前环境暂不支持 MIDI，点击“开始”查看解决方式"
+                              : "请先连接并选择 MIDI 设备，再开始练习"}
                         </small>
                       </span>
                     </button>
@@ -828,7 +841,9 @@ export function PracticeSetupView({
                       className={`practice-free-warning${isMidiConnectAttentionActive && midiAttentionSource === "answer-mode" ? " is-midi-attention" : ""}`}
                       role="status"
                     >
-                      请连接 MIDI 键盘后开始左右手合弹。
+                      {getMidiUnavailableNotice(midi.status)
+                        ? "当前环境暂不支持 MIDI，点击“开始”查看解决方式。"
+                        : "请连接 MIDI 键盘后开始左右手合弹。"}
                     </p>
                   ) : null}
                   {activeAnswerPitchMode === "microphone" &&
@@ -1180,7 +1195,7 @@ export function PracticeSetupView({
                   disabled={(setupDisabled && !freePracticeNeedsMidi) || showStartingSessionStatus}
                   onClick={() => {
                     if (freePracticeNeedsMidi) {
-                      showMidiAttention("start");
+                      if (!showMidiUnavailableNotice()) showMidiAttention("start");
                       return;
                     }
                     void startSession();

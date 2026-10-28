@@ -1353,7 +1353,10 @@ export function PracticeView({
 
   useEffect(() => {
     if (phase === "running" && answerPitchMode === "exact-pitch" && !midi.isConnected) {
-      pausePractice("midi-disconnected");
+      // A MIDI disconnect is recoverable: pause the active prompt without marking
+      // it interrupted, so reconnecting and answering it still counts normally.
+      // Exiting the session will mark any unfinished prompt as interrupted.
+      pausePractice();
     }
   }, [answerPitchMode, midi.isConnected, pausePractice, phase]);
 
