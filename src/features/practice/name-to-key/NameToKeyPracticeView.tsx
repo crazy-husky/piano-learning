@@ -18,6 +18,7 @@ import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import { MAX_PRACTICE_QUESTIONS } from "../../../domain/practiceLimits";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
+import { PracticeFullscreenToggle } from "../components/PracticeFullscreenFrame";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { PracticeQuestionLimitDialog } from "../../../shared/components/PracticeQuestionLimitDialog";
@@ -1304,6 +1305,7 @@ export function NameToKeyPracticeView({
               {preferences.inputMode === "midi" ? (
                 <MidiInputControl ariaLabel="音名找键 MIDI 输入设备" midi={midi} />
               ) : null}
+              <PracticeFullscreenToggle />
             </div>
           </header>
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { MetronomeController } from "../useMetronomeController";
 import { useDraggableMetronomeFloating } from "../useDraggableMetronomeFloating";
@@ -55,12 +55,17 @@ export function MetronomeFloating({
   const [hiddenUntil, setHiddenUntil] = useState(readHiddenUntil);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
+  const [isMiniHovered, setIsMiniHovered] = useState(false);
+  const [isMiniPinnedOpen, setIsMiniPinnedOpen] = useState(false);
+  const [miniDockEdge, setMiniDockEdge] = useState<"left" | "right" | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMenuAbove, setIsMenuAbove] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const openMenu = (): void => {
+    setIsMiniPinnedOpen(true);
+    setIsMiniHovered(false);
     const anchor = rootRef.current?.querySelector<HTMLElement>(".metronome-menu-anchor");
     const rect = anchor?.getBoundingClientRect();
     const menuHeight = 146;
@@ -77,6 +82,24 @@ export function MetronomeFloating({
   };
 
   const isVisible = !hiddenForVisit && hiddenUntil <= Date.now();
+  const isMini =
+    isCompact &&
+    controller.isPlaying &&
+    miniDockEdge !== null &&
+    !isMiniHovered &&
+    !isMiniPinnedOpen;
+
+  const updateMiniDockEdge = useCallback((): void => {
+    if (!isCompact) return;
+    const bounds = rootRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const edgeThreshold = 44;
+    const leftGap = bounds.left;
+    const rightGap = window.innerWidth - bounds.right;
+    const nextEdge = leftGap <= edgeThreshold ? "left" : rightGap <= edgeThreshold ? "right" : null;
+    setMiniDockEdge((current) => (current === nextEdge ? current : nextEdge));
+  }, [isCompact]);
+
   const dragHandlers = useDraggableMetronomeFloating({
     rootRef,
     enabled: isVisible,
@@ -99,8 +122,43 @@ export function MetronomeFloating({
   useEffect(() => {
     setIsExpanded(false);
     setIsCompact(activePractice);
+    setIsMiniHovered(false);
+    setIsMiniPinnedOpen(false);
+    setMiniDockEdge(null);
     setIsMenuOpen(false);
   }, [activePractice]);
+
+  useEffect(() => {
+    if (!isCompact) {
+      setMiniDockEdge(null);
+      return undefined;
+    }
+    const root = rootRef.current;
+    const resizeObserver = root ? new ResizeObserver(updateMiniDockEdge) : null;
+    if (root) resizeObserver?.observe(root);
+    let followUpFrame = 0;
+    const frame = window.requestAnimationFrame(() => {
+      followUpFrame = window.requestAnimationFrame(updateMiniDockEdge);
+    });
+    window.addEventListener("resize", updateMiniDockEdge);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(followUpFrame);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updateMiniDockEdge);
+    };
+  }, [isCompact, updateMiniDockEdge]);
+
+  useEffect(() => {
+    if (!isMiniPinnedOpen) return undefined;
+    const closeOnOutsidePress = (event: globalThis.PointerEvent): void => {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
+        setIsMiniPinnedOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
+  }, [isMiniPinnedOpen]);
 
   useEffect(() => {
     if (!isMenuOpen) return undefined;
@@ -132,6 +190,8 @@ export function MetronomeFloating({
     setIsMenuOpen(false);
     setIsExpanded(false);
     setIsCompact(false);
+    setIsMiniHovered(false);
+    setIsMiniPinnedOpen(false);
     toast.success("木鱼节拍器已退出", {
       description: HIDDEN_METRONOME_TOAST_DESCRIPTION,
       duration: 5000,
@@ -153,6 +213,8 @@ export function MetronomeFloating({
           onHideForVisit();
           setIsMenuOpen(false);
           setIsCompact(false);
+          setIsMiniHovered(false);
+          setIsMiniPinnedOpen(false);
           toast.success("木鱼节拍器已退出", {
             description: HIDDEN_METRONOME_TOAST_DESCRIPTION,
             duration: 5000,
@@ -174,12 +236,18 @@ export function MetronomeFloating({
 
   return (
     <div
-      className="metronome-floating"
+      className={`metronome-floating${isMini ? " is-mini" : ""}${miniDockEdge ? ` is-docked-${miniDockEdge}` : ""}`}
       onClickCapture={dragHandlers.onClickCapture}
-      onPointerCancel={dragHandlers.onPointerCancel}
+      onPointerCancel={(event) => {
+        dragHandlers.onPointerCancel(event);
+        window.requestAnimationFrame(updateMiniDockEdge);
+      }}
       onPointerDown={dragHandlers.onPointerDown}
       onPointerMove={dragHandlers.onPointerMove}
-      onPointerUp={dragHandlers.onPointerUp}
+      onPointerUp={(event) => {
+        dragHandlers.onPointerUp(event);
+        window.requestAnimationFrame(updateMiniDockEdge);
+      }}
       ref={rootRef}
       style={dragHandlers.style}
     >
@@ -190,6 +258,8 @@ export function MetronomeFloating({
           onStarted={() => {
             setIsExpanded(false);
             setIsCompact(true);
+            setIsMiniHovered(false);
+            setIsMiniPinnedOpen(false);
             setIsMenuOpen(false);
           }}
           closeLabel="暂停并收起"
@@ -197,11 +267,15 @@ export function MetronomeFloating({
             setIsMenuOpen(false);
             setIsExpanded(false);
             setIsCompact(false);
+            setIsMiniHovered(false);
+            setIsMiniPinnedOpen(false);
           }}
           onMinimize={() => {
             setIsMenuOpen(false);
             setIsExpanded(false);
             setIsCompact(true);
+            setIsMiniHovered(false);
+            setIsMiniPinnedOpen(false);
           }}
           onOpenMenu={toggleMenu}
           menu={menu}
@@ -211,12 +285,24 @@ export function MetronomeFloating({
         <MetronomeCore
           controller={controller}
           onSynchronizedToggle={onSyncPauseToggle}
+          onStarted={() => {
+            setIsMiniHovered(false);
+            setIsMiniPinnedOpen(false);
+          }}
           closeLabel="暂停并收起"
           onExpand={() => {
             setIsMenuOpen(false);
             setIsExpanded(true);
           }}
           onOpenMenu={toggleMenu}
+          mini={isMini}
+          miniDockEdge={miniDockEdge}
+          onMiniPointerEnter={() => setIsMiniHovered(true)}
+          onMiniPointerLeave={() => setIsMiniHovered(false)}
+          onRevealMini={() => {
+            setIsMiniPinnedOpen(true);
+            setIsMiniHovered(false);
+          }}
           menu={menu}
           variant="compact"
         />

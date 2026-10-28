@@ -63,7 +63,6 @@ export function ReturnToCurrentNoteButton({
       ) : (
         <ArrowUp aria-hidden="true" size={19} />
       )}
-      <span>回到当前音符</span>
     </button>
   );
 }

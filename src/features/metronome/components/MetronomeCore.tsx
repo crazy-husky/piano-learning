@@ -23,6 +23,11 @@ interface MetronomeCoreProps {
   onClose?: () => void;
   closeLabel?: string;
   onOpenMenu?: () => void;
+  mini?: boolean;
+  miniDockEdge?: "left" | "right" | null;
+  onRevealMini?: () => void;
+  onMiniPointerEnter?: () => void;
+  onMiniPointerLeave?: () => void;
   menu?: ReactNode;
   variant: MetronomeCoreVariant;
 }
@@ -226,6 +231,11 @@ export function MetronomeCore({
   onClose,
   closeLabel = "关闭节拍器",
   onOpenMenu,
+  mini = false,
+  miniDockEdge = null,
+  onRevealMini,
+  onMiniPointerEnter,
+  onMiniPointerLeave,
   menu,
   variant,
 }: MetronomeCoreProps): JSX.Element {
@@ -264,12 +274,24 @@ export function MetronomeCore({
       controller.adjustBpm(event.deltaY < 0 ? 1 : -1);
     };
     return (
-      <div className={`metronome-compact-bar strike-${struckSide}`} onWheel={onWheel}>
+      <div
+        className={[
+          "metronome-compact-bar",
+          `strike-${struckSide}`,
+          mini ? "is-mini" : "",
+          miniDockEdge ? `is-mini-docked-${miniDockEdge}` : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        onMouseLeave={mini ? undefined : onMiniPointerLeave}
+        onWheel={mini ? undefined : onWheel}
+      >
         <div className="metronome-menu-anchor">
           <button
-            aria-label="打开节拍器设置"
+            aria-label={mini ? "显示节拍器状态" : "打开节拍器设置"}
             className="metronome-compact-woodfish"
-            onClick={onExpand}
+            onClick={mini ? onRevealMini : onExpand}
+            onMouseEnter={mini ? onMiniPointerEnter : undefined}
             onContextMenu={(event) => {
               event.preventDefault();
               onOpenMenu?.();

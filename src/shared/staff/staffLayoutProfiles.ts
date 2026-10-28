@@ -73,6 +73,8 @@ export interface PracticePageStaffLayoutProfile {
 }
 
 const PRACTICE_STAFF_REFERENCE_MEASURE_WIDTH_PX = 180;
+const PRACTICE_STAFF_ROW_VIEW_HEIGHT_PX = 200;
+const PRACTICE_STAFF_ROW_GAP_PX = 4;
 
 /**
  * Shared width tuning for practice score rows. Adjusting the reference measure
@@ -337,7 +339,7 @@ export const PRACTICE_PAGE_STAFF_LAYOUT = {
     ledgerGapPx: 100,
     trebleOnlyYPx: 60,
     bassOnlyYPx: 60,
-    viewHeightPx: 240,
+    viewHeightPx: PRACTICE_STAFF_ROW_VIEW_HEIGHT_PX,
   },
   // 整个谱页允许使用的显示宽度。
   width: {
@@ -349,20 +351,12 @@ export const PRACTICE_PAGE_STAFF_LAYOUT = {
     rows: 2,
     notesPerRow: 24,
     // 相邻两个固定行 viewport 之间的额外空白。
-    rowGapPx: 10,
+    rowGapPx: PRACTICE_STAFF_ROW_GAP_PX,
   },
 } as const satisfies PracticePageStaffLayoutProfile;
 
 export const MOBILE_PRACTICE_PAGE_STAFF_LAYOUT = {
   ...PRACTICE_PAGE_STAFF_LAYOUT,
-  vertical: {
-    ...PRACTICE_PAGE_STAFF_LAYOUT.vertical,
-    viewHeightPx: 220,
-  },
-  multirow: {
-    ...PRACTICE_PAGE_STAFF_LAYOUT.multirow,
-    rowGapPx: 4,
-  },
 } as const satisfies PracticePageStaffLayoutProfile;
 
 // Non-continuous duet score views keep a compact width; continuous practice

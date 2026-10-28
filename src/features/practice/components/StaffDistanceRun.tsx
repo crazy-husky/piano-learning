@@ -26,6 +26,7 @@ import { saveAnswerEvents } from "../../../data/db";
 import type { AnswerAttempt } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
+import { PracticeFullscreenToggle } from "./PracticeFullscreenFrame";
 import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import { isNaturalPianoKey } from "../../../shared/components/pianoKeyNames";
 import {
@@ -1159,6 +1160,7 @@ export function StaffDistanceRun({
               midi={midi}
             />
           ) : null}
+          <PracticeFullscreenToggle />
         </div>
       </header>
 

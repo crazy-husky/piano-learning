@@ -98,6 +98,7 @@ interface StaffPagePromptProps {
   notesPerRow?: number;
   maxRowCount?: number;
   scrollRowCount?: number;
+  followRowAtTop?: boolean;
   minDisplayWidthPx?: number;
   visibleRowCount?: number;
   virtualizeRows?: boolean;
@@ -149,6 +150,26 @@ const NEUTRAL_COLOR = "#211c18";
 const COMPLETE_COLOR = "#2f8f5f";
 const WRONG_COLOR = "#c84c3d";
 const AUTO_FOLLOW_RESUME_DELAY_MS = 2000;
+const STAFF_PAGE_ROW_TOP_CLEARANCE_PX = 16;
+function getStaffPageRowCenterY(row: SVGElement): number {
+  const staves = Array.from(row.querySelectorAll<SVGElement>(".vf-stave"));
+  const firstStave = staves[0]?.getBoundingClientRect();
+  const lastStave = staves[staves.length - 1]?.getBoundingClientRect();
+  if (firstStave && lastStave) return (firstStave.top + lastStave.bottom) / 2;
+  const rowBounds = row.getBoundingClientRect();
+  return (rowBounds.top + rowBounds.bottom) / 2;
+}
+
+function getStaffPageRowTopY(row: SVGElement): number {
+  const firstStave = row.querySelector<SVGElement>(".vf-stave")?.getBoundingClientRect();
+  if (!firstStave) return row.getBoundingClientRect().top;
+
+  // VexFlow note groups can report large SVG text/stem bounds above the actual
+  // staff lines. Follow the stave itself so those bounds do not leave a blank
+  // band above the visible notation; keep room for the clef above the top line.
+  return firstStave.top - STAFF_PAGE_ROW_TOP_CLEARANCE_PX;
+}
+
 type StaffPageTickable = GhostNote | StaveNote;
 interface TimedStaveNote {
   endBeat: number;
@@ -170,6 +191,14 @@ interface RenderedStaffPageNote {
   index: number;
   midi: number;
   staff?: Staff;
+}
+interface RenderedStaffPageStem {
+  color: string;
+  element: SVGElement;
+  index: number;
+  midis: number[];
+  staff: Staff;
+  stem: Stem;
 }
 interface PlaybackCursorPoint {
   x: number;
@@ -979,7 +1008,10 @@ function colorForIndex(
   return palette.ink;
 }
 
-function updateRenderedNoteColor(renderedNote: RenderedStaffPageNote, color: string): void {
+function updateRenderedNoteColor(
+  renderedNote: Pick<RenderedStaffPageNote, "color" | "element">,
+  color: string
+): void {
   if (renderedNote.color === color) {
     return;
   }
@@ -998,6 +1030,23 @@ function updateRenderedNoteColor(renderedNote: RenderedStaffPageNote, color: str
   renderedNote.element.setAttribute("fill", color);
   renderedNote.element.setAttribute("stroke", color);
   renderedNote.color = color;
+}
+
+function updateRenderedStemColor(renderedStem: RenderedStaffPageStem, color: string): void {
+  if (renderedStem.color === color) {
+    return;
+  }
+
+  renderedStem.stem.setStyle({ fillStyle: color, strokeStyle: color });
+  const elements = [
+    renderedStem.element,
+    ...renderedStem.element.querySelectorAll<SVGElement>("*"),
+  ];
+  for (const element of elements) {
+    element.setAttribute("stroke", color);
+    element.style.setProperty("stroke", color);
+  }
+  renderedStem.color = color;
 }
 
 function addStaffProgressMarker(
@@ -1483,6 +1532,7 @@ export function StaffPagePrompt({
   staffNoteDurations,
   layout = PRACTICE_PAGE_STAFF_LAYOUT,
   scrollDurationMs = 0,
+  followRowAtTop = false,
   staffNotationMode,
   useLedgerGap,
   distributeNotesEvenly = false,
@@ -1545,6 +1595,7 @@ export function StaffPagePrompt({
   const chaseCursorRef = useRef(chaseCursor);
   const getAudioTimeRef = useRef(getAudioTime);
   const renderedNotesRef = useRef<RenderedStaffPageNote[]>([]);
+  const renderedStemsRef = useRef<RenderedStaffPageStem[]>([]);
   const cursorLayersRef = useRef(new Map<string, PlaybackCursorLayer>());
   const cursorTargetsRef = useRef(new Map<number, PlaybackCursorTargets>());
   const cursorRowsRef = useRef(new Map<number, number>());
@@ -1851,12 +1902,17 @@ export function StaffPagePrompt({
       }
       return;
     }
-    if (previousRowIndex === undefined) {
+    const isInitialFollow = previousRowIndex === undefined;
+    const didFollowRowChange = previousRowIndex !== followRowIndex;
+    const shouldFollowCurrentRow =
+      (!isInitialFollow && didFollowRowChange) ||
+      (isInitialFollow && (followRowAtTop || followRowIndex > 0)) ||
+      pendingPlaybackFollowRef.current;
+    if (isInitialFollow && !shouldFollowCurrentRow) {
+      // Keep the opening row at the top; no initial scroll is needed.
       previousFollowRowIndexRef.current = followRowIndex;
       return;
     }
-    const didFollowRowChange = previousRowIndex !== followRowIndex;
-    const shouldFollowCurrentRow = didFollowRowChange || pendingPlaybackFollowRef.current;
     if (!shouldFollowCurrentRow) return;
     if (autoScrollAnimationFrameRef.current !== 0) {
       window.cancelAnimationFrame(autoScrollAnimationFrameRef.current);
@@ -1890,11 +1946,11 @@ export function StaffPagePrompt({
       isNestedScrollViewport && scrollViewport ? scrollViewport.getBoundingClientRect() : null;
     const viewportTop = viewportBounds ? viewportBounds.top + scrollViewport!.clientTop : 0;
     const viewportHeight = viewportBounds ? scrollViewport!.clientHeight : window.innerHeight;
-    const rowBounds = row.getBoundingClientRect();
-    // The active row owns automatic scrolling. Following the continuation hint
-    // on a later ResizeObserver/render pass can replace this target and push
-    // the newly active row one system too far upward.
-    const delta = (rowBounds.top + rowBounds.bottom) / 2 - (viewportTop + viewportHeight / 2);
+    // Following the continuation hint on a later ResizeObserver/render pass can
+    // replace this target and push the newly active row one system too far upward.
+    const delta = followRowAtTop
+      ? getStaffPageRowTopY(row) - viewportTop
+      : getStaffPageRowCenterY(row) - (viewportTop + viewportHeight / 2);
     if (Math.abs(delta) < 1) return;
 
     const scrollingElement = document.scrollingElement ?? document.documentElement;
@@ -1906,11 +1962,8 @@ export function StaffPagePrompt({
         ? Math.max(0, scrollViewport.scrollHeight - scrollViewport.clientHeight)
         : Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
 
-    // The first row is pinned by the top of the score, so it can start above
-    // center. When the second row becomes active it may also be at the very
-    // bottom of the short initial score, where the regular hint spacer cannot
-    // scroll it all the way to center. Add only the missing space to that
-    // spacer before clamping the target; later rows already have content below.
+    // A finite score may not have enough content after its final row to scroll
+    // that row to the top. Add only the missing tail space before clamping.
     if (
       shouldFollowCurrentRow &&
       requestedScrollTop > maxScrollTop &&
@@ -1934,7 +1987,12 @@ export function StaffPagePrompt({
         scrollingElement.scrollTop = scrollTop;
       }
     };
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const shouldAlignOpeningRowImmediately =
+      followRowAtTop && followRowIndex === 0 && isNestedScrollViewport && currentScrollTop === 0;
+    if (
+      shouldAlignOpeningRowImmediately ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
       setScrollTop(targetScrollTop);
       return;
     }
@@ -1952,7 +2010,7 @@ export function StaffPagePrompt({
       }
     };
     autoScrollAnimationFrameRef.current = window.requestAnimationFrame(animateScroll);
-  }, [followRowIndex, playbackFollowDelayComplete, playingRowIndex, rows.length]);
+  }, [followRowIndex, followRowAtTop, playbackFollowDelayComplete, playingRowIndex, rows.length]);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -1973,7 +2031,6 @@ export function StaffPagePrompt({
         `[data-staff-row-index="${rows.length - 1}"]`
       );
       if (!finalRow) return;
-
       const scrollViewport = frame.closest<HTMLElement>(".staff-page-scroll-viewport");
       const isNestedScrollViewport =
         scrollViewport !== null &&
@@ -1982,11 +2039,12 @@ export function StaffPagePrompt({
         isNestedScrollViewport && scrollViewport ? scrollViewport.getBoundingClientRect() : null;
       const viewportTop = viewportBounds ? viewportBounds.top + scrollViewport!.clientTop : 0;
       const viewportHeight = viewportBounds ? scrollViewport!.clientHeight : window.innerHeight;
-      const finalRowBounds = finalRow.getBoundingClientRect();
+      const finalRowTarget = followRowAtTop
+        ? getStaffPageRowTopY(finalRow) - viewportTop
+        : getStaffPageRowCenterY(finalRow) - (viewportTop + viewportHeight / 2);
       const desiredScrollTop =
         (isNestedScrollViewport && scrollViewport ? scrollViewport.scrollTop : window.scrollY) +
-        (finalRowBounds.top + finalRowBounds.bottom) / 2 -
-        (viewportTop + viewportHeight / 2);
+        finalRowTarget;
       const scrollingElement = document.scrollingElement ?? document.documentElement;
       const maxScrollTop =
         isNestedScrollViewport && scrollViewport
@@ -2013,7 +2071,7 @@ export function StaffPagePrompt({
       if (animationFrameId !== 0) window.cancelAnimationFrame(animationFrameId);
       frame.style.marginBottom = originalMarginBottom;
     };
-  }, [isFiniteScore, rows.length]);
+  }, [followRowAtTop, isFiniteScore, rows.length]);
 
   useEffect(() => {
     let animationFrameId = 0;
@@ -2124,6 +2182,7 @@ export function StaffPagePrompt({
       const renderedDiagnosticSampleId = diagnosticSampleIdRef.current;
       markMidiLatencyStage(renderedDiagnosticSampleId, "staffRenderStarted");
       renderedNotesRef.current = [];
+      renderedStemsRef.current = [];
       cursorLayersRef.current = new Map();
       cursorTargetsRef.current = new Map();
       cursorRowsRef.current = new Map();
@@ -2173,7 +2232,9 @@ export function StaffPagePrompt({
               (_, index) => index + virtualRowWindow.start
             ),
             ...cursorRowsToRender,
-            ...(followRowIndex !== undefined ? [followRowIndex] : []),
+            ...(followRowIndex !== undefined
+              ? [followRowIndex, ...(followRowAtTop ? [followRowIndex + 1] : [])]
+              : []),
             ...(isFiniteScore && rows.length > 0 ? [rows.length - 1] : []),
           ])
         : new Set(rows.map((_, rowIndex) => rowIndex));
@@ -2505,8 +2566,9 @@ export function StaffPagePrompt({
             const ticksPerQuarter = new Voice({ numBeats: 1, beatValue: 4 })
               .getTotalTicks()
               .value();
+            const isFiniteFinalRow = isFiniteScore && rowIndex === rows.length - 1;
             const measureAlignedEndBeat =
-              showGrandStaffRests && beatsPerMeasure
+              showGrandStaffRests && beatsPerMeasure && !isFiniteFinalRow
                 ? getMeasureAlignedEndBeat(rowOnsets ?? [], beatsPerMeasure)
                 : undefined;
             const targetVoiceTicks =
@@ -2708,6 +2770,22 @@ export function StaffPagePrompt({
                   ];
             renderedEntries.forEach(({ staff, staveNote: staffNote, targets }) => {
               if (!(staffNote instanceof StaveNote) || targets.length === 0) return;
+              const stem = staffNote.getStem();
+              const stemElement = stem?.getSVGElement();
+              if (stem && stemElement) {
+                const renderedStem: RenderedStaffPageStem = {
+                  color: "",
+                  element: stemElement,
+                  index,
+                  midis: targets
+                    .map(getTargetMidiNoteNumber)
+                    .filter((midi): midi is number => midi !== undefined),
+                  staff,
+                  stem,
+                };
+                updateRenderedStemColor(renderedStem, palette.ink);
+                renderedStemsRef.current.push(renderedStem);
+              }
               staffNote.noteHeads.forEach((head, headIndex) => {
                 const target = targets[headIndex];
                 const element = head.getSVGElement();
@@ -3060,6 +3138,7 @@ export function StaffPagePrompt({
     return () => observer.disconnect();
   }, [
     layout,
+    followRowAtTop,
     barlineAfterNoteIndices,
     isNightMode,
     lyrics,
@@ -3641,6 +3720,34 @@ export function StaffPagePrompt({
           syncNoteStatuses
         )
       );
+    });
+    renderedStemsRef.current.forEach((renderedStem) => {
+      const targetMidis: Array<number | undefined> =
+        renderedStem.midis.length > 0 ? renderedStem.midis : [undefined];
+      const targetColors = targetMidis.map((midi) =>
+        colorForIndex(
+          renderedStem.index,
+          completedCount,
+          completedNoteIndices,
+          wrongIndex,
+          activePairStartIndex,
+          palette,
+          renderedStem.staff,
+          completedStaffNoteIndices,
+          wrongStaffIndex,
+          wrongStaff,
+          midi,
+          syncNoteStatuses
+        )
+      );
+      const stemColor =
+        [palette.error, palette.warning].find((color) => targetColors.includes(color)) ??
+        (targetColors.every((color) => color === palette.complete)
+          ? palette.complete
+          : targetColors.includes(palette.active)
+            ? palette.active
+            : palette.ink);
+      updateRenderedStemColor(renderedStem, stemColor);
     });
     markMidiLatencyStage(renderedDiagnosticSampleId, "staffColorEnded");
   }, [

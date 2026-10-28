@@ -121,6 +121,7 @@ import { usePracticeAnswerFlow } from "../hooks/usePracticeAnswerFlow";
 import { usePracticeStaffPageFlow } from "../hooks/usePracticeStaffPageFlow";
 import { usePracticeSummaryData } from "../hooks/usePracticeSummaryData";
 import { PracticeSummaryView } from "./PracticeSummaryView";
+import { PracticeFullscreenToggle } from "./PracticeFullscreenFrame";
 import { StaffDistancePracticeView } from "./StaffDistancePracticeView";
 import {
   PracticeSetupView,
@@ -545,8 +546,8 @@ export function PracticeView({
   const staffPagePromptContainerRef = useRef<HTMLDivElement | null>(null);
   const [staffPageRendererWidthPx, setStaffPageRendererWidthPx] = useState(0);
   const [syncCountInBeat, setSyncCountInBeat] = useState<number | null>(null);
-  const [syncProgressMarkerLeadEnabled, setSyncProgressMarkerLeadEnabled] = useState(false);
   const [syncTimingAnnouncement, setSyncTimingAnnouncement] = useState<string | null>(null);
+  const [syncProgressMarkerLeadEnabled, setSyncProgressMarkerLeadEnabled] = useState(false);
   const [syncTimingFeedback, setSyncTimingFeedback] = useState<
     Array<{
       noteIndex: number;
@@ -1504,13 +1505,17 @@ export function PracticeView({
       fixedCount,
       isMobileViewport,
       mode,
-      pageNoteCount: isMobileViewport
-        ? isDuetPractice
-          ? DUET_MOBILE_STAFF_PAGE_NOTE_COUNT
-          : MOBILE_STAFF_PAGE_NOTE_COUNT
-        : isDuetPractice
-          ? DUET_DESKTOP_STAFF_PAGE_NOTE_COUNT
-          : DESKTOP_STAFF_PAGE_NOTE_COUNT,
+      pageNoteCount:
+        isContinuousStaffPage && !isDuetPractice
+          ? adaptiveMeasuresPerRow *
+            Math.max(1, Math.round(4 / getQuarterNoteBeats(effectivePromptNoteDuration)))
+          : isMobileViewport
+            ? isDuetPractice
+              ? DUET_MOBILE_STAFF_PAGE_NOTE_COUNT
+              : MOBILE_STAFF_PAGE_NOTE_COUNT
+            : isDuetPractice
+              ? DUET_DESKTOP_STAFF_PAGE_NOTE_COUNT
+              : DESKTOP_STAFF_PAGE_NOTE_COUNT,
       queueStrategy,
       schedulerReviews,
       sessions,
@@ -2193,7 +2198,7 @@ export function PracticeView({
         ...pendingTargets.map((target) => ({ noteIndex, ...target, result: "missed" as const })),
       ];
     });
-    setSyncTimingAnnouncement("未在本拍完成，红色标记");
+    setSyncTimingAnnouncement(null);
   }, [staffPageFirstNoteOffset]);
   const { handleDuetTimeout, handleSynchronizedTimeout, submitAnswer } = usePracticeAnswerFlow({
     values: {
@@ -3127,6 +3132,7 @@ export function PracticeView({
           {answerPitchMode === "exact-pitch" ? (
             <MidiInputControl ariaLabel="自由练习 MIDI 输入设备" midi={midi} />
           ) : null}
+          <PracticeFullscreenToggle />
         </div>
       </div>
 
@@ -3199,6 +3205,10 @@ export function PracticeView({
                 ? `准备拍 ${syncCountInBeat}`
                 : `节拍同步 · ${metronomePreferences.bpm} BPM`}
             </strong>
+            <span className="practice-metronome-sync-legend" aria-label="谱面颜色说明">
+              <span className="is-error">红色：错音或漏拍</span>
+              <span className="is-warning">黄色：时机偏早或偏晚</span>
+            </span>
             {syncTimingAnnouncement ? <span>{syncTimingAnnouncement}</span> : null}
           </div>
         ) : null}
@@ -3275,6 +3285,7 @@ export function PracticeView({
               }
               onToggleRowPlayback={isMetronomeSyncActive ? undefined : toggleFreeScoreRowPlayback}
               scrollDurationMs={staffPageScrollDurationMs}
+              followRowAtTop={isContinuousStaffPage}
               staffNotationMode={staffNotationMode}
               useLedgerGap={useLedgerGap}
               virtualizeRows={isContinuousStaffPage}

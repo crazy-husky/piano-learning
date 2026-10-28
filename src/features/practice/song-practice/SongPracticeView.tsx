@@ -18,6 +18,7 @@ import type {
 } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
+import { PracticeFullscreenToggle } from "../components/PracticeFullscreenFrame";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { PracticeQuestionLimitDialog } from "../../../shared/components/PracticeQuestionLimitDialog";
 import type { MidiNoteInputEvent } from "../../../midi/midiInput";
@@ -1353,6 +1354,7 @@ export function SongPracticeView({
                 disabled={isInputSwitching}
                 midi={midi}
               />
+              <PracticeFullscreenToggle />
             </div>
             <p className="song-practice-reading-note">
               <span>本模式只判断音高顺序，不评节奏。谱面上的时值和间距用于熟悉真实乐谱；</span>

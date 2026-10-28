@@ -713,6 +713,10 @@
 .metronome-compact-bar {
   animation: metronome-compact-appear 220ms cubic-bezier(0.2, 0.78, 0.28, 1) both;
   transform-origin: right center;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 @keyframes metronome-panel-expand {
@@ -825,6 +829,47 @@
   backdrop-filter: blur(12px);
 }
 
+.metronome-compact-bar.is-mini {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+  backdrop-filter: none;
+}
+
+.metronome-compact-bar.is-mini-docked-right {
+  flex-direction: row-reverse;
+}
+
+.metronome-compact-bar.is-mini .metronome-menu-anchor {
+  visibility: visible;
+}
+
+.metronome-compact-bar.is-mini .metronome-compact-tempo,
+.metronome-compact-bar.is-mini .metronome-compact-action,
+.metronome-compact-bar.is-mini .metronome-compact-expand,
+.metronome-compact-bar.is-mini .metronome-compact-close {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.metronome-compact-bar > :not(.metronome-menu-anchor) {
+  transition:
+    opacity 180ms ease,
+    visibility 0s linear;
+}
+
+.metronome-compact-bar.is-mini > :not(.metronome-menu-anchor) {
+  transition:
+    opacity 180ms ease,
+    visibility 0s linear 180ms;
+}
+
+.metronome-compact-bar.is-mini .metronome-hide-menu {
+  display: none;
+}
+
 .metronome-compact-bar:active {
   cursor: grabbing;
 }
@@ -840,6 +885,22 @@
   background: var(--accent-soft);
   touch-action: none;
   cursor: grab;
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.metronome-compact-bar.is-mini .metronome-compact-woodfish {
+  pointer-events: auto;
+  background: var(--panel-surface-strong);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 7px 20px rgba(22, 33, 28, 0.25);
+  cursor: pointer;
+}
+
+.metronome-compact-bar.is-mini-docked-right .metronome-compact-woodfish {
+  margin-inline-start: auto;
 }
 
 .metronome-compact-woodfish .metronome-woodfish {
@@ -1042,6 +1103,7 @@
 @media (prefers-reduced-motion: reduce) {
   .metronome-woodfish,
   .metronome-floating-trigger,
+  .metronome-compact-woodfish,
   .metronome-tempo-step,
   .metronome-beat-dot,
   .metronome-tempo-preset,
@@ -1060,8 +1122,8 @@
   gap: 0.45rem 0.8rem;
   width: fit-content;
   max-width: min(100%, 38rem);
-  margin: 0 auto 0.8rem;
-  padding: 0.45rem 0.85rem;
+  margin: 1.25rem auto 0.8rem;
+  padding: 0.4rem 0.7rem 0.35rem;
   border: 1px solid color-mix(in srgb, var(--accent-color, #71cdb3) 42%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent-color, #71cdb3) 11%, transparent);
@@ -1078,6 +1140,22 @@
 
 .practice-metronome-sync-status span {
   color: inherit;
+}
+
+.practice-metronome-sync-status .practice-metronome-sync-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.15rem 0.65rem;
+  font-size: 0.82em;
+}
+
+.practice-metronome-sync-status .practice-metronome-sync-legend .is-error {
+  color: var(--danger, #c84c3d);
+}
+
+.practice-metronome-sync-status .practice-metronome-sync-legend .is-warning {
+  color: var(--warning, #d88c24);
 }
 
 @media (max-width: 640px) {

@@ -1028,15 +1028,30 @@ main.has-backup-reminder .setup-grid::after {
   line-height: 1.2;
 }
 
-.practice-summary-dialog .summary-end-status {
-  background: var(--accent-soft);
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
-  border-radius: 999px;
-  color: var(--accent-strong);
-  font-size: 13px;
-  font-weight: 750;
-  padding: 6px 11px;
-  white-space: nowrap;
+.practice-summary-dialog .summary-close-button {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.practice-summary-dialog .summary-close-button:hover {
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.practice-summary-dialog .summary-close-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .practice-summary-dialog .summary-quality-warning {

@@ -43,9 +43,8 @@ import type { PracticeStaffPageRuntime } from "./usePracticeSessionLifecycle";
 const CROSS_GROUP_NOTE_RATE = 0.08;
 const STAFF_PAGE_SIZE =
   PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows * PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow;
-const MOBILE_STAFF_ROW_HEIGHT_PX = 220;
-const MOBILE_SCORE_VIEWPORT_RESERVED_HEIGHT_PX = 260;
-const MAX_MOBILE_STAFF_BUFFER_ROWS = 4;
+const STAFF_PAGE_BUFFER_ROW_COUNT = 10;
+const STAFF_PAGE_REFILL_THRESHOLD_ROWS = 5;
 
 function duetTargetsForGroup(group: readonly TargetNote[] | undefined): DuetTargetPair | undefined {
   if (!group) return undefined;
@@ -85,22 +84,58 @@ function getDuetMeasureRowStartIndices(
     .rowStartIndices;
 }
 
-function initialStaffPageBufferRowCount(isMobileViewport: boolean): number {
-  if (!isMobileViewport || typeof window === "undefined") {
-    return PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows;
+function initialStaffPageBufferRowCount(): number {
+  return STAFF_PAGE_BUFFER_ROW_COUNT;
+}
+
+function getPracticeStaffRowStartIndices(
+  notes: readonly TargetNote[],
+  rhythm: GeneratedStaffPageRhythm | undefined,
+  pageNoteCount: number,
+  adaptiveMeasureAreaWidthPx?: number,
+  adaptiveMaxMeasuresPerRow?: number
+): number[] {
+  if (
+    rhythm &&
+    rhythm.measures.length === notes.length &&
+    adaptiveMeasureAreaWidthPx !== undefined &&
+    adaptiveMaxMeasuresPerRow !== undefined
+  ) {
+    return chunkStaffPageGroupsByAdaptiveMeasureWidth(
+      notes,
+      rhythm.measures,
+      adaptiveMeasureAreaWidthPx,
+      adaptiveMaxMeasuresPerRow,
+      undefined,
+      rhythm.onsets,
+      PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
+    ).rowStartIndices;
   }
 
-  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-  const estimatedScoreHeight = Math.max(
-    MOBILE_STAFF_ROW_HEIGHT_PX * 2,
-    viewportHeight - MOBILE_SCORE_VIEWPORT_RESERVED_HEIGHT_PX
+  const rowCapacity = Math.max(1, Math.floor(pageNoteCount));
+  return Array.from(
+    { length: Math.ceil(notes.length / rowCapacity) },
+    (_, rowIndex) => rowIndex * rowCapacity
   );
+}
+
+function estimateEventsPerStaffRow(
+  notes: readonly TargetNote[],
+  rowStartIndices: readonly number[],
+  fallbackCount: number
+): number {
+  if (rowStartIndices.length <= 1) return Math.max(1, fallbackCount);
+  const rowLengths = rowStartIndices.map((start, index) => {
+    const end = rowStartIndices[index + 1] ?? notes.length;
+    return end - start;
+  });
+  const fullRows = rowLengths.slice(0, -1).filter((length) => length > 0);
+  const samples = fullRows.slice(-5);
+  const source = samples.length > 0 ? samples : rowLengths.filter((length) => length > 0);
+  if (source.length === 0) return Math.max(1, fallbackCount);
   return Math.max(
-    PRACTICE_PAGE_STAFF_LAYOUT.multirow.rows,
-    Math.min(
-      MAX_MOBILE_STAFF_BUFFER_ROWS,
-      Math.ceil(estimatedScoreHeight / MOBILE_STAFF_ROW_HEIGHT_PX)
-    )
+    1,
+    Math.ceil(source.reduce((total, length) => total + length, 0) / source.length)
   );
 }
 
@@ -160,12 +195,12 @@ function getDuetInitialMeasureCount(
   if (adaptiveMeasureAreaWidthPx !== undefined && adaptiveMaxMeasuresPerRow !== undefined) {
     // Generate up to the global row cap, then trim to complete rows using the
     // actual generated measure densities and measured viewport width.
-    return adaptiveDuetCandidateMeasureCount(initialStaffPageBufferRowCount(isMobileViewport));
+    return adaptiveDuetCandidateMeasureCount(initialStaffPageBufferRowCount());
   }
   return getDuetMeasureCountForRows(
     level,
     isMobileViewport,
-    initialStaffPageBufferRowCount(isMobileViewport),
+    initialStaffPageBufferRowCount(),
     adaptiveMeasureAreaWidthPx,
     adaptiveMaxMeasuresPerRow
   );
@@ -369,7 +404,7 @@ export function usePracticeStaffPageFlow({
         duetLevel !== undefined &&
         adaptiveMeasureAreaWidthPx !== undefined &&
         adaptiveMaxMeasuresPerRow !== undefined;
-      const initialRows = initialStaffPageBufferRowCount(isMobileViewport);
+      const initialRows = initialStaffPageBufferRowCount();
       const initialBufferCount = retainHistory
         ? adaptiveDuetStream
           ? adaptiveDuetCandidateMeasureCount(initialRows) *
@@ -386,7 +421,6 @@ export function usePracticeStaffPageFlow({
       adaptiveMeasureAreaWidthPx,
       duetLevel,
       fixedCount,
-      isMobileViewport,
       mode,
       pageNoteCount,
       retainHistory,
@@ -489,7 +523,7 @@ export function usePracticeStaffPageFlow({
         adaptiveMaxMeasuresPerRow !== undefined
           ? trimDuetPageToAdaptiveRows(
               generatedDuetPage,
-              initialStaffPageBufferRowCount(isMobileViewport),
+              initialStaffPageBufferRowCount(),
               adaptiveMeasureAreaWidthPx,
               adaptiveMaxMeasuresPerRow
             )
@@ -597,22 +631,46 @@ export function usePracticeStaffPageFlow({
             )
           : undefined
         : undefined;
-      const currentRowIndex = measureRowStartIndices
-        ? getStaffPageRowIndex(measureRowStartIndices, page.index)
+      const streamRowStartIndices =
+        retainHistory && !duetLevel
+          ? getPracticeStaffRowStartIndices(
+              page.notes,
+              page.rhythm,
+              pageNoteCount,
+              adaptiveMeasureAreaWidthPx,
+              adaptiveMaxMeasuresPerRow
+            )
+          : undefined;
+      const staffRowStartIndices = measureRowStartIndices ?? streamRowStartIndices;
+      const currentRowIndex = staffRowStartIndices
+        ? getStaffPageRowIndex(staffRowStartIndices, page.index)
         : -1;
-      const nextRowIndex = measureRowStartIndices
-        ? getStaffPageRowIndex(measureRowStartIndices, nextIndex)
+      const nextRowIndex = staffRowStartIndices
+        ? getStaffPageRowIndex(staffRowStartIndices, nextIndex)
         : -1;
-      const isDuetRowBoundary = Boolean(
-        measureRowStartIndices &&
+      const isStaffRowBoundary = Boolean(
+        staffRowStartIndices &&
         nextIndex > page.index &&
         nextIndex < page.notes.length &&
         nextRowIndex > currentRowIndex &&
-        measureRowStartIndices[nextRowIndex] === nextIndex
+        staffRowStartIndices[nextRowIndex] === nextIndex
       );
-      const currentRowStart = measureRowStartIndices?.[currentRowIndex] ?? page.index;
       const scrollAdvanceCount =
-        duetLevel && isDuetRowBoundary ? nextIndex - currentRowStart : pageNoteCount;
+        duetLevel && isStaffRowBoundary
+          ? nextIndex - (staffRowStartIndices?.[currentRowIndex] ?? page.index)
+          : pageNoteCount;
+      const isAtStreamEnd = retainHistory && nextIndex >= page.notes.length;
+      const isStreamRowBoundary = retainHistory && (isStaffRowBoundary || isAtStreamEnd);
+      const remainingRows =
+        nextIndex >= page.notes.length
+          ? 0
+          : staffRowStartIndices
+            ? staffRowStartIndices.length - Math.max(0, nextRowIndex)
+            : Math.ceil(remainingVisibleNotes.length / Math.max(1, pageNoteCount));
+      const rowsToAppend =
+        isStreamRowBoundary && remainingRows < STAFF_PAGE_REFILL_THRESHOLD_ROWS
+          ? STAFF_PAGE_BUFFER_ROW_COUNT - remainingRows
+          : 0;
       let nextRowCount = getStaffPageRefillCount({
         completedSessionCount: nextCompletedCount,
         fixedSessionCount: mode === "fixed-count" ? fixedCount : undefined,
@@ -623,37 +681,33 @@ export function usePracticeStaffPageFlow({
       });
       let hasNextPageOnDesktop =
         !isMobileViewport &&
-        nextIndex > page.index &&
-        nextIndex % pageNoteCount === 0 &&
-        nextIndex < page.notes.length;
-      if (duetLevel && measureRowStartIndices) {
+        (retainHistory
+          ? isStreamRowBoundary
+          : nextIndex > page.index &&
+            nextIndex % pageNoteCount === 0 &&
+            nextIndex < page.notes.length);
+      if (retainHistory) {
         nextRowCount = 0;
-        hasNextPageOnDesktop = !isMobileViewport && isDuetRowBoundary;
-        if (
-          retainHistory &&
-          isDuetRowBoundary &&
-          nextRowIndex === measureRowStartIndices.length - 1
-        ) {
-          const lastRowStart = measureRowStartIndices[nextRowIndex]!;
-          const nextRowStart = measureRowStartIndices[nextRowIndex + 1] ?? page.notes.length;
-          const lastRowEventCount = nextRowStart - lastRowStart;
-          const adaptiveDuetStream =
-            adaptiveMeasureAreaWidthPx !== undefined && adaptiveMaxMeasuresPerRow !== undefined;
-          const adaptiveRowEventCount = adaptiveDuetStream
+        if (rowsToAppend > 0) {
+          const estimatedAppendCount = duetLevel
             ? getDuetMeasureCountForRows(
                 duetLevel,
                 isMobileViewport,
-                1,
+                rowsToAppend,
                 adaptiveMeasureAreaWidthPx,
                 adaptiveMaxMeasuresPerRow
               ) * getDuetMaximumEventsPerMeasure(duetLevel)
-            : lastRowEventCount;
+            : estimateEventsPerStaffRow(page.notes, staffRowStartIndices ?? [], pageNoteCount) *
+              rowsToAppend;
           const availableFutureCount =
             mode === "fixed-count"
               ? Math.max(0, fixedCount - nextCompletedCount - remainingVisibleNotes.length)
-              : adaptiveRowEventCount;
-          nextRowCount = Math.min(adaptiveRowEventCount, availableFutureCount);
+              : estimatedAppendCount;
+          nextRowCount = Math.min(estimatedAppendCount, availableFutureCount);
         }
+      } else if (duetLevel && measureRowStartIndices) {
+        nextRowCount = 0;
+        hasNextPageOnDesktop = !isMobileViewport && isStaffRowBoundary;
       }
       if (nextRowCount === 0 && !hasNextPageOnDesktop) {
         return false;
@@ -681,10 +735,11 @@ export function usePracticeStaffPageFlow({
           duetLevel !== undefined &&
           adaptiveMeasureAreaWidthPx !== undefined &&
           adaptiveMaxMeasuresPerRow !== undefined;
+        const appendRowCount = retainHistory ? Math.max(1, rowsToAppend) : 1;
         const duetAppendMeasureCount = adaptiveDuetStream
-          ? adaptiveDuetCandidateMeasureCount(1)
+          ? adaptiveDuetCandidateMeasureCount(appendRowCount)
           : duetLevel
-            ? getDuetMeasureCountForRows(duetLevel, isMobileViewport, 1)
+            ? getDuetMeasureCountForRows(duetLevel, isMobileViewport, appendRowCount)
             : undefined;
         const duetAppendExactCount =
           mode === "fixed-count" &&
@@ -714,7 +769,7 @@ export function usePracticeStaffPageFlow({
           adaptiveMaxMeasuresPerRow !== undefined
             ? trimDuetPageToAdaptiveRows(
                 generatedDuetAppend,
-                1,
+                appendRowCount,
                 adaptiveMeasureAreaWidthPx,
                 adaptiveMaxMeasuresPerRow
               )

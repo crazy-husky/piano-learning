@@ -1,4 +1,4 @@
-import { BarChart3, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { BarChart3, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 import { formatTargetNoteLabel, getNoteById } from "../../../domain/notes";
 import { isCompletedReview } from "../../../domain/reviews";
@@ -83,9 +83,15 @@ export function PracticeSummaryView({
           <h1 id="practice-summary-title" tabIndex={-1}>
             本次结果
           </h1>
-          <p className="summary-end-status">
-            {summary.session.endReason === "manual-stop" ? "手动结束" : "已完成"}
-          </p>
+          <button
+            aria-label="关闭结算并返回配置"
+            className="summary-close-button"
+            onClick={onReturnToSetup}
+            title="返回配置"
+            type="button"
+          >
+            <X aria-hidden="true" size={20} />
+          </button>
           {summaryHasTooManyErrors ? (
             <p className="summary-quality-warning">
               错音有点多{">_<"} 这次先不算~ <br />
@@ -176,7 +182,7 @@ export function PracticeSummaryView({
           </button>
           <button onClick={onReturnToSetup}>
             <SlidersHorizontal size={18} />
-            调整设置
+            调整配置
           </button>
           <button onClick={onOpenStats}>
             <BarChart3 size={18} />

@@ -1,5 +1,14 @@
 import { Maximize2, Minimize2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 
 const DESKTOP_POINTER_QUERY = "(min-width: 821px) and (hover: hover) and (pointer: fine)";
@@ -7,6 +16,37 @@ const DESKTOP_POINTER_QUERY = "(min-width: 821px) and (hover: hover) and (pointe
 interface PracticeFullscreenFrameProps {
   children: ReactNode;
   enabled: boolean;
+}
+
+interface PracticeFullscreenContextValue {
+  enabled: boolean;
+  isDesktop: boolean;
+  isFullscreen: boolean;
+  toggleFullscreen: () => Promise<void>;
+}
+
+const PracticeFullscreenContext = createContext<PracticeFullscreenContextValue | null>(null);
+
+export function PracticeFullscreenToggle(): JSX.Element | null {
+  const fullscreen = useContext(PracticeFullscreenContext);
+  if (!fullscreen?.enabled || !fullscreen.isDesktop) return null;
+
+  return (
+    <button
+      aria-label={fullscreen.isFullscreen ? "退出全屏沉浸模式" : "进入全屏沉浸模式"}
+      aria-pressed={fullscreen.isFullscreen}
+      className="practice-fullscreen-toggle"
+      onClick={() => void fullscreen.toggleFullscreen()}
+      title={fullscreen.isFullscreen ? "退出全屏沉浸模式" : "进入全屏沉浸模式"}
+      type="button"
+    >
+      {fullscreen.isFullscreen ? (
+        <Minimize2 aria-hidden="true" size={18} />
+      ) : (
+        <Maximize2 aria-hidden="true" size={18} />
+      )}
+    </button>
+  );
 }
 
 export function PracticeFullscreenFrame({
@@ -90,25 +130,16 @@ export function PracticeFullscreenFrame({
     }
   }, []);
 
+  const fullscreenContext = useMemo(
+    () => ({ enabled, isDesktop, isFullscreen, toggleFullscreen }),
+    [enabled, isDesktop, isFullscreen, toggleFullscreen]
+  );
+
   return (
-    <div className="practice-fullscreen-frame" ref={frameRef}>
-      {enabled && isDesktop ? (
-        <button
-          aria-label={isFullscreen ? "退出全屏沉浸模式" : "进入全屏沉浸模式"}
-          aria-pressed={isFullscreen}
-          className="practice-fullscreen-toggle"
-          onClick={() => void toggleFullscreen()}
-          title={isFullscreen ? "退出全屏沉浸模式" : "进入全屏沉浸模式"}
-          type="button"
-        >
-          {isFullscreen ? (
-            <Minimize2 aria-hidden="true" size={18} />
-          ) : (
-            <Maximize2 aria-hidden="true" size={18} />
-          )}
-        </button>
-      ) : null}
-      {children}
-    </div>
+    <PracticeFullscreenContext.Provider value={fullscreenContext}>
+      <div className="practice-fullscreen-frame" ref={frameRef}>
+        {children}
+      </div>
+    </PracticeFullscreenContext.Provider>
   );
 }
