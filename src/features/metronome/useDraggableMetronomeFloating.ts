@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -121,6 +122,7 @@ export function useDraggableMetronomeFloating({
   onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
   onPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
   onPointerUp: (event: PointerEvent<HTMLDivElement>) => void;
+  snapToNearestHorizontalEdge: (dockThreshold: number) => "left" | "right" | null;
   style: CSSProperties | undefined;
 } {
   const [position, setPosition] = useState<Position | null>(null);
@@ -134,6 +136,37 @@ export function useDraggableMetronomeFloating({
     positionRef.current = next;
     setPosition(next);
   };
+
+  const snapToNearestHorizontalEdge = useCallback(
+    (dockThreshold: number): "left" | "right" | null => {
+      const element = rootRef.current;
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      const leftGap = rect.left;
+      const rightGap = window.innerWidth - rect.right;
+      const dockedEdge =
+        leftGap <= dockThreshold ? "left" : rightGap <= dockThreshold ? "right" : null;
+      if (dockedEdge) return dockedEdge;
+
+      const nearestEdge = leftGap <= rightGap ? "left" : "right";
+      const nextPosition = clampPosition(
+        {
+          left:
+            nearestEdge === "left"
+              ? POSITION_MARGIN
+              : window.innerWidth - rect.width - POSITION_MARGIN,
+          top: rect.top,
+        },
+        rect.width,
+        rect.height
+      );
+      positionRef.current = nextPosition;
+      setPosition(nextPosition);
+      persistPosition(nextPosition, rect.width, rect.height, positionKeyRef.current);
+      return nearestEdge;
+    },
+    [rootRef]
+  );
 
   const cancelLongPress = (): void => {
     if (longPressTimerRef.current === null) return;
@@ -305,6 +338,7 @@ export function useDraggableMetronomeFloating({
     onPointerDown,
     onPointerMove,
     onPointerUp: finishGesture,
+    snapToNearestHorizontalEdge,
     style: position
       ? {
           position: "fixed",

@@ -22,12 +22,15 @@ interface MetronomeCoreProps {
   onMinimize?: () => void;
   onClose?: () => void;
   closeLabel?: string;
+  closeStopsPlayback?: boolean;
   onOpenMenu?: () => void;
   mini?: boolean;
   miniDockEdge?: "left" | "right" | null;
   onRevealMini?: () => void;
   onMiniPointerEnter?: () => void;
   onMiniPointerLeave?: () => void;
+  onTempoEditingChange?: (isEditing: boolean) => void;
+  onInteraction?: () => void;
   menu?: ReactNode;
   variant: MetronomeCoreVariant;
 }
@@ -54,7 +57,10 @@ function getSliderStyle(bpm: number): CSSProperties {
   } as CSSProperties;
 }
 
-function useTempoEditor(controller: MetronomeController) {
+function useTempoEditor(
+  controller: MetronomeController,
+  onEditingChange?: (isEditing: boolean) => void
+) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(String(controller.preferences.bpm));
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -70,6 +76,7 @@ function useTempoEditor(controller: MetronomeController) {
   const commit = (): void => {
     controller.setBpm(Number(draft));
     setIsEditing(false);
+    onEditingChange?.(false);
   };
 
   return { commit, draft, inputRef, isEditing, setDraft, setIsEditing };
@@ -78,11 +85,16 @@ function useTempoEditor(controller: MetronomeController) {
 function TempoValue({
   controller,
   className,
+  onEditingChange,
 }: {
   controller: MetronomeController;
   className: string;
+  onEditingChange?: (isEditing: boolean) => void;
 }): JSX.Element {
-  const { commit, draft, inputRef, isEditing, setDraft, setIsEditing } = useTempoEditor(controller);
+  const { commit, draft, inputRef, isEditing, setDraft, setIsEditing } = useTempoEditor(
+    controller,
+    onEditingChange
+  );
   return isEditing ? (
     <input
       aria-label="每分钟节拍数 BPM"
@@ -99,6 +111,7 @@ function TempoValue({
           event.stopPropagation();
           setDraft(String(controller.preferences.bpm));
           setIsEditing(false);
+          onEditingChange?.(false);
         }
       }}
       ref={inputRef}
@@ -109,7 +122,11 @@ function TempoValue({
     <button
       aria-label={`当前速度 ${controller.preferences.bpm} BPM，点击输入`}
       className={className}
-      onClick={() => setIsEditing(true)}
+      onClick={() => {
+        setIsEditing(true);
+        onEditingChange?.(true);
+      }}
+      title="点击输入 BPM"
       type="button"
     >
       {controller.preferences.bpm}
@@ -230,12 +247,15 @@ export function MetronomeCore({
   onMinimize,
   onClose,
   closeLabel = "关闭节拍器",
+  closeStopsPlayback = true,
   onOpenMenu,
   mini = false,
   miniDockEdge = null,
   onRevealMini,
   onMiniPointerEnter,
   onMiniPointerLeave,
+  onTempoEditingChange,
+  onInteraction,
   menu,
   variant,
 }: MetronomeCoreProps): JSX.Element {
@@ -262,8 +282,10 @@ export function MetronomeCore({
   };
 
   const closeMetronome = (): void => {
-    if (controller.isSyncLocked && controller.isPlaying) onSynchronizedToggle?.();
-    controller.stop();
+    if (closeStopsPlayback) {
+      if (controller.isSyncLocked && controller.isPlaying) onSynchronizedToggle?.();
+      controller.stop();
+    }
     onClose?.();
   };
 
@@ -271,6 +293,7 @@ export function MetronomeCore({
     const onWheel = (event: WheelEvent<HTMLDivElement>): void => {
       event.preventDefault();
       if (event.deltaY === 0) return;
+      onInteraction?.();
       controller.adjustBpm(event.deltaY < 0 ? 1 : -1);
     };
     return (
@@ -283,15 +306,25 @@ export function MetronomeCore({
         ]
           .filter(Boolean)
           .join(" ")}
-        onMouseLeave={mini ? undefined : onMiniPointerLeave}
+        onPointerEnter={(event) => {
+          if (event.pointerType !== "touch") onMiniPointerEnter?.();
+        }}
+        onPointerLeave={(event) => {
+          if (event.pointerType !== "touch") onMiniPointerLeave?.();
+        }}
         onWheel={mini ? undefined : onWheel}
       >
         <div className="metronome-menu-anchor">
           <button
-            aria-label={mini ? "显示节拍器状态" : "打开节拍器设置"}
+            aria-label={mini ? "展开节拍器状态栏" : "打开节拍器设置"}
             className="metronome-compact-woodfish"
             onClick={mini ? onRevealMini : onExpand}
-            onMouseEnter={mini ? onMiniPointerEnter : undefined}
+            onPointerEnter={(event) => {
+              if (mini && event.pointerType !== "touch") onMiniPointerEnter?.();
+            }}
+            onPointerLeave={(event) => {
+              if (mini && event.pointerType !== "touch") onMiniPointerLeave?.();
+            }}
             onContextMenu={(event) => {
               event.preventDefault();
               onOpenMenu?.();
@@ -299,11 +332,16 @@ export function MetronomeCore({
             type="button"
           >
             <WoodfishIllustration />
+            {mini ? <span className="metronome-mini-label">节拍</span> : null}
           </button>
           {menu}
         </div>
-        <div className="metronome-compact-tempo" title="滚动鼠标滚轮调节速度">
-          <TempoValue className="metronome-compact-bpm" controller={controller} />
+        <div className="metronome-compact-tempo" title="点击数字输入 BPM，也可滚动鼠标滚轮调节速度">
+          <TempoValue
+            className="metronome-compact-bpm"
+            controller={controller}
+            onEditingChange={onTempoEditingChange}
+          />
           <span>BPM</span>
         </div>
         <button
@@ -336,14 +374,17 @@ export function MetronomeCore({
             <Play aria-hidden="true" size={17} />
           )}
         </button>
-        <button
-          aria-label="展开节拍器"
-          className="metronome-compact-expand"
-          onClick={onExpand}
-          type="button"
-        >
-          <Maximize2 aria-hidden="true" size={17} />
-        </button>
+        {onExpand ? (
+          <button
+            aria-label="展开节拍器弹窗"
+            className="metronome-compact-expand"
+            onClick={onExpand}
+            title="展开节拍器弹窗"
+            type="button"
+          >
+            <Maximize2 aria-hidden="true" size={17} />
+          </button>
+        ) : null}
         {onClose ? (
           <button
             aria-label={closeLabel}

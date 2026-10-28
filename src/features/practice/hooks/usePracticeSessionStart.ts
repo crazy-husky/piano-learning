@@ -48,7 +48,7 @@ interface PracticeStaffPageStartInput {
 interface PracticeSessionStartValues {
   answerPitchMode: AnswerPitchMode;
   isDuetPractice: boolean;
-  metronomeSyncRequired: boolean;
+  shouldSynchronizeMetronome: boolean;
   midiAutoPlayTarget: boolean;
   midiPlayAnswerNote: boolean;
   duetLevel?: DuetPracticeLevel;
@@ -129,7 +129,7 @@ export function usePracticeSessionStart({
   const {
     answerPitchMode,
     isDuetPractice,
-    metronomeSyncRequired,
+    shouldSynchronizeMetronome,
     midiAutoPlayTarget,
     midiPlayAnswerNote,
     duetLevel,
@@ -233,7 +233,7 @@ export function usePracticeSessionStart({
               includeInterStaffLedgerSpellings: false,
               promptDisplayMode: "staff-page" as const,
             }
-          : metronomeSyncRequired
+          : availablePreflightAnswerPitchMode === "exact-pitch"
             ? { ...nextSettings, promptDisplayMode: "staff-page" as const }
             : nextSettings.staffNotationMode === "grand"
               ? { ...nextSettings, includeInterStaffLedgerSpellings: false }
@@ -259,7 +259,7 @@ export function usePracticeSessionStart({
           mode: nextMode,
           prefersReducedMotion,
           settings: { ...inputModeSettings, queueStrategy: nextQueueStrategy },
-          smoothStaffPageScroll: metronomeSyncRequired
+          smoothStaffPageScroll: shouldSynchronizeMetronome
             ? false
             : staffPageUiPreferences.smoothStaffPageScroll,
           startPausedReading,
@@ -267,7 +267,7 @@ export function usePracticeSessionStart({
           duetCurriculumVersion: isDuetPractice ? DUET_PRACTICE_CURRICULUM_VERSION : undefined,
           duetAllowDottedRhythms: isDuetPractice ? duetAllowDottedRhythms : undefined,
           metronomeSync:
-            metronomeSyncRequired && availablePreflightAnswerPitchMode === "exact-pitch",
+            shouldSynchronizeMetronome && availablePreflightAnswerPitchMode === "exact-pitch",
         });
         if (!builtStartSnapshot) {
           return;
@@ -379,7 +379,7 @@ export function usePracticeSessionStart({
   }, [
     answerPitchMode,
     isDuetPractice,
-    metronomeSyncRequired,
+    shouldSynchronizeMetronome,
     duetLevel,
     duetAllowDottedRhythms,
     adaptiveSchedulerRef,

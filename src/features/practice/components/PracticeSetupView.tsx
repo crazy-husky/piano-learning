@@ -51,6 +51,7 @@ import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracti
 export interface PracticeSetupUiPreferences {
   answerPitchMode: AnswerPitchMode;
   practiceMode: "single" | "duet";
+  metronomeSyncEnabled: boolean;
   duetLevel: DuetPracticeLevel;
   duetCurriculumVersion: number;
   duetAllowDottedRhythms: boolean;
@@ -76,6 +77,7 @@ export interface PracticeSetupUiPreferences {
 interface PracticeSetupActions {
   onAnswerPitchModeChange: (mode: AnswerPitchMode) => void;
   onPracticeModeChange: (mode: "single" | "duet") => void;
+  onMetronomeSyncEnabledChange: (enabled: boolean) => void;
   onDuetLevelChange: (level: DuetPracticeLevel) => void;
   onDuetAllowDottedRhythmsChange: (enabled: boolean) => void;
   onAutoPlayTargetChange: (enabled: boolean) => void;
@@ -115,7 +117,6 @@ interface PracticeSetupViewProps {
   metronomeError?: string | null;
   startPausedReading: boolean;
   settings: AppSettings;
-  metronomeBeatsPerBar: 2 | 3 | 4 | 6;
 }
 
 const DUET_PRACTICE_LEVELS: DuetPracticeLevel[] = [
@@ -253,7 +254,6 @@ export function PracticeSetupView({
   metronomeError,
   startPausedReading,
   settings,
-  metronomeBeatsPerBar,
 }: PracticeSetupViewProps): JSX.Element {
   const confirmDialog = useConfirmDialog();
   const {
@@ -264,6 +264,7 @@ export function PracticeSetupView({
   const {
     answerPitchMode,
     practiceMode,
+    metronomeSyncEnabled,
     duetLevel,
     duetAllowDottedRhythms,
     autoPlayTarget: nonMidiAutoPlayTarget,
@@ -282,6 +283,9 @@ export function PracticeSetupView({
   const activeAnswerPitchMode = isDuetPractice ? "exact-pitch" : answerPitchMode;
   const promptDisplayMode =
     activeAnswerPitchMode === "exact-pitch" ? "staff-page" : savedPromptDisplayMode;
+  const supportsMetronomeSyncNoteDurations =
+    promptNoteDurations.length > 0 &&
+    promptNoteDurations.every((duration) => duration === "whole" || duration === "quarter");
   const autoPlayTarget =
     activeAnswerPitchMode === "exact-pitch" ? midiAutoPlayTarget : nonMidiAutoPlayTarget;
   const playAnswerNote =
@@ -289,6 +293,7 @@ export function PracticeSetupView({
   const {
     onAnswerPitchModeChange: setAnswerPitchMode,
     onPracticeModeChange,
+    onMetronomeSyncEnabledChange,
     onDuetLevelChange,
     onDuetAllowDottedRhythmsChange,
     onAutoPlayTargetChange: setAutoPlayTarget,
@@ -312,10 +317,7 @@ export function PracticeSetupView({
     "answer-mode" | "start" | "song-hand" | "song-start" | null
   >(null);
   const freePracticeNeedsMidi =
-    activeTab === "free" &&
-    activeAnswerPitchMode === "exact-pitch" &&
-    !midi.isConnected &&
-    metronomeBeatsPerBar === 4;
+    activeTab === "free" && activeAnswerPitchMode === "exact-pitch" && !midi.isConnected;
   const showMidiAttention = (
     source: "answer-mode" | "start" | "song-hand" | "song-start"
   ): void => {
@@ -873,15 +875,23 @@ export function PracticeSetupView({
               </div>
             </section>
 
-            {activeAnswerPitchMode === "exact-pitch" ? (
+            {activeAnswerPitchMode === "exact-pitch" &&
+            (isDuetPractice || supportsMetronomeSyncNoteDurations) ? (
               <section aria-label="节拍同步" className="practice-free-section">
                 <div className="practice-free-field">
                   <span className="control-label">节拍同步</span>
-                  <small className="practice-free-helper">
-                    {metronomeBeatsPerBar === 4
-                      ? "MIDI 弹奏时，谱面会按木鱼节拍自动推进并反馈节奏。"
-                      : "同步谱面目前使用 4/4，请先在木鱼节拍器中将拍号调为 4/4。"}
-                  </small>
+                  {!isDuetPractice ? (
+                    <label className="practice-checkbox-option">
+                      <input
+                        checked={metronomeSyncEnabled}
+                        type="checkbox"
+                        onChange={(event) =>
+                          onMetronomeSyncEnabledChange(event.currentTarget.checked)
+                        }
+                      />
+                      <span>木鱼与谱面同步</span>
+                    </label>
+                  ) : null}
                   {metronomeError ? (
                     <small className="practice-free-warning" role="alert">
                       节拍器无法启动：{metronomeError}
@@ -1025,7 +1035,7 @@ export function PracticeSetupView({
                           onClick={() => setPromptDisplayMode("single-note")}
                           title={
                             activeAnswerPitchMode === "exact-pitch"
-                              ? "MIDI 弹奏会自动同步节拍，请使用连续看谱"
+                              ? "MIDI 弹奏使用连续看谱"
                               : promptNoteDurations.length > 1
                                 ? "多选时值需要使用谱页展示"
                                 : undefined

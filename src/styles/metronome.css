@@ -561,17 +561,17 @@
 }
 
 .metronome-floating-trigger {
-  width: 82px;
-  min-height: 74px;
+  width: 64px;
+  min-height: 60px;
   display: grid;
   justify-items: center;
   gap: 0;
   border: 1px solid var(--border-strong);
-  border-radius: 25px 25px 22px 22px;
+  border-radius: 20px 20px 18px 18px;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   box-shadow: 0 8px 24px rgba(20, 34, 28, 0.18);
   color: var(--text);
-  padding: 6px 8px 7px;
+  padding: 4px 6px 5px;
   touch-action: none;
   cursor: grab;
   transition:
@@ -590,13 +590,13 @@
 }
 
 .metronome-floating-trigger .metronome-woodfish {
-  width: 62px;
-  height: 47px;
+  width: 48px;
+  height: 36px;
 }
 
 .metronome-floating-trigger span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 750;
   line-height: 1;
 }
@@ -837,7 +837,7 @@
   backdrop-filter: none;
 }
 
-.metronome-compact-bar.is-mini-docked-right {
+.metronome-compact-bar.is-mini.is-mini-docked-right {
   flex-direction: row-reverse;
 }
 
@@ -892,15 +892,26 @@
 }
 
 .metronome-compact-bar.is-mini .metronome-compact-woodfish {
+  width: 60px;
+  height: 56px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0;
   pointer-events: auto;
   background: var(--panel-surface-strong);
   border: 1px solid var(--border-strong);
   box-shadow: 0 7px 20px rgba(22, 33, 28, 0.25);
+  border-radius: 16px;
   cursor: pointer;
+  transform: translateX(var(--mini-dock-offset-x, 0px));
 }
 
-.metronome-compact-bar.is-mini-docked-right .metronome-compact-woodfish {
-  margin-inline-start: auto;
+.metronome-mini-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .metronome-compact-woodfish .metronome-woodfish {
@@ -917,9 +928,15 @@
 }
 
 .metronome-compact-bpm {
-  min-width: 38px;
-  border: 0;
-  background: transparent;
+  min-width: 48px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 7px;
+  background: var(--surface-soft);
   color: var(--accent);
   font-family:
     Inter,
@@ -932,15 +949,33 @@
   font-size: 22px;
   font-weight: 600;
   line-height: 1;
-  padding: 0;
+  padding: 0 4px;
   font-variant-numeric: tabular-nums;
+  cursor: text;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+button.metronome-compact-bpm:hover,
+button.metronome-compact-bpm:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+  outline: none;
 }
 
 .metronome-compact-bpm.metronome-tempo-input {
-  width: 44px;
+  width: 48px;
+  height: 30px;
   font-size: 18px;
   user-select: text;
   cursor: text;
+  border-color: var(--accent);
+  border-bottom-width: 2px;
+  border-radius: 7px;
+  background: var(--surface-soft);
 }
 
 .metronome-compact-action,

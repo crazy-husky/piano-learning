@@ -301,6 +301,7 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
   return {
     answerPitchMode: settings.answerPitchMode,
     practiceMode: "single",
+    metronomeSyncEnabled: false,
     duetLevel: "level-1",
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms: false,
@@ -348,6 +349,8 @@ function parsePracticeSetupUiPreferences(
   return {
     answerPitchMode: normalizeAnswerPitchMode(value.answerPitchMode, fallback.answerPitchMode),
     practiceMode: value.practiceMode === "duet" ? "duet" : "single",
+    metronomeSyncEnabled:
+      typeof value.metronomeSyncEnabled === "boolean" ? value.metronomeSyncEnabled : false,
     duetLevel: normalizeDuetPracticeLevel(
       value.duetLevel ?? value.duetDifficulty,
       duetCurriculumVersion
@@ -546,7 +549,6 @@ export function PracticeView({
   const staffPagePromptContainerRef = useRef<HTMLDivElement | null>(null);
   const [staffPageRendererWidthPx, setStaffPageRendererWidthPx] = useState(0);
   const [syncCountInBeat, setSyncCountInBeat] = useState<number | null>(null);
-  const [syncTimingAnnouncement, setSyncTimingAnnouncement] = useState<string | null>(null);
   const [syncProgressMarkerLeadEnabled, setSyncProgressMarkerLeadEnabled] = useState(false);
   const [syncTimingFeedback, setSyncTimingFeedback] = useState<
     Array<{
@@ -596,7 +598,20 @@ export function PracticeView({
     : runningStartSnapshot
       ? normalizeAnswerPitchMode(runningStartSnapshot.practiceConfig.answerPitchMode)
       : normalizeAnswerPitchMode(practiceSetupPreferences.answerPitchMode);
-  const isMetronomeSyncRequired = practiceTab === "free" && answerPitchMode === "exact-pitch";
+  const requiresMidiStaffPage = practiceTab === "free" && answerPitchMode === "exact-pitch";
+  const isMetronomeSyncMandatory = practiceTab === "free" && isDuetPractice;
+  const supportsMetronomeSyncNoteDurations =
+    practiceSetupPreferences.promptNoteDurations.length > 0 &&
+    practiceSetupPreferences.promptNoteDurations.every(
+      (duration) => duration === "whole" || duration === "quarter"
+    );
+  const isMetronomeSyncSelected =
+    practiceTab === "free" &&
+    !isDuetPractice &&
+    answerPitchMode === "exact-pitch" &&
+    supportsMetronomeSyncNoteDurations &&
+    practiceSetupPreferences.metronomeSyncEnabled;
+  const shouldSynchronizeMetronome = isMetronomeSyncMandatory || isMetronomeSyncSelected;
   const activePracticeInputMode: PracticeInputMode | null =
     practiceTab === "free"
       ? answerPitchMode === "microphone"
@@ -622,7 +637,7 @@ export function PracticeView({
   }, [activePracticeInputMode, onInputModeChange]);
   const mode = runningStartSnapshot?.practiceConfig.mode ?? practiceSetupPreferences.mode;
   const promptDisplayMode =
-    isDuetPractice || isMetronomeSyncRequired
+    isDuetPractice || requiresMidiStaffPage
       ? "staff-page"
       : (runningStartSnapshot?.presentationConfig.promptDisplayMode ??
         practiceSetupPreferences.promptDisplayMode);
@@ -823,9 +838,12 @@ export function PracticeView({
   const setDuetAllowDottedRhythms = (enabled: boolean): void => {
     setPracticeSetupPreferences((current) => ({ ...current, duetAllowDottedRhythms: enabled }));
   };
+  const setMetronomeSyncEnabled = (enabled: boolean): void => {
+    setPracticeSetupPreferences((current) => ({ ...current, metronomeSyncEnabled: enabled }));
+  };
   const setPromptDisplayMode = (nextPromptDisplayMode: PromptDisplayMode): void => {
     setPracticeSetupPreferences((current) =>
-      isMetronomeSyncRequired ||
+      requiresMidiStaffPage ||
       (nextPromptDisplayMode === "single-note" && current.promptNoteDurations.length > 1)
         ? current
         : { ...current, promptDisplayMode: nextPromptDisplayMode }
@@ -1021,6 +1039,7 @@ export function PracticeView({
       setPracticeSetupPreferences((current) => ({
         ...makeDefaultPracticeSetupUiPreferences(nextSettings),
         practiceMode: current.practiceMode,
+        metronomeSyncEnabled: current.metronomeSyncEnabled,
         duetLevel: current.duetLevel,
         duetCurriculumVersion: current.duetCurriculumVersion,
         duetAllowDottedRhythms: current.duetAllowDottedRhythms,
@@ -1516,7 +1535,7 @@ export function PracticeView({
             : DUET_DESKTOP_MEASURES_PER_ROW
           : undefined,
       allowDottedRhythms: duetAllowDottedRhythms,
-      forceRhythmGeneration: isMetronomeSyncRequired,
+      forceRhythmGeneration: requiresMidiStaffPage || isDuetPractice,
       promptNoteDurations,
       rangeExtensionNotes,
       retainHistory: practiceTab === "free" && promptDisplayMode === "staff-page",
@@ -1577,7 +1596,6 @@ export function PracticeView({
     setSyncProgressMarkerLeadEnabled(false);
     syncCountInBaseBeatRef.current = getCurrentSyncScoreBeat();
     setSyncCountInBeat(4);
-    setSyncTimingAnnouncement(null);
     setMetronomeSyncLocked(true);
     syncStartInFlightRef.current = true;
     stopMetronome();
@@ -1870,7 +1888,7 @@ export function PracticeView({
     values: {
       answerPitchMode,
       isDuetPractice,
-      metronomeSyncRequired: isMetronomeSyncRequired,
+      shouldSynchronizeMetronome,
       midiAutoPlayTarget: practiceSetupPreferences.midiAutoPlayTarget,
       midiPlayAnswerNote: practiceSetupPreferences.midiPlayAnswerNote,
       duetLevel,
@@ -1912,7 +1930,6 @@ export function PracticeView({
         questionLimitReachedRef.current = false;
         setIsQuestionLimitReached(false);
         setSyncTimingFeedback([]);
-        setSyncTimingAnnouncement(null);
         pendingEarlySyncAnswersRef.current = [];
         beginSessionState(nextSession);
       },
@@ -2216,7 +2233,6 @@ export function PracticeView({
         ...pendingTargets.map((target) => ({ noteIndex, ...target, result: "missed" as const })),
       ];
     });
-    setSyncTimingAnnouncement(null);
   }, [staffPageFirstNoteOffset]);
   const { handleDuetTimeout, handleSynchronizedTimeout, submitAnswer } = usePracticeAnswerFlow({
     values: {
@@ -2322,7 +2338,6 @@ export function PracticeView({
                   result: "matched",
                 },
               ]);
-              setSyncTimingAnnouncement("提前命中：音高与节拍都正确");
             } else {
               setSyncTimingFeedback((current) => [
                 ...current.filter(
@@ -2337,7 +2352,6 @@ export function PracticeView({
                   result: "missed" as const,
                 })),
               ]);
-              setSyncTimingAnnouncement("音高错误，红色标记");
             }
             if (
               !pendingEarlySyncAnswersRef.current.some(
@@ -2391,7 +2405,6 @@ export function PracticeView({
                 ...staves.map((staff) => ({ noteIndex, staff, result: "missed" as const })),
               ];
             });
-            setSyncTimingAnnouncement("音高错误，红色标记");
           } else {
             const expectedTime = getPracticeAudioTimeAtBeat(
               onset.currentBeat,
@@ -2414,11 +2427,6 @@ export function PracticeView({
                 );
                 return [...next, { noteIndex, staff, midi: answerMidi, result: "offbeat" }];
               });
-              setSyncTimingAnnouncement(
-                grade === "early"
-                  ? "音高正确，但节奏偏早（琥珀色）"
-                  : "音高正确，但节奏偏晚（琥珀色）"
-              );
             } else {
               setSyncTimingFeedback((current) => [
                 ...current.filter(
@@ -2429,7 +2437,6 @@ export function PracticeView({
                 ),
                 { noteIndex, staff, midi: answerMidi, result: "matched" },
               ]);
-              setSyncTimingAnnouncement("音高与节拍都正确");
             }
           }
         }
@@ -2443,7 +2450,6 @@ export function PracticeView({
       isMetronomeSyncActive,
       metronomePreferences.bpm,
       performanceTimeToAudioTime,
-      setSyncTimingAnnouncement,
       staffPageFirstNoteOffset,
       submitAnswer,
       setSyncTimingFeedback,
@@ -2634,7 +2640,7 @@ export function PracticeView({
   ]);
 
   const setupDisabledReason =
-    isMetronomeSyncRequired && metronomePreferences.beatsPerBar !== 4
+    shouldSynchronizeMetronome && metronomePreferences.beatsPerBar !== 4
       ? "谱面同步目前使用 4/4 拍，请先将节拍器拍号设为 4/4"
       : (isDuetPractice || (practiceTab === "free" && answerPitchMode === "exact-pitch")) &&
           !midi.isConnected
@@ -2976,6 +2982,7 @@ export function PracticeView({
         actions={{
           onAnswerPitchModeChange: setAnswerPitchMode,
           onPracticeModeChange: setPracticeMode,
+          onMetronomeSyncEnabledChange: setMetronomeSyncEnabled,
           onDuetLevelChange: setDuetLevel,
           onDuetAllowDottedRhythmsChange: setDuetAllowDottedRhythms,
           onAutoPlayTargetChange: setAutoPlayTarget,
@@ -3021,7 +3028,6 @@ export function PracticeView({
           practiceMicrophone.start({ includeAccidentals: practiceTab === "songs" })
         }
         midi={midi}
-        metronomeBeatsPerBar={metronomePreferences.beatsPerBar}
         preferences={practiceSetupPreferences}
         setupDisabledReason={setupDisabledReason}
         startPausedReading={startPausedReading}
@@ -3222,16 +3228,12 @@ export function PracticeView({
       >
         {isMetronomeSyncActive ? (
           <div className="practice-metronome-sync-status" role="status" aria-live="polite">
-            <strong>
-              {syncCountInBeat !== null
-                ? `准备拍 ${syncCountInBeat}`
-                : `节拍同步 · ${metronomePreferences.bpm} BPM`}
-            </strong>
+            {syncCountInBeat !== null ? <strong>准备拍 {syncCountInBeat}</strong> : null}
+            <strong>{metronomePreferences.bpm} BPM</strong>
             <span className="practice-metronome-sync-legend" aria-label="谱面颜色说明">
               <span className="is-error">红色：错音或漏拍</span>
               <span className="is-warning">黄色：时机偏早或偏晚</span>
             </span>
-            {syncTimingAnnouncement ? <span>{syncTimingAnnouncement}</span> : null}
           </div>
         ) : null}
         {promptDisplayMode === "staff-page" ? (
