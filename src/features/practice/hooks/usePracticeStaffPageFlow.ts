@@ -9,18 +9,30 @@ import {
 import { selectNotePage, type AdaptiveNoteScheduler } from "../../../domain/scheduler";
 import type { MelodyGenerationState } from "../../../domain/melody";
 import type {
+  DuetPracticeLevel,
   NoteName,
   PracticeMode,
   PracticeQueueStrategy,
   PracticeSessionRecord,
   PromptNoteDuration,
   ReviewRecord,
+  Staff,
   TargetNote,
 } from "../../../domain/types";
 import { PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
 import { getStaffPageRefillCount } from "../logic/staffPageFlow";
 import { generateStaffPageRhythm } from "../logic/staffPageNotation";
 import type { GeneratedStaffPageRhythm } from "../logic/staffPageNotation";
+import {
+  DUET_DESKTOP_MEASURES_PER_ROW,
+  DUET_MOBILE_MEASURES_PER_ROW,
+  DUET_DESKTOP_STAFF_PAGE_NOTE_COUNT,
+  DUET_MOBILE_STAFF_PAGE_NOTE_COUNT,
+  chunkStaffPageGroupsByMeasure,
+  getStaffPageRowIndex,
+} from "../logic/staffPageFlow";
+import { createDuetPracticePage } from "../logic/duetPractice";
+import type { DuetTargetPair } from "../logic/duetPractice";
 import type { PracticeStaffPageRuntime } from "./usePracticeSessionLifecycle";
 
 const CROSS_GROUP_NOTE_RATE = 0.08;
@@ -29,6 +41,30 @@ const STAFF_PAGE_SIZE =
 const MOBILE_STAFF_ROW_HEIGHT_PX = 220;
 const MOBILE_SCORE_VIEWPORT_RESERVED_HEIGHT_PX = 260;
 const MAX_MOBILE_STAFF_BUFFER_ROWS = 4;
+
+function duetTargetsForGroup(group: readonly TargetNote[] | undefined): DuetTargetPair | undefined {
+  if (!group) return undefined;
+  return {
+    high: group.filter((note) => note.staff === "treble"),
+    low: group.filter((note) => note.staff === "bass"),
+  };
+}
+
+function getDuetMeasureRowStartIndices(
+  notes: readonly TargetNote[],
+  measures: readonly number[],
+  isMobileViewport: boolean
+): number[] | undefined {
+  if (measures.length !== notes.length) return undefined;
+  const capacity = isMobileViewport
+    ? DUET_MOBILE_STAFF_PAGE_NOTE_COUNT
+    : DUET_DESKTOP_STAFF_PAGE_NOTE_COUNT;
+  const maxMeasures = isMobileViewport
+    ? DUET_MOBILE_MEASURES_PER_ROW
+    : DUET_DESKTOP_MEASURES_PER_ROW;
+  return chunkStaffPageGroupsByMeasure(notes, measures, capacity, undefined, maxMeasures)
+    .rowStartIndices;
+}
 
 function initialStaffPageBufferRowCount(isMobileViewport: boolean): number {
   if (!isMobileViewport || typeof window === "undefined") {
@@ -46,6 +82,35 @@ function initialStaffPageBufferRowCount(isMobileViewport: boolean): number {
       MAX_MOBILE_STAFF_BUFFER_ROWS,
       Math.ceil(estimatedScoreHeight / MOBILE_STAFF_ROW_HEIGHT_PX)
     )
+  );
+}
+
+function getDuetMeasureCountForRows(
+  level: DuetPracticeLevel,
+  isMobileViewport: boolean,
+  rowCount: number
+): number {
+  const eventCapacity = isMobileViewport
+    ? DUET_MOBILE_STAFF_PAGE_NOTE_COUNT
+    : DUET_DESKTOP_STAFF_PAGE_NOTE_COUNT;
+  const maxMeasuresPerRow = isMobileViewport
+    ? DUET_MOBILE_MEASURES_PER_ROW
+    : DUET_DESKTOP_MEASURES_PER_ROW;
+  // Level 1–4 have at most four onset groups per measure. Levels 5 and 6
+  // have denser patterns, so they use one measure per rendered row.
+  const maxEventsPerMeasure = level === "level-5" ? 8 : level === "level-6" ? 7 : 4;
+  const measuresPerRow = Math.max(
+    1,
+    Math.min(maxMeasuresPerRow, Math.floor(eventCapacity / maxEventsPerMeasure))
+  );
+  return rowCount * measuresPerRow;
+}
+
+function getDuetInitialMeasureCount(level: DuetPracticeLevel, isMobileViewport: boolean): number {
+  return getDuetMeasureCountForRows(
+    level,
+    isMobileViewport,
+    initialStaffPageBufferRowCount(isMobileViewport)
   );
 }
 
@@ -73,7 +138,10 @@ interface PracticeStaffPageFlowValues {
   mode: PracticeMode;
   pageNoteCount: number;
   promptNoteDurations: PromptNoteDuration[];
+  forceRhythmGeneration: boolean;
   rangeExtensionNotes: TargetNote[];
+  duetLevel?: DuetPracticeLevel;
+  allowDottedRhythms: boolean;
   retainHistory: boolean;
   queueStrategy: PracticeQueueStrategy;
   schedulerReviews: ReviewRecord[];
@@ -94,7 +162,7 @@ interface PracticeStaffPageFlowRuntime {
 
 interface PracticeStaffPageFlowServices {
   resumeActiveTimers: () => void;
-  startPrompt: (note: TargetNote) => void;
+  startPrompt: (note: TargetNote, duetTargets?: DuetTargetPair) => void;
 }
 
 interface PracticeStaffPageFlowUi {
@@ -103,6 +171,7 @@ interface PracticeStaffPageFlowUi {
   setStaffPageFirstNoteOffset: Dispatch<SetStateAction<number>>;
   setStaffPageIndex: Dispatch<SetStateAction<number>>;
   setStaffPageNotes: Dispatch<SetStateAction<TargetNote[]>>;
+  setStaffPageNoteGroups: Dispatch<SetStateAction<TargetNote[][]>>;
   setStaffPageRhythm: Dispatch<SetStateAction<GeneratedStaffPageRhythm | undefined>>;
 }
 
@@ -127,7 +196,10 @@ export function usePracticeStaffPageFlow({
     mode,
     pageNoteCount,
     promptNoteDurations,
+    forceRhythmGeneration,
     rangeExtensionNotes,
+    duetLevel,
+    allowDottedRhythms,
     retainHistory,
     queueStrategy,
     schedulerReviews,
@@ -151,6 +223,7 @@ export function usePracticeStaffPageFlow({
     setStaffPageFirstNoteOffset,
     setStaffPageIndex,
     setStaffPageNotes,
+    setStaffPageNoteGroups,
     setStaffPageRhythm,
   } = ui;
   const staffPageScrollFrameRef = useRef<number | null>(null);
@@ -173,6 +246,7 @@ export function usePracticeStaffPageFlow({
     (page: PracticeStaffPageRuntime | null): void => {
       staffPageRef.current = page;
       setStaffPageNotes(page?.notes ?? []);
+      setStaffPageNoteGroups(page?.noteGroups ? [...page.noteGroups] : []);
       setStaffPageRhythm(page?.rhythm);
       setStaffPageIndex(page?.index ?? 0);
       setStaffPageCompletedCount(page?.completedCount ?? 0);
@@ -185,6 +259,7 @@ export function usePracticeStaffPageFlow({
       setStaffPageFirstNoteOffset,
       setStaffPageIndex,
       setStaffPageNotes,
+      setStaffPageNoteGroups,
       setStaffPageRhythm,
       staffPageRef,
     ]
@@ -214,6 +289,19 @@ export function usePracticeStaffPageFlow({
     });
   }, [staffPageRef, syncStaffPage]);
 
+  const markCurrentStaffPageStaffNoteComplete = useCallback(
+    (staff: Staff): void => {
+      const page = staffPageRef.current;
+      if (!page) return;
+      const completedStaffNoteIndices = {
+        ...page.completedStaffNoteIndices,
+        [staff]: [...new Set([...(page.completedStaffNoteIndices?.[staff] ?? []), page.index])],
+      };
+      syncStaffPage({ ...page, completedStaffNoteIndices });
+    },
+    [staffPageRef, syncStaffPage]
+  );
+
   const startStaffPageIndex = useCallback(
     (index: number): boolean => {
       const page = staffPageRef.current;
@@ -225,7 +313,7 @@ export function usePracticeStaffPageFlow({
         index,
       };
       syncStaffPage(nextPage);
-      startPrompt(nextPage.notes[index]);
+      startPrompt(nextPage.notes[index]!, duetTargetsForGroup(nextPage.noteGroups?.[index]));
       return true;
     },
     [staffPageRef, startPrompt, syncStaffPage]
@@ -251,8 +339,17 @@ export function usePracticeStaffPageFlow({
       }
       const lastTargetNoteId = lastTargetNoteIdRef.current;
       const isSplitStaffRange = new Set(sourceNotes.map((note) => note.staff)).size > 1;
-      const generatedNotes =
-        sourceQueueStrategy !== "melody" && !isSplitStaffRange
+      const duetPage = duetLevel
+        ? createDuetPracticePage(sourceNotes, duetLevel, count, {
+            allowDottedRhythms,
+            exactCount: mode === "fixed-count" && fixedCount - nextCompletedCount <= count,
+            measureCount: getDuetInitialMeasureCount(duetLevel, isMobileViewport),
+            seed: sessionRef.current?.id,
+          })
+        : undefined;
+      const generatedNotes = duetLevel
+        ? []
+        : sourceQueueStrategy !== "melody" && !isSplitStaffRange
           ? (adaptiveSchedulerRef.current?.selectPage(count, {
               lastTargetNoteId,
             }) ??
@@ -278,27 +375,44 @@ export function usePracticeStaffPageFlow({
               melodyState: melodyGenerationStateRef.current,
               count,
             });
-      const notes = addOccasionalRangeNotes(generatedNotes, rangeExtensionNotes);
+      const selectedNotes = duetLevel
+        ? []
+        : addOccasionalRangeNotes(generatedNotes, rangeExtensionNotes);
+      const noteGroups = duetPage?.noteGroups;
+      const notes = duetPage?.notes ?? selectedNotes;
       const rhythm =
-        promptNoteDurations.length > 1
+        duetPage?.rhythm ??
+        (forceRhythmGeneration || promptNoteDurations.length > 1
           ? generateStaffPageRhythm(promptNoteDurations, notes.length)
-          : undefined;
+          : undefined);
+      const measureRowStartIndices = rhythm
+        ? getDuetMeasureRowStartIndices(notes, rhythm.measures, isMobileViewport)
+        : undefined;
       const page = {
         notes,
+        ...(noteGroups ? { noteGroups } : {}),
+        completedStaffNoteIndices: {},
         index: 0,
         completedCount: 0,
         ...(rhythm ? { rhythm } : {}),
+        ...(measureRowStartIndices ? { measureRowStartIndices } : {}),
       };
       syncStaffPage(page);
-      startPrompt(notes[0]);
+      startPrompt(notes[0]!, duetTargetsForGroup(noteGroups?.[0]));
     },
     [
       adaptiveSchedulerRef,
+      allowDottedRhythms,
+      duetLevel,
+      fixedCount,
+      forceRhythmGeneration,
       getNextStaffPageCount,
+      isMobileViewport,
       lastTargetNoteIdRef,
       melodyGenerationStateRef,
-      rangeExtensionNotes,
+      mode,
       promptNoteDurations,
+      rangeExtensionNotes,
       sessionRef,
       sessions,
       startPrompt,
@@ -314,7 +428,29 @@ export function usePracticeStaffPageFlow({
       }
 
       const remainingVisibleNotes = page.notes.slice(nextIndex);
-      const nextRowCount = getStaffPageRefillCount({
+      const measureRowStartIndices = duetLevel
+        ? (page.measureRowStartIndices ??
+          (page.rhythm
+            ? getDuetMeasureRowStartIndices(page.notes, page.rhythm.measures, isMobileViewport)
+            : undefined))
+        : undefined;
+      const currentRowIndex = measureRowStartIndices
+        ? getStaffPageRowIndex(measureRowStartIndices, page.index)
+        : -1;
+      const nextRowIndex = measureRowStartIndices
+        ? getStaffPageRowIndex(measureRowStartIndices, nextIndex)
+        : -1;
+      const isDuetRowBoundary = Boolean(
+        measureRowStartIndices &&
+        nextIndex > page.index &&
+        nextIndex < page.notes.length &&
+        nextRowIndex > currentRowIndex &&
+        measureRowStartIndices[nextRowIndex] === nextIndex
+      );
+      const currentRowStart = measureRowStartIndices?.[currentRowIndex] ?? page.index;
+      const scrollAdvanceCount =
+        duetLevel && isDuetRowBoundary ? nextIndex - currentRowStart : pageNoteCount;
+      let nextRowCount = getStaffPageRefillCount({
         completedSessionCount: nextCompletedCount,
         fixedSessionCount: mode === "fixed-count" ? fixedCount : undefined,
         nextIndex,
@@ -322,16 +458,35 @@ export function usePracticeStaffPageFlow({
         plannedNoteCount: page.notes.length,
         refillNoteCount: retainHistory ? pageNoteCount : undefined,
       });
-      const hasNextPageOnDesktop =
+      let hasNextPageOnDesktop =
         !isMobileViewport &&
         nextIndex > page.index &&
         nextIndex % pageNoteCount === 0 &&
         nextIndex < page.notes.length;
+      if (duetLevel && measureRowStartIndices) {
+        nextRowCount = 0;
+        hasNextPageOnDesktop = !isMobileViewport && isDuetRowBoundary;
+        if (
+          retainHistory &&
+          isDuetRowBoundary &&
+          nextRowIndex === measureRowStartIndices.length - 1
+        ) {
+          const lastRowStart = measureRowStartIndices[nextRowIndex]!;
+          const nextRowStart = measureRowStartIndices[nextRowIndex + 1] ?? page.notes.length;
+          const lastRowEventCount = nextRowStart - lastRowStart;
+          const availableFutureCount =
+            mode === "fixed-count"
+              ? Math.max(0, fixedCount - nextCompletedCount - remainingVisibleNotes.length)
+              : lastRowEventCount;
+          nextRowCount = Math.min(lastRowEventCount, availableFutureCount);
+        }
+      }
       if (nextRowCount === 0 && !hasNextPageOnDesktop) {
         return false;
       }
 
       let nextNotes = page.notes;
+      let nextNoteGroups = page.noteGroups;
       let nextRhythm = page.rhythm;
       if (nextRowCount > 0) {
         const lastTargetNoteId = page.notes[page.notes.length - 1]?.id;
@@ -348,36 +503,69 @@ export function usePracticeStaffPageFlow({
           melodyState: melodyGenerationStateRef.current,
           count: nextRowCount,
         };
-        const nextRow =
-          !isSplitStaffRange && queueStrategy !== "melody"
+        const duetAppend = duetLevel
+          ? createDuetPracticePage(enabledNotes, duetLevel, nextRowCount, {
+              allowDottedRhythms,
+              startBeat: page.rhythm?.endBeat ?? 0,
+              measureCount: getDuetMeasureCountForRows(duetLevel, isMobileViewport, 1),
+              exactCount:
+                mode === "fixed-count" &&
+                fixedCount - nextCompletedCount <= remainingVisibleNotes.length + nextRowCount,
+              seed: sessionRef.current?.id,
+            })
+          : undefined;
+        const nextRow = duetLevel
+          ? []
+          : !isSplitStaffRange && queueStrategy !== "melody"
             ? (adaptiveSchedulerRef.current?.selectPage(nextRowCount, {
                 lastTargetNoteId: pageSelectionOptions.lastTargetNoteId,
                 plannedTargetNoteIds: pageSelectionOptions.plannedTargetNoteIds,
               }) ?? selectNotePage(pageSelectionOptions))
             : selectNotePage(pageSelectionOptions);
-        const appendedNotes = addOccasionalRangeNotes(nextRow, rangeExtensionNotes);
+        const selectedAppendedNotes = duetLevel
+          ? []
+          : addOccasionalRangeNotes(nextRow, rangeExtensionNotes);
+        const appendedGroups = duetAppend?.noteGroups;
+        const appendedNotes = duetAppend?.notes ?? selectedAppendedNotes;
         nextNotes = [...page.notes, ...appendedNotes];
+        if (appendedGroups) {
+          nextNoteGroups = [...(page.noteGroups ?? []), ...appendedGroups];
+        }
         if (page.rhythm) {
-          const appendedRhythm = generateStaffPageRhythm(
-            promptNoteDurations,
-            appendedNotes.length,
-            page.rhythm.endBeat
-          );
+          const appendedRhythm =
+            duetAppend?.rhythm ??
+            generateStaffPageRhythm(promptNoteDurations, appendedNotes.length, page.rhythm.endBeat);
           nextRhythm = {
             durations: [...page.rhythm.durations, ...appendedRhythm.durations],
             endBeat: appendedRhythm.endBeat,
             measures: [...page.rhythm.measures, ...appendedRhythm.measures],
             noteBeamGroups: [...page.rhythm.noteBeamGroups, ...appendedRhythm.noteBeamGroups],
             onsets: [...page.rhythm.onsets, ...appendedRhythm.onsets],
+            ...(page.rhythm.staffNoteDurations || appendedRhythm.staffNoteDurations
+              ? {
+                  staffNoteDurations: [
+                    ...(page.rhythm.staffNoteDurations ?? []),
+                    ...(appendedRhythm.staffNoteDurations ?? []),
+                  ],
+                }
+              : {}),
           };
         }
       }
+      const nextMeasureRowStartIndices =
+        duetLevel && nextRhythm
+          ? getDuetMeasureRowStartIndices(nextNotes, nextRhythm.measures, isMobileViewport)
+          : undefined;
       const sessionId = sessionRef.current?.id;
       syncStaffPage({
         ...page,
         index: nextIndex,
         notes: nextNotes,
+        ...(nextNoteGroups ? { noteGroups: nextNoteGroups } : {}),
         ...(nextRhythm ? { rhythm: nextRhythm } : {}),
+        ...(nextMeasureRowStartIndices
+          ? { measureRowStartIndices: nextMeasureRowStartIndices }
+          : {}),
       });
       const finishScroll = (): void => {
         staffPageScrollTimeoutRef.current = null;
@@ -392,7 +580,10 @@ export function usePracticeStaffPageFlow({
           if (!nextNote) return;
           const startNextPrompt = (): void => {
             resumeActiveTimers();
-            startPrompt(nextNote);
+            startPrompt(
+              nextNote,
+              duetTargetsForGroup(scrolledPage.noteGroups?.[scrolledPage.index])
+            );
           };
           if (isPausedRef.current) {
             pendingAfterPauseRef.current = startNextPrompt;
@@ -401,46 +592,67 @@ export function usePracticeStaffPageFlow({
           startNextPrompt();
           return;
         }
-        if (
-          !scrolledPage ||
-          scrolledPage.notes.length <= PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
-        ) {
+        if (!scrolledPage || scrolledPage.notes.length <= scrollAdvanceCount) {
           setIsStaffPageScrolling(false);
           return;
         }
         const rebasedPage = {
-          notes: scrolledPage.notes.slice(PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow),
-          index: scrolledPage.index - PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
-          completedCount:
-            scrolledPage.completedCount - PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow,
+          notes: scrolledPage.notes.slice(scrollAdvanceCount),
+          ...(scrolledPage.noteGroups
+            ? {
+                noteGroups: scrolledPage.noteGroups.slice(scrollAdvanceCount),
+              }
+            : {}),
+          ...(scrolledPage.completedStaffNoteIndices
+            ? {
+                completedStaffNoteIndices: Object.fromEntries(
+                  Object.entries(scrolledPage.completedStaffNoteIndices).map(([staff, indices]) => [
+                    staff,
+                    indices!
+                      .map((index) => index - scrollAdvanceCount)
+                      .filter((index) => index >= 0),
+                  ])
+                ) as PracticeStaffPageRuntime["completedStaffNoteIndices"],
+              }
+            : {}),
+          index: scrolledPage.index - scrollAdvanceCount,
+          completedCount: scrolledPage.completedCount - scrollAdvanceCount,
           ...(scrolledPage.rhythm
             ? {
                 rhythm: {
                   ...scrolledPage.rhythm,
-                  durations: scrolledPage.rhythm.durations.slice(
-                    PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
-                  ),
-                  measures: scrolledPage.rhythm.measures.slice(
-                    PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
-                  ),
-                  noteBeamGroups: scrolledPage.rhythm.noteBeamGroups.slice(
-                    PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
-                  ),
-                  onsets: scrolledPage.rhythm.onsets.slice(
-                    PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
-                  ),
+                  durations: scrolledPage.rhythm.durations.slice(scrollAdvanceCount),
+                  measures: scrolledPage.rhythm.measures.slice(scrollAdvanceCount),
+                  noteBeamGroups: scrolledPage.rhythm.noteBeamGroups.slice(scrollAdvanceCount),
+                  onsets: scrolledPage.rhythm.onsets.slice(scrollAdvanceCount),
+                  ...(scrolledPage.rhythm.staffNoteDurations
+                    ? {
+                        staffNoteDurations:
+                          scrolledPage.rhythm.staffNoteDurations.slice(scrollAdvanceCount),
+                      }
+                    : {}),
                 },
               }
             : {}),
+          ...(scrolledPage.rhythm
+            ? {
+                measureRowStartIndices: getDuetMeasureRowStartIndices(
+                  scrolledPage.notes.slice(scrollAdvanceCount),
+                  scrolledPage.rhythm.measures.slice(scrollAdvanceCount),
+                  isMobileViewport
+                ),
+              }
+            : {}),
         };
-        setStaffPageFirstNoteOffset(
-          (offset) => offset + PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow
-        );
+        setStaffPageFirstNoteOffset((offset) => offset + scrollAdvanceCount);
         syncStaffPage(rebasedPage);
         setIsStaffPageScrolling(false);
         const startNextPrompt = (): void => {
           resumeActiveTimers();
-          startPrompt(rebasedPage.notes[rebasedPage.index]);
+          startPrompt(
+            rebasedPage.notes[rebasedPage.index]!,
+            duetTargetsForGroup(rebasedPage.noteGroups?.[rebasedPage.index])
+          );
         };
         if (isPausedRef.current) {
           pendingAfterPauseRef.current = startNextPrompt;
@@ -463,6 +675,8 @@ export function usePracticeStaffPageFlow({
       clearStaffPageScrollSchedule,
       drillNoteNames,
       enabledNotes,
+      duetLevel,
+      allowDottedRhythms,
       fixedCount,
       isMobileViewport,
       adaptiveSchedulerRef,
@@ -492,6 +706,7 @@ export function usePracticeStaffPageFlow({
   return {
     clearStaffPageScrollSchedule,
     markCurrentStaffPageNoteComplete,
+    markCurrentStaffPageStaffNoteComplete,
     startStaffPage,
     startStaffPageIndex,
     startStaffPageScroll,

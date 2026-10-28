@@ -4,6 +4,8 @@ import { isStatisticalReview } from "./reviews";
 import { isLongTermStatsEligible } from "./stats";
 import type {
   AnswerPitchMode,
+  DuetPracticeDifficulty,
+  DuetPracticeLevel,
   PracticeSessionRecord,
   PromptDisplayMode,
   PromptNoteDuration,
@@ -29,6 +31,12 @@ export interface SessionProgressSeries {
 
 export interface SessionProgressGroupKey {
   answerPitchMode: AnswerPitchMode;
+  practiceMode: "single-hand" | "duet";
+  duetDifficulty?: DuetPracticeDifficulty;
+  duetLevel?: DuetPracticeLevel;
+  duetCurriculumVersion?: number;
+  duetAllowDottedRhythms?: boolean;
+  metronomeSync?: boolean;
   queueComparisonFamily: QueueComparisonFamily;
   promptDisplayMode: PromptDisplayMode;
   promptNoteDuration: PromptNoteDuration;
@@ -101,6 +109,12 @@ function sameComparisonSnapshot(
     reference &&
     candidate &&
     reference.answerPitchMode === candidate.answerPitchMode &&
+    reference.practiceMode === candidate.practiceMode &&
+    reference.duetDifficulty === candidate.duetDifficulty &&
+    reference.duetLevel === candidate.duetLevel &&
+    reference.duetCurriculumVersion === candidate.duetCurriculumVersion &&
+    reference.duetAllowDottedRhythms === candidate.duetAllowDottedRhythms &&
+    reference.metronomeSync === candidate.metronomeSync &&
     reference.targetNoteSetKey === candidate.targetNoteSetKey &&
     reference.promptDisplayMode === candidate.promptDisplayMode &&
     reference.promptNoteDuration === candidate.promptNoteDuration &&
@@ -113,6 +127,12 @@ export function serializeSessionProgressGroupKey(key: SessionProgressGroupKey): 
   return [
     key.targetNoteSetKey,
     key.answerPitchMode,
+    key.practiceMode,
+    key.duetDifficulty ?? "",
+    key.duetLevel ?? "",
+    key.duetCurriculumVersion ?? "",
+    key.duetAllowDottedRhythms ?? "",
+    key.metronomeSync ?? "",
     key.promptDisplayMode,
     key.queueComparisonFamily,
     key.promptNoteDuration,
@@ -126,6 +146,16 @@ export function getSessionProgressGroupKey(
   return snapshot
     ? {
         answerPitchMode: snapshot.answerPitchMode,
+        practiceMode: snapshot.practiceMode,
+        ...(snapshot.duetDifficulty ? { duetDifficulty: snapshot.duetDifficulty } : {}),
+        ...(snapshot.duetLevel ? { duetLevel: snapshot.duetLevel } : {}),
+        ...(snapshot.duetCurriculumVersion !== undefined
+          ? { duetCurriculumVersion: snapshot.duetCurriculumVersion }
+          : {}),
+        ...(snapshot.duetAllowDottedRhythms !== undefined
+          ? { duetAllowDottedRhythms: snapshot.duetAllowDottedRhythms }
+          : {}),
+        ...(snapshot.metronomeSync !== undefined ? { metronomeSync: snapshot.metronomeSync } : {}),
         promptDisplayMode: snapshot.promptDisplayMode,
         promptNoteDuration: snapshot.promptNoteDuration,
         queueComparisonFamily: getQueueComparisonFamily(snapshot.effectiveQueueAlgorithm),

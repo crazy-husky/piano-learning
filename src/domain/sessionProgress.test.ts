@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { makeDefaultSettings } from "../data/db";
 import {
   buildLatestSessionProgressBenchmark,
   buildLatestSessionProgressSeries,
@@ -11,7 +12,11 @@ import {
   isProgressChartEligible,
 } from "./sessionProgress";
 import { makeReview } from "./testFactories";
-import type { PracticeSessionRecordV1 } from "./types";
+import {
+  buildPracticeSessionRecordV5,
+  buildPracticeSessionStartSnapshot,
+} from "./practiceSessionStartSnapshot";
+import type { DuetPracticeLevel, PracticeSessionRecordV1 } from "./types";
 
 const REVIEW_NOTE_IDS = ["C4", "D4", "E4", "F4", "G4"] as const;
 
@@ -35,6 +40,39 @@ function makeSession(
   };
 }
 
+function makeDuetComparisonSession({
+  id,
+  startedAt,
+  duetLevel,
+  dotted = false,
+  metronomeSync = false,
+}: {
+  id: string;
+  startedAt: string;
+  duetLevel?: DuetPracticeLevel;
+  dotted?: boolean;
+  metronomeSync?: boolean;
+}) {
+  const built = buildPracticeSessionStartSnapshot({
+    autoPlayTarget: true,
+    ...(duetLevel
+      ? {
+          duetLevel,
+          duetCurriculumVersion: 2,
+          duetAllowDottedRhythms: dotted,
+          ...(metronomeSync ? { metronomeSync: true } : {}),
+        }
+      : {}),
+    mode: "fixed-count",
+    prefersReducedMotion: false,
+    settings: makeDefaultSettings(),
+    smoothStaffPageScroll: true,
+    startPausedReading: false,
+  });
+  if (!built) throw new Error("Expected default settings to produce practice notes");
+  return buildPracticeSessionRecordV5({ id, snapshot: built.snapshot, startedAt });
+}
+
 function makeSessionReviews(
   sessionId: string,
   activeMsList: number[],
@@ -54,6 +92,36 @@ function makeSessionReviews(
 }
 
 describe("session progress", () => {
+  it("keeps duet curriculum and metronome modes in separate comparison groups", () => {
+    const startedAt = "2026-07-04T12:00:00.000+08:00";
+    const single = makeDuetComparisonSession({ id: "single", startedAt });
+    const levelOne = makeDuetComparisonSession({ id: "duet-one", startedAt, duetLevel: "level-1" });
+    const levelTwo = makeDuetComparisonSession({ id: "duet-two", startedAt, duetLevel: "level-2" });
+    const dotted = makeDuetComparisonSession({
+      id: "duet-dotted",
+      startedAt,
+      duetLevel: "level-1",
+      dotted: true,
+    });
+    const synced = makeDuetComparisonSession({
+      id: "duet-synced",
+      startedAt,
+      duetLevel: "level-1",
+      metronomeSync: true,
+    });
+    const sameAsLevelOne = makeDuetComparisonSession({
+      id: "duet-one-copy",
+      startedAt,
+      duetLevel: "level-1",
+    });
+
+    expect(isComparablePracticeSession(single, levelOne)).toBe(false);
+    expect(isComparablePracticeSession(levelOne, levelTwo)).toBe(false);
+    expect(isComparablePracticeSession(levelOne, dotted)).toBe(false);
+    expect(isComparablePracticeSession(levelOne, synced)).toBe(false);
+    expect(isComparablePracticeSession(levelOne, sameAsLevelOne)).toBe(true);
+  });
+
   it("keeps the eligible session ids owned by each exact comparison group", () => {
     const older = makeSession({
       fixedCount: 5,

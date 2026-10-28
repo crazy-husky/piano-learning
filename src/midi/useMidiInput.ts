@@ -17,7 +17,9 @@ import {
   type MidiNoteInputEvent,
 } from "./midiInput";
 
-const MIDI_INPUT_ID_STORAGE_KEY = "anki-note.midiInputId";
+// Older releases stored the first detected device here as if it were user-selected.
+// Use a fresh key so only explicit selections from this version are restored.
+const MIDI_INPUT_ID_STORAGE_KEY = "anki-note.midiInputId.v2";
 
 export interface MidiInputDevice {
   id: string;
@@ -137,6 +139,7 @@ export function useMidiInput(): MidiInputController {
       keyName: event.note.name,
       midiNoteNumber,
       octave: event.note.octave,
+      timestamp: event.timestamp,
     };
   }, []);
 
@@ -201,15 +204,6 @@ export function useMidiInput(): MidiInputController {
     const selectedInputIsAvailable = nextInputs.some(
       (input) => input.id === selectedInputIdRef.current
     );
-    if (nextInputs.length > 0 && !selectedInputIsAvailable) {
-      const nextSelection = nextInputs[0]?.id;
-      selectedInputIdRef.current = nextSelection;
-      setSelectedInputId(nextSelection);
-      if (nextSelection) {
-        storeInputId(nextSelection);
-        announceLocalStoragePreferenceChange(MIDI_INPUT_ID_STORAGE_KEY);
-      }
-    }
     if (nextInputs.length === 0 || !selectedInputIsAvailable) {
       setLastNote(undefined);
     }

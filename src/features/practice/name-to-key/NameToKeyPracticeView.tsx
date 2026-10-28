@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Mic, Music2, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { toast } from "sonner";
 import { getPianoAudioTime, playPianoNote } from "../../../audio/piano";
@@ -15,10 +15,12 @@ import type {
   PracticeMode,
 } from "../../../domain/types";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
+import { MAX_PRACTICE_QUESTIONS } from "../../../domain/practiceLimits";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
+import { PracticeQuestionLimitDialog } from "../../../shared/components/PracticeQuestionLimitDialog";
 import {
   VirtualPianoKeyboard,
   VIRTUAL_PIANO_WHITE_KEYS,
@@ -77,13 +79,14 @@ interface NameToKeyPracticeViewProps {
   navigationExitRequest?: {
     id: number;
     returnToSetup?: boolean;
-    targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal";
+    targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal" | "metronome";
   } | null;
   onBeforePracticeStart: () => Promise<{ proceed: boolean }>;
   onDataChanged: () => Promise<void>;
   onNavigationExit?: (
-    targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal"
+    targetView: NonNullable<NameToKeyPracticeViewProps["navigationExitRequest"]>["targetView"]
   ) => void;
+  onInputModeChange: (mode: NameToKeyInputMode) => void;
   onPracticeFinished: () => void;
   onRegisterMicrophoneAnswer: (handler: ((answer: PracticeAnswerInput) => void) | null) => void;
   onRunningChange: (running: boolean) => void;
@@ -231,6 +234,7 @@ export function NameToKeyPracticeView({
   microphone,
   navigationExitRequest,
   onBeforePracticeStart,
+  onInputModeChange,
   onDataChanged,
   onNavigationExit,
   onPracticeFinished,
@@ -251,6 +255,18 @@ export function NameToKeyPracticeView({
     DEFAULT_PREFERENCES,
     { parse: parsePreferences }
   );
+  const previousMidiConnectionRef = useRef(midi.isConnected);
+  const inputModeSelectionRevisionRef = useRef(0);
+  const setInputMode = useCallback(
+    (inputMode: NameToKeyInputMode): void => {
+      inputModeSelectionRevisionRef.current += 1;
+      setPreferences((current) => ({ ...current, inputMode }));
+    },
+    [setPreferences]
+  );
+  useLayoutEffect(() => {
+    if (isActive) onInputModeChange(preferences.inputMode);
+  }, [isActive, onInputModeChange, preferences.inputMode]);
   const [stage, setStage] = useState<NameToKeyStage>("setup");
   const [isPaused, setIsPaused] = useState(false);
   const [isNoteKeyGuideOpen, setIsNoteKeyGuideOpen] = useState(false);
@@ -267,6 +283,33 @@ export function NameToKeyPracticeView({
   const [roundEvents, setRoundEvents] = useState<AnswerEvent[]>([]);
   const [isStarting, setIsStarting] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  useEffect(() => {
+    if (!isActive || isStarting) return;
+    const wasConnected = previousMidiConnectionRef.current;
+    previousMidiConnectionRef.current = midi.isConnected;
+    if (
+      wasConnected ||
+      !midi.isConnected ||
+      stage !== "setup" ||
+      preferences.inputMode !== "microphone"
+    ) {
+      return;
+    }
+
+    setInputMode("midi");
+    const autoSwitchRevision = inputModeSelectionRevisionRef.current;
+    toast.message("已切换到你上次选择的 MIDI 设备", {
+      action: {
+        label: "撤销",
+        onClick: () => {
+          if (inputModeSelectionRevisionRef.current === autoSwitchRevision) {
+            setInputMode("microphone");
+          }
+        },
+      },
+      duration: 5000,
+    });
+  }, [isActive, isStarting, midi.isConnected, preferences.inputMode, setInputMode, stage]);
   const targetMidiRef = useRef<number | null>(null);
   const targetRef = useRef<NameToKeyTarget | null>(null);
   const promptStartedAtRef = useRef(0);
@@ -290,7 +333,9 @@ export function NameToKeyPracticeView({
     )
   );
   const [customFixedCount, setCustomFixedCount] = useState(preferences.fixedCount);
-  const finishRoundRef = useRef<() => void>(() => undefined);
+  const finishRoundRef = useRef<(showSummary?: boolean) => void>(() => undefined);
+  const questionLimitReachedRef = useRef(false);
+  const [isQuestionLimitReached, setIsQuestionLimitReached] = useState(false);
   const handlePracticeAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => undefined);
   const handledNavigationExitRequestRef = useRef<number | null>(null);
 
@@ -404,64 +449,99 @@ export function NameToKeyPracticeView({
     [preferences]
   );
 
-  const finishRound = useCallback((): void => {
-    if (stage !== "running") return;
+  const finishRound = useCallback(
+    (showSummary = true): void => {
+      if (stage !== "running") return;
+      if (intervalRef.current !== undefined) window.clearInterval(intervalRef.current);
+      if (advanceTimerRef.current !== undefined) window.clearTimeout(advanceTimerRef.current);
+      intervalRef.current = undefined;
+      advanceTimerRef.current = undefined;
+      activeStartedAtRef.current = 0;
+      const unansweredTarget = targetMidiRef.current;
+      const pendingEvents: AnswerEvent[] = [];
+      if (unansweredTarget !== null && !targetResolvedRef.current) {
+        pendingEvents.push(
+          makeAnswerEvent({
+            isCorrect: null,
+            isMissed: true,
+            responseMs: null,
+            targetMidiValue: unansweredTarget,
+          })
+        );
+      }
+      targetResolvedRef.current = true;
+      targetMidiRef.current = null;
+      targetRef.current = null;
+      if (pendingEvents.length > 0) {
+        roundEventsRef.current = [...roundEventsRef.current, ...pendingEvents];
+        setRoundEvents(roundEventsRef.current);
+        void saveAnswerEvents(pendingEvents).catch(() => {
+          toast.error("部分练习记录暂时保存失败。", { duration: 3500 });
+        });
+      }
+      setTarget(null);
+      setFeedback(null);
+      setRemainingMs(0);
+      remainingMsRef.current = 0;
+      setIsPaused(false);
+      setStage(showSummary ? "summary" : "setup");
+      setIsQuestionLimitReached(false);
+      questionLimitReachedRef.current = false;
+      onRegisterMicrophoneAnswer(null);
+      if (microphoneStartedRef.current) {
+        microphoneStartedRef.current = false;
+        stopMicrophone();
+      }
+      onStageChange(false);
+      onPracticeFinished();
+      void onDataChanged();
+    },
+    [
+      makeAnswerEvent,
+      onDataChanged,
+      onPracticeFinished,
+      onRegisterMicrophoneAnswer,
+      onStageChange,
+      stage,
+      stopMicrophone,
+    ]
+  );
+  finishRoundRef.current = finishRound;
+
+  const pauseAtQuestionLimit = useCallback((): void => {
+    if (questionLimitReachedRef.current) return;
+    questionLimitReachedRef.current = true;
+    setIsQuestionLimitReached(true);
+    targetMidiRef.current = null;
+    targetRef.current = null;
+    targetResolvedRef.current = true;
+    setTarget(null);
+    setFeedback(null);
     if (intervalRef.current !== undefined) window.clearInterval(intervalRef.current);
     if (advanceTimerRef.current !== undefined) window.clearTimeout(advanceTimerRef.current);
     intervalRef.current = undefined;
     advanceTimerRef.current = undefined;
-    activeStartedAtRef.current = 0;
-    const unansweredTarget = targetMidiRef.current;
-    const pendingEvents: AnswerEvent[] = [];
-    if (unansweredTarget !== null && !targetResolvedRef.current) {
-      pendingEvents.push(
-        makeAnswerEvent({
-          isCorrect: null,
-          isMissed: true,
-          responseMs: null,
-          targetMidiValue: unansweredTarget,
-        })
-      );
+    if (activeStartedAtRef.current !== 0) {
+      activeElapsedRef.current += Math.max(0, performance.now() - activeStartedAtRef.current);
+      activeStartedAtRef.current = 0;
     }
-    targetResolvedRef.current = true;
-    targetMidiRef.current = null;
-    targetRef.current = null;
-    if (pendingEvents.length > 0) {
-      roundEventsRef.current = [...roundEventsRef.current, ...pendingEvents];
-      setRoundEvents(roundEventsRef.current);
-      void saveAnswerEvents(pendingEvents).catch(() => {
-        toast.error("部分练习记录暂时保存失败。", { duration: 3500 });
-      });
-    }
-    setTarget(null);
-    setFeedback(null);
-    setRemainingMs(0);
-    remainingMsRef.current = 0;
-    setIsPaused(false);
-    setStage("summary");
-    onRegisterMicrophoneAnswer(null);
+    setIsPaused(true);
     if (microphoneStartedRef.current) {
       microphoneStartedRef.current = false;
       stopMicrophone();
     }
-    onStageChange(false);
-    onPracticeFinished();
-    void onDataChanged();
-  }, [
-    makeAnswerEvent,
-    onDataChanged,
-    onPracticeFinished,
-    onRegisterMicrophoneAnswer,
-    onStageChange,
-    stage,
-    stopMicrophone,
-  ]);
-  finishRoundRef.current = finishRound;
+  }, [stopMicrophone]);
 
   const handlePracticeAnswer = useCallback(
     (answer: PracticeAnswerInput, explicitMode?: NameToKeyInputMode): void => {
       const currentTarget = targetMidiRef.current;
-      if (stage !== "running" || isPaused || targetResolvedRef.current || currentTarget === null) {
+      if (
+        stage !== "running" ||
+        isPaused ||
+        questionLimitReachedRef.current ||
+        targetResolvedRef.current ||
+        currentTarget === null
+      ) {
         return;
       }
       const answeredMidi = answer.midiNoteNumber;
@@ -491,6 +571,14 @@ export function NameToKeyPracticeView({
         })
       );
       targetMidiRef.current = null;
+
+      if (
+        roundEventsRef.current.length >= MAX_PRACTICE_QUESTIONS &&
+        (preferences.mode !== "fixed-count" || preferences.fixedCount > MAX_PRACTICE_QUESTIONS)
+      ) {
+        pauseAtQuestionLimit();
+        return;
+      }
 
       const isLastCountedPrompt =
         preferences.mode === "fixed-count" &&
@@ -540,6 +628,7 @@ export function NameToKeyPracticeView({
       preferences.randomEnharmonics,
       suppressRecognizedNotes,
       setNextTarget,
+      pauseAtQuestionLimit,
       stage,
     ]
   );
@@ -666,6 +755,8 @@ export function NameToKeyPracticeView({
       sessionIdRef.current = createUuid();
       eventIndexRef.current = 0;
       roundEventsRef.current = [];
+      questionLimitReachedRef.current = false;
+      setIsQuestionLimitReached(false);
       lastTargetMidiRef.current = undefined;
       setRoundEvents([]);
       setFeedback(null);
@@ -719,7 +810,7 @@ export function NameToKeyPracticeView({
   }, [isActive, isStarting, stage]);
 
   const togglePause = async (): Promise<void> => {
-    if (stage !== "running") return;
+    if (stage !== "running" || questionLimitReachedRef.current) return;
     if (!isPaused) {
       activeElapsedRef.current += Math.max(0, performance.now() - activeStartedAtRef.current);
       activeStartedAtRef.current = 0;
@@ -829,9 +920,7 @@ export function NameToKeyPracticeView({
                     <button
                       aria-pressed={preferences.inputMode === "virtual-keyboard"}
                       className={preferences.inputMode === "virtual-keyboard" ? "is-selected" : ""}
-                      onClick={() =>
-                        setPreferences((current) => ({ ...current, inputMode: "virtual-keyboard" }))
-                      }
+                      onClick={() => setInputMode("virtual-keyboard")}
                       type="button"
                     >
                       <Play aria-hidden="true" size={17} />
@@ -840,9 +929,7 @@ export function NameToKeyPracticeView({
                     <button
                       aria-pressed={preferences.inputMode === "midi"}
                       className={preferences.inputMode === "midi" ? "is-selected" : ""}
-                      onClick={() =>
-                        setPreferences((current) => ({ ...current, inputMode: "midi" }))
-                      }
+                      onClick={() => setInputMode("midi")}
                       type="button"
                     >
                       <Music2 aria-hidden="true" size={17} />
@@ -851,9 +938,7 @@ export function NameToKeyPracticeView({
                     <button
                       aria-pressed={preferences.inputMode === "microphone"}
                       className={preferences.inputMode === "microphone" ? "is-selected" : ""}
-                      onClick={() =>
-                        setPreferences((current) => ({ ...current, inputMode: "microphone" }))
-                      }
+                      onClick={() => setInputMode("microphone")}
                       type="button"
                     >
                       <Mic aria-hidden="true" size={17} />
@@ -1176,9 +1261,7 @@ export function NameToKeyPracticeView({
                 </div>
               ) : (
                 <p>
-                  {preferences.inputMode === "midi"
-                    ? (midi.selectedInput?.name ?? "MIDI 键盘")
-                    : "点击下方琴键作答"}
+                  {preferences.inputMode === "midi" ? "使用 MIDI 键盘作答" : "点击下方琴键作答"}
                 </p>
               )}
             </div>
@@ -1206,16 +1289,21 @@ export function NameToKeyPracticeView({
                 <Square size={16} />
                 结束
               </button>
-              <button
-                aria-label="查看音名键位"
-                className="name-key-reference-button"
-                onClick={() => setIsNoteKeyGuideOpen(true)}
-                title="查看音名键位"
-                type="button"
-              >
-                <Music2 aria-hidden="true" size={16} />
-                音名键位
-              </button>
+              {preferences.inputMode === "virtual-keyboard" ? (
+                <button
+                  aria-label="查看音名键位"
+                  className="name-key-reference-button"
+                  onClick={() => setIsNoteKeyGuideOpen(true)}
+                  title="查看音名键位"
+                  type="button"
+                >
+                  <Music2 aria-hidden="true" size={16} />
+                  音名键位
+                </button>
+              ) : null}
+              {preferences.inputMode === "midi" ? (
+                <MidiInputControl ariaLabel="音名找键 MIDI 输入设备" midi={midi} />
+              ) : null}
             </div>
           </header>
 
@@ -1373,9 +1461,14 @@ export function NameToKeyPracticeView({
       ) : null}
 
       <NameKeyReferenceDialog
-        isOpen={stage === "running" && isNoteKeyGuideOpen}
+        isOpen={
+          stage === "running" && preferences.inputMode === "virtual-keyboard" && isNoteKeyGuideOpen
+        }
         onClose={() => setIsNoteKeyGuideOpen(false)}
       />
+      {isQuestionLimitReached ? (
+        <PracticeQuestionLimitDialog onEnd={() => finishRoundRef.current(false)} />
+      ) : null}
     </section>
   );
 }

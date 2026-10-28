@@ -19,6 +19,7 @@ export interface PracticeAnswerInput {
   microphoneAlgorithm?: PracticeMicrophoneAlgorithm;
   diagnosticSampleId?: number;
   midiNoteNumber?: number;
+  inputTimeMs?: number;
   noteName: NoteName;
   octave?: number;
   source: AnswerInputSource;

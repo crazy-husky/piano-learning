@@ -1,9 +1,46 @@
 import { describe, expect, it } from "vitest";
 import {
   buildMobileStaffPageView,
+  chunkStaffPageGroupsByMeasure,
+  getStaffPageRowIndex,
   getStaffPageRefillCount,
   MOBILE_STAFF_PAGE_NOTE_COUNT,
 } from "./staffPageFlow";
+
+describe("measure-aware staff-page rows", () => {
+  it("moves a whole measure to the next row when it cannot fit", () => {
+    const groups = Array.from({ length: 10 }, (_, index) => `event-${index}`);
+    const result = chunkStaffPageGroupsByMeasure(groups, [0, 0, 0, 0, 1, 1, 1, 1, 2, 2], 6);
+
+    expect(result).toEqual({
+      rowStartIndices: [0, 4],
+      rows: [groups.slice(0, 4), groups.slice(4)],
+    });
+    expect(getStaffPageRowIndex(result.rowStartIndices, 3)).toBe(0);
+    expect(getStaffPageRowIndex(result.rowStartIndices, 4)).toBe(1);
+  });
+
+  it("keeps a measure intact even when that measure is wider than the row capacity", () => {
+    const groups = Array.from({ length: 7 }, (_, index) => index);
+    const result = chunkStaffPageGroupsByMeasure(groups, [0, 0, 0, 0, 0, 0, 1], 4);
+
+    expect(result).toEqual({ rowStartIndices: [0, 6], rows: [groups.slice(0, 6), [6]] });
+  });
+
+  it("caps duet rows at three complete measures", () => {
+    const groups = Array.from({ length: 16 }, (_, index) => `event-${index}`);
+    const measures = groups.map((_, index) => Math.floor(index / 4));
+    const result = chunkStaffPageGroupsByMeasure(groups, measures, 24, undefined, 3);
+
+    expect(result.rowStartIndices).toEqual([0, 12]);
+    expect(result.rows.map((row) => row.length)).toEqual([12, 4]);
+    expect(
+      result.rows.map((row) => [
+        ...new Set(row.map((event) => Math.floor(Number(event.slice(6)) / 4))),
+      ])
+    ).toEqual([[0, 1, 2], [3]]);
+  });
+});
 
 describe("rolling staff-page flow", () => {
   it("refills one row when eight visible notes remain", () => {

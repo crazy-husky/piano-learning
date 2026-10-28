@@ -23,8 +23,8 @@
   filter: none;
   padding: 9px clamp(8px, 1.6vw, 20px);
   text-align: center;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .staff-game-shell .staff-game-display-card.hud-panel-css {

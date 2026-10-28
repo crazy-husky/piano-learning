@@ -9,12 +9,20 @@ import type {
   PromptDisplayMode,
   PromptNoteDuration,
   QueueComparisonFamily,
+  DuetPracticeDifficulty,
+  DuetPracticeLevel,
   StaffNotationMode,
   TargetNote,
 } from "./types";
 
 export interface PracticeComparisonSnapshot {
   answerPitchMode: AnswerPitchMode;
+  practiceMode: "single-hand" | "duet";
+  duetDifficulty?: DuetPracticeDifficulty;
+  duetLevel?: DuetPracticeLevel;
+  duetCurriculumVersion?: number;
+  duetAllowDottedRhythms?: boolean;
+  metronomeSync?: boolean;
   effectiveQueueAlgorithm: EffectiveQueueAlgorithm;
   promptDisplayMode: PromptDisplayMode;
   promptNoteDuration: PromptNoteDuration;
@@ -157,6 +165,7 @@ export function buildPracticeActivitySnapshot({
     answerPitchMode,
     effectiveQueueAlgorithm: getEffectiveQueueAlgorithm(queueStrategy),
     notes,
+    practiceMode: "single-hand",
     promptDisplayMode,
     promptNoteDuration,
     targetNoteSetKey: buildTargetNoteSetKey(notes.map((note) => note.id)),

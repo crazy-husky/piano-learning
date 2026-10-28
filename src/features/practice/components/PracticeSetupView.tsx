@@ -3,6 +3,7 @@ import { BarChart3, ChevronDown, Keyboard, Mic, Music2, Play, Settings2 } from "
 import { toast } from "sonner";
 import type {
   AnswerPitchMode,
+  DuetPracticeLevel,
   AppSettings,
   NoteName,
   PitchId,
@@ -12,6 +13,7 @@ import type {
   PromptNoteDuration,
 } from "../../../domain/types";
 import type { ChaseHandMode } from "../logic/scoreChase";
+import { getDuetPracticeLevelDescription, getDuetPracticeLevelLabel } from "../logic/duetPractice";
 import { PRACTICE_FIXED_COUNT_PRESETS } from "../logic/practiceLengthOptions";
 import {
   ANSWER_BUTTONS,
@@ -45,13 +47,20 @@ import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracti
 
 export interface PracticeSetupUiPreferences {
   answerPitchMode: AnswerPitchMode;
+  practiceMode: "single" | "duet";
+  duetLevel: DuetPracticeLevel;
+  duetCurriculumVersion: number;
+  duetAllowDottedRhythms: boolean;
+  metronomeSyncEnabled: boolean;
   autoPlayTarget: boolean;
+  midiAutoPlayTarget: boolean;
   chaseEnabled: boolean;
   chaseHandMode: ChaseHandMode;
   chasePreferencesVersion: 2;
   chaseSpeedMultiplier: number;
   chaseStartCount: number;
   playAnswerNote: boolean;
+  midiPlayAnswerNote: boolean;
   drillNoteNames: NoteName[];
   fixedCount: number;
   fixedDurationSeconds: number;
@@ -64,6 +73,10 @@ export interface PracticeSetupUiPreferences {
 
 interface PracticeSetupActions {
   onAnswerPitchModeChange: (mode: AnswerPitchMode) => void;
+  onPracticeModeChange: (mode: "single" | "duet") => void;
+  onDuetLevelChange: (level: DuetPracticeLevel) => void;
+  onDuetAllowDottedRhythmsChange: (enabled: boolean) => void;
+  onMetronomeSyncEnabledChange: (enabled: boolean) => void;
   onAutoPlayTargetChange: (enabled: boolean) => void;
   onFixedCountChange: (count: number) => void;
   onFixedDurationSecondsChange: (seconds: number) => void;
@@ -97,9 +110,20 @@ interface PracticeSetupViewProps {
   overlay?: ReactNode;
   preferences: PracticeSetupUiPreferences;
   setupDisabledReason?: string;
+  metronomeError?: string | null;
   startPausedReading: boolean;
   settings: AppSettings;
+  metronomeBeatsPerBar: 2 | 3 | 4 | 6;
 }
+
+const DUET_PRACTICE_LEVELS: DuetPracticeLevel[] = [
+  "level-1",
+  "level-2",
+  "level-3",
+  "level-4",
+  "level-5",
+  "level-6",
+];
 
 function durationSecondsToInputMinutes(seconds: number): number {
   return Number((seconds / 60).toFixed(2));
@@ -223,23 +247,41 @@ export function PracticeSetupView({
   overlay,
   preferences,
   setupDisabledReason,
+  metronomeError,
   startPausedReading,
   settings,
+  metronomeBeatsPerBar,
 }: PracticeSetupViewProps): JSX.Element {
   const {
     answerPitchMode,
-    autoPlayTarget,
+    practiceMode,
+    duetLevel,
+    duetAllowDottedRhythms,
+    metronomeSyncEnabled,
+    autoPlayTarget: nonMidiAutoPlayTarget,
+    midiAutoPlayTarget,
     drillNoteNames,
     fixedCount,
     fixedDurationSeconds,
     mode,
-    playAnswerNote,
+    playAnswerNote: nonMidiPlayAnswerNote,
+    midiPlayAnswerNote,
     promptDisplayMode,
     promptNoteDurations,
     queueStrategy,
   } = preferences;
+  const isDuetPractice = practiceMode === "duet";
+  const activeAnswerPitchMode = isDuetPractice ? "exact-pitch" : answerPitchMode;
+  const autoPlayTarget =
+    activeAnswerPitchMode === "exact-pitch" ? midiAutoPlayTarget : nonMidiAutoPlayTarget;
+  const playAnswerNote =
+    activeAnswerPitchMode === "exact-pitch" ? midiPlayAnswerNote : nonMidiPlayAnswerNote;
   const {
     onAnswerPitchModeChange: setAnswerPitchMode,
+    onPracticeModeChange,
+    onDuetLevelChange,
+    onDuetAllowDottedRhythmsChange,
+    onMetronomeSyncEnabledChange,
     onAutoPlayTargetChange: setAutoPlayTarget,
     onFixedCountChange: setFixedCount,
     onFixedDurationSecondsChange: setFixedDurationSeconds,
@@ -325,28 +367,40 @@ export function PracticeSetupView({
     activeRange.crossGroupPitchIds,
     settings.staffNotationMode
   );
-  const staffSummary =
-    settings.staffNotationMode === "treble-only"
+  const staffSummary = isDuetPractice
+    ? "大谱表（固定）"
+    : settings.staffNotationMode === "treble-only"
       ? "高音谱表"
       : settings.staffNotationMode === "bass-only"
         ? "低音谱表"
         : "大谱表";
-  const rangeSummary =
-    selectedPitchIds.length === 0 ? "未选音域" : formatSelectedPitchRanges(selectedPitchIds);
+  const rangeSummary = isDuetPractice
+    ? "C3–B3 + C4–B4（全白键）"
+    : selectedPitchIds.length === 0
+      ? "未选音域"
+      : formatSelectedPitchRanges(selectedPitchIds);
   const modeSummary =
     mode === "open-ended"
       ? "无限练习"
       : mode === "fixed-count"
         ? `${fixedCount}题`
         : `${durationSecondsToInputMinutes(fixedDurationSeconds)}分钟`;
-  const displaySummary = promptDisplayMode === "single-note" ? "单音模式" : "谱页模式";
+  const displaySummary = isDuetPractice
+    ? "谱页模式（固定）"
+    : promptDisplayMode === "single-note"
+      ? "单音模式"
+      : "谱页模式";
+  const duetDifficultySummary = getDuetPracticeLevelLabel(duetLevel);
   const answerSummary =
-    answerPitchMode === "note-name"
+    activeAnswerPitchMode === "note-name"
       ? "虚拟键盘·音名"
-      : answerPitchMode === "microphone"
+      : activeAnswerPitchMode === "microphone"
         ? "麦克风"
         : "MIDI 键盘";
   const recommendedAnswerMode = midi.isConnected ? "exact-pitch" : "note-name";
+  const configSummaryItems = isDuetPractice
+    ? [modeSummary, duetDifficultySummary, answerSummary]
+    : [staffSummary, rangeSummary, displaySummary, modeSummary, answerSummary];
 
   const startSongPractice = async (): Promise<void> => {
     if (requiresMidi && !midi.isConnected) {
@@ -410,7 +464,7 @@ export function PracticeSetupView({
           type="button"
           onClick={() => onSetupTabChange("distance")}
         >
-          间距推导
+          音距速推
         </button>
         <button
           aria-controls="practice-name-key-panel"
@@ -459,7 +513,7 @@ export function PracticeSetupView({
               <h1>自由练习</h1>
               <p className="practice-panel-description">看到音符后，快速识别音高并找到对应琴键。</p>
             </div>
-            {answerPitchMode === "exact-pitch" ? (
+            {activeAnswerPitchMode === "exact-pitch" ? (
               <div className="practice-setup-heading-meta">
                 <div className="practice-midi-heading-status">
                   <MidiInputControl ariaLabel="自由练习 MIDI 输入设备" midi={midi} />
@@ -468,15 +522,74 @@ export function PracticeSetupView({
             ) : null}
           </div>
           <div className="practice-free-config-content">
-            <section className="practice-free-section practice-free-range-section">
-              <GlobalRangeControls
-                allowInterStaffLedgerChoice={false}
-                compactSummary
-                rangeControlPart="base"
-                settings={settings}
-                onSettingsSaved={onSettingsSaved}
-              />
+            <section
+              aria-label="练习方式"
+              className="practice-free-section practice-free-hand-mode"
+            >
+              <div className="practice-free-field">
+                <span className="control-label">练习方式</span>
+                <div
+                  aria-label="练习方式"
+                  className="segmented practice-free-segmented"
+                  role="group"
+                >
+                  <button
+                    aria-pressed={!isDuetPractice}
+                    className={!isDuetPractice ? "active" : ""}
+                    onClick={() => onPracticeModeChange("single")}
+                    type="button"
+                  >
+                    单手（默认）
+                  </button>
+                  <button
+                    aria-pressed={isDuetPractice}
+                    className={isDuetPractice ? "active" : ""}
+                    onClick={() => onPracticeModeChange("duet")}
+                    type="button"
+                  >
+                    左右手合弹
+                  </button>
+                </div>
+                {isDuetPractice ? (
+                  <>
+                    <label
+                      className="practice-free-duet-difficulty"
+                      htmlFor="practice-duet-difficulty"
+                    >
+                      <span className="control-label">合弹难度</span>
+                      <select
+                        id="practice-duet-difficulty"
+                        value={duetLevel}
+                        onChange={(event) =>
+                          onDuetLevelChange(event.currentTarget.value as DuetPracticeLevel)
+                        }
+                      >
+                        {DUET_PRACTICE_LEVELS.map((level) => (
+                          <option key={level} value={level}>
+                            {getDuetPracticeLevelLabel(level)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="practice-free-mode-hint">
+                      {getDuetPracticeLevelDescription(duetLevel)}
+                    </p>
+                  </>
+                ) : null}
+              </div>
             </section>
+
+            {!isDuetPractice ? (
+              <section className="practice-free-section practice-free-range-section">
+                <GlobalRangeControls
+                  allowInterStaffLedgerChoice={false}
+                  compactSummary
+                  rangeControlPart="base"
+                  settings={settings}
+                  onSettingsSaved={onSettingsSaved}
+                />
+              </section>
+            ) : null}
 
             <section aria-label="基础设置" className="practice-free-basics-section">
               <div className="practice-free-basics-grid">
@@ -609,26 +722,30 @@ export function PracticeSetupView({
 
                 <div className="practice-free-field practice-free-answer-field">
                   <span className="control-label">怎么作答</span>
-                  <div aria-label="答题方式" className="practice-free-answer-options">
-                    <button
-                      aria-pressed={answerPitchMode === "microphone"}
-                      className={answerPitchMode === "microphone" ? "is-selected" : ""}
-                      onClick={() => setAnswerPitchMode("microphone")}
-                      type="button"
-                    >
-                      <Mic aria-hidden="true" size={16} />
-                      <span className="practice-free-answer-option-copy">
-                        <span className="practice-free-answer-option-heading">
-                          <strong>麦克风</strong>
+                  <div
+                    aria-label="答题方式"
+                    className={`practice-free-answer-options${isDuetPractice ? " is-duet" : ""}`}
+                  >
+                    {!isDuetPractice ? (
+                      <button
+                        aria-pressed={activeAnswerPitchMode === "microphone"}
+                        className={activeAnswerPitchMode === "microphone" ? "is-selected" : ""}
+                        onClick={() => setAnswerPitchMode("microphone")}
+                        type="button"
+                      >
+                        <Mic aria-hidden="true" size={16} />
+                        <span className="practice-free-answer-option-copy">
+                          <span className="practice-free-answer-option-heading">
+                            <strong>麦克风</strong>
+                          </span>
+                          <small>不用连线，直接弹奏即可</small>
                         </span>
-                        <small>不用连线，直接弹奏即可</small>
-                      </span>
-                    </button>
+                      </button>
+                    ) : null}
                     <button
-                      aria-pressed={answerPitchMode === "exact-pitch"}
-                      className={answerPitchMode === "exact-pitch" ? "is-selected" : ""}
-                      disabled={!midi.isConnected}
-                      title={!midi.isConnected ? "连接 MIDI 设备后可用" : undefined}
+                      aria-pressed={activeAnswerPitchMode === "exact-pitch"}
+                      className={activeAnswerPitchMode === "exact-pitch" ? "is-selected" : ""}
+                      disabled={isDuetPractice}
                       onClick={() => setAnswerPitchMode("exact-pitch")}
                       type="button"
                     >
@@ -636,29 +753,40 @@ export function PracticeSetupView({
                       <span className="practice-free-answer-option-copy">
                         <span className="practice-free-answer-option-heading">
                           <strong>MIDI 键盘</strong>
-                          {recommendedAnswerMode === "exact-pitch" ? (
+                          {!isDuetPractice && recommendedAnswerMode === "exact-pitch" ? (
                             <small className="practice-free-recommended">推荐</small>
                           ) : null}
                         </span>
-                        <small>音高与八度精准识别，不受环境噪声影响</small>
+                        <small>
+                          {midi.isConnected
+                            ? "音高与八度精准识别，练习中可切换设备"
+                            : "先连接并选择 MIDI 设备，再开始练习"}
+                        </small>
                       </span>
                     </button>
-                    <button
-                      aria-pressed={answerPitchMode === "note-name"}
-                      className={answerPitchMode === "note-name" ? "is-selected" : ""}
-                      onClick={() => setAnswerPitchMode("note-name")}
-                      type="button"
-                    >
-                      <Keyboard aria-hidden="true" size={16} />
-                      <span className="practice-free-answer-option-copy">
-                        <span className="practice-free-answer-option-heading">
-                          <strong>虚拟键盘</strong>
+                    {!isDuetPractice ? (
+                      <button
+                        aria-pressed={activeAnswerPitchMode === "note-name"}
+                        className={activeAnswerPitchMode === "note-name" ? "is-selected" : ""}
+                        onClick={() => setAnswerPitchMode("note-name")}
+                        type="button"
+                      >
+                        <Keyboard aria-hidden="true" size={16} />
+                        <span className="practice-free-answer-option-copy">
+                          <span className="practice-free-answer-option-heading">
+                            <strong>虚拟键盘</strong>
+                          </span>
+                          <small>无需连接乐器，点击虚拟键盘或敲击键盘作答</small>
                         </span>
-                        <small>无需连接乐器，点击虚拟键盘或敲击键盘作答</small>
-                      </span>
-                    </button>
+                      </button>
+                    ) : null}
                   </div>
-                  {answerPitchMode === "microphone" &&
+                  {isDuetPractice && !midi.isConnected ? (
+                    <p className="practice-free-warning" role="status">
+                      请连接 MIDI 键盘后开始左右手合弹。
+                    </p>
+                  ) : null}
+                  {activeAnswerPitchMode === "microphone" &&
                   (microphoneError ||
                     microphoneStatus === "error" ||
                     microphoneStatus === "requesting") ? (
@@ -681,6 +809,42 @@ export function PracticeSetupView({
               </div>
             </section>
 
+            {activeAnswerPitchMode === "exact-pitch" ? (
+              <section aria-label="节拍与谱面" className="practice-free-section">
+                <div className="practice-free-field">
+                  <span className="control-label">节拍与谱面</span>
+                  <label
+                    className={`practice-checkbox-option${metronomeBeatsPerBar !== 4 && !metronomeSyncEnabled ? " is-disabled" : ""}`}
+                    title={
+                      metronomeBeatsPerBar !== 4
+                        ? "同步练习的谱面为 4/4，请先将节拍器拍号设为 4/4"
+                        : undefined
+                    }
+                  >
+                    <input
+                      checked={metronomeSyncEnabled}
+                      disabled={metronomeBeatsPerBar !== 4 && !metronomeSyncEnabled}
+                      onChange={(event) =>
+                        onMetronomeSyncEnabledChange(event.currentTarget.checked)
+                      }
+                      type="checkbox"
+                    />
+                    <span>节拍器与谱面同步</span>
+                  </label>
+                  <small className="practice-free-helper">
+                    {metronomeBeatsPerBar === 4
+                      ? "开启后谱面按节拍自动推进；错音或漏音标红，音高正确但节奏偏差用琥珀色标记。"
+                      : "当前谱面为 4/4，请先在木鱼节拍器中将拍号调为 4/4。"}
+                  </small>
+                  {metronomeError ? (
+                    <small className="practice-free-warning" role="alert">
+                      节拍器无法启动：{metronomeError}
+                    </small>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
+
             <section className="practice-free-advanced-disclosure">
               <button
                 aria-controls="practice-free-advanced-options"
@@ -688,11 +852,17 @@ export function PracticeSetupView({
                 className="practice-free-advanced-toggle"
                 onClick={() => setIsAdvancedOpen((open) => !open)}
                 type="button"
-                title="音域加练、练习方式、谱面与节奏、声音"
+                title={
+                  isDuetPractice
+                    ? "出题策略、音符时值、合弹微调"
+                    : "音域加练、出题策略、谱面与节奏、声音"
+                }
               >
                 <Settings2 aria-hidden="true" size={16} />
                 <span>更多设置</span>
-                <span className="practice-free-advanced-count">4组</span>
+                <span className="practice-free-advanced-count">
+                  {isDuetPractice ? "3组" : "4组"}
+                </span>
                 <ChevronDown
                   aria-hidden="true"
                   className={isAdvancedOpen ? "is-open" : ""}
@@ -704,17 +874,40 @@ export function PracticeSetupView({
                 hidden={!isAdvancedOpen}
                 id="practice-free-advanced-options"
               >
-                <section className="practice-free-field">
-                  <GlobalRangeControls
-                    allowInterStaffLedgerChoice={false}
-                    rangeControlPart="extensions"
-                    settings={settings}
-                    onSettingsSaved={onSettingsSaved}
-                  />
-                </section>
+                {isDuetPractice ? (
+                  <section className="practice-free-field practice-free-duet-advanced-field">
+                    <span className="control-label">合弹微调</span>
+                    <div className="practice-checkbox-options practice-free-duet-advanced-options">
+                      <label className="practice-checkbox-option">
+                        <input
+                          checked={duetAllowDottedRhythms}
+                          type="checkbox"
+                          onChange={(event) =>
+                            onDuetAllowDottedRhythmsChange(event.currentTarget.checked)
+                          }
+                        />
+                        <span>附点节奏挑战</span>
+                      </label>
+                    </div>
+                    <small className="practice-free-helper">
+                      开启后，每四小节乐句的末小节加入附点节奏；左右手编排仍按所选等级进行。
+                    </small>
+                  </section>
+                ) : null}
+
+                {!isDuetPractice ? (
+                  <section className="practice-free-field">
+                    <GlobalRangeControls
+                      allowInterStaffLedgerChoice={false}
+                      rangeControlPart="extensions"
+                      settings={settings}
+                      onSettingsSaved={onSettingsSaved}
+                    />
+                  </section>
+                ) : null}
 
                 <section className="practice-free-field practice-free-strategy-field">
-                  <span className="control-label">练习方式</span>
+                  <span className="control-label">出题策略</span>
                   <div className="practice-free-strategy-list">
                     {PRACTICE_QUEUE_OPTIONS.map((option) => (
                       <label
@@ -770,30 +963,34 @@ export function PracticeSetupView({
                 </section>
 
                 <section className="practice-free-field">
-                  <span className="control-label">谱面与节奏</span>
+                  <span className="control-label">
+                    {isDuetPractice ? "音符时值" : "谱面与节奏"}
+                  </span>
                   <div className="practice-free-display-row">
-                    <div aria-label="谱面呈现方式" className="segmented practice-free-segmented">
-                      <button
-                        aria-pressed={promptDisplayMode === "single-note"}
-                        className={promptDisplayMode === "single-note" ? "active" : ""}
-                        disabled={promptNoteDurations.length > 1}
-                        onClick={() => setPromptDisplayMode("single-note")}
-                        title={
-                          promptNoteDurations.length > 1 ? "多选时值需要使用谱页展示" : undefined
-                        }
-                        type="button"
-                      >
-                        逐个看音
-                      </button>
-                      <button
-                        aria-pressed={promptDisplayMode === "staff-page"}
-                        className={promptDisplayMode === "staff-page" ? "active" : ""}
-                        onClick={() => setPromptDisplayMode("staff-page")}
-                        type="button"
-                      >
-                        连续看谱
-                      </button>
-                    </div>
+                    {!isDuetPractice ? (
+                      <div aria-label="谱面呈现方式" className="segmented practice-free-segmented">
+                        <button
+                          aria-pressed={promptDisplayMode === "single-note"}
+                          className={promptDisplayMode === "single-note" ? "active" : ""}
+                          disabled={promptNoteDurations.length > 1}
+                          onClick={() => setPromptDisplayMode("single-note")}
+                          title={
+                            promptNoteDurations.length > 1 ? "多选时值需要使用谱页展示" : undefined
+                          }
+                          type="button"
+                        >
+                          逐个看音
+                        </button>
+                        <button
+                          aria-pressed={promptDisplayMode === "staff-page"}
+                          className={promptDisplayMode === "staff-page" ? "active" : ""}
+                          onClick={() => setPromptDisplayMode("staff-page")}
+                          type="button"
+                        >
+                          连续看谱
+                        </button>
+                      </div>
+                    ) : null}
                     <div aria-label="练习时值，可多选" className="practice-free-duration-tags">
                       {PROMPT_NOTE_DURATION_OPTIONS.map((option) => (
                         <button
@@ -829,69 +1026,110 @@ export function PracticeSetupView({
                       混合时值按连续谱面显示，仍逐音答题。
                     </small>
                   ) : null}
-                  <ConditionalReveal
-                    className="practice-free-pause-reveal"
-                    visible={promptDisplayMode === "staff-page"}
-                  >
-                    <label className="practice-checkbox-option">
-                      <input
-                        checked={startPausedReading}
-                        type="checkbox"
-                        onChange={(event) => onStartPausedReadingChange(event.target.checked)}
-                      />
-                      <span>开始后暂停读谱</span>
-                    </label>
-                  </ConditionalReveal>
-                </section>
-
-                <section className="practice-free-field practice-free-sound-field">
-                  <span className="control-label">声音</span>
-                  <div className="practice-checkbox-options practice-free-sound-options">
-                    <label
-                      className={`practice-checkbox-option${answerPitchMode === "microphone" ? " is-disabled" : ""}`}
-                      title={answerPitchMode === "microphone" ? "麦克风模式下不可用" : undefined}
+                  {!isDuetPractice ? (
+                    <ConditionalReveal
+                      className="practice-free-pause-reveal"
+                      visible={promptDisplayMode === "staff-page"}
                     >
-                      <input
-                        checked={answerPitchMode === "microphone" ? false : autoPlayTarget}
-                        disabled={answerPitchMode === "microphone"}
-                        type="checkbox"
-                        onChange={(event) => setAutoPlayTarget(event.target.checked)}
-                      />
-                      <span>自动播放目标音</span>
-                    </label>
-                    <label
-                      className={`practice-checkbox-option${answerPitchMode === "microphone" ? " is-disabled" : ""}`}
-                      title={answerPitchMode === "microphone" ? "麦克风模式下不可用" : undefined}
-                    >
-                      <input
-                        checked={answerPitchMode === "microphone" ? false : playAnswerNote}
-                        disabled={answerPitchMode === "microphone"}
-                        type="checkbox"
-                        onChange={(event) => setPlayAnswerNote(event.target.checked)}
-                      />
-                      <span>按键时播放声音</span>
-                    </label>
-                  </div>
-                  {answerPitchMode === "microphone" ? (
-                    <span className="practice-free-helper">
-                      麦克风模式关闭应用提示音，避免影响识别。
-                    </span>
+                      <label className="practice-checkbox-option">
+                        <input
+                          checked={startPausedReading}
+                          type="checkbox"
+                          onChange={(event) => onStartPausedReadingChange(event.target.checked)}
+                        />
+                        <span>开始后暂停读谱</span>
+                      </label>
+                    </ConditionalReveal>
                   ) : null}
                 </section>
+
+                {!isDuetPractice ? (
+                  <section className="practice-free-field practice-free-sound-field">
+                    <span className="control-label">声音</span>
+                    <div className="practice-checkbox-options practice-free-sound-options">
+                      <label
+                        className={`practice-checkbox-option${activeAnswerPitchMode === "microphone" ? " is-disabled" : ""}`}
+                        title={
+                          activeAnswerPitchMode === "microphone" ? "麦克风模式下不可用" : undefined
+                        }
+                      >
+                        <input
+                          checked={activeAnswerPitchMode === "microphone" ? false : autoPlayTarget}
+                          disabled={activeAnswerPitchMode === "microphone"}
+                          type="checkbox"
+                          onChange={(event) => setAutoPlayTarget(event.target.checked)}
+                        />
+                        <span>自动播放目标音</span>
+                      </label>
+                      <label
+                        className={`practice-checkbox-option${activeAnswerPitchMode === "microphone" ? " is-disabled" : ""}`}
+                        title={
+                          activeAnswerPitchMode === "microphone" ? "麦克风模式下不可用" : undefined
+                        }
+                      >
+                        <input
+                          checked={activeAnswerPitchMode === "microphone" ? false : playAnswerNote}
+                          disabled={activeAnswerPitchMode === "microphone"}
+                          type="checkbox"
+                          onChange={(event) => setPlayAnswerNote(event.target.checked)}
+                        />
+                        <span>按键时播放声音</span>
+                      </label>
+                    </div>
+                    {activeAnswerPitchMode === "microphone" ? (
+                      <span className="practice-free-helper">
+                        麦克风模式关闭应用提示音，避免影响识别。
+                      </span>
+                    ) : null}
+                  </section>
+                ) : null}
               </div>
             </section>
+
+            {isDuetPractice ? (
+              <section
+                aria-label="练习辅助"
+                className="practice-free-section practice-free-duet-assist"
+              >
+                <span className="control-label">练习辅助</span>
+                <div className="practice-checkbox-options practice-free-sound-options practice-free-duet-assist-options">
+                  <label className="practice-checkbox-option">
+                    <input
+                      checked={autoPlayTarget}
+                      type="checkbox"
+                      onChange={(event) => setAutoPlayTarget(event.target.checked)}
+                    />
+                    <span>自动播放目标音</span>
+                  </label>
+                  <label className="practice-checkbox-option">
+                    <input
+                      checked={playAnswerNote}
+                      type="checkbox"
+                      onChange={(event) => setPlayAnswerNote(event.target.checked)}
+                    />
+                    <span>按键时播放声音</span>
+                  </label>
+                  <label className="practice-checkbox-option">
+                    <input
+                      checked={startPausedReading}
+                      type="checkbox"
+                      onChange={(event) => onStartPausedReadingChange(event.target.checked)}
+                    />
+                    <span>开始后暂停读谱</span>
+                  </label>
+                </div>
+              </section>
+            ) : null}
           </div>
 
           <div className="practice-free-action-dock">
             <div aria-label="当前配置摘要" className="practice-free-config-summary">
               <span className="practice-free-summary-label">当前配置</span>
-              {[staffSummary, rangeSummary, displaySummary, modeSummary, answerSummary].map(
-                (item) => (
-                  <span className="practice-free-summary-chip" key={item}>
-                    {item}
-                  </span>
-                )
-              )}
+              {configSummaryItems.map((item) => (
+                <span className="practice-free-summary-chip" key={item}>
+                  {item}
+                </span>
+              ))}
             </div>
             <div className="practice-free-action-buttons">
               <span className="practice-start-action" title={setupDisabledReason ?? undefined}>
@@ -956,7 +1194,7 @@ export function PracticeSetupView({
                 选择熟悉的旋律，跟随谱面练习读谱与弹奏。
               </p>
             </div>
-            {activeInputMode === "midi" || requiresMidi ? (
+            {activeInputMode === "midi" || requiresMidi || !midi.isConnected ? (
               <div className="practice-midi-heading-status">
                 <MidiInputControl ariaLabel="歌曲练习 MIDI 输入设备" midi={midi} />
               </div>

@@ -31,20 +31,34 @@ export function getPracticeSessionComparisonSnapshot(
   session: PracticeSessionRecord
 ): PracticeComparisonSnapshot | undefined {
   if (session.schemaVersion === 3 || session.schemaVersion === 4 || session.schemaVersion === 5) {
+    const { practiceConfig } = session.startSnapshot;
+    const duet =
+      practiceConfig.duetLevel !== undefined || practiceConfig.duetDifficulty !== undefined;
     return {
-      answerPitchMode: normalizeAnswerPitchMode(
-        session.startSnapshot.practiceConfig.answerPitchMode
-      ),
-      effectiveQueueAlgorithm: session.startSnapshot.practiceConfig.effectiveQueueAlgorithm,
+      answerPitchMode: normalizeAnswerPitchMode(practiceConfig.answerPitchMode),
+      effectiveQueueAlgorithm: practiceConfig.effectiveQueueAlgorithm,
+      practiceMode: duet ? "duet" : "single-hand",
+      ...(practiceConfig.duetDifficulty ? { duetDifficulty: practiceConfig.duetDifficulty } : {}),
+      ...(practiceConfig.duetLevel ? { duetLevel: practiceConfig.duetLevel } : {}),
+      ...(practiceConfig.duetCurriculumVersion !== undefined
+        ? { duetCurriculumVersion: practiceConfig.duetCurriculumVersion }
+        : {}),
+      ...(practiceConfig.duetAllowDottedRhythms !== undefined
+        ? { duetAllowDottedRhythms: practiceConfig.duetAllowDottedRhythms }
+        : {}),
+      ...(practiceConfig.metronomeSync !== undefined
+        ? { metronomeSync: practiceConfig.metronomeSync }
+        : {}),
       promptDisplayMode: session.startSnapshot.presentationConfig.promptDisplayMode,
       promptNoteDuration: session.startSnapshot.presentationConfig.promptNoteDuration,
-      targetNoteSetKey: session.startSnapshot.practiceConfig.targetNoteSetKey,
+      targetNoteSetKey: practiceConfig.targetNoteSetKey,
     };
   }
   if (session.schemaVersion === 2) {
     return {
       answerPitchMode: "note-name",
       effectiveQueueAlgorithm: session.effectiveQueueAlgorithm,
+      practiceMode: "single-hand",
       promptDisplayMode: session.promptDisplayMode,
       promptNoteDuration: "quarter",
       targetNoteSetKey: session.targetNoteSetKey,

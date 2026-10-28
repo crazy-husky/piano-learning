@@ -12,6 +12,7 @@ import {
   getTargetMidiNoteNumber,
   type PracticeAnswerInput,
 } from "../../../domain/answerInput";
+import { MAX_PRACTICE_QUESTIONS } from "../../../domain/practiceLimits";
 import type {
   AnswerAttempt,
   InterruptReason,
@@ -22,10 +23,14 @@ import type {
   PracticeSessionRecord,
   PracticeSessionStartSnapshot,
   ReviewRecord,
+  Staff,
   TargetNote,
+  TargetNoteId,
 } from "../../../domain/types";
+import { getDuetTargetMidis } from "../logic/duetPractice";
 import type {
   CompletePracticeSessionOptions,
+  FinishPracticeReviewOptions,
   PracticePromptRuntime,
   PracticeStaffPageRuntime,
 } from "./usePracticeSessionLifecycle";
@@ -33,8 +38,40 @@ import type { PracticeTimers } from "./usePracticeTimers";
 
 interface PracticeAnswerFeedback {
   diagnosticSampleId?: number;
+  staffPageIndex?: number;
   type: "wrong" | "correct";
   noteName?: NoteName;
+  staff?: Staff;
+}
+
+function getDuetWrongFeedbackStaff(
+  targetNoteId: TargetNoteId | null | undefined,
+  duetTargets: { high: TargetNote[]; low: TargetNote[] }
+): Staff | undefined {
+  if (!targetNoteId) return undefined;
+  if (duetTargets.high.some((target) => target.id === targetNoteId)) return "treble";
+  if (duetTargets.low.some((target) => target.id === targetNoteId)) return "bass";
+  return undefined;
+}
+
+function getDuetWrongTargetNoteId(
+  answerMidi: number | undefined,
+  duetTargets: { high: TargetNote[]; low: TargetNote[] },
+  completedTargetNoteIds: readonly TargetNoteId[]
+): TargetNoteId | null {
+  const completedTargetIds = new Set(completedTargetNoteIds);
+  const pendingTargets = [...duetTargets.high, ...duetTargets.low].filter(
+    (target) => !completedTargetIds.has(target.id)
+  );
+  if (pendingTargets.length === 0) return null;
+  if (pendingTargets.length === 1) return pendingTargets[0]!.id;
+  if (answerMidi === undefined) return null;
+  return pendingTargets.reduce((closest, target) =>
+    Math.abs(getTargetMidiNoteNumber(target) - answerMidi) <
+    Math.abs(getTargetMidiNoteNumber(closest) - answerMidi)
+      ? target
+      : closest
+  ).id;
 }
 
 interface PracticeStaffPageStartInput {
@@ -57,6 +94,7 @@ interface PracticeAnswerFlowValues {
   promptDisplayMode: "single-note" | "staff-page";
   queueStrategy: PracticeQueueStrategy;
   schedulerReviews: ReviewRecord[];
+  synchronizedPractice: boolean;
 }
 
 interface PracticeAnswerFlowRuntime {
@@ -80,12 +118,17 @@ interface PracticeAnswerFlowServices {
   completeSession: CompleteSession;
   finishCurrentReview: (
     answeredCorrectly: boolean,
-    interruptReason?: InterruptReason
+    interruptReason?: InterruptReason,
+    options?: FinishPracticeReviewOptions
   ) => Promise<ReviewRecord | null>;
   getPromptActiveMs: PracticeTimers["getPromptActiveMs"];
+  getSynchronizedAdvanceAudioTime: () => number | undefined;
+  scheduleAtAudioTime: (callback: () => void, audioTime: number) => void;
   markCurrentStaffPageNoteComplete: () => void;
+  markCurrentStaffPageStaffNoteComplete: (staff: Staff) => void;
   markPromptInput: () => void;
   maybeBackupDuringOpenEnded: (nextCompletedCount: number) => Promise<void>;
+  onQuestionLimitReached: () => void;
   recordStaffPageChaseTarget: () => void;
   resumeActiveTimers: () => void;
   selectAndStartNext: (nextCompletedCount: number) => void;
@@ -125,6 +168,7 @@ export function usePracticeAnswerFlow({
     promptDisplayMode,
     queueStrategy,
     schedulerReviews,
+    synchronizedPractice,
   } = values;
   const {
     answerInputLockedRef,
@@ -140,11 +184,15 @@ export function usePracticeAnswerFlow({
     completeSession,
     finishCurrentReview,
     getPromptActiveMs,
+    getSynchronizedAdvanceAudioTime,
     markCurrentStaffPageNoteComplete,
+    markCurrentStaffPageStaffNoteComplete,
     markPromptInput,
     maybeBackupDuringOpenEnded,
+    onQuestionLimitReached,
     recordStaffPageChaseTarget,
     resumeActiveTimers,
+    scheduleAtAudioTime,
     selectAndStartNext,
     startStaffPage,
     startStaffPageIndex,
@@ -152,6 +200,106 @@ export function usePracticeAnswerFlow({
   } = services;
   const { setCompletedCount, setFeedback, setWrongAnswerCount } = ui;
   const settings = { correctDelayMs };
+
+  const advanceAfterResolvedPrompt = useCallback(
+    async (
+      review: ReviewRecord,
+      nextCompletedCount: number,
+      options: {
+        advanceAudioTime?: number;
+        recordChaseTarget: boolean;
+        delayMs: number;
+      }
+    ): Promise<void> => {
+      setCompletedCount(nextCompletedCount);
+      if (promptDisplayMode === "staff-page") {
+        markCurrentStaffPageNoteComplete();
+        if (options.recordChaseTarget) recordStaffPageChaseTarget();
+      }
+      const backupPromise = maybeBackupDuringOpenEnded(nextCompletedCount);
+      if (
+        nextCompletedCount >= MAX_PRACTICE_QUESTIONS &&
+        (mode !== "fixed-count" || fixedCount > MAX_PRACTICE_QUESTIONS)
+      ) {
+        onQuestionLimitReached();
+        await backupPromise;
+        return;
+      }
+
+      const continueAfterResolution = (): void => {
+        if (sessionRef.current?.id !== review.sessionId || sessionRef.current.endedAt) {
+          return;
+        }
+        if (mode === "fixed-count" && nextCompletedCount >= fixedCount) {
+          void completeSession("completed-count");
+          return;
+        }
+        if (promptDisplayMode === "staff-page") {
+          const page = staffPageRef.current;
+          const nextIndex = page ? page.index + 1 : 0;
+          if (page && startStaffPageScroll(nextCompletedCount, nextIndex)) {
+            return;
+          }
+          resumeActiveTimers();
+          if (page && startStaffPageIndex(nextIndex)) {
+            return;
+          }
+          startStaffPage({
+            sourceNotes: enabledNotes,
+            sourceReviews: [...schedulerReviews, ...sessionReviewsRef.current],
+            sourceQueueStrategy: queueStrategy,
+            sourceDrillNoteNames: drillNoteNames,
+            nextCompletedCount,
+          });
+          return;
+        }
+        resumeActiveTimers();
+        selectAndStartNext(nextCompletedCount);
+      };
+
+      const continueAtScheduledTime = (): void => {
+        if (isPausedRef.current) {
+          pendingAfterPauseRef.current = continueAfterResolution;
+          return;
+        }
+        continueAfterResolution();
+      };
+      if (options.advanceAudioTime !== undefined) {
+        scheduleAtAudioTime(continueAtScheduledTime, options.advanceAudioTime);
+      } else if (options.delayMs > 0) {
+        window.setTimeout(continueAtScheduledTime, options.delayMs);
+      } else {
+        continueAfterResolution();
+      }
+      await backupPromise;
+    },
+    [
+      completeSession,
+      drillNoteNames,
+      enabledNotes,
+      fixedCount,
+      isPausedRef,
+      markCurrentStaffPageNoteComplete,
+      maybeBackupDuringOpenEnded,
+      mode,
+      onQuestionLimitReached,
+      pendingAfterPauseRef,
+      promptDisplayMode,
+      queueStrategy,
+      recordStaffPageChaseTarget,
+      resumeActiveTimers,
+      scheduleAtAudioTime,
+      schedulerReviews,
+      selectAndStartNext,
+      sessionRef,
+      sessionReviewsRef,
+      setCompletedCount,
+      staffPageRef,
+      startStaffPage,
+      startStaffPageIndex,
+      startStaffPageScroll,
+    ]
+  );
 
   const submitAnswer = useCallback(
     async (answer: PracticeAnswerInput): Promise<void> => {
@@ -188,7 +336,6 @@ export function usePracticeAnswerFlow({
           );
         }
       }
-      const answeredCorrectly = isPracticeAnswerCorrect(answer, prompt.note, answerPitchMode);
       markMidiLatencyStage(diagnosticSampleId, "verdict");
       const inputMode: AnswerAttempt["inputMode"] =
         answer.source === "microphone"
@@ -211,10 +358,32 @@ export function usePracticeAnswerFlow({
               octave: answerOctave as 1 | 2 | 3 | 4 | 5 | 6,
             })
           : undefined);
+      const duetTargets = prompt.duetTargets;
+      let matchedDuetStaff: Staff | undefined;
+      if (duetTargets && answerMidi !== undefined) {
+        const targetMidis = getDuetTargetMidis(duetTargets);
+        for (const staff of ["treble", "bass"] as const) {
+          if (
+            targetMidis[staff].includes(answerMidi) &&
+            !prompt.completedDuetMidis.includes(answerMidi)
+          ) {
+            matchedDuetStaff = staff;
+            break;
+          }
+        }
+      }
+      const answeredCorrectly = duetTargets
+        ? matchedDuetStaff !== undefined
+        : isPracticeAnswerCorrect(answer, prompt.note, answerPitchMode);
+      const duetTargetNoteId =
+        !answeredCorrectly && duetTargets
+          ? getDuetWrongTargetNoteId(answerMidi, duetTargets, prompt.completedDuetTargetNoteIds)
+          : undefined;
       prompt.answerAttempts.push({
         midi: answerMidi,
         noteName: answer.noteName,
         atMs: atActiveMs,
+        ...(duetTargets ? { duetTargetNoteId: duetTargetNoteId ?? null } : {}),
         confidence: answer.confidence,
         inputMode,
         microphoneAlgorithm: answer.microphoneAlgorithm,
@@ -226,6 +395,7 @@ export function usePracticeAnswerFlow({
         prompt.wrongAnswers.push({
           noteName: answer.noteName,
           atActiveMs,
+          ...(duetTargets ? { duetTargetNoteId: duetTargetNoteId ?? null } : {}),
           confidence: answer.confidence,
           clipping: answer.clipping,
           inputMode,
@@ -234,7 +404,15 @@ export function usePracticeAnswerFlow({
         });
         setWrongAnswerCount((count) => count + 1);
         markMidiLatencyStage(diagnosticSampleId, "feedbackRequested");
-        setFeedback({ diagnosticSampleId, type: "wrong", noteName: answer.noteName });
+        setFeedback({
+          diagnosticSampleId,
+          ...(staffPageRef.current ? { staffPageIndex: staffPageRef.current.index } : {}),
+          type: "wrong",
+          noteName: answer.noteName,
+          ...(duetTargets
+            ? { staff: getDuetWrongFeedbackStaff(duetTargetNoteId, duetTargets) }
+            : {}),
+        });
         window.setTimeout(
           () => setFeedback((current) => (current?.type === "wrong" ? null : current)),
           450
@@ -242,101 +420,129 @@ export function usePracticeAnswerFlow({
         return;
       }
 
+      if (matchedDuetStaff && duetTargets) {
+        prompt.completedDuetMidis.push(answerMidi!);
+        const completedTarget = (
+          matchedDuetStaff === "treble" ? duetTargets.high : duetTargets.low
+        ).find((target) => getTargetMidiNoteNumber(target) === answerMidi);
+        if (completedTarget && !prompt.completedDuetTargetNoteIds.includes(completedTarget.id)) {
+          prompt.completedDuetTargetNoteIds.push(completedTarget.id);
+        }
+        const staffTargets = getDuetTargetMidis(duetTargets)[matchedDuetStaff];
+        if (
+          staffTargets.every((midi) => prompt.completedDuetMidis.includes(midi)) &&
+          !prompt.completedDuetStaves.includes(matchedDuetStaff)
+        ) {
+          prompt.completedDuetStaves.push(matchedDuetStaff);
+          markCurrentStaffPageStaffNoteComplete(matchedDuetStaff);
+        }
+        completeMidiLatencySample(diagnosticSampleId, "correct");
+        markMidiLatencyStage(diagnosticSampleId, "feedbackRequested");
+        setFeedback({
+          diagnosticSampleId,
+          type: "correct",
+          noteName: answer.noteName,
+          staff: matchedDuetStaff,
+        });
+        if (prompt.completedDuetStaves.length < 2) return;
+      }
+
       answerInputLockedRef.current = true;
-      completeMidiLatencySample(diagnosticSampleId, "correct");
+      if (!matchedDuetStaff) completeMidiLatencySample(diagnosticSampleId, "correct");
       markMidiLatencyStage(diagnosticSampleId, "feedbackRequested");
-      setFeedback({ diagnosticSampleId, type: "correct", noteName: answer.noteName });
+      if (!matchedDuetStaff) {
+        setFeedback({ diagnosticSampleId, type: "correct", noteName: answer.noteName });
+      }
       markMidiLatencyStage(diagnosticSampleId, "reviewFinalizeStarted");
+      const advanceAudioTime = synchronizedPractice ? getSynchronizedAdvanceAudioTime() : undefined;
       const review = await finishCurrentReview(true);
       markMidiLatencyStage(diagnosticSampleId, "reviewFinalizeEnded");
       if (!review) {
         return;
       }
       const nextCompletedCount = completedCount + 1;
-      setCompletedCount(nextCompletedCount);
-      if (promptDisplayMode === "staff-page") {
-        markCurrentStaffPageNoteComplete();
-        recordStaffPageChaseTarget();
-      }
-      await maybeBackupDuringOpenEnded(nextCompletedCount);
-      const reviewSessionId = review.sessionId;
-
-      const continueAfterCorrectDelay = (): void => {
-        if (sessionRef.current?.id !== reviewSessionId || sessionRef.current.endedAt) {
-          return;
-        }
-        if (mode === "fixed-count" && nextCompletedCount >= fixedCount) {
-          void completeSession("completed-count");
-          return;
-        }
-        if (promptDisplayMode === "staff-page") {
-          const page = staffPageRef.current;
-          const nextIndex = page ? page.index + 1 : 0;
-          if (page && startStaffPageScroll(nextCompletedCount, nextIndex)) {
-            return;
-          }
-          resumeActiveTimers();
-          if (page && startStaffPageIndex(nextIndex)) {
-            return;
-          }
-          startStaffPage({
-            sourceNotes: enabledNotes,
-            sourceReviews: [...schedulerReviews, ...sessionReviewsRef.current],
-            sourceQueueStrategy: queueStrategy,
-            sourceDrillNoteNames: drillNoteNames,
-            nextCompletedCount,
-          });
-          return;
-        }
-        resumeActiveTimers();
-        selectAndStartNext(nextCompletedCount);
-      };
-
-      window.setTimeout(() => {
-        if (isPausedRef.current) {
-          pendingAfterPauseRef.current = continueAfterCorrectDelay;
-          return;
-        }
-        continueAfterCorrectDelay();
-      }, correctDelayMs);
+      await advanceAfterResolvedPrompt(review, nextCompletedCount, {
+        advanceAudioTime,
+        recordChaseTarget: promptDisplayMode === "staff-page",
+        delayMs: synchronizedPractice ? 0 : correctDelayMs,
+      });
     },
     [
       answerPitchMode,
       answerInputLockedRef,
-      completeSession,
       completedCount,
-      drillNoteNames,
-      enabledNotes,
       finishCurrentReview,
-      fixedCount,
       getPromptActiveMs,
+      getSynchronizedAdvanceAudioTime,
       isPausedRef,
-      markCurrentStaffPageNoteComplete,
+      markCurrentStaffPageStaffNoteComplete,
       markPromptInput,
-      maybeBackupDuringOpenEnded,
-      mode,
-      pendingAfterPauseRef,
       playAnswerNote,
       promptDisplayMode,
-      recordStaffPageChaseTarget,
       promptRef,
-      queueStrategy,
-      resumeActiveTimers,
-      schedulerReviews,
-      selectAndStartNext,
-      sessionRef,
-      sessionReviewsRef,
       sessionStartSnapshotRef,
-      setCompletedCount,
+      staffPageRef,
       setFeedback,
       setWrongAnswerCount,
       settings.correctDelayMs,
-      staffPageRef,
-      startStaffPage,
-      startStaffPageScroll,
-      startStaffPageIndex,
+      synchronizedPractice,
+      advanceAfterResolvedPrompt,
     ]
   );
 
-  return { submitAnswer };
+  const handleDuetTimeout = useCallback(async (): Promise<void> => {
+    const prompt = promptRef.current;
+    if (
+      !prompt?.duetTargets ||
+      prompt.completedDuetStaves.length === 2 ||
+      isPausedRef.current ||
+      answerInputLockedRef.current
+    ) {
+      return;
+    }
+    answerInputLockedRef.current = true;
+    setWrongAnswerCount((count) => count + 1);
+    const review = await finishCurrentReview(false, undefined, { wasMissed: true });
+    if (!review) return;
+    const nextCompletedCount = completedCount + 1;
+    await advanceAfterResolvedPrompt(review, nextCompletedCount, {
+      recordChaseTarget: false,
+      delayMs: 0,
+    });
+  }, [
+    advanceAfterResolvedPrompt,
+    answerInputLockedRef,
+    completedCount,
+    finishCurrentReview,
+    isPausedRef,
+    promptRef,
+    setWrongAnswerCount,
+  ]);
+
+  const handleSynchronizedTimeout = useCallback(async (): Promise<void> => {
+    const prompt = promptRef.current;
+    if (!prompt || isPausedRef.current || answerInputLockedRef.current) return;
+    answerInputLockedRef.current = true;
+    setWrongAnswerCount((count) => count + 1);
+    const advanceAudioTime = getSynchronizedAdvanceAudioTime();
+    const review = await finishCurrentReview(false, undefined, { wasMissed: true });
+    if (!review) return;
+    const nextCompletedCount = completedCount + 1;
+    await advanceAfterResolvedPrompt(review, nextCompletedCount, {
+      advanceAudioTime,
+      recordChaseTarget: false,
+      delayMs: 0,
+    });
+  }, [
+    advanceAfterResolvedPrompt,
+    answerInputLockedRef,
+    completedCount,
+    finishCurrentReview,
+    getSynchronizedAdvanceAudioTime,
+    isPausedRef,
+    promptRef,
+    setWrongAnswerCount,
+  ]);
+
+  return { handleDuetTimeout, handleSynchronizedTimeout, submitAnswer };
 }

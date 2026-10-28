@@ -7,6 +7,26 @@ import {
 } from "./practiceSessionStartSnapshot";
 
 describe("practice session start snapshot", () => {
+  it("persists the duet curriculum version and dotted-rhythm setting", () => {
+    const built = buildPracticeSessionStartSnapshot({
+      autoPlayTarget: true,
+      duetAllowDottedRhythms: true,
+      duetCurriculumVersion: 2,
+      duetLevel: "level-6",
+      mode: "open-ended",
+      prefersReducedMotion: false,
+      settings: makeDefaultSettings(),
+      smoothStaffPageScroll: true,
+      startPausedReading: false,
+    });
+
+    expect(built?.snapshot.practiceConfig).toMatchObject({
+      duetAllowDottedRhythms: true,
+      duetCurriculumVersion: 2,
+      duetLevel: "level-6",
+    });
+  });
+
   it("groups normalized practice, presentation, interaction, and environment values", () => {
     const settings = {
       ...makeDefaultSettings(),

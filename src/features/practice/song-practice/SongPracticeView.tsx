@@ -1,8 +1,9 @@
-import { ArrowLeft, ArrowUp, AudioLines, Check, Settings } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, AudioLines, Check, Settings } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { AnswerAttempt } from "../../../domain/types";
+import { MAX_PRACTICE_QUESTIONS } from "../../../domain/practiceLimits";
 import { createUuid } from "../../../domain/id";
 import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
 import { saveAnswerEvents } from "../../../data/db";
@@ -18,9 +19,11 @@ import type {
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
+import { PracticeQuestionLimitDialog } from "../../../shared/components/PracticeQuestionLimitDialog";
 import type { MidiNoteInputEvent } from "../../../midi/midiInput";
 import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import { StaffPagePrompt } from "../components/StaffPagePrompt";
+import { ReturnToCurrentNoteButton } from "../components/ReturnToCurrentNoteButton";
 import { useNightMode } from "../../../shared/appearance/pageAppearance";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { useSongRowPlayback, type SongRowPlaybackNote } from "./useSongRowPlayback";
@@ -34,6 +37,7 @@ import {
   type SongPracticeSelection,
   type SongPracticeStaff,
   type SongPracticeTrackMode,
+  type ResolvedSongPracticeArrangement,
 } from "./songPracticeMaterials";
 import {
   recordSongPracticeAttempt,
@@ -94,6 +98,8 @@ interface SongPracticeViewProps {
   midi: MidiInputController;
   microphone: SongPracticeMicrophone;
   onBack: () => void;
+  onFullscreenAvailabilityChange: (active: boolean) => void;
+  onInputModeChange: (mode: SongPracticeInputMode) => void;
   onRegisterMicrophoneAnswer: (handler: (answer: PracticeAnswerInput) => void) => void;
   selection: SongPracticeSelection;
 }
@@ -222,6 +228,19 @@ function mapArrangementIndex(
   return mappedIndex < 0 ? next.targets.length : mappedIndex;
 }
 
+function limitSongPracticeArrangement(
+  arrangement: ResolvedSongPracticeArrangement
+): ResolvedSongPracticeArrangement {
+  if (arrangement.targets.length <= MAX_PRACTICE_QUESTIONS) return arrangement;
+  const targets = arrangement.targets.slice(0, MAX_PRACTICE_QUESTIONS);
+  return {
+    ...arrangement,
+    notes: targets.flatMap((target) => target.notes.slice(0, 1)),
+    noteCount: targets.reduce((count, target) => count + target.notes.length, 0),
+    targets,
+  };
+}
+
 function versionLabel(selection: SongPracticeSelection): string {
   if (selection.keyVersion === "c") return "C 调版";
   if (selection.keyVersion === "original") return "原调版";
@@ -232,6 +251,8 @@ export function SongPracticeView({
   midi,
   microphone,
   onBack,
+  onFullscreenAvailabilityChange,
+  onInputModeChange,
   onRegisterMicrophoneAnswer,
   selection,
 }: SongPracticeViewProps): JSX.Element {
@@ -243,6 +264,9 @@ export function SongPracticeView({
   const currentTargetVisibleRef = useRef(true);
   const [activeHandMode, setActiveHandMode] = useState(initialHandMode);
   const [activeInputMode, setActiveInputMode] = useState(initialInputMode);
+  useLayoutEffect(() => {
+    onInputModeChange(activeInputMode);
+  }, [activeInputMode, onInputModeChange]);
   const activeInputModeRef = useRef<SongPracticeInputMode>(initialInputMode);
   const activeHandModeRef = useRef<SongPracticeHandMode>(initialHandMode);
   const currentIndexRef = useRef(0);
@@ -265,6 +289,7 @@ export function SongPracticeView({
   const [isChaseSettingsOpen, setIsChaseSettingsOpen] = useState(false);
   const isNightMode = useNightMode();
   const [hasStarted, setHasStarted] = useState(true);
+  const [isQuestionLimitReached, setIsQuestionLimitReached] = useState(false);
   const [initialMicrophoneStatusDelayPassed, setInitialMicrophoneStatusDelayPassed] =
     useState(false);
   const [feedback, setFeedback] = useState<AnswerFeedback | null>(null);
@@ -287,6 +312,8 @@ export function SongPracticeView({
   const ignoreMicrophoneUntilRef = useRef(0);
   const sessionStartedAtRef = useRef<number | null>(null);
   const songSessionIdRef = useRef("");
+  const hasMoreTargetsRef = useRef(false);
+  const questionLimitReachedRef = useRef(false);
   const targetStartedAtRef = useRef(performance.now());
   const targetAttemptsRef = useRef<AnswerAttempt[]>([]);
   const sessionCompletedRef = useRef(false);
@@ -308,10 +335,30 @@ export function SongPracticeView({
   const stopMicrophone = microphone.stop;
   const lastNotifiedMicrophoneErrorRef = useRef<string | null>(null);
   const microphoneReconnectInFlightRef = useRef(false);
+  const reachQuestionLimit = useCallback((): void => {
+    if (questionLimitReachedRef.current) return;
+    questionLimitReachedRef.current = true;
+    setIsQuestionLimitReached(true);
+    answerLockedRef.current = true;
+    pendingCorrectAdvanceRef.current = null;
+    if (feedbackTimerRef.current !== undefined) window.clearTimeout(feedbackTimerRef.current);
+    if (answerUnlockTimerRef.current !== undefined)
+      window.clearTimeout(answerUnlockTimerRef.current);
+    feedbackTimerRef.current = undefined;
+    answerUnlockTimerRef.current = undefined;
+    pendingWrongFeedbackRef.current = null;
+    isWrongFeedbackVisibleRef.current = false;
+    setFeedback(null);
+    cancelRowPlayback();
+    playbackRowRef.current = null;
+    stopMicrophone();
+  }, [cancelRowPlayback, stopMicrophone]);
   const beginProgressSession = useCallback((): void => {
     sessionStartedAtRef.current = Date.now();
     songSessionIdRef.current = createUuid();
     sessionCompletedRef.current = false;
+    questionLimitReachedRef.current = false;
+    setIsQuestionLimitReached(false);
     recordSongPracticeSessionStarted(selection.songId, selection.keyVersion);
   }, [selection.keyVersion, selection.songId]);
   const completeProgressSession = useCallback((): void => {
@@ -333,9 +380,13 @@ export function SongPracticeView({
     }
     currentIndexRef.current = pendingAdvance.nextIndex;
     setCurrentIndex(pendingAdvance.nextIndex);
+    if (pendingAdvance.nextIndex >= MAX_PRACTICE_QUESTIONS && hasMoreTargetsRef.current) {
+      reachQuestionLimit();
+      return;
+    }
     answerLockedRef.current = false;
     if (pendingAdvance.nextIndex >= pendingAdvance.targetCount) completeProgressSession();
-  }, [completeProgressSession]);
+  }, [completeProgressSession, reachQuestionLimit]);
   const sourceArrangement = useMemo(
     () => resolveSongPracticeArrangement(selection.score, activeHandMode),
     [activeHandMode, selection.score]
@@ -431,12 +482,18 @@ export function SongPracticeView({
   }, []);
   const simplifiesForSingleNoteInput =
     !requiresMidi && activeInputMode !== "midi" && simultaneousTargetCount > 0;
-  const arrangement = useMemo(
+  const resolvedArrangement = useMemo(
     () =>
       simplifiesForSingleNoteInput
         ? simplifySongPracticeArrangement(sourceArrangement, activeHandMode)
         : sourceArrangement,
     [activeHandMode, simplifiesForSingleNoteInput, sourceArrangement]
+  );
+  const hasMoreTargets = resolvedArrangement.targets.length > MAX_PRACTICE_QUESTIONS;
+  hasMoreTargetsRef.current = hasMoreTargets;
+  const arrangement = useMemo(
+    () => limitSongPracticeArrangement(resolvedArrangement),
+    [resolvedArrangement]
   );
   const arrangementTargetCountRef = useRef(arrangement.targets.length);
   arrangementTargetCountRef.current = arrangement.targets.length;
@@ -449,8 +506,13 @@ export function SongPracticeView({
   activeInputModeRef.current = activeInputMode;
   activeHandModeRef.current = activeHandMode;
   currentIndexRef.current = currentIndex;
-  const isFinished = hasStarted && currentIndex >= arrangement.targets.length;
+  const isFinished =
+    hasStarted && currentIndex >= arrangement.targets.length && !isQuestionLimitReached;
   const meter = selection.score.meter;
+  useEffect(() => {
+    onFullscreenAvailabilityChange(hasStarted && !isFinished && !isQuestionLimitReached);
+    return () => onFullscreenAvailabilityChange(false);
+  }, [hasStarted, isFinished, isQuestionLimitReached, onFullscreenAvailabilityChange]);
   useEffect(() => {
     targetStartedAtRef.current = performance.now();
     targetAttemptsRef.current = [];
@@ -461,11 +523,11 @@ export function SongPracticeView({
     recordCorrectTarget: recordSongChaseCorrectTarget,
     reset: resetSongChase,
   } = useSongChase({
-    enabled: songPreferences.chaseEnabled && hasStarted && !isFinished,
+    enabled: songPreferences.chaseEnabled && hasStarted && !isFinished && !isQuestionLimitReached,
     beatsPerMeasure: selection.score.meter.quarterBeatsPerMeasure,
     getAudioTime,
     handMode: activeHandMode,
-    paused: !hasStarted || isFinished || playingRowIndex !== null,
+    paused: !hasStarted || isFinished || isQuestionLimitReached || playingRowIndex !== null,
     speedMultiplier: songPreferences.chaseSpeedMultiplier,
     startCount: songPreferences.chaseStartCount,
     tempoEvents: selection.score.source.sourceTempoEvents,
@@ -513,23 +575,16 @@ export function SongPracticeView({
     },
     [currentTarget, hasStarted, isFinished]
   );
-  const returnToCurrentNote = useCallback((): void => {
-    const currentIndex = currentIndexRef.current;
+  const getCurrentNoteTarget = useCallback((): SVGElement | null => {
     const currentNoteHead = document.querySelector<SVGElement>(
-      `.song-practice-prompt-wrap [data-song-practice-note-index="${currentIndex}"]`
+      `.song-practice-prompt-wrap [data-staff-page-note-index="${currentIndex}"]`
     );
     const rowIndex = Math.floor(currentIndex / NOTES_PER_ROW);
     const currentRow = document.querySelector<SVGGElement>(
       `.song-practice-prompt-wrap .staff-page-system[data-staff-row-index="${rowIndex}"]`
     );
-    const target = currentNoteHead ?? currentRow;
-    if (!target) return;
-    target.scrollIntoView({
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-      block: "center",
-      inline: "nearest",
-    });
-  }, []);
+    return currentNoteHead ?? currentRow ?? null;
+  }, [currentIndex]);
   const scoreMeasures = useMemo(
     () => arrangement.targets.map((target) => target.measure),
     [arrangement.targets]
@@ -633,15 +688,16 @@ export function SongPracticeView({
         selection.score,
         activeHandModeRef.current
       );
+      const cappedNextMidiArrangement = limitSongPracticeArrangement(nextMidiArrangement);
       const nextIndex = mapArrangementIndex(
         arrangement,
         currentIndexRef.current,
-        nextMidiArrangement,
+        cappedNextMidiArrangement,
         selection.score.meter.quarterBeatsPerMeasure
       );
       currentIndexRef.current = nextIndex;
       setCurrentIndex(nextIndex);
-      if (nextIndex < nextMidiArrangement.targets.length) setHasStarted(true);
+      if (nextIndex < cappedNextMidiArrangement.targets.length) setHasStarted(true);
       activeInputModeRef.current = "midi";
       setActiveInputMode("midi");
       setSongPreferences((current) => ({ ...current, inputMode: "midi" }));
@@ -660,7 +716,9 @@ export function SongPracticeView({
     const nextHandMode = previousHandMode === "both" ? "right" : previousHandMode;
     const previousArrangement = arrangement;
     const nextSourceArrangement = resolveSongPracticeArrangement(selection.score, nextHandMode);
-    const nextArrangement = simplifySongPracticeArrangement(nextSourceArrangement, nextHandMode);
+    const nextArrangement = limitSongPracticeArrangement(
+      simplifySongPracticeArrangement(nextSourceArrangement, nextHandMode)
+    );
     const nextIndex = mapArrangementIndex(
       previousArrangement,
       currentIndexRef.current,
@@ -759,7 +817,14 @@ export function SongPracticeView({
         microphoneAlgorithm?: "swiftf0" | "yin";
       } = {}
     ): void => {
-      if (!currentTarget || !currentTargetVisibleRef.current || answerLockedRef.current) return;
+      if (
+        questionLimitReachedRef.current ||
+        !currentTarget ||
+        !currentTargetVisibleRef.current ||
+        answerLockedRef.current
+      ) {
+        return;
+      }
       answerLockedRef.current = true;
       const inputMode = activeInputModeRef.current === "midi" ? "midi" : "microphone";
       const atMs = Math.max(0, performance.now() - targetStartedAtRef.current);
@@ -833,13 +898,9 @@ export function SongPracticeView({
         };
         setFeedback({ noteName, octave, type: "correct" });
         feedbackTimerRef.current = window.setTimeout(() => {
-          const pendingAdvance = pendingCorrectAdvanceRef.current;
-          if (!pendingAdvance) return;
-          pendingCorrectAdvanceRef.current = null;
-          currentIndexRef.current = pendingAdvance.nextIndex;
-          setCurrentIndex(pendingAdvance.nextIndex);
-          answerLockedRef.current = false;
           feedbackTimerRef.current = undefined;
+          if (!pendingCorrectAdvanceRef.current) return;
+          commitPendingCorrectAdvance();
           setFeedback(null);
           heldMidiNumbersRef.current.clear();
         }, 160);
@@ -879,6 +940,7 @@ export function SongPracticeView({
     [
       activeHandMode,
       clearFeedbackTimer,
+      commitPendingCorrectAdvance,
       currentIndex,
       currentTarget,
       recordSongChaseCorrectTarget,
@@ -1129,10 +1191,11 @@ export function SongPracticeView({
     }
     const nextSourceArrangement = resolveSongPracticeArrangement(selection.score, nextMode);
     const nextRequiresMidi = nextMode === "both";
-    const nextArrangement =
+    const resolvedNextArrangement =
       nextRequiresMidi || activeInputMode === "midi"
         ? nextSourceArrangement
         : simplifySongPracticeArrangement(nextSourceArrangement, nextMode);
+    const nextArrangement = limitSongPracticeArrangement(resolvedNextArrangement);
     const nextIndex = mapArrangementIndex(
       arrangement,
       currentIndexRef.current,
@@ -1405,15 +1468,7 @@ export function SongPracticeView({
         </section>
       </div>
       {!isFinished && hasStarted && currentTarget && !isCurrentTargetVisible ? (
-        <button
-          aria-label="返回当前音符"
-          className="song-practice-return-current-note"
-          type="button"
-          onClick={returnToCurrentNote}
-        >
-          <ArrowUp aria-hidden="true" size={19} />
-          <span>回到当前音符</span>
-        </button>
+        <ReturnToCurrentNoteButton getTarget={getCurrentNoteTarget} />
       ) : null}
       <PracticeChaseSettingsDialog
         isMidiConnected={midi.isConnected}
@@ -1427,6 +1482,17 @@ export function SongPracticeView({
         onClose={() => setIsChaseSettingsOpen(false)}
         onSave={saveChaseSettings}
       />
+      {isQuestionLimitReached ? (
+        <PracticeQuestionLimitDialog
+          onEnd={() => {
+            cancelRowPlayback();
+            stopMicrophone();
+            setIsQuestionLimitReached(false);
+            questionLimitReachedRef.current = false;
+            onBack();
+          }}
+        />
+      ) : null}
     </section>
   );
 }

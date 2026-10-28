@@ -16,13 +16,16 @@ export interface SessionProgressSelection {
   promptDisplayModes: PromptDisplayMode[];
   promptNoteDurations: PromptNoteDuration[];
   targetNoteSetKey: string;
+  practiceMode: SessionProgressGroupKey["practiceMode"];
+  duetDifficulty?: SessionProgressGroupKey["duetDifficulty"];
+  duetLevel?: SessionProgressGroupKey["duetLevel"];
+  duetCurriculumVersion?: SessionProgressGroupKey["duetCurriculumVersion"];
+  duetAllowDottedRhythms?: SessionProgressGroupKey["duetAllowDottedRhythms"];
+  metronomeSync?: SessionProgressGroupKey["metronomeSync"];
 }
 
-type SessionProgressSelectionValueKey = {
-  [
-    Key in keyof SessionProgressSelection
-  ]: SessionProgressSelection[Key] extends readonly SessionProgressConditionValue[] ? Key : never;
-}[keyof SessionProgressSelection];
+type SessionProgressSelectionValueKey =
+  "answerPitchModes" | "promptDisplayModes" | "queueComparisonFamilies" | "promptNoteDurations";
 
 const SESSION_PROGRESS_DIMENSION_DESCRIPTORS = {
   answerPitchMode: { selectionKey: "answerPitchModes" },
@@ -73,6 +76,12 @@ function groupMatchesSelection(
 ): boolean {
   return (
     group.key.targetNoteSetKey === selection.targetNoteSetKey &&
+    group.key.practiceMode === selection.practiceMode &&
+    group.key.duetDifficulty === selection.duetDifficulty &&
+    group.key.duetLevel === selection.duetLevel &&
+    group.key.duetCurriculumVersion === selection.duetCurriculumVersion &&
+    group.key.duetAllowDottedRhythms === selection.duetAllowDottedRhythms &&
+    group.key.metronomeSync === selection.metronomeSync &&
     SESSION_PROGRESS_CONDITION_DIMENSIONS.every((dimension) =>
       getSessionProgressSelectionValues(selection, dimension).includes(
         getSessionProgressGroupDimensionValue(group.key, dimension)
@@ -102,6 +111,16 @@ export function createSessionProgressSelection(
     chartBenchmarkGroupKey: group.keyString,
     ...dimensionValues,
     targetNoteSetKey: group.key.targetNoteSetKey,
+    practiceMode: group.key.practiceMode,
+    ...(group.key.duetDifficulty !== undefined ? { duetDifficulty: group.key.duetDifficulty } : {}),
+    ...(group.key.duetLevel !== undefined ? { duetLevel: group.key.duetLevel } : {}),
+    ...(group.key.duetCurriculumVersion !== undefined
+      ? { duetCurriculumVersion: group.key.duetCurriculumVersion }
+      : {}),
+    ...(group.key.duetAllowDottedRhythms !== undefined
+      ? { duetAllowDottedRhythms: group.key.duetAllowDottedRhythms }
+      : {}),
+    ...(group.key.metronomeSync !== undefined ? { metronomeSync: group.key.metronomeSync } : {}),
   };
 }
 

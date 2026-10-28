@@ -52,11 +52,7 @@ export function PauseOverlay({
           </div>
         ) : null}
         {showKeyboardShortcuts ? (
-          <small>
-            {resumeBlockedMessage ??
-              resumeMessage ??
-              "按空格或点击空白处继续练习 · 按 Esc 退出练习"}
-          </small>
+          <small>{resumeBlockedMessage ?? resumeMessage ?? "按空格或点击空白处继续练习"}</small>
         ) : null}
         {!showKeyboardShortcuts ? (
           <div className="pause-overlay-touch-actions">

@@ -91,6 +91,9 @@ export function answerEventToReview(event: AnswerEvent): ReviewRecord | null {
     .map((attempt) => ({
       noteName: attempt.noteName ?? event.targetNoteName!,
       atActiveMs: attempt.atMs,
+      ...(attempt.duetTargetNoteId !== undefined
+        ? { duetTargetNoteId: attempt.duetTargetNoteId }
+        : {}),
       midiNoteNumber: attempt.midi,
       confidence: attempt.confidence,
       clipping: attempt.clipping,
@@ -109,6 +112,11 @@ export function answerEventToReview(event: AnswerEvent): ReviewRecord | null {
     answeredAt: event.isCorrectFinal ? event.occurredAt : undefined,
     answeredCorrectly: event.isCorrectFinal === true,
     interrupted: event.wasInterrupted ?? false,
+    ...(event.isMissed ? { wasMissed: true } : {}),
+    ...(event.duetTargetNoteIds ? { duetTargetNoteIds: event.duetTargetNoteIds } : {}),
+    ...(event.duetCompletedTargetNoteIds
+      ? { duetCompletedTargetNoteIds: event.duetCompletedTargetNoteIds }
+      : {}),
     activeMs: event.activeMs ?? event.rawResponseTimeMs ?? 0,
     wrongAnswers,
     replayCount: 0,

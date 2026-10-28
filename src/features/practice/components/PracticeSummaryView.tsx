@@ -101,7 +101,11 @@ export function PracticeSummaryView({
           <div className="metric">
             <span>错误</span>
             <strong>
-              {summary.reviews.reduce((sum, review) => sum + review.wrongAnswers.length, 0)}
+              {summary.reviews.reduce(
+                (sum, review) =>
+                  sum + review.wrongAnswers.length + Number(review.wasMissed === true),
+                0
+              )}
             </strong>
           </div>
           <div className="metric">

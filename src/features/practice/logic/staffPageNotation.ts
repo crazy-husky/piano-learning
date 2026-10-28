@@ -7,6 +7,21 @@ export const PROMPT_NOTE_DURATIONS: readonly PromptNoteDuration[] = [
   "sixteenth",
 ];
 
+export type StaffPageNoteDuration =
+  | PromptNoteDuration
+  | "half"
+  | "dotted-whole"
+  | "dotted-half"
+  | "dotted-quarter"
+  | "double-dotted-quarter"
+  | "quarter-plus-sixteenth"
+  | "dotted-eighth"
+  | "dotted-sixteenth"
+  | "triplet-eighth"
+  | "triplet-half"
+  | "thirty-second"
+  | "sixty-fourth";
+
 const PROMPT_NOTE_DURATION_BEATS: Record<PromptNoteDuration, number> = {
   whole: 4,
   quarter: 1,
@@ -22,11 +37,22 @@ const PROMPT_NOTE_DURATION_WEIGHTS: Record<PromptNoteDuration, number> = {
 };
 
 export interface GeneratedStaffPageRhythm {
-  durations: PromptNoteDuration[];
+  durations: StaffPageNoteDuration[];
   endBeat: number;
   measures: number[];
   noteBeamGroups: number[];
   onsets: number[];
+  staffNoteDurations?: Array<{ treble?: StaffPageNoteDuration; bass?: StaffPageNoteDuration }>;
+}
+
+export function getMeasureAlignedEndBeat(
+  onsets: readonly (number | undefined)[],
+  beatsPerMeasure: number
+): number | undefined {
+  if (!Number.isFinite(beatsPerMeasure) || beatsPerMeasure <= 0) return undefined;
+  const lastOnset = [...onsets].reverse().find((onset) => onset !== undefined);
+  if (lastOnset === undefined || !Number.isFinite(lastOnset)) return undefined;
+  return (Math.floor((lastOnset + 0.001) / beatsPerMeasure) + 1) * beatsPerMeasure;
 }
 
 export function generateStaffPageRhythm(
@@ -129,8 +155,27 @@ export function getVexNoteDuration(
   return PROMPT_NOTE_DURATION_CONFIG[noteDuration].vexDuration;
 }
 
-export function getQuarterNoteBeats(noteDuration: PromptNoteDuration): number {
-  return PROMPT_NOTE_DURATION_CONFIG[noteDuration].quarterNoteBeats;
+const STAFF_PAGE_NOTE_DURATION_BEATS: Record<StaffPageNoteDuration, number> = {
+  whole: 4,
+  "dotted-whole": 6,
+  half: 2,
+  "dotted-half": 3,
+  quarter: 1,
+  "dotted-quarter": 1.5,
+  "double-dotted-quarter": 1.75,
+  "quarter-plus-sixteenth": 1.25,
+  eighth: 0.5,
+  "dotted-eighth": 0.75,
+  "triplet-eighth": 1 / 3,
+  "triplet-half": 4 / 3,
+  sixteenth: 0.25,
+  "dotted-sixteenth": 0.375,
+  "thirty-second": 0.125,
+  "sixty-fourth": 0.0625,
+};
+
+export function getQuarterNoteBeats(noteDuration: StaffPageNoteDuration): number {
+  return STAFF_PAGE_NOTE_DURATION_BEATS[noteDuration];
 }
 
 export function getStaffPageBarlineInterval(noteDuration: PromptNoteDuration): number {

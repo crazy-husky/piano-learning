@@ -13,6 +13,7 @@ import {
   Voice,
 } from "vexflow";
 import { markMidiLatencyStage } from "../../../diagnostics/midiLatencyDiagnostics";
+import { getTargetMidiNoteNumber } from "../../../domain/answerInput";
 import { noteToVexKey } from "../../../domain/notes";
 import type {
   PromptNoteDuration,
@@ -38,13 +39,17 @@ import {
 import {
   getBarlineGapCenter,
   getCrossStaffOuterStemDirection,
+  getMeasureAlignedEndBeat,
   getStaffPageBarlineInterval,
   getStaffPageBeamRuns,
   getVisibleBeamStemDirection,
   getVexNoteDuration,
+  type StaffPageNoteDuration,
 } from "../logic/staffPageNotation";
 import type { ScoreChaseCursor } from "../logic/scoreChase";
 import type { ScorePlaybackCursor } from "../logic/scorePlayback";
+import { chunkStaffPageGroupsByMeasure, getStaffPageRowIndex } from "../logic/staffPageFlow";
+import { STAFF_PAGE_MANUAL_SCROLL_EVENT } from "./staffPageScroll";
 
 interface StaffPagePromptProps {
   barlineAfterNoteIndices?: readonly number[];
@@ -59,6 +64,15 @@ interface StaffPagePromptProps {
   timeSignature?: string;
   completedCount: number;
   completedNoteIndices?: readonly number[];
+  completedStaffNoteIndices?: Partial<Record<Staff, readonly number[]>>;
+  syncNoteStatuses?: readonly {
+    index: number;
+    staff: Staff;
+    midi?: number;
+    result: "matched" | "missed" | "offbeat";
+  }[];
+  wrongStaffIndex?: number;
+  wrongStaff?: Staff;
   activePairStartIndex?: number;
   isScrolling?: boolean;
   noteDuration: PromptNoteDuration;
@@ -84,32 +98,22 @@ interface StaffPagePromptProps {
   onTrackedNoteVisibilityChange?: (isVisible: boolean) => void;
   breakBeamsAtStaffChange?: boolean;
   monophonicGrandStaff?: boolean;
+  showGrandStaffRests?: boolean;
+  keepMeasuresTogether?: boolean;
+  maxMeasuresPerRow?: number;
   useInvisibleGapRests?: boolean;
   showGrandStaffRightConnector?: boolean;
   onToggleRowPlayback?: (rowIndex: number) => void;
   playingRowIndex?: number | null;
   playbackProgressIndex?: number | null;
+  practiceProgressMarkerEnabled?: boolean;
+  getPracticeProgressBeat?: () => number | undefined;
   playbackCursor?: ScorePlaybackCursor | null;
   chaseCursor?: ScoreChaseCursor | null;
   cursorIndexOffset?: number;
   getAudioTime?: () => number;
   wrongIndex?: number;
 }
-
-export type StaffPageNoteDuration =
-  | PromptNoteDuration
-  | "half"
-  | "dotted-whole"
-  | "dotted-half"
-  | "dotted-quarter"
-  | "double-dotted-quarter"
-  | "quarter-plus-sixteenth"
-  | "dotted-eighth"
-  | "dotted-sixteenth"
-  | "triplet-eighth"
-  | "triplet-half"
-  | "thirty-second"
-  | "sixty-fourth";
 
 const STAFF_VEX_DURATIONS: Record<StaffPageNoteDuration, string> = {
   whole: "w",
@@ -135,15 +139,26 @@ const COMPLETE_COLOR = "#2f8f5f";
 const WRONG_COLOR = "#c84c3d";
 const AUTO_FOLLOW_RESUME_DELAY_MS = 2000;
 type StaffPageTickable = GhostNote | StaveNote;
+interface TimedStaveNote {
+  endBeat: number;
+  left: number;
+  markerX: number;
+  right: number;
+  startBeat: number;
+}
 interface StaffPagePalette {
   active: string;
   complete: string;
   error: string;
   ink: string;
+  warning: string;
 }
 interface RenderedStaffPageNote {
   color: string;
   element: SVGElement;
+  index: number;
+  midi: number;
+  staff?: Staff;
 }
 interface PlaybackCursorPoint {
   x: number;
@@ -588,7 +603,8 @@ function chunkNoteGroups(
 function makeStaveNote(
   noteOrNotes: TargetNote | readonly TargetNote[],
   color: string,
-  noteDuration: StaffPageNoteDuration
+  noteDuration: StaffPageNoteDuration,
+  getKeyColor?: (note: TargetNote) => string
 ): StaveNote {
   const notes = Array.isArray(noteOrNotes) ? noteOrNotes : [noteOrNotes];
   const note = notes[0];
@@ -599,11 +615,13 @@ function makeStaveNote(
     clef: note.staff,
     duration: vexDuration,
     keys: notes.map(noteToVexKey),
+    autoStem: stemDirection === undefined,
     ...(stemDirection === undefined ? {} : { stemDirection }),
   });
   staveNote.setStyle({ fillStyle: color, strokeStyle: color });
   notes.forEach((chordNote, index) => {
-    staveNote.setKeyStyle(index, { fillStyle: color, strokeStyle: color });
+    const keyColor = getKeyColor?.(chordNote) ?? color;
+    staveNote.setKeyStyle(index, { fillStyle: keyColor, strokeStyle: keyColor });
     if (chordNote.accidental) {
       staveNote.addModifier(new Accidental(chordNote.accidental === "sharp" ? "#" : "b"), index);
     }
@@ -644,14 +662,19 @@ function makeStaveRest(
   duration: StaffPageNoteDuration,
   staff: "treble" | "bass",
   stave: Stave,
-  tuplet?: readonly [number, number]
+  tuplet?: readonly [number, number],
+  color?: string
 ): StaveNote {
   const rest = new StaveNote({
     clef: staff,
     duration: `${STAFF_VEX_DURATIONS[duration]}r`,
     keys: [staff === "treble" ? "b/4" : "d/3"],
   }).setStave(stave);
+  if (duration === "quarter") {
+    rest.noteHeads.forEach((noteHead) => noteHead.setFontSize(noteHead.fontSizeInPoints * 0.82));
+  }
   if (tuplet) rest.applyTickMultiplier(tuplet[0], tuplet[1]);
+  if (color) rest.setStyle({ fillStyle: color, strokeStyle: color });
   return rest;
 }
 
@@ -731,7 +754,8 @@ function padStaffTickablesToDuration(
   stave: Stave,
   rowOnsets?: readonly (number | undefined)[],
   beatsPerMeasure?: number,
-  useInvisiblePadding = false
+  useInvisiblePadding = false,
+  showRestPadding = false
 ): StaffPageTickable[] {
   const usedTicks = tickables.reduce((total, tickable) => total + tickable.getTicks().value(), 0);
   const ticksPerQuarter = new Voice({ numBeats: 1, beatValue: 4 }).getTotalTicks().value();
@@ -745,7 +769,7 @@ function padStaffTickablesToDuration(
       : firstOnset;
   return [
     ...tickables,
-    ...(useInvisiblePadding
+    ...(useInvisiblePadding && !showRestPadding
       ? makeStaffGhostsForGap(
           missingBeats,
           rowStartBeat + usedTicks / ticksPerQuarter,
@@ -824,12 +848,13 @@ function expandTiedDurations(
   rowGroups: readonly (readonly TargetNote[])[],
   primaryTickables: readonly StaffPageTickable[],
   noteDurations: readonly StaffPageNoteDuration[],
-  getColor: (slotIndex: number) => string,
+  getColor: (slotIndex: number, staff?: Staff) => string,
   noteOnsets?: readonly number[],
   beatsPerMeasure?: number,
   staff: Staff = "treble",
   monophonicGrandStaff = false,
-  useInvisibleGapRests = false
+  useInvisibleGapRests = false,
+  showGrandStaffRests = false
 ): { ties: StaveTie[]; tickables: StaffPageTickable[] } {
   const tickables: StaffPageTickable[] = [];
   const ties: StaveTie[] = [];
@@ -842,29 +867,32 @@ function expandTiedDurations(
     const noteOnset = noteOnsets?.[slotIndex];
     if (noteOnsets && noteGroup.length === 0 && !monophonicGrandStaff) return;
     if (noteOnsets && noteOnset !== undefined && noteOnset > cursorBeat + 0.001) {
-      const gapFillers =
-        monophonicGrandStaff || useInvisibleGapRests
-          ? makeStaffGhostsForGap(
-              noteOnset - cursorBeat,
-              cursorBeat,
-              beatsPerMeasure,
-              primary.getStave()!
-            )
-          : makeStaveRestsForGap(
-              noteOnset - cursorBeat,
-              cursorBeat,
-              beatsPerMeasure,
-              staff,
-              primary.getStave()!
-            );
+      const useInvisibleGaps =
+        (monophonicGrandStaff || useInvisibleGapRests) && !showGrandStaffRests;
+      const gapFillers = useInvisibleGaps
+        ? makeStaffGhostsForGap(
+            noteOnset - cursorBeat,
+            cursorBeat,
+            beatsPerMeasure,
+            primary.getStave()!
+          )
+        : makeStaveRestsForGap(
+            noteOnset - cursorBeat,
+            cursorBeat,
+            beatsPerMeasure,
+            staff,
+            primary.getStave()!
+          );
       tickables.push(...gapFillers);
     }
     tickables.push(primary);
     if (noteDurations[slotIndex] === "quarter-plus-sixteenth") {
       if (noteGroup.length > 0 && primary instanceof StaveNote) {
-        const continuation = makeStaveNote(noteGroup, getColor(slotIndex), "sixteenth").setStave(
-          primary.getStave()!
-        );
+        const continuation = makeStaveNote(
+          noteGroup,
+          getColor(slotIndex, staff),
+          "sixteenth"
+        ).setStave(primary.getStave()!);
         tickables.push(continuation);
         ties.push(
           new StaveTie({
@@ -894,8 +922,40 @@ function colorForIndex(
   completedNoteIndices: readonly number[] | undefined,
   wrongIndex: number | undefined,
   activePairStartIndex: number | undefined,
-  palette: StaffPagePalette
+  palette: StaffPagePalette,
+  staff?: Staff,
+  completedStaffNoteIndices?: Partial<Record<Staff, readonly number[]>>,
+  wrongStaffIndex?: number,
+  wrongStaff?: Staff,
+  midi?: number,
+  syncNoteStatuses?: readonly {
+    index: number;
+    staff: Staff;
+    midi?: number;
+    result: "matched" | "missed" | "offbeat";
+  }[]
 ): string {
+  const matchingStatuses = syncNoteStatuses?.filter(
+    (entry) => entry.index === index && (!staff || entry.staff === staff)
+  );
+  const syncStatus =
+    matchingStatuses?.find((entry) => midi !== undefined && entry.midi === midi) ??
+    matchingStatuses?.find((entry) => entry.midi === undefined);
+  if (syncStatus?.result === "missed") return palette.error;
+  if (syncStatus?.result === "offbeat") return palette.warning;
+  if (syncStatus?.result === "matched") return palette.complete;
+  if (staff && completedStaffNoteIndices) {
+    if (index === wrongStaffIndex && (!wrongStaff || wrongStaff === staff)) {
+      return palette.error;
+    }
+    if (completedStaffNoteIndices[staff]?.includes(index)) {
+      return palette.complete;
+    }
+    if (activePairStartIndex !== undefined && index === activePairStartIndex) {
+      return palette.active;
+    }
+    return palette.ink;
+  }
   if (index === wrongIndex) {
     return palette.error;
   }
@@ -936,7 +996,8 @@ function addStaffProgressMarker(
   topY: number,
   bottomY: number,
   type: "practice" | "playback",
-  width: number
+  width: number,
+  beatRange?: { endBeat: number; startBeat: number }
 ): void {
   const marker = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   const offset = type === "practice" ? -width * 0.22 : width * 0.22;
@@ -944,6 +1005,10 @@ function addStaffProgressMarker(
   marker.setAttribute("data-staff-progress-marker", "");
   marker.setAttribute("data-progress-type", type);
   marker.setAttribute("data-note-index", String(noteIndex));
+  if (beatRange) {
+    marker.setAttribute("data-start-beat", beatRange.startBeat.toFixed(4));
+    marker.setAttribute("data-end-beat", beatRange.endBeat.toFixed(4));
+  }
   marker.setAttribute("x", (x - width / 2 + offset).toFixed(2));
   marker.setAttribute("y", topY.toFixed(2));
   marker.setAttribute("width", width.toFixed(2));
@@ -956,7 +1021,9 @@ function addStaffProgressMarker(
 function updateStaffProgressMarkers(
   rendererTarget: HTMLDivElement | null,
   practiceIndex: number,
-  playbackIndex: number | null
+  playbackIndex: number | null,
+  practiceMarkerEnabled: boolean,
+  practiceBeat?: number
 ): void {
   if (!rendererTarget) return;
   rendererTarget
@@ -964,12 +1031,77 @@ function updateStaffProgressMarkers(
     .forEach((marker) => {
       const noteIndex = Number(marker.getAttribute("data-note-index"));
       const type = marker.getAttribute("data-progress-type");
+      const startBeat = Number(marker.getAttribute("data-start-beat"));
+      const endBeat = Number(marker.getAttribute("data-end-beat"));
+      const isBeatMarker = Number.isFinite(startBeat) && Number.isFinite(endBeat);
       const active =
         type === "practice"
-          ? noteIndex === practiceIndex
+          ? practiceMarkerEnabled &&
+            (practiceBeat !== undefined && isBeatMarker
+              ? practiceBeat >= startBeat - 0.0001 && practiceBeat < endBeat - 0.0001
+              : noteIndex === practiceIndex)
           : type === "playback" && playbackIndex !== null && noteIndex === playbackIndex;
       marker.setAttribute("opacity", active ? (type === "practice" ? "0.32" : "0.34") : "0");
     });
+}
+
+function staveNoteHorizontalBounds(note: StaveNote): {
+  left: number;
+  markerX: number;
+  right: number;
+} {
+  const noteHeadBounds = note.noteHeads.map((noteHead) => ({
+    left: noteHead.getAbsoluteX(),
+    right: noteHead.getAbsoluteX() + noteHead.getWidth(),
+  }));
+  if (noteHeadBounds.length > 0) {
+    const left = Math.min(...noteHeadBounds.map((bounds) => bounds.left));
+    const right = Math.max(...noteHeadBounds.map((bounds) => bounds.right));
+    return { left, markerX: (left + right) / 2, right };
+  }
+  const bounds = note.getBoundingBox();
+  const left = bounds.getX();
+  const right = left + bounds.getW();
+  return { left, markerX: (left + right) / 2, right };
+}
+
+function getTimedStaveNotes(
+  tickableGroups: readonly (readonly StaffPageTickable[])[],
+  rowStartBeat: number,
+  ticksPerQuarter: number
+): TimedStaveNote[] {
+  return tickableGroups.flatMap((tickables) => {
+    let beat = rowStartBeat;
+    const timedNotes: TimedStaveNote[] = [];
+    tickables.forEach((tickable) => {
+      const durationBeats = tickable.getTicks().value() / ticksPerQuarter;
+      if (tickable instanceof StaveNote && durationBeats > 0) {
+        const bounds = staveNoteHorizontalBounds(tickable);
+        timedNotes.push({
+          endBeat: beat + durationBeats,
+          left: bounds.left,
+          markerX: bounds.markerX,
+          right: bounds.right,
+          startBeat: beat,
+        });
+      }
+      beat += durationBeats;
+    });
+    return timedNotes;
+  });
+}
+
+function getBarlineXAtBeat(
+  boundaryBeat: number,
+  timedNotes: readonly TimedStaveNote[]
+): number | undefined {
+  const epsilon = 0.001;
+  const previous = timedNotes.filter((note) => Math.abs(note.endBeat - boundaryBeat) <= epsilon);
+  const next = timedNotes.filter((note) => Math.abs(note.startBeat - boundaryBeat) <= epsilon);
+  if (previous.length === 0 || next.length === 0) return undefined;
+  const previousRight = Math.max(...previous.map((note) => note.right));
+  const nextLeft = Math.min(...next.map((note) => note.left));
+  return getBarlineGapCenter(previousRight, nextLeft);
 }
 
 function makeStaffPageBeams(
@@ -1203,6 +1335,49 @@ function alignRowNotesEvenly(
   );
 }
 
+function alignTickablesToMeasureColumns(
+  tickableGroups: readonly (readonly StaffPageTickable[])[],
+  rowStartBeat: number,
+  ticksPerQuarter: number,
+  beatsPerMeasure: number,
+  measureCount: number,
+  noteArea: { left: number; right: number }
+): void {
+  if (measureCount <= 0 || beatsPerMeasure <= 0) return;
+  const barWidth = (noteArea.right - noteArea.left) / measureCount;
+  const inset = Math.min(26, barWidth * 0.14);
+  const contexts = new Map<ReturnType<StaveNote["checkTickContext"]>, { beat: number }>();
+
+  tickableGroups.forEach((tickables) => {
+    let beat = rowStartBeat;
+    tickables.forEach((tickable) => {
+      const tickContext = tickable.checkTickContext();
+      const entry = contexts.get(tickContext) ?? { beat };
+      contexts.set(tickContext, entry);
+      beat += tickable.getTicks().value() / ticksPerQuarter;
+    });
+  });
+
+  contexts.forEach(({ beat }, tickContext) => {
+    const relativeBeat = Math.max(0, beat - rowStartBeat);
+    const measureOffset = Math.min(
+      measureCount - 1,
+      Math.floor((relativeBeat + 0.000001) / beatsPerMeasure)
+    );
+    const beatWithinMeasure = relativeBeat - measureOffset * beatsPerMeasure;
+    const targetCenter =
+      noteArea.left +
+      measureOffset * barWidth +
+      inset +
+      (beatWithinMeasure / beatsPerMeasure) * Math.max(1, barWidth - inset * 2);
+    const representative = [...tickContext.getTickables()].find(
+      (tickable): tickable is StaveNote => tickable instanceof StaveNote && !tickable.isRest()
+    );
+    const currentCenter = representative ? staveNoteCenterX(representative) : tickContext.getX();
+    tickContext.setX(tickContext.getX() + targetCenter - currentCenter);
+  });
+}
+
 function quarterBeatsForDuration(duration: StaffPageNoteDuration): number {
   if (duration === "whole") return 4;
   if (duration === "dotted-whole") return 6;
@@ -1274,24 +1449,31 @@ export function StaffPagePrompt({
   onTrackedNoteVisibilityChange,
   breakBeamsAtStaffChange = false,
   monophonicGrandStaff = false,
+  showGrandStaffRests = false,
+  keepMeasuresTogether = false,
+  maxMeasuresPerRow = 3,
   useInvisibleGapRests = false,
   showGrandStaffRightConnector = true,
   onToggleRowPlayback,
   playingRowIndex = null,
   playbackProgressIndex = null,
+  practiceProgressMarkerEnabled = true,
+  getPracticeProgressBeat,
   playbackCursor = null,
   chaseCursor = null,
   cursorIndexOffset = 0,
   getAudioTime,
   wrongIndex,
+  completedStaffNoteIndices,
+  syncNoteStatuses,
+  wrongStaffIndex,
+  wrongStaff,
 }: StaffPagePromptProps): JSX.Element {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const rendererTargetRef = useRef<HTMLDivElement | null>(null);
   const [virtualRowWindow, setVirtualRowWindow] = useState({ start: 0, end: 6 });
   const [rowPlaybackButtonCenters, setRowPlaybackButtonCenters] = useState<readonly number[]>([]);
   const [playbackFollowDelayComplete, setPlaybackFollowDelayComplete] = useState(true);
-  const lastManualScrollAtRef = useRef(0);
-  const manualScrollAwayRef = useRef(false);
   const previousFollowRowIndexRef = useRef<number | undefined>(undefined);
   const previousPlayingRowIndexRef = useRef<number | null>(null);
   const pendingPlaybackFollowRef = useRef(false);
@@ -1302,12 +1484,16 @@ export function StaffPagePrompt({
   const diagnosticSampleIdRef = useRef(diagnosticSampleId);
   const completedCountRef = useRef(completedCount);
   const completedNoteIndicesRef = useRef(completedNoteIndices);
+  const completedStaffNoteIndicesRef = useRef(completedStaffNoteIndices);
+  const syncNoteStatusesRef = useRef(syncNoteStatuses);
   const activePairStartIndexRef = useRef(activePairStartIndex);
   const playbackProgressIndexRef = useRef(playbackProgressIndex);
+  const practiceProgressMarkerEnabledRef = useRef(practiceProgressMarkerEnabled);
+  const getPracticeProgressBeatRef = useRef(getPracticeProgressBeat);
   const playbackCursorRef = useRef(playbackCursor);
   const chaseCursorRef = useRef(chaseCursor);
   const getAudioTimeRef = useRef(getAudioTime);
-  const renderedNotesRef = useRef<Array<RenderedStaffPageNote | undefined>>([]);
+  const renderedNotesRef = useRef<RenderedStaffPageNote[]>([]);
   const cursorLayersRef = useRef(new Map<string, PlaybackCursorLayer>());
   const cursorTargetsRef = useRef(new Map<number, PlaybackCursorTargets>());
   const cursorRowsRef = useRef(new Map<number, number>());
@@ -1319,6 +1505,8 @@ export function StaffPagePrompt({
   });
   const lastLandedEventKeysRef = useRef(new Map<Staff, string>());
   const wrongIndexRef = useRef(wrongIndex);
+  const wrongStaffIndexRef = useRef(wrongStaffIndex);
+  const wrongStaffRef = useRef(wrongStaff);
   const isNightMode = useNightMode();
   const cursorAnimationEnabled =
     getAudioTime !== undefined && (playbackCursor !== null || chaseCursor !== null);
@@ -1328,31 +1516,67 @@ export function StaffPagePrompt({
       complete: isNightMode ? "#78c994" : COMPLETE_COLOR,
       error: isNightMode ? "#f18476" : WRONG_COLOR,
       ink: isNightMode ? "#bcc6be" : NEUTRAL_COLOR,
+      warning: isNightMode ? "#f4c56e" : "#9a6500",
     }),
     [isNightMode]
   );
   diagnosticSampleIdRef.current = diagnosticSampleId;
   completedCountRef.current = completedCount;
   completedNoteIndicesRef.current = completedNoteIndices;
+  completedStaffNoteIndicesRef.current = completedStaffNoteIndices;
+  syncNoteStatusesRef.current = syncNoteStatuses;
   activePairStartIndexRef.current = activePairStartIndex;
   playbackProgressIndexRef.current = playbackProgressIndex;
+  practiceProgressMarkerEnabledRef.current = practiceProgressMarkerEnabled;
+  getPracticeProgressBeatRef.current = getPracticeProgressBeat;
   playbackCursorRef.current = playbackCursor;
   chaseCursorRef.current = chaseCursor;
   getAudioTimeRef.current = getAudioTime;
   trackedNoteIndexRef.current = trackedNoteIndex;
   onTrackedNoteVisibilityChangeRef.current = onTrackedNoteVisibilityChange;
   wrongIndexRef.current = wrongIndex;
-  const rows = useMemo(
-    () => chunkNoteGroups(noteGroups ?? notes.map((note) => [note]), notesPerRow, maxRowCount),
-    [maxRowCount, noteGroups, notes, notesPerRow]
+  wrongStaffIndexRef.current = wrongStaffIndex;
+  wrongStaffRef.current = wrongStaff;
+  const sourceNoteGroups = useMemo(
+    () => noteGroups ?? notes.map((note) => [note]),
+    [noteGroups, notes]
   );
+  const { rows, rowStartIndices } = useMemo(() => {
+    if (keepMeasuresTogether && noteMeasures?.length === sourceNoteGroups.length) {
+      return chunkStaffPageGroupsByMeasure(
+        sourceNoteGroups,
+        noteMeasures,
+        notesPerRow,
+        maxRowCount,
+        maxMeasuresPerRow
+      );
+    }
+    const chunkedRows = chunkNoteGroups(sourceNoteGroups, notesPerRow, maxRowCount);
+    return {
+      rowStartIndices: chunkedRows.map((_, rowIndex) => rowIndex * notesPerRow),
+      rows: chunkedRows,
+    };
+  }, [
+    keepMeasuresTogether,
+    maxMeasuresPerRow,
+    maxRowCount,
+    noteMeasures,
+    notesPerRow,
+    sourceNoteGroups,
+  ]);
   const cursorRowsKey = useMemo(() => {
     if (!virtualizeRows) return "";
     const rowIndices = new Set<number>();
     const addEvents = (eventIndices: readonly number[] | null | undefined): void => {
       eventIndices?.forEach((eventIndex) => {
         const localIndex = eventIndex - cursorIndexOffset;
-        if (localIndex >= 0) rowIndices.add(Math.floor(localIndex / notesPerRow));
+        if (localIndex >= 0) {
+          rowIndices.add(
+            keepMeasuresTogether
+              ? getStaffPageRowIndex(rowStartIndices, localIndex)
+              : Math.floor(localIndex / notesPerRow)
+          );
+        }
       });
     };
     (
@@ -1376,7 +1600,15 @@ export function StaffPagePrompt({
       .filter((rowIndex) => rowIndex >= 0)
       .sort((left, right) => left - right)
       .join(",");
-  }, [chaseCursor, cursorIndexOffset, notesPerRow, playbackCursor, virtualizeRows]);
+  }, [
+    chaseCursor,
+    cursorIndexOffset,
+    keepMeasuresTogether,
+    notesPerRow,
+    playbackCursor,
+    rowStartIndices,
+    virtualizeRows,
+  ]);
   const cursorRowsToRender = useMemo(
     () => (cursorRowsKey ? cursorRowsKey.split(",").map(Number) : []),
     [cursorRowsKey]
@@ -1409,7 +1641,7 @@ export function StaffPagePrompt({
         minDisplayWidthPx,
         Math.min(layout.width.maxPx, containerWidth)
       );
-      const renderedScale = Math.min(containerWidth / displayWidth, 1);
+      const renderedScale = containerWidth / displayWidth;
       const rowStepPx = (layout.vertical.viewHeightPx + layout.multirow.rowGapPx) * renderedScale;
       const overscanRows = 2;
       const start = Math.min(
@@ -1445,17 +1677,22 @@ export function StaffPagePrompt({
 
   useEffect(() => {
     const markManualScroll = (): void => {
-      lastManualScrollAtRef.current = performance.now();
       if (autoScrollAnimationFrameRef.current !== 0) {
         window.cancelAnimationFrame(autoScrollAnimationFrameRef.current);
         autoScrollAnimationFrameRef.current = 0;
       }
     };
+    const cancelAutoFollowForReturn = (): void => {
+      markManualScroll();
+      pendingPlaybackFollowRef.current = false;
+    };
     window.addEventListener("wheel", markManualScroll, { passive: true });
     window.addEventListener("touchmove", markManualScroll, { passive: true });
+    window.addEventListener(STAFF_PAGE_MANUAL_SCROLL_EVENT, cancelAutoFollowForReturn);
     return () => {
       window.removeEventListener("wheel", markManualScroll);
       window.removeEventListener("touchmove", markManualScroll);
+      window.removeEventListener(STAFF_PAGE_MANUAL_SCROLL_EVENT, cancelAutoFollowForReturn);
       if (playbackFollowDelayTimerRef.current !== null) {
         window.clearTimeout(playbackFollowDelayTimerRef.current);
         playbackFollowDelayTimerRef.current = null;
@@ -1488,60 +1725,90 @@ export function StaffPagePrompt({
   }, [playingRowIndex]);
 
   useEffect(() => {
+    const previousRowIndex = previousFollowRowIndexRef.current;
+    if (followRowIndex === undefined || followRowIndex < 0) {
+      previousFollowRowIndexRef.current = followRowIndex;
+      pendingPlaybackFollowRef.current = false;
+      if (autoScrollAnimationFrameRef.current !== 0) {
+        window.cancelAnimationFrame(autoScrollAnimationFrameRef.current);
+        autoScrollAnimationFrameRef.current = 0;
+      }
+      return;
+    }
+    if (previousRowIndex === undefined) {
+      previousFollowRowIndexRef.current = followRowIndex;
+      return;
+    }
+    const didFollowRowChange = previousRowIndex !== followRowIndex;
+    const shouldFollowCurrentRow = didFollowRowChange || pendingPlaybackFollowRef.current;
+    if (!shouldFollowCurrentRow) return;
     if (autoScrollAnimationFrameRef.current !== 0) {
       window.cancelAnimationFrame(autoScrollAnimationFrameRef.current);
       autoScrollAnimationFrameRef.current = 0;
     }
-    const previousRowIndex = previousFollowRowIndexRef.current;
-    previousFollowRowIndexRef.current = followRowIndex;
-    const didFollowRowChange =
-      previousRowIndex !== undefined && previousRowIndex !== followRowIndex;
-    if (
-      followRowIndex === undefined ||
-      followRowIndex < 0 ||
-      (!didFollowRowChange && !pendingPlaybackFollowRef.current)
-    ) {
-      return;
-    }
     if (playingRowIndex !== null || !playbackFollowDelayComplete) {
       pendingPlaybackFollowRef.current = true;
+      previousFollowRowIndexRef.current = followRowIndex;
       return;
     }
-    pendingPlaybackFollowRef.current = false;
-    if (manualScrollAwayRef.current) return;
-    if (
-      lastManualScrollAtRef.current > 0 &&
-      performance.now() - lastManualScrollAtRef.current < AUTO_FOLLOW_RESUME_DELAY_MS
-    ) {
-      return;
-    }
-
     const frame = frameRef.current;
     const row = rendererTargetRef.current?.querySelector<SVGElement>(
       `[data-staff-row-index="${followRowIndex}"]`
     );
     if (!frame || !row) return;
+    previousFollowRowIndexRef.current = followRowIndex;
+    pendingPlaybackFollowRef.current = false;
 
     const scrollViewport = frame.closest<HTMLElement>(".staff-page-scroll-viewport");
     const isNestedScrollViewport =
       scrollViewport !== null &&
       ["auto", "scroll", "overlay"].includes(window.getComputedStyle(scrollViewport).overflowY);
+    const continuationTail =
+      shouldFollowCurrentRow && isNestedScrollViewport && scrollViewport
+        ? scrollViewport.querySelector<HTMLElement>(".staff-page-continuation-scroll-tail")
+        : null;
+    if (continuationTail) {
+      continuationTail.style.height = "";
+    }
     const viewportBounds =
       isNestedScrollViewport && scrollViewport ? scrollViewport.getBoundingClientRect() : null;
     const viewportTop = viewportBounds ? viewportBounds.top + scrollViewport!.clientTop : 0;
     const viewportHeight = viewportBounds ? scrollViewport!.clientHeight : window.innerHeight;
     const rowBounds = row.getBoundingClientRect();
+    // The active row owns automatic scrolling. Following the continuation hint
+    // on a later ResizeObserver/render pass can replace this target and push
+    // the newly active row one system too far upward.
     const delta = (rowBounds.top + rowBounds.bottom) / 2 - (viewportTop + viewportHeight / 2);
     if (Math.abs(delta) < 1) return;
 
     const scrollingElement = document.scrollingElement ?? document.documentElement;
     const currentScrollTop =
       isNestedScrollViewport && scrollViewport ? scrollViewport.scrollTop : window.scrollY;
-    const maxScrollTop =
+    const requestedScrollTop = Math.max(0, currentScrollTop + delta);
+    let maxScrollTop =
       isNestedScrollViewport && scrollViewport
         ? Math.max(0, scrollViewport.scrollHeight - scrollViewport.clientHeight)
         : Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
-    const targetScrollTop = Math.max(0, Math.min(maxScrollTop, currentScrollTop + delta));
+
+    // The first row is pinned by the top of the score, so it can start above
+    // center. When the second row becomes active it may also be at the very
+    // bottom of the short initial score, where the regular hint spacer cannot
+    // scroll it all the way to center. Add only the missing space to that
+    // spacer before clamping the target; later rows already have content below.
+    if (
+      shouldFollowCurrentRow &&
+      requestedScrollTop > maxScrollTop &&
+      isNestedScrollViewport &&
+      scrollViewport &&
+      continuationTail
+    ) {
+      const baseTailHeight = continuationTail.getBoundingClientRect().height;
+      const missingScrollSpace = requestedScrollTop - maxScrollTop;
+      continuationTail.style.height = `${baseTailHeight + missingScrollSpace}px`;
+      maxScrollTop = Math.max(0, scrollViewport.scrollHeight - scrollViewport.clientHeight);
+    }
+
+    const targetScrollTop = Math.max(0, Math.min(maxScrollTop, requestedScrollTop));
     if (Math.abs(targetScrollTop - currentScrollTop) < 1) return;
 
     const setScrollTop = (scrollTop: number): void => {
@@ -1569,7 +1836,7 @@ export function StaffPagePrompt({
       }
     };
     autoScrollAnimationFrameRef.current = window.requestAnimationFrame(animateScroll);
-  }, [followRowIndex, playbackFollowDelayComplete, playingRowIndex]);
+  }, [followRowIndex, playbackFollowDelayComplete, playingRowIndex, rows.length]);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -1634,6 +1901,7 @@ export function StaffPagePrompt({
 
   useEffect(() => {
     let animationFrameId = 0;
+    let lastReportedVisibility: boolean | null = null;
     const checkTrackedNoteVisibility = (): void => {
       if (animationFrameId !== 0) return;
       animationFrameId = window.requestAnimationFrame(() => {
@@ -1705,15 +1973,10 @@ export function StaffPagePrompt({
             centerY <= visibleBounds.bottom
           );
         });
-        if (
-          lastManualScrollAtRef.current > 0 &&
-          performance.now() - lastManualScrollAtRef.current < AUTO_FOLLOW_RESUME_DELAY_MS
-        ) {
-          manualScrollAwayRef.current = !isVisible;
-        } else if (isVisible) {
-          manualScrollAwayRef.current = false;
+        if (lastReportedVisibility !== isVisible) {
+          lastReportedVisibility = isVisible;
+          onTrackedNoteVisibilityChangeRef.current?.(isVisible);
         }
-        onTrackedNoteVisibilityChangeRef.current?.(isVisible);
       });
     };
 
@@ -1764,7 +2027,10 @@ export function StaffPagePrompt({
           Math.max(0, rowCount - 1) * layout.multirow.rowGapPx,
         layout.notationScale
       );
-      const renderedScale = Math.min(containerWidth / displayWidth, 1);
+      // The SVG is styled to fill its render target, including when a layout's
+      // max width is narrower than the available container. Keep the clipped
+      // frame height and row-follow distance in that same rendered scale.
+      const renderedScale = containerWidth / displayWidth;
       const rowStepPx = (layout.vertical.viewHeightPx + layout.multirow.rowGapPx) * renderedScale;
       const clampedVisibleRowCount = Math.max(1, Math.min(visibleRowCount, rowCount));
       const visibleHeight =
@@ -1811,14 +2077,27 @@ export function StaffPagePrompt({
             topY: baseY,
           };
           const rowGroup = context.openGroup("staff-page-system");
-          const rowStartIndex = rowIndex * notesPerRow;
+          const rowStartIndex = rowStartIndices[rowIndex] ?? rowIndex * notesPerRow;
           rowGroup.setAttribute("data-staff-row-index", String(rowIndex));
           rowGroup.setAttribute("data-note-start-index", String(rowStartIndex));
           const visibleRowGroups = Array.from(
-            { length: notesPerRow },
+            { length: keepMeasuresTogether ? rowGroups.length : notesPerRow },
             (_, slotIndex) => rowGroups[slotIndex] ?? []
           );
           const rowSlots = visibleRowGroups.map((group) => group[0]);
+          const rowMeasureNumbers = [
+            ...new Set(
+              noteMeasures
+                ?.slice(rowStartIndex, rowStartIndex + rowGroups.length)
+                .filter((measure): measure is number => measure !== undefined)
+            ),
+          ];
+          const rowMeasureCount = Math.max(1, rowMeasureNumbers.length);
+          const rowFirstMeasure =
+            rowMeasureNumbers[0] ??
+            (beatsPerMeasure && beatsPerMeasure > 0
+              ? Math.floor((noteOnsets?.[rowStartIndex] ?? 0) / beatsPerMeasure)
+              : 0);
           const vexDuration = getVexNoteDuration(noteDuration);
           const rowDurations = rowSlots.map(
             (_, slotIndex) => noteDurations?.[rowStartIndex + slotIndex] ?? noteDuration
@@ -1855,6 +2134,7 @@ export function StaffPagePrompt({
           let tuplets: Tuplet[];
           let ties: StaveTie[];
           let layoutTickables: StaffPageTickable[];
+          let timedStaveNotes: TimedStaveNote[] = [];
           let visibleTickables: Array<StaveNote | undefined>;
           let cursorTickablesBySlot: Array<Partial<Record<Staff, StaveNote>>> = [];
           let barlineTopY: number;
@@ -1862,7 +2142,7 @@ export function StaffPagePrompt({
           let lyricAnchorY: number;
           const system = drawStaffSystem({
             brace: true,
-            columnCount: notesPerRow,
+            columnCount: keepMeasuresTogether ? rowMeasureCount : notesPerRow,
             context,
             frame: frameMetrics,
             horizontal: layout.horizontal,
@@ -1889,14 +2169,20 @@ export function StaffPagePrompt({
             : noteArea;
           if (system.mode === "grand") {
             const { bass, treble } = system;
-            const getColor = (slotIndex: number): string =>
+            const getColor = (slotIndex: number, staff?: Staff, midi?: number): string =>
               colorForIndex(
                 rowStartIndex + slotIndex,
                 completedCountRef.current,
                 completedNoteIndicesRef.current,
                 wrongIndexRef.current,
                 activePairStartIndexRef.current,
-                palette
+                palette,
+                staff,
+                completedStaffNoteIndicesRef.current,
+                wrongStaffIndexRef.current,
+                wrongStaffRef.current,
+                midi,
+                syncNoteStatusesRef.current
               );
             const trebleGroups = visibleRowGroups.map((group) =>
               group.filter((note) => note.staff === "treble")
@@ -1907,15 +2193,37 @@ export function StaffPagePrompt({
             const makeStaffTickables = (
               groups: readonly (readonly TargetNote[])[],
               durations: readonly StaffPageNoteDuration[],
-              stave: Stave
+              stave: Stave,
+              staff: Staff
             ): StaffPageTickable[] =>
               groups.map((group, slotIndex) =>
                 group.length > 0
-                  ? makeStaveNote(group, getColor(slotIndex), durations[slotIndex]!).setStave(stave)
-                  : makeStaffGhostNote(durations[slotIndex]!).setStave(stave)
+                  ? makeStaveNote(
+                      group,
+                      getColor(slotIndex, staff),
+                      durations[slotIndex]!,
+                      (target) => getColor(slotIndex, staff, getTargetMidiNoteNumber(target))
+                    ).setStave(stave)
+                  : showGrandStaffRests
+                    ? makeStaveRest(
+                        durations[slotIndex]!,
+                        staff,
+                        stave,
+                        durations[slotIndex] === "triplet-eighth" ||
+                          durations[slotIndex] === "triplet-half"
+                          ? [2, 3]
+                          : undefined,
+                        palette.ink
+                      )
+                    : makeStaffGhostNote(durations[slotIndex]!).setStave(stave)
               );
-            const trebleTickables = makeStaffTickables(trebleGroups, rowTrebleDurations, treble);
-            const bassTickables = makeStaffTickables(bassGroups, rowBassDurations, bass);
+            const trebleTickables = makeStaffTickables(
+              trebleGroups,
+              rowTrebleDurations,
+              treble,
+              "treble"
+            );
+            const bassTickables = makeStaffTickables(bassGroups, rowBassDurations, bass, "bass");
             const monophonicLaneIndices = [visibleRowGroups.map((_, index) => index)];
             const trebleLaneIndices = monophonicGrandStaff
               ? monophonicLaneIndices
@@ -1959,7 +2267,8 @@ export function StaffPagePrompt({
                   beatsPerMeasure,
                   staff,
                   monophonicGrandStaff,
-                  useInvisibleGapRests
+                  useInvisibleGapRests,
+                  showGrandStaffRests
                 );
                 const compactIndices = indices.filter(
                   (slotIndex) => laneGroups[slotIndex]!.length > 0
@@ -2014,15 +2323,36 @@ export function StaffPagePrompt({
                 laneTickables.reduce((total, tickable) => total + tickable.getTicks().value(), 0)
               )
             );
+            const rowStartBeat =
+              beatsPerMeasure && beatsPerMeasure > 0
+                ? Math.floor(
+                    (rowOnsets?.find((onset) => onset !== undefined) ?? 0) / beatsPerMeasure
+                  ) * beatsPerMeasure
+                : 0;
+            const ticksPerQuarter = new Voice({ numBeats: 1, beatValue: 4 })
+              .getTotalTicks()
+              .value();
+            const measureAlignedEndBeat =
+              showGrandStaffRests && beatsPerMeasure
+                ? getMeasureAlignedEndBeat(rowOnsets ?? [], beatsPerMeasure)
+                : undefined;
+            const targetVoiceTicks =
+              measureAlignedEndBeat !== undefined
+                ? Math.max(
+                    longestVoiceTicks,
+                    (measureAlignedEndBeat - rowStartBeat) * ticksPerQuarter
+                  )
+                : longestVoiceTicks;
             const alignedTickableGroups = allExpandedTickables.map((laneTickables, index) =>
               padStaffTickablesToDuration(
                 laneTickables,
-                longestVoiceTicks,
+                targetVoiceTicks,
                 index < trebleLanes.length ? "treble" : "bass",
                 index < trebleLanes.length ? treble : bass,
                 rowOnsets,
                 beatsPerMeasure,
-                monophonicGrandStaff || useInvisibleGapRests
+                monophonicGrandStaff || useInvisibleGapRests,
+                showGrandStaffRests
               )
             );
             const voiceOptions = createVoiceOptions(alignedTickableGroups);
@@ -2043,10 +2373,25 @@ export function StaffPagePrompt({
               { context }
             );
             formatter.postFormat();
+            if (keepMeasuresTogether && beatsPerMeasure && rowMeasureCount > 0) {
+              alignTickablesToMeasureColumns(
+                alignedTickableGroups,
+                rowStartBeat,
+                ticksPerQuarter,
+                beatsPerMeasure,
+                rowMeasureCount,
+                noteArea
+              );
+            }
             if (distributeNotesEvenly) {
               alignRowNotesEvenly(tickables, rowGroups.length, distributionArea);
             }
             voices.forEach((voice) => voice.draw(context, voice.getStave()!));
+            timedStaveNotes = getTimedStaveNotes(
+              alignedTickableGroups,
+              rowStartBeat,
+              ticksPerQuarter
+            );
             layoutTickables = tickables;
             visibleTickables = rowSlots.map((note, index) => {
               const tickable =
@@ -2058,8 +2403,12 @@ export function StaffPagePrompt({
               const trebleTickable = trebleTickables[slotIndex];
               const bassTickable = bassTickables[slotIndex];
               return {
-                ...(trebleTickable instanceof StaveNote ? { treble: trebleTickable } : {}),
-                ...(bassTickable instanceof StaveNote ? { bass: bassTickable } : {}),
+                ...(trebleGroups[slotIndex]!.length > 0 && trebleTickable instanceof StaveNote
+                  ? { treble: trebleTickable }
+                  : {}),
+                ...(bassGroups[slotIndex]!.length > 0 && bassTickable instanceof StaveNote
+                  ? { bass: bassTickable }
+                  : {}),
               };
             });
             barlineTopY = treble.getYForLine(0);
@@ -2077,9 +2426,30 @@ export function StaffPagePrompt({
                       completedNoteIndicesRef.current,
                       wrongIndexRef.current,
                       activePairStartIndexRef.current,
-                      palette
+                      palette,
+                      undefined,
+                      undefined,
+                      undefined,
+                      undefined,
+                      undefined,
+                      syncNoteStatusesRef.current
                     ),
-                    rowDurations[slotIndex]
+                    rowDurations[slotIndex],
+                    (target) =>
+                      colorForIndex(
+                        rowStartIndex + slotIndex,
+                        completedCountRef.current,
+                        completedNoteIndicesRef.current,
+                        wrongIndexRef.current,
+                        activePairStartIndexRef.current,
+                        palette,
+                        target.staff,
+                        completedStaffNoteIndicesRef.current,
+                        wrongStaffIndexRef.current,
+                        wrongStaffRef.current,
+                        getTargetMidiNoteNumber(target),
+                        syncNoteStatusesRef.current
+                      )
                   ).setStave(stave)
                 : new GhostNote(vexDuration).setStave(stave)
             );
@@ -2094,7 +2464,13 @@ export function StaffPagePrompt({
                   completedNoteIndicesRef.current,
                   wrongIndexRef.current,
                   activePairStartIndexRef.current,
-                  palette
+                  palette,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  syncNoteStatusesRef.current
                 ),
               rowOnsets,
               beatsPerMeasure,
@@ -2141,22 +2517,50 @@ export function StaffPagePrompt({
           }
 
           visibleTickables.forEach((staveNote, slotIndex) => {
-            const element = staveNote?.getSVGElement();
-            if (!staveNote || !element) {
-              return;
-            }
             const index = rowStartIndex + slotIndex;
-            renderedNotesRef.current[index] = {
-              color: colorForIndex(
-                index,
-                completedCountRef.current,
-                completedNoteIndicesRef.current,
-                wrongIndexRef.current,
-                activePairStartIndexRef.current,
-                palette
-              ),
-              element,
-            };
+            const renderedEntries =
+              system.mode === "grand"
+                ? (["treble", "bass"] as const).map((staff) => ({
+                    staff,
+                    staveNote: cursorTickablesBySlot[slotIndex]?.[staff],
+                    targets: visibleRowGroups[slotIndex]!.filter((note) => note.staff === staff),
+                  }))
+                : [
+                    {
+                      staff: (visibleRowGroups[slotIndex]![0]?.staff ?? "treble") as Staff,
+                      staveNote,
+                      targets: visibleRowGroups[slotIndex]!,
+                    },
+                  ];
+            renderedEntries.forEach(({ staff, staveNote: staffNote, targets }) => {
+              if (!(staffNote instanceof StaveNote) || targets.length === 0) return;
+              staffNote.noteHeads.forEach((head, headIndex) => {
+                const target = targets[headIndex];
+                const element = head.getSVGElement();
+                if (!target || !element) return;
+                const midi = getTargetMidiNoteNumber(target);
+                renderedNotesRef.current.push({
+                  color: colorForIndex(
+                    index,
+                    completedCountRef.current,
+                    completedNoteIndicesRef.current,
+                    wrongIndexRef.current,
+                    activePairStartIndexRef.current,
+                    palette,
+                    staff,
+                    completedStaffNoteIndicesRef.current,
+                    wrongStaffIndexRef.current,
+                    wrongStaffRef.current,
+                    midi,
+                    syncNoteStatusesRef.current
+                  ),
+                  element,
+                  index,
+                  midi,
+                  staff,
+                });
+              });
+            });
           });
 
           cursorTickablesBySlot.forEach((tickables, slotIndex) => {
@@ -2172,7 +2576,7 @@ export function StaffPagePrompt({
             if (noteHeadElements.length > 0) {
               noteHeadElements.forEach((element) => {
                 element.setAttribute(
-                  "data-song-practice-note-index",
+                  "data-staff-page-note-index",
                   String(rowStartIndex + slotIndex)
                 );
               });
@@ -2207,7 +2611,7 @@ export function StaffPagePrompt({
           const barlineInterval = getStaffPageBarlineInterval(noteDuration);
           const explicitBarlineBoundaries = barlineAfterNoteIndices
             ?.map((noteIndex) => noteIndex + 1 - rowStartIndex)
-            .filter((boundaryIndex) => boundaryIndex > 0 && boundaryIndex <= rowGroups.length);
+            .filter((boundaryIndex) => boundaryIndex > 0 && boundaryIndex < rowGroups.length);
           const barlineBoundaries =
             explicitBarlineBoundaries ??
             Array.from(
@@ -2217,14 +2621,63 @@ export function StaffPagePrompt({
           for (const boundaryIndex of barlineBoundaries) {
             if (boundaryIndex >= notesPerRow) continue;
             const nextTickable = layoutTickables[boundaryIndex];
-            const barlineX = getBarlineX(
-              nextTickable,
-              visibleTickables[boundaryIndex - 1],
-              visibleTickables[boundaryIndex]
-            );
+            const boundaryBeat = rowOnsets?.[boundaryIndex];
+            const boundaryMeasure = noteMeasures?.[rowStartIndex + boundaryIndex];
+            const fixedMeasureBarlineX =
+              keepMeasuresTogether && boundaryMeasure !== undefined
+                ? noteArea.left +
+                  ((boundaryMeasure - rowFirstMeasure) / rowMeasureCount) *
+                    (noteArea.right - noteArea.left)
+                : undefined;
+            const barlineX =
+              fixedMeasureBarlineX ??
+              (boundaryBeat !== undefined
+                ? getBarlineXAtBeat(boundaryBeat, timedStaveNotes)
+                : undefined) ??
+              getBarlineX(
+                nextTickable,
+                visibleTickables[boundaryIndex - 1],
+                visibleTickables[boundaryIndex]
+              );
             if (barlineX !== undefined) {
               addBarline(rowGroup, barlineX, barlineTopY, barlineBottomY, palette.ink);
             }
+          }
+          if (timedStaveNotes.length > 0) {
+            const notesByStartBeat = new Map<number, TimedStaveNote[]>();
+            timedStaveNotes.forEach((note) => {
+              const startBeat = Number(note.startBeat.toFixed(4));
+              const group = notesByStartBeat.get(startBeat) ?? [];
+              group.push(note);
+              notesByStartBeat.set(startBeat, group);
+            });
+            const sortedStartBeats = [...notesByStartBeat.keys()].sort(
+              (left, right) => left - right
+            );
+            const rowEndBeat = Math.max(...timedStaveNotes.map((note) => note.endBeat));
+            sortedStartBeats.forEach((startBeat, markerIndex) => {
+              const groupedNotes = notesByStartBeat.get(startBeat)!;
+              const nextStartBeat = sortedStartBeats[markerIndex + 1] ?? rowEndBeat;
+              const matchingEventIndex = rowOnsets?.findIndex(
+                (onset) => onset !== undefined && Math.abs(onset - startBeat) < 0.001
+              );
+              const noteIndex =
+                matchingEventIndex !== undefined && matchingEventIndex >= 0
+                  ? rowStartIndex + matchingEventIndex
+                  : -1;
+              const markerX =
+                groupedNotes.reduce((total, note) => total + note.markerX, 0) / groupedNotes.length;
+              addStaffProgressMarker(
+                rowGroup,
+                noteIndex,
+                markerX,
+                barlineTopY,
+                barlineBottomY,
+                "practice",
+                logicalPx(14, surface.scale),
+                { startBeat, endBeat: Math.max(startBeat + 0.001, nextStartBeat) }
+              );
+            });
           }
           visibleTickables.forEach((staveNote, slotIndex) => {
             if (!staveNote) return;
@@ -2234,15 +2687,26 @@ export function StaffPagePrompt({
               : staveNoteCenterX(staveNote);
             const markerWidth = logicalPx(14, surface.scale);
             const noteIndex = rowStartIndex + slotIndex;
-            addStaffProgressMarker(
-              rowGroup,
-              noteIndex,
-              noteHeadCenterX,
-              barlineTopY,
-              barlineBottomY,
-              "practice",
-              markerWidth
-            );
+            if (timedStaveNotes.length === 0) {
+              const startBeat = rowOnsets?.[slotIndex];
+              const endBeat =
+                startBeat === undefined
+                  ? undefined
+                  : (rowOnsets?.[slotIndex + 1] ??
+                    startBeat + quarterBeatsForDuration(rowSelectedDurations[slotIndex]!));
+              addStaffProgressMarker(
+                rowGroup,
+                noteIndex,
+                noteHeadCenterX,
+                barlineTopY,
+                barlineBottomY,
+                "practice",
+                markerWidth,
+                startBeat !== undefined && endBeat !== undefined
+                  ? { startBeat, endBeat }
+                  : undefined
+              );
+            }
             addStaffProgressMarker(
               rowGroup,
               noteIndex,
@@ -2307,7 +2771,9 @@ export function StaffPagePrompt({
       updateStaffProgressMarkers(
         rendererTarget,
         completedCountRef.current,
-        playbackProgressIndexRef.current
+        playbackProgressIndexRef.current,
+        practiceProgressMarkerEnabledRef.current,
+        getPracticeProgressBeatRef.current?.()
       );
       const frameTop = frame.getBoundingClientRect().top;
       const measuredRowCenters = Array.from(
@@ -2370,6 +2836,8 @@ export function StaffPagePrompt({
     noteMeasures,
     noteOnsets,
     noteBeamGroups,
+    rowStartIndices,
+    completedStaffNoteIndices,
     beatsPerMeasure,
     timeSignature,
     minDisplayWidthPx,
@@ -2385,9 +2853,13 @@ export function StaffPagePrompt({
     staffNotationMode,
     breakBeamsAtStaffChange,
     monophonicGrandStaff,
+    keepMeasuresTogether,
     useInvisibleGapRests,
+    showGrandStaffRests,
     showGrandStaffRightConnector,
     useLedgerGap,
+    wrongStaff,
+    wrongStaffIndex,
     cursorIndexOffset,
     cursorRowsKey,
     cursorRowsToRender,
@@ -2889,35 +3361,66 @@ export function StaffPagePrompt({
   }, [cursorAnimationEnabled]);
 
   useLayoutEffect(() => {
-    updateStaffProgressMarkers(rendererTargetRef.current, completedCount, playbackProgressIndex);
-  }, [completedCount, playbackProgressIndex]);
+    updateStaffProgressMarkers(
+      rendererTargetRef.current,
+      completedCount,
+      playbackProgressIndex,
+      practiceProgressMarkerEnabled,
+      getPracticeProgressBeatRef.current?.()
+    );
+  }, [completedCount, playbackProgressIndex, practiceProgressMarkerEnabled]);
+
+  useEffect(() => {
+    if (!getPracticeProgressBeat) return undefined;
+    let animationFrameId = 0;
+    const updateProgressMarker = (): void => {
+      updateStaffProgressMarkers(
+        rendererTargetRef.current,
+        completedCountRef.current,
+        playbackProgressIndexRef.current,
+        practiceProgressMarkerEnabledRef.current,
+        getPracticeProgressBeatRef.current?.()
+      );
+      animationFrameId = window.requestAnimationFrame(updateProgressMarker);
+    };
+    animationFrameId = window.requestAnimationFrame(updateProgressMarker);
+    return () => window.cancelAnimationFrame(animationFrameId);
+  }, [getPracticeProgressBeat]);
 
   useLayoutEffect(() => {
     const renderedDiagnosticSampleId = diagnosticSampleIdRef.current;
     markMidiLatencyStage(renderedDiagnosticSampleId, "staffColorStarted");
-    renderedNotesRef.current.forEach((renderedNote, index) => {
-      if (renderedNote) {
-        updateRenderedNoteColor(
-          renderedNote,
-          colorForIndex(
-            index,
-            completedCount,
-            completedNoteIndices,
-            wrongIndex,
-            activePairStartIndex,
-            palette
-          )
-        );
-      }
+    renderedNotesRef.current.forEach((renderedNote) => {
+      updateRenderedNoteColor(
+        renderedNote,
+        colorForIndex(
+          renderedNote.index,
+          completedCount,
+          completedNoteIndices,
+          wrongIndex,
+          activePairStartIndex,
+          palette,
+          renderedNote.staff,
+          completedStaffNoteIndices,
+          wrongStaffIndex,
+          wrongStaff,
+          renderedNote.midi,
+          syncNoteStatuses
+        )
+      );
     });
     markMidiLatencyStage(renderedDiagnosticSampleId, "staffColorEnded");
   }, [
     activePairStartIndex,
     completedCount,
     completedNoteIndices,
+    completedStaffNoteIndices,
+    syncNoteStatuses,
     isNightMode,
     palette,
     wrongIndex,
+    wrongStaff,
+    wrongStaffIndex,
   ]);
 
   return (

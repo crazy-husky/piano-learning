@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { SessionProgressGroup } from "./sessionProgress";
+import {
+  serializeSessionProgressGroupKey,
+  type SessionProgressGroup,
+  type SessionProgressGroupKey,
+} from "./sessionProgress";
 import {
   createSessionProgressSelection,
   getSelectedSessionProgressGroups,
@@ -18,7 +22,18 @@ function group(
   promptDisplayMode: PromptDisplayMode,
   queueComparisonFamily: QueueComparisonFamily,
   startedAt: string,
-  answerPitchMode: AnswerPitchMode = "note-name"
+  answerPitchMode: AnswerPitchMode = "note-name",
+  context: Partial<
+    Pick<
+      SessionProgressGroupKey,
+      | "practiceMode"
+      | "duetDifficulty"
+      | "duetLevel"
+      | "duetCurriculumVersion"
+      | "duetAllowDottedRhythms"
+      | "metronomeSync"
+    >
+  > = {}
 ): SessionProgressGroup {
   const latestSession: PracticeSessionRecordV1 = {
     completedCount: 5,
@@ -32,19 +47,15 @@ function group(
   const key = {
     answerPitchMode,
     queueComparisonFamily,
+    practiceMode: context.practiceMode ?? ("single-hand" as const),
+    ...context,
     promptDisplayMode,
     promptNoteDuration: "quarter" as const,
     targetNoteSetKey: "target-set",
   };
   return {
     key,
-    keyString: [
-      key.targetNoteSetKey,
-      key.answerPitchMode,
-      promptDisplayMode,
-      queueComparisonFamily,
-      key.promptNoteDuration,
-    ].join("\u001f"),
+    keyString: serializeSessionProgressGroupKey(key),
     latestSession,
     sessionCount: 1,
     sessionIds: [latestSession.id],
@@ -52,6 +63,41 @@ function group(
 }
 
 describe("session progress selection", () => {
+  it("does not mix single-hand and duet curriculum groups", () => {
+    const single = group("single", "staff-page", "adaptive", "2026-07-01T10:00:00.000Z");
+    const duetLevelOne = group(
+      "duet-one",
+      "staff-page",
+      "adaptive",
+      "2026-07-02T10:00:00.000Z",
+      "note-name",
+      {
+        practiceMode: "duet",
+        duetLevel: "level-1",
+        duetCurriculumVersion: 2,
+        duetAllowDottedRhythms: false,
+      }
+    );
+    const duetLevelTwo = group(
+      "duet-two",
+      "staff-page",
+      "adaptive",
+      "2026-07-03T10:00:00.000Z",
+      "note-name",
+      {
+        practiceMode: "duet",
+        duetLevel: "level-2",
+        duetCurriculumVersion: 2,
+        duetAllowDottedRhythms: false,
+      }
+    );
+    const selection = createSessionProgressSelection(duetLevelOne);
+
+    expect(
+      getSelectedSessionProgressGroups([single, duetLevelOne, duetLevelTwo], selection)
+    ).toEqual([duetLevelOne]);
+  });
+
   it("keeps note-name and exact-pitch records in separate selectable groups", () => {
     const noteName = group("note-name", "staff-page", "adaptive", "2026-07-01T10:00:00.000Z");
     const exactPitch = group(

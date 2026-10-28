@@ -1,10 +1,12 @@
 @import "./styles/foundation.css";
 @import "./styles/shell-home.css";
+@import "./styles/metronome.css";
 @import "./styles/study-recall.css";
 @import "./styles/practice-microphone-setup.css";
 @import "./styles/microphone-parameter-benchmark.css";
 @import "./styles/b6-swiftf0-reminder.css";
 @import "./styles/practice-distance.css";
+@import "./styles/practice-question-limit.css";
 @import "./styles/name-to-key-practice.css";
 @import "./styles/practice-session-keyboard.css";
 @import "./styles/song-practice.css";

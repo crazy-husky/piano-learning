@@ -16,6 +16,7 @@ import type {
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import { isPracticeAnswerCorrect } from "../../../domain/answerInput";
 import { getTargetMidiNoteNumber } from "../../../domain/answerInput";
+import { MAX_PRACTICE_QUESTIONS } from "../../../domain/practiceLimits";
 import {
   answerDeviceInfo,
   answerInputMode,
@@ -24,6 +25,7 @@ import {
 import { saveAnswerEvents } from "../../../data/db";
 import type { AnswerAttempt } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import { MidiInputControl } from "../../../midi/MidiInputControl";
 import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import { isNaturalPianoKey } from "../../../shared/components/pianoKeyNames";
 import {
@@ -32,6 +34,7 @@ import {
 } from "../../../domain/staffDistancePractice";
 import { appendStaffDistanceRhythm, createStaffDistanceRhythm } from "../logic/staffDistanceRhythm";
 import { StaffPagePrompt } from "./StaffPagePrompt";
+import { ReturnToCurrentNoteButton } from "./ReturnToCurrentNoteButton";
 import {
   DESKTOP_STAFF_PAGE_NOTE_COUNT,
   MOBILE_STAFF_PAGE_NOTE_COUNT,
@@ -47,11 +50,12 @@ import {
   PracticeChaseSettingsDialog,
   type PracticeChaseSettings,
 } from "./PracticeChaseSettingsDialog";
+import { PracticeQuestionLimitDialog } from "../../../shared/components/PracticeQuestionLimitDialog";
 
 interface PracticeNavigationExitRequest {
   id: number;
   returnToSetup?: boolean;
-  targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal";
+  targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal" | "metronome";
 }
 
 interface StaffDistanceRunProps {
@@ -65,9 +69,7 @@ interface StaffDistanceRunProps {
   notes: TargetNote[];
   onFinish: (session: PracticeSessionRecord, showSummary: boolean) => Promise<void>;
   onSaveChaseSettings: (settings: PracticeChaseSettings) => void;
-  onNavigationExit?: (
-    targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal"
-  ) => void;
+  onNavigationExit?: (targetView: PracticeNavigationExitRequest["targetView"]) => void;
   onRunningChange: (running: boolean) => void;
   onMicrophoneAnswerHandlerChange: (
     handler: ((answer: PracticeAnswerInput) => void) | null
@@ -350,6 +352,7 @@ export function StaffDistanceRun({
   >(null);
   const [inputError, setInputError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [isQuestionLimitReached, setIsQuestionLimitReached] = useState(false);
   useEffect(() => {
     if (isPaused) setIsChaseSettingsOpen(false);
   }, [isPaused]);
@@ -390,6 +393,10 @@ export function StaffDistanceRun({
   );
   const scoreWrapRef = useRef<HTMLDivElement | null>(null);
   const [scoreWidth, setScoreWidth] = useState(0);
+  const [trackedScoreVisibility, setTrackedScoreVisibility] = useState<{
+    questionIndex: number;
+    visible: boolean;
+  } | null>(null);
   const resultsRef = useRef(session.staffDistance?.questionResults ?? []);
   const firstResponseRef = useRef<{ correct: boolean; responseMs: number } | null>(null);
   const questionAttemptsRef = useRef<AnswerAttempt[]>([]);
@@ -404,6 +411,7 @@ export function StaffDistanceRun({
   const advanceTimerRef = useRef<number | undefined>();
   const wrongFeedbackTimerRef = useRef<number | undefined>();
   const endingRef = useRef(false);
+  const questionLimitReachedRef = useRef(false);
   const handledExitRequestRef = useRef<number | null>(null);
   const finishRef = useRef<
     (reason: PracticeSessionRecord["endReason"], showSummary: boolean) => Promise<void>
@@ -482,6 +490,25 @@ export function StaffDistanceRun({
   const activePairStartIndex = questionIndex - scoreStartIndex;
   const currentFrom = sequence[questionIndex];
   const currentTo = sequence[questionIndex + 1];
+  const returnNoteIndex = trackedScoreNoteIndex ?? activePairStartIndex;
+  const handleTrackedScoreVisibilityChange = useCallback(
+    (visible: boolean): void => {
+      setTrackedScoreVisibility({ questionIndex, visible });
+    },
+    [questionIndex]
+  );
+  const getCurrentScoreNoteTarget = useCallback((): SVGElement | null => {
+    const note = scoreWrapRef.current?.querySelector<SVGElement>(
+      `[data-staff-page-note-index="${returnNoteIndex}"]`
+    );
+    const rowIndex = Math.floor(returnNoteIndex / scoreNotesPerRow);
+    const row = scoreWrapRef.current?.querySelector<SVGElement>(
+      `[data-staff-row-index="${rowIndex}"]`
+    );
+    return note ?? row ?? null;
+  }, [returnNoteIndex, scoreNotesPerRow]);
+  const isCurrentScoreNoteVisible =
+    trackedScoreVisibility?.questionIndex !== questionIndex || trackedScoreVisibility.visible;
   const answerOptions = Array.from({ length: details.maxDistance + 1 }, (_, index) => index).filter(
     (distance) => distance > 0 || details.includeUnison
   );
@@ -541,6 +568,32 @@ export function StaffDistanceRun({
     [details, inputMethod, microphone, onFinish, onRunningChange, session, trainingMode]
   );
   finishRef.current = finish;
+
+  const pauseAtQuestionLimit = useCallback((): void => {
+    if (questionLimitReachedRef.current) return;
+    questionLimitReachedRef.current = true;
+    setIsQuestionLimitReached(true);
+    if (advanceTimerRef.current !== undefined) window.clearTimeout(advanceTimerRef.current);
+    if (wrongFeedbackTimerRef.current !== undefined) {
+      window.clearTimeout(wrongFeedbackTimerRef.current);
+    }
+    advanceTimerRef.current = undefined;
+    wrongFeedbackTimerRef.current = undefined;
+    pendingAdvanceRef.current = null;
+    const now = performance.now();
+    if (activeStartedAtRef.current !== 0) {
+      activeElapsedRef.current += Math.max(0, now - activeStartedAtRef.current);
+      activeStartedAtRef.current = 0;
+    }
+    if (questionStartedAtRef.current !== 0) {
+      questionElapsedRef.current += Math.max(0, now - questionStartedAtRef.current);
+      questionStartedAtRef.current = 0;
+    }
+    isPausedRef.current = true;
+    setIsPaused(true);
+    if (trainingMode === "play" && inputMethod === "microphone") microphone.stop();
+    onRunningChange(false);
+  }, [inputMethod, microphone, onRunningChange, trainingMode]);
 
   const advanceQuestion = useCallback(
     (requestedNextIndex: number): void => {
@@ -770,6 +823,8 @@ export function StaffDistanceRun({
       pendingAdvanceRef.current = () => {
         if (mode === "fixed-count" && nextResults.length >= fixedCount) {
           void finishRef.current("completed-count", true);
+        } else if (nextResults.length >= MAX_PRACTICE_QUESTIONS) {
+          pauseAtQuestionLimit();
         } else {
           advanceQuestion(questionIndex + 1);
         }
@@ -785,6 +840,7 @@ export function StaffDistanceRun({
       fixedCount,
       inputMethod,
       mode,
+      pauseAtQuestionLimit,
       questionIndex,
       recordChaseTarget,
       schedulePendingAdvance,
@@ -850,6 +906,7 @@ export function StaffDistanceRun({
   );
 
   const togglePause = useCallback(async (): Promise<void> => {
+    if (questionLimitReachedRef.current) return;
     if (!isPausedRef.current) {
       const now = performance.now();
       activeElapsedRef.current += now - activeStartedAtRef.current;
@@ -1000,11 +1057,6 @@ export function StaffDistanceRun({
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
       if (event.repeat) return;
-      if (event.code === "Escape") {
-        event.preventDefault();
-        void finishRef.current("manual-stop", true);
-        return;
-      }
       if (
         event.code === "Space" &&
         !event.altKey &&
@@ -1033,8 +1085,8 @@ export function StaffDistanceRun({
   if (!currentFrom || !currentTo || scoreNotes.length < 2) {
     return (
       <section className="staff-distance-run-shell" role="alert">
-        <h1>无法生成这段间距</h1>
-        <p>返回设置页，扩大音域或缩小最大间距后重试。</p>
+        <h1>无法生成这段音距</h1>
+        <p>返回设置页，扩大音域或缩小最大音距后重试。</p>
         <button className="primary" onClick={() => void finish("manual-stop", false)} type="button">
           返回设置
         </button>
@@ -1065,10 +1117,10 @@ export function StaffDistanceRun({
         : "先弹奏谱面上的第一个音；这一步不计题。";
 
   return (
-    <section aria-label="间距推导练习" className="staff-distance-run-shell">
+    <section aria-label="音距速推练习" className="staff-distance-run-shell">
       <header className="staff-distance-run-header">
         <div>
-          <h1>{trainingMode === "look" ? "间距推导 · 看间距" : "间距推导 · 弹奏"}</h1>
+          <h1>{trainingMode === "look" ? "音距速推 · 看音距" : "音距速推 · 弹奏"}</h1>
           <p>{progressLabel}</p>
         </div>
         <div className="staff-distance-run-actions">
@@ -1099,6 +1151,13 @@ export function StaffDistanceRun({
                 NEW
               </span>
             </button>
+          ) : null}
+          {trainingMode === "play" && inputMethod === "midi" ? (
+            <MidiInputControl
+              ariaLabel="音距速推 MIDI 输入设备"
+              className="staff-distance-run-midi-control"
+              midi={midi}
+            />
           ) : null}
         </div>
       </header>
@@ -1134,7 +1193,8 @@ export function StaffDistanceRun({
           isFiniteScore={
             isContinuousScore && mode === "fixed-count" && resultsRef.current.length >= fixedCount
           }
-          trackedNoteIndex={trackedScoreNoteIndex}
+          trackedNoteIndex={returnNoteIndex}
+          onTrackedNoteVisibilityChange={handleTrackedScoreVisibilityChange}
           getAudioTime={isContinuousScore ? getPianoAudioTime : undefined}
           chaseCursor={isContinuousScore ? chaseCursor : null}
           minDisplayWidthPx={0}
@@ -1147,6 +1207,10 @@ export function StaffDistanceRun({
           }
         />
       </div>
+
+      {!isPaused && !isCurrentScoreNoteVisible ? (
+        <ReturnToCurrentNoteButton getTarget={getCurrentScoreNoteTarget} />
+      ) : null}
 
       <p aria-live="polite" className="staff-distance-question-copy">
         {feedback?.type === "correct"
@@ -1168,7 +1232,7 @@ export function StaffDistanceRun({
                 : "请先弹奏谱面上的第一个音。"}
       </p>
       {trainingMode === "look" ? (
-        <div aria-label="间距答案" className="staff-distance-answer-row" role="group">
+        <div aria-label="音距答案" className="staff-distance-answer-row" role="group">
           {answerRows.map((row, rowIndex) => (
             <div className="staff-distance-answer-line" key={rowIndex}>
               {row.map((distance) => (
@@ -1269,7 +1333,7 @@ export function StaffDistanceRun({
           {trainingMode === "look"
             ? `电脑键盘：${details.includeUnison ? "0" : "1"}–${details.maxDistance} 作答 · `
             : ""}
-          空格暂停/继续 · Esc 结束
+          空格暂停/继续
         </p>
       ) : null}
 
@@ -1309,6 +1373,11 @@ export function StaffDistanceRun({
             </button>
           ) : null}
         </div>
+      ) : null}
+      {isQuestionLimitReached ? (
+        <PracticeQuestionLimitDialog
+          onEnd={() => void finishRef.current("completed-count", false)}
+        />
       ) : null}
       {trainingMode === "play" ? (
         <PracticeChaseSettingsDialog

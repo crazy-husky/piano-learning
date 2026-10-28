@@ -9,7 +9,7 @@ import {
   RotateCcw,
   Settings2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { writeBackupNow } from "../../../data/backup";
 import { db } from "../../../data/db";
@@ -52,7 +52,7 @@ import {
 interface PracticeNavigationExitRequest {
   id: number;
   returnToSetup?: boolean;
-  targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal";
+  targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal" | "metronome";
 }
 
 interface StaffDistancePreferences extends StaffDistancePracticeSettings {
@@ -80,9 +80,11 @@ interface StaffDistancePracticeViewProps {
   onMicrophoneAnswerHandlerChange: (
     handler: ((answer: PracticeAnswerInput) => void) | null
   ) => void;
+  onInputModeChange: (mode: "midi" | "microphone") => void;
   onNavigationExit?: (targetView: PracticeNavigationExitRequest["targetView"]) => void;
   onPracticeFinished: () => void;
   onPracticeSingleNote: () => void;
+  onFullscreenAvailabilityChange: (active: boolean) => void;
   onRunStageChange: (active: boolean) => void;
   onRunningChange: (running: boolean) => void;
   onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
@@ -199,13 +201,13 @@ function describeValidation(
     return "7 步题至少需要两个连续音组；大谱表还必须在同一谱表内有一对相隔 7 步的音。";
   }
   if (validation.reason === "only-one-answer") {
-    return "当前只会出现数字 1。请开启同音 0，或把最大间距调到 2 步以上。";
+    return "当前只会出现数字 1。请开启同音 0，或把最大音距调到 2 步以上。";
   }
   const missingDistances = validation.missing?.join("、") ?? "所选";
   if (staffNotationMode === "grand" && validation.missing?.includes(7)) {
     return "当前选择的连续组不符合生成条件，请在高音区（中央 C 右边）选择连续多组音符，或者在低音区（中央 C 左边）选择连续多组音符。";
   }
-  return `当前音域在同一谱表内无法生成 ${missingDistances} 步的音对；跨谱表的音不组成一道题。请在当前谱表扩展音域，或缩小最大间距。`;
+  return `当前音域在同一谱表内无法生成 ${missingDistances} 步的音距音对；跨谱表的音不组成一道题。请在当前谱表扩展音域，或缩小最大音距。`;
 }
 
 function createDistanceSession(
@@ -281,9 +283,11 @@ export function StaffDistancePracticeView({
   onDistanceModeChange,
   onDataChanged,
   onMicrophoneAnswerHandlerChange,
+  onInputModeChange,
   onNavigationExit,
   onPracticeFinished,
   onPracticeSingleNote,
+  onFullscreenAvailabilityChange,
   onRunStageChange,
   onRunningChange,
   onSettingsSaved,
@@ -294,6 +298,18 @@ export function StaffDistancePracticeView({
     DEFAULT_PREFERENCES,
     { parse: normalizePreferences }
   );
+  const previousMidiConnectionRef = useRef(midi.isConnected);
+  const inputMethodSelectionRevisionRef = useRef(0);
+  const setInputMethod = useCallback(
+    (inputMethod: StaffDistanceInputMethod): void => {
+      inputMethodSelectionRevisionRef.current += 1;
+      setPreferences((current) => ({ ...current, inputMethod }));
+    },
+    [setPreferences]
+  );
+  useLayoutEffect(() => {
+    if (isActive) onInputModeChange(preferences.inputMethod);
+  }, [isActive, onInputModeChange, preferences.inputMethod]);
   const [isCustomCountSelected, setIsCustomCountSelected] = useState(
     () =>
       !PRACTICE_FIXED_COUNT_PRESETS.includes(
@@ -375,6 +391,45 @@ export function StaffDistancePracticeView({
   const isSessionActive = runSession !== null;
 
   useEffect(() => {
+    if (!isActive || isStarting) return;
+    const wasConnected = previousMidiConnectionRef.current;
+    previousMidiConnectionRef.current = midi.isConnected;
+    if (
+      wasConnected ||
+      !midi.isConnected ||
+      isSessionActive ||
+      summarySession !== null ||
+      trainingMode !== "play" ||
+      preferences.inputMethod !== "microphone"
+    ) {
+      return;
+    }
+
+    setInputMethod("midi");
+    const autoSwitchRevision = inputMethodSelectionRevisionRef.current;
+    toast.message("已切换到你上次选择的 MIDI 设备", {
+      action: {
+        label: "撤销",
+        onClick: () => {
+          if (inputMethodSelectionRevisionRef.current === autoSwitchRevision) {
+            setInputMethod("microphone");
+          }
+        },
+      },
+      duration: 5000,
+    });
+  }, [
+    isActive,
+    isSessionActive,
+    isStarting,
+    midi.isConnected,
+    preferences.inputMethod,
+    setInputMethod,
+    summarySession,
+    trainingMode,
+  ]);
+
+  useEffect(() => {
     if (distanceMode && preferences.trainingMode !== distanceMode) {
       setPreferences((current) => ({ ...current, trainingMode: distanceMode }));
     } else if (isActive && !distanceMode) {
@@ -386,6 +441,11 @@ export function StaffDistancePracticeView({
     onRunStageChange(isSessionActive || summarySession !== null);
     return () => onRunStageChange(false);
   }, [isSessionActive, onRunStageChange, summarySession]);
+
+  useEffect(() => {
+    onFullscreenAvailabilityChange(isSessionActive);
+    return () => onFullscreenAvailabilityChange(false);
+  }, [isSessionActive, onFullscreenAvailabilityChange]);
 
   useEffect(() => {
     if (
@@ -513,7 +573,7 @@ export function StaffDistancePracticeView({
       }
     } catch (error) {
       toast.error(
-        `保存间距练习记录失败：${error instanceof Error ? error.message : String(error)}`
+        `保存音距速推记录失败：${error instanceof Error ? error.message : String(error)}`
       );
     }
     setRunSession(null);
@@ -587,11 +647,11 @@ export function StaffDistancePracticeView({
               ✓
             </span>
             <div>
-              <h1>{details.trainingMode === "play" ? "弹奏练习完成" : "间距推导完成"}</h1>
+              <h1>音距速推完成</h1>
               <p>
                 {details.trainingMode === "play"
                   ? "你根据当前音弹奏了谱面上的下一个音。"
-                  : "这次练习帮助你更快看出谱位移动距离。"}
+                  : "这次练习帮助你更快看出两个音之间的音距。"}
               </p>
             </div>
           </header>
@@ -613,7 +673,7 @@ export function StaffDistancePracticeView({
             <table className="staff-distance-summary-table">
               <thead>
                 <tr>
-                  <th>距离</th>
+                  <th>音距</th>
                   <th>题数</th>
                   <th>{details.trainingMode === "play" ? "首次弹对" : "首次答对"}</th>
                   <th>反应时间中位数</th>
@@ -679,15 +739,15 @@ export function StaffDistancePracticeView({
     <div className="practice-free-page practice-setup-framed-page staff-distance-page">
       <header className="practice-free-page-header">
         <div>
-          <h1 id="staff-distance-title">间距推导</h1>
+          <h1 id="staff-distance-title">音距速推</h1>
           <p className="practice-panel-description staff-distance-description">
-            看清当前音与下一个音的距离，练习快速判断并找到下一个琴键。
+            看清当前音与下一个音的音距，练习快速判断并找到下一个琴键。
           </p>
         </div>
         {trainingMode === "play" && preferences.inputMethod === "midi" ? (
           <div className="practice-setup-heading-meta">
             <div className="practice-midi-heading-status staff-distance-midi-status">
-              <MidiInputControl ariaLabel="间距练习 MIDI 输入设备" midi={midi} />
+              <MidiInputControl ariaLabel="音距速推 MIDI 输入设备" midi={midi} />
             </div>
           </div>
         ) : null}
@@ -725,7 +785,7 @@ export function StaffDistancePracticeView({
                 }}
                 type="button"
               >
-                看间距
+                看音距
               </button>
               <button
                 aria-pressed={trainingMode === "play"}
@@ -753,7 +813,7 @@ export function StaffDistancePracticeView({
                     className={preferences.inputMethod === "microphone" ? "active" : ""}
                     onClick={() => {
                       setStartError(null);
-                      setPreferences((current) => ({ ...current, inputMethod: "microphone" }));
+                      setInputMethod("microphone");
                     }}
                     type="button"
                   >
@@ -765,7 +825,7 @@ export function StaffDistancePracticeView({
                     disabled={!midi.isConnected}
                     onClick={() => {
                       setStartError(null);
-                      setPreferences((current) => ({ ...current, inputMethod: "midi" }));
+                      setInputMethod("midi");
                     }}
                     type="button"
                     title={!midi.isConnected ? "连接 MIDI 后可用" : undefined}
@@ -804,21 +864,22 @@ export function StaffDistancePracticeView({
 
         <div className="practice-free-field staff-distance-setting-block staff-distance-interval-block">
           <div className="staff-distance-setting-heading">
-            <span className="control-label">最大间距</span>
+            <span className="control-label">最大音距</span>
             <div aria-label="步数说明" className="staff-distance-rule-summary">
-              <span>C→E = 2 步 · 间距就像手指要移动的格数 · 同音 = 0</span>
+              <span>C→E = 2 步 · 音距就像手指要移动的格数 · 同音 = 0</span>
               <details className="staff-distance-rule-help">
                 <summary aria-label="查看步数规则">
                   <CircleHelp aria-hidden="true" size={16} />
                 </summary>
                 <span role="tooltip">
-                  每跨一个相邻线位或间位算 1 步；上行和下行只比较距离，不区分方向；同音重复算 0 步。
+                  每跨一个相邻线位或间位算 1 步；方向只决定上行或下行，音距步数相同；同音重复算 0
+                  步。
                 </span>
               </details>
             </div>
           </div>
           <div className="staff-distance-setting-content">
-            <div aria-label="最大间距" className="staff-distance-range-options" role="group">
+            <div aria-label="最大音距" className="staff-distance-range-options" role="group">
               {Array.from({ length: 7 }, (_, index) => index + 1).map((distance) => (
                 <button
                   aria-pressed={preferences.maxDistance === distance}
@@ -1026,7 +1087,7 @@ export function StaffDistancePracticeView({
         </div>
       </details>
 
-      <footer aria-label="开始间距练习" className="practice-free-action-dock">
+      <footer aria-label="开始音距速推练习" className="practice-free-action-dock">
         <div aria-label="当前配置摘要" className="practice-free-config-summary">
           <span className="practice-free-summary-label">当前配置</span>
           <span className="practice-free-summary-chip">{staffLabel}</span>
@@ -1084,7 +1145,7 @@ export function StaffDistancePracticeView({
                 {isStarting ? (
                   <LoadingActivityText kind="dots">正在准备</LoadingActivityText>
                 ) : trainingMode === "look" ? (
-                  "开始看间距"
+                  "开始音距速推"
                 ) : (
                   "开始弹奏"
                 )}

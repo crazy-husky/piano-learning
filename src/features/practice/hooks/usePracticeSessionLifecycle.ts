@@ -1,4 +1,10 @@
-import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import {
+  useCallback,
+  useRef,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import { db, deletePracticeSessionWithReviews, saveAnswerEvents } from "../../../data/db";
 import {
   answerDeviceInfo,
@@ -20,6 +26,7 @@ import type {
   InterruptReason,
   PracticeSessionRecord,
   ReviewRecord,
+  Staff,
   TargetNote,
   WrongAnswer,
 } from "../../../domain/types";
@@ -27,10 +34,15 @@ import { getTargetMidiNoteNumber } from "../../../domain/answerInput";
 import { estimateStaffGameSystemDelayMs } from "../../staff-game/logic/staffGameProficiency";
 import { practiceMicrophoneDebugParametersForSensitivityLevel } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
 import type { GeneratedStaffPageRhythm } from "../logic/staffPageNotation";
+import { getDuetTargetMidis, type DuetTargetPair } from "../logic/duetPractice";
 import type { PracticePromptTimerState, PracticeTimers } from "./usePracticeTimers";
 
 export interface PracticePromptRuntime extends PracticePromptTimerState {
   note: TargetNote;
+  duetTargets?: DuetTargetPair;
+  completedDuetStaves: Staff[];
+  completedDuetMidis: number[];
+  completedDuetTargetNoteIds: TargetNote["id"][];
   startedAt: string;
   answerAttempts: AnswerAttempt[];
   wrongAnswers: WrongAnswer[];
@@ -42,6 +54,9 @@ export interface PracticePromptRuntime extends PracticePromptTimerState {
 
 export interface PracticeStaffPageRuntime {
   notes: TargetNote[];
+  noteGroups?: TargetNote[][];
+  measureRowStartIndices?: number[];
+  completedStaffNoteIndices?: Partial<Record<Staff, number[]>>;
   index: number;
   completedCount: number;
   rhythm?: GeneratedStaffPageRhythm;
@@ -50,6 +65,10 @@ export interface PracticeStaffPageRuntime {
 export interface CompletePracticeSessionOptions {
   showSummary?: boolean;
   updateUi?: boolean;
+}
+
+export interface FinishPracticeReviewOptions {
+  wasMissed?: boolean;
 }
 
 interface PracticeSessionLifecycleRuntime {
@@ -96,10 +115,12 @@ export function usePracticeSessionLifecycle({
   services,
   ui,
 }: UsePracticeSessionLifecycleOptions) {
+  const pendingReviewPersistenceRef = useRef<Promise<void>[]>([]);
   const finishCurrentReview = useCallback(
     async (
       answeredCorrectly: boolean,
-      interruptReason?: InterruptReason
+      interruptReason?: InterruptReason,
+      options: FinishPracticeReviewOptions = {}
     ): Promise<ReviewRecord | null> => {
       const prompt = runtime.promptRef.current;
       const activeMs = timers.getPromptActiveMs();
@@ -107,7 +128,7 @@ export function usePracticeSessionLifecycle({
       if (!prompt || !session) {
         return null;
       }
-      if (!answeredCorrectly) {
+      if (!answeredCorrectly && !options.wasMissed) {
         prompt.interrupted = true;
         prompt.interruptReason = interruptReason ?? prompt.interruptReason ?? "manual-stop";
       }
@@ -130,6 +151,15 @@ export function usePracticeSessionLifecycle({
         interruptReason: prompt.interruptReason,
         activeMs,
         wrongAnswers: prompt.wrongAnswers,
+        ...(options.wasMissed ? { wasMissed: true } : {}),
+        ...(prompt.duetTargets
+          ? {
+              duetTargetNoteIds: [...prompt.duetTargets.high, ...prompt.duetTargets.low].map(
+                (note) => note.id
+              ),
+              duetCompletedTargetNoteIds: [...prompt.completedDuetTargetNoteIds],
+            }
+          : {}),
         replayCount: prompt.replayCount,
         focusLosses: prompt.focusLosses,
         ignored,
@@ -171,6 +201,39 @@ export function usePracticeSessionLifecycle({
           deviceInfo: answerDeviceInfo(),
           ...(inputMode === "microphone" ? { ...microphoneContext, microphoneAlgorithm } : {}),
           targetMidi: getTargetMidiNoteNumber(prompt.note),
+          ...(prompt.duetTargets
+            ? {
+                duetDifficulty:
+                  "startSnapshot" in session
+                    ? session.startSnapshot.practiceConfig.duetDifficulty
+                    : undefined,
+                duetLevel:
+                  "startSnapshot" in session
+                    ? session.startSnapshot.practiceConfig.duetLevel
+                    : undefined,
+                targetMidiHigh:
+                  prompt.duetTargets.high[0] === undefined
+                    ? undefined
+                    : getTargetMidiNoteNumber(prompt.duetTargets.high[0]),
+                targetMidiLow:
+                  prompt.duetTargets.low[0] === undefined
+                    ? undefined
+                    : getTargetMidiNoteNumber(prompt.duetTargets.low[0]),
+                duetTargetNoteIds: [...prompt.duetTargets.high, ...prompt.duetTargets.low].map(
+                  (note) => note.id
+                ),
+                duetCompletedTargetNoteIds: [...prompt.completedDuetTargetNoteIds],
+                duetTargetMidis: getDuetTargetMidis(prompt.duetTargets),
+                ...(prompt.duetTargets.high[0]
+                  ? {
+                      targetNoteId: prompt.duetTargets.high[0].id,
+                      targetGroupId: prompt.duetTargets.high[0].groupId,
+                      targetNoteName: prompt.duetTargets.high[0].noteName,
+                      targetOctave: prompt.duetTargets.high[0].octave,
+                    }
+                  : {}),
+              }
+            : {}),
           targetNoteId: prompt.note.id,
           targetGroupId: prompt.note.groupId,
           targetNoteName: prompt.note.noteName,
@@ -178,7 +241,13 @@ export function usePracticeSessionLifecycle({
           recognizedMidi: finalAttempt?.midi,
           confidence: finalAttempt?.confidence,
           attempts,
-          isCorrectFirstTry: attempts[0]?.isCorrect ?? null,
+          isCorrectFirstTry: prompt.duetTargets
+            ? review.answeredCorrectly &&
+              prompt.completedDuetMidis.length ===
+                prompt.duetTargets.high.length + prompt.duetTargets.low.length &&
+              attempts.length >= prompt.duetTargets.high.length + prompt.duetTargets.low.length &&
+              attempts.every((attempt) => attempt.isCorrect)
+            : (attempts[0]?.isCorrect ?? null),
           isCorrectFinal: review.answeredCorrectly ? true : attempts.length > 0 ? false : null,
           rawResponseTimeMs: review.answeredCorrectly ? activeMs : null,
           estimatedSystemDelayMs,
@@ -188,16 +257,21 @@ export function usePracticeSessionLifecycle({
           activeMs,
           wrongAttempts: review.wrongAnswers.length,
           isExtraNote: false,
-          isMissed: false,
+          isMissed: review.wasMissed === true,
           wasInterrupted: review.interrupted,
         };
-        await saveAnswerEvents([event]);
-        await db.transaction("rw", db.settings, async () => {
-          const settings = await db.settings.get("default");
-          if (settings && !settings.firstReviewAt) {
-            await db.settings.put({ ...settings, firstReviewAt: review.startedAt });
-          }
-        });
+        const persistence = saveAnswerEvents([event]).then(() =>
+          db.transaction("rw", db.settings, async () => {
+            const settings = await db.settings.get("default");
+            if (settings && !settings.firstReviewAt) {
+              await db.settings.put({ ...settings, firstReviewAt: review.startedAt });
+            }
+          })
+        );
+        pendingReviewPersistenceRef.current.push(persistence);
+        // Avoid an unhandled rejection while the metronome-driven UI continues;
+        // completeSession still awaits the original promise before saving.
+        void persistence.catch(() => undefined);
       }
       runtime.adaptiveSchedulerRef.current?.appendReview(review);
       runtime.sessionReviewsRef.current = [...runtime.sessionReviewsRef.current, review];
@@ -236,6 +310,9 @@ export function usePracticeSessionLifecycle({
         completedCount: finalReviews.filter(isCompletedReview).length,
         interruptedCount: finalReviews.filter((review) => review.interrupted).length,
       };
+      const pendingReviewPersistence = pendingReviewPersistenceRef.current;
+      pendingReviewPersistenceRef.current = [];
+      await Promise.all(pendingReviewPersistence);
       const shouldKeepSession = shouldKeepPracticeSession(finalSession, finalReviews);
       if (shouldKeepSession) {
         await db.practiceSessions.put(finalSession);

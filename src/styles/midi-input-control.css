@@ -21,6 +21,7 @@
 .midi-input-control-select {
   width: 100%;
   min-width: 120px;
+  max-width: min(220px, 45vw);
   padding: 4px 26px 4px 10px;
   text-overflow: ellipsis;
 }

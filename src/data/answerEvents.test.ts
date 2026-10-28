@@ -82,4 +82,37 @@ describe("answerEventToStaffGameProficiencySample", () => {
       wasInterrupted: true,
     });
   });
+
+  it("reconstructs the two target notes and timeout status for duet reviews", () => {
+    const duetMissedEvent: AnswerEvent = {
+      ...event,
+      isCorrectFirstTry: false,
+      isCorrectFinal: false,
+      isMissed: true,
+      targetMidi: 60,
+      targetMidiHigh: 60,
+      targetMidiLow: 48,
+      duetDifficulty: "sync",
+      duetTargetNoteIds: ["C4", "C3"],
+      targetNoteId: "C4",
+      targetGroupId: "C4-B4",
+      targetNoteName: "C",
+      targetOctave: 4,
+    };
+
+    expect(answerEventToReview(duetMissedEvent)).toMatchObject({
+      targetNoteId: "C4",
+      duetTargetNoteIds: ["C4", "C3"],
+      wasMissed: true,
+      answeredCorrectly: false,
+      interrupted: false,
+    });
+
+    expect(
+      answerEventToReview({
+        ...duetMissedEvent,
+        duetCompletedTargetNoteIds: ["C4"],
+      })?.duetCompletedTargetNoteIds
+    ).toEqual(["C4"]);
+  });
 });

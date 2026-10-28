@@ -252,3 +252,21 @@ export const MOBILE_PRACTICE_PAGE_STAFF_LAYOUT = {
     rowGapPx: 4,
   },
 } as const satisfies PracticePageStaffLayoutProfile;
+
+// Duet rows use fixed-width measure columns; a slightly narrower desktop score
+// keeps three measures readable without stretching them across ultrawide viewports.
+export const DUET_PRACTICE_PAGE_STAFF_LAYOUT = {
+  ...PRACTICE_PAGE_STAFF_LAYOUT,
+  width: {
+    ...PRACTICE_PAGE_STAFF_LAYOUT.width,
+    maxPx: 840,
+  },
+} as const satisfies PracticePageStaffLayoutProfile;
+
+export const MOBILE_DUET_PRACTICE_PAGE_STAFF_LAYOUT = {
+  ...MOBILE_PRACTICE_PAGE_STAFF_LAYOUT,
+  width: {
+    minPx: 360,
+    maxPx: 720,
+  },
+} as const satisfies PracticePageStaffLayoutProfile;

@@ -1962,6 +1962,28 @@
   font-size: 9px;
 }
 
+.practice-free-hand-mode .practice-free-field {
+  display: grid;
+  gap: 12px;
+}
+
+.practice-free-duet-difficulty {
+  display: grid;
+  gap: 8px;
+  max-width: 320px;
+}
+
+.practice-free-duet-difficulty select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  color: var(--text);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: inherit;
+}
+
 .practice-free-answer-options {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2495,5 +2517,42 @@
     width: auto;
     align-items: center;
     flex-direction: row;
+  }
+}
+
+.practice-free-answer-options.is-duet {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.practice-free-duet-assist {
+  display: grid;
+  gap: 6px;
+}
+
+.practice-free-duet-assist-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 12px;
+}
+
+.practice-free-duet-assist-options .practice-checkbox-option {
+  min-height: 34px;
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .practice-free-duet-assist-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 440px) {
+  .practice-free-answer-options.is-duet > button {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .practice-free-duet-assist-options {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

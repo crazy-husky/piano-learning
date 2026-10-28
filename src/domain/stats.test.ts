@@ -507,4 +507,77 @@ describe("stats", () => {
     expect(c4.reviewCount).toBe(1);
     expect(outOfRange).toBeUndefined();
   });
+
+  it("attributes a missed duet prompt to both target notes", () => {
+    const missedDuetReview = makeReview({
+      targetNoteId: "C4",
+      answeredAt: undefined,
+      answeredCorrectly: false,
+      wasMissed: true,
+      duetTargetNoteIds: ["C4", "C3"],
+    });
+    const stats = buildNoteStats([missedDuetReview]);
+
+    expect(stats.find((stat) => stat.targetNoteId === "C4")).toMatchObject({
+      reviewCount: 1,
+      errorCount: 1,
+      errorRate: 1,
+    });
+    expect(stats.find((stat) => stat.targetNoteId === "C3")).toMatchObject({
+      reviewCount: 1,
+      errorCount: 1,
+      errorRate: 1,
+    });
+  });
+
+  it("attributes a duet timeout only to the target that was not completed", () => {
+    const partialDuetReview = makeReview({
+      targetNoteId: "C4",
+      answeredAt: undefined,
+      answeredCorrectly: false,
+      wasMissed: true,
+      duetTargetNoteIds: ["C4", "C3"],
+      duetCompletedTargetNoteIds: ["C4"],
+    });
+    const stats = buildNoteStats([partialDuetReview]);
+
+    expect(stats.find((stat) => stat.targetNoteId === "C4")).toMatchObject({
+      reviewCount: 1,
+      errorCount: 0,
+      errorRate: 0,
+    });
+    expect(stats.find((stat) => stat.targetNoteId === "C3")).toMatchObject({
+      reviewCount: 1,
+      errorCount: 1,
+      errorRate: 1,
+    });
+  });
+
+  it("includes every duet target in recognition trend coverage", () => {
+    const sessions = [
+      makeSession({
+        id: "duet-trend",
+        startedAt: "2026-07-04T10:00:00.000+08:00",
+        endedAt: "2026-07-04T13:00:00.000+08:00",
+      }),
+    ];
+    const reviews = Array.from({ length: 20 }, (_, index) =>
+      makeReview({
+        id: `duet-trend-${index}`,
+        sessionId: "duet-trend",
+        targetNoteId: "C4",
+        duetTargetNoteIds: ["C4", "C3"],
+        duetCompletedTargetNoteIds: ["C4"],
+        answeredAt: undefined,
+        answeredCorrectly: false,
+        wasMissed: true,
+      })
+    );
+
+    const [point] = buildRecognitionTrend(reviews, sessions, ["C4", "C3"], "practice-session");
+
+    expect(point.coveredNoteIds).toEqual(["C3", "C4"]);
+    expect(point.coveredNoteCount).toBe(2);
+    expect(point.errorRate).toBe(0.5);
+  });
 });

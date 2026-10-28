@@ -44,10 +44,15 @@ import { BackupConflictResolver } from "../shared/components/BackupConflictResol
 import { AppStartupSkeleton, RouteLoadingSkeleton } from "../shared/components/LoadingSkeletons";
 import { HomeView } from "../features/home/components/HomeView";
 import { StaffGameRoute } from "../features/staff-game/components/StaffGameRoute";
+import { PracticeFullscreenFrame } from "../features/practice/components/PracticeFullscreenFrame";
 import type {
   PracticeNavigationExitRequest,
   PracticeNavigationExitTarget,
+  PracticeInputMode,
 } from "../features/practice/components/PracticeView";
+import { MetronomeDialog } from "../features/metronome/components/MetronomeDialog";
+import { MetronomeFloating } from "../features/metronome/components/MetronomeFloating";
+import { useMetronomeController } from "../features/metronome/useMetronomeController";
 import { useBlurButtonAfterPointerClick } from "./hooks/useBlurButtonAfterPointerClick";
 import { useLocalStorageState } from "../shared/hooks/useLocalStorageState";
 import {
@@ -117,7 +122,7 @@ const VocalPitchView = lazy(() =>
   }))
 );
 
-type View = PracticeNavigationExitTarget;
+type View = PracticeNavigationExitTarget | "metronome";
 type SettingsSaveOptions = { feedback?: boolean };
 
 const INITIAL_PRACTICE_MICROPHONE_PREFERENCES = (() => {
@@ -147,7 +152,7 @@ const LOCAL_PREFERENCE_FEEDBACK_KEYS = new Set([
   "anki-note.vocalPitch.sidebarOpen",
   "anki-note.vocalPitch.parametersOpen",
   "anki-note.vocalPitch.materialsOpen",
-  "anki-note.midiInputId",
+  "anki-note.midiInputId.v2",
 ]);
 
 function HistoryLoadingState({
@@ -279,6 +284,15 @@ export function App({
   }, []);
 
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
+  const [isHomeMetronomeOpen, setIsHomeMetronomeOpen] = useState(() => route.page === "metronome");
+  const metronomeController = useMetronomeController();
+  const stopMetronome = metronomeController.stop;
+  const practiceMetronomeSyncToggleRef = useRef<(() => void) | null>(null);
+  const [practiceMetronomeHiddenForVisit, setPracticeMetronomeHiddenForVisit] = useState(false);
+  const [practiceInputModeState, setPracticeInputModeState] = useState<{
+    mode: PracticeInputMode;
+    routeKey: string;
+  } | null>(null);
   const [expandedNavigationMenu, setExpandedNavigationMenu] = useState<string | null>(() =>
     isStaffGameRoutePath(route.path) ? "game" : null
   );
@@ -351,6 +365,7 @@ export function App({
   const settingsMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const configurationRestoreInProgressRef = useRef(false);
   const [practiceRunning, setPracticeRunning] = useState(false);
+  const [practiceFullscreenAvailable, setPracticeFullscreenAvailable] = useState(false);
   const [practiceVirtualKeyboardActive, setPracticeVirtualKeyboardActive] = useState(false);
   const practiceRunningRef = useRef(false);
   practiceRunningRef.current = practiceRunning;
@@ -372,7 +387,31 @@ export function App({
     moved: boolean;
   } | null>(null);
   const ignoreMobileBackClickRef = useRef(false);
-  const view: View = route.page === "game" ? "practice" : route.page;
+  const view: View =
+    route.page === "game" ? "practice" : route.page === "metronome" ? "home" : route.page;
+
+  useEffect(() => {
+    if (view !== "practice" || isStaffGameRoutePath(route.path)) {
+      setPracticeFullscreenAvailable(false);
+    }
+  }, [route.path, view]);
+
+  const practiceInputRouteKey = `${route.path}:${route.practiceTab ?? "free"}`;
+  const handlePracticeInputModeChange = useCallback(
+    (mode: PracticeInputMode): void => {
+      setPracticeInputModeState({ mode, routeKey: practiceInputRouteKey });
+    },
+    [practiceInputRouteKey]
+  );
+  const registerPracticeMetronomeSyncToggle = useCallback(
+    (toggle: (() => void) | undefined): void => {
+      practiceMetronomeSyncToggleRef.current = toggle ?? null;
+    },
+    []
+  );
+  const toggleSynchronizedPractice = useCallback((): void => {
+    practiceMetronomeSyncToggleRef.current?.();
+  }, []);
   const isStaffGamePage = route.page === "game";
   const [practiceExitRequest, setPracticeExitRequest] =
     useState<PracticeNavigationExitRequest | null>(null);
@@ -381,6 +420,38 @@ export function App({
   );
   const practiceExitRequestIdRef = useRef(0);
   const vocalExitRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    if (route.path !== "/practice" && route.path !== "/metronome") {
+      stopMetronome();
+    }
+  }, [route.path, stopMetronome]);
+
+  useEffect(() => {
+    if (route.path !== "/practice") setPracticeInputModeState(null);
+  }, [route.path]);
+
+  useEffect(() => {
+    setIsHomeMetronomeOpen(route.page === "metronome");
+  }, [route.page]);
+
+  useEffect(() => {
+    if (route.path !== "/practice") setPracticeMetronomeHiddenForVisit(false);
+  }, [route.path]);
+
+  useEffect(() => {
+    if (
+      route.path === "/practice" &&
+      practiceInputModeState?.routeKey === practiceInputRouteKey &&
+      practiceInputModeState.mode === "microphone"
+    ) {
+      stopMetronome();
+    }
+  }, [practiceInputModeState, practiceInputRouteKey, route.path, stopMetronome]);
+
+  useEffect(() => {
+    if (route.path === "/practice") stopMetronome();
+  }, [route.path, route.practiceTab, stopMetronome]);
 
   useEffect(() => {
     const clampMobileBackPosition = (): void => {
@@ -653,6 +724,14 @@ export function App({
     },
     []
   );
+
+  const closeHomeMetronome = useCallback((): void => {
+    stopMetronome();
+    setIsHomeMetronomeOpen(false);
+    if (routeRef.current.path === "/metronome") {
+      navigateToRoute("/", { replace: true });
+    }
+  }, [navigateToRoute, stopMetronome]);
 
   useEffect(() => {
     const normalizedRoute = appRouteFromHash(window.location.hash);
@@ -934,11 +1013,13 @@ export function App({
   const selectView = useCallback(
     (nextView: View): void => {
       const nextPath = appRoutePathForPage(nextView);
-      if (
-        (practiceRunning || practiceStageActive) &&
-        view === "practice" &&
-        nextPath !== route.path
-      ) {
+      const nextRoute = appRouteFromHash(`#${nextPath}`);
+      const isSameRoute =
+        nextRoute.path === route.path &&
+        nextRoute.songId === route.songId &&
+        nextRoute.practiceTab === route.practiceTab &&
+        nextRoute.practiceDistanceMode === route.practiceDistanceMode;
+      if ((practiceRunning || practiceStageActive) && view === "practice" && !isSameRoute) {
         pendingRoutePathRef.current = nextPath;
         if (!practiceExitRequest) {
           practiceExitRequestIdRef.current += 1;
@@ -957,7 +1038,17 @@ export function App({
       }
       navigateToRoute(nextPath);
     },
-    [navigateToRoute, practiceExitRequest, practiceRunning, practiceStageActive, route.path, view]
+    [
+      navigateToRoute,
+      practiceExitRequest,
+      practiceRunning,
+      practiceStageActive,
+      route.path,
+      route.practiceTab,
+      route.practiceDistanceMode,
+      route.songId,
+      view,
+    ]
   );
 
   const handleNavigationExit = useCallback(
@@ -1355,39 +1446,57 @@ export function App({
               <HomeView
                 microphoneAlgorithm={practiceMicrophonePreferences.algorithm}
                 onNavigate={navigateToRoute}
+                onOpenMetronome={() => setIsHomeMetronomeOpen(true)}
               />
             ) : null}
             {view === "practice" && !isStaffGameRoutePath(route.path) ? (
               data.practiceHistoryLoaded ? (
-                <PracticeView
-                  midi={midi}
-                  practiceMicrophonePreferences={practiceMicrophonePreferences}
-                  practicePagePreferences={practicePagePreferences}
-                  settings={data.settings}
-                  sessions={data.practiceHistoryLoaded ? data.sessions : []}
-                  reviews={data.practiceHistoryLoaded ? data.reviews : []}
-                  navigationExitRequest={practiceExitRequest}
-                  practiceTab={route.practiceTab ?? "free"}
-                  practiceDistanceMode={route.practiceDistanceMode}
-                  onPracticeDistanceModeChange={(mode, replace = false) =>
-                    navigateToRoute("/practice", {
-                      query: { tab: "distance", distanceMode: mode },
-                      replace,
-                    })
-                  }
-                  onPracticeTabChange={(tab) => navigateToRoute("/practice", { query: { tab } })}
-                  onDataChanged={refreshPracticeHistory}
-                  onNavigationExit={handleNavigationExit}
-                  onOpenStats={() => selectView("stats")}
-                  onBeforePracticeStart={preflightBeforePracticeStart}
-                  onPracticeFinished={showBackupReminderAfterActivity}
-                  onRunningChange={setPracticeRunning}
-                  onPracticeStageChange={setPracticeStageActive}
-                  onVirtualKeyboardActiveChange={setPracticeVirtualKeyboardActive}
-                  onSettingsSaved={(settings, options) =>
-                    saveSettings(settings, { ...options, feedback: false })
-                  }
-                />
+                <PracticeFullscreenFrame enabled={practiceFullscreenAvailable}>
+                  <PracticeView
+                    midi={midi}
+                    metronomeController={metronomeController}
+                    practiceMicrophonePreferences={practiceMicrophonePreferences}
+                    practicePagePreferences={practicePagePreferences}
+                    settings={data.settings}
+                    sessions={data.practiceHistoryLoaded ? data.sessions : []}
+                    reviews={data.practiceHistoryLoaded ? data.reviews : []}
+                    navigationExitRequest={practiceExitRequest}
+                    practiceTab={route.practiceTab ?? "free"}
+                    practiceDistanceMode={route.practiceDistanceMode}
+                    onPracticeDistanceModeChange={(mode, replace = false) =>
+                      navigateToRoute("/practice", {
+                        query: { tab: "distance", distanceMode: mode },
+                        replace,
+                      })
+                    }
+                    onPracticeTabChange={(tab) => navigateToRoute("/practice", { query: { tab } })}
+                    onDataChanged={refreshPracticeHistory}
+                    onNavigationExit={handleNavigationExit}
+                    onOpenStats={() => selectView("stats")}
+                    onBeforePracticeStart={preflightBeforePracticeStart}
+                    onPracticeFinished={showBackupReminderAfterActivity}
+                    onRunningChange={setPracticeRunning}
+                    onPracticeStageChange={setPracticeStageActive}
+                    onFullscreenAvailabilityChange={setPracticeFullscreenAvailable}
+                    onVirtualKeyboardActiveChange={setPracticeVirtualKeyboardActive}
+                    onInputModeChange={handlePracticeInputModeChange}
+                    onMetronomeSyncToggleChange={registerPracticeMetronomeSyncToggle}
+                    onSettingsSaved={(settings, options) =>
+                      saveSettings(settings, { ...options, feedback: false })
+                    }
+                  />
+                  {route.path === "/practice" &&
+                  practiceInputModeState?.routeKey === practiceInputRouteKey &&
+                  practiceInputModeState.mode !== "microphone" ? (
+                    <MetronomeFloating
+                      controller={metronomeController}
+                      hiddenForVisit={practiceMetronomeHiddenForVisit}
+                      activePractice={practiceRunning}
+                      onHideForVisit={() => setPracticeMetronomeHiddenForVisit(true)}
+                      onSyncPauseToggle={toggleSynchronizedPractice}
+                    />
+                  ) : null}
+                </PracticeFullscreenFrame>
               ) : (
                 <HistoryLoadingState
                   error={historyLoadErrors.practice}
@@ -1482,6 +1591,9 @@ export function App({
               />
             ) : null}
           </Suspense>
+          {isHomeMetronomeOpen && view === "home" ? (
+            <MetronomeDialog controller={metronomeController} onClose={closeHomeMetronome} />
+          ) : null}
         </main>
         {showMobileBackButton ? (
           <button

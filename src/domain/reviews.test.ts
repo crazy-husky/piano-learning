@@ -40,4 +40,17 @@ describe("review predicates", () => {
     expect(isStatisticalReview(makeReview({ targetNoteId: "C4" }))).toBe(true);
     expect(isStatisticalReview(makeReview({ targetNoteId: "C4", ignored: true }))).toBe(false);
   });
+
+  it("counts a non-interrupted duet timeout as statistical but not completed", () => {
+    const missed = makeReview({
+      targetNoteId: "C4",
+      answeredAt: undefined,
+      answeredCorrectly: false,
+      wasMissed: true,
+    });
+
+    expect(isCompletedReview(missed)).toBe(false);
+    expect(isStatisticalReview(missed)).toBe(true);
+    expect(isStatisticalReview({ ...missed, interrupted: true })).toBe(false);
+  });
 });

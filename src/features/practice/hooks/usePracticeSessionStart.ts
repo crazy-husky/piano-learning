@@ -8,6 +8,7 @@ import {
   buildPracticeSessionRecordV5,
   buildPracticeSessionStartSnapshot,
 } from "../../../domain/practiceSessionStartSnapshot";
+import { DUET_PRACTICE_CURRICULUM_VERSION } from "../logic/duetPractice";
 import {
   createAdaptiveNoteScheduler,
   selectNextNote,
@@ -17,6 +18,7 @@ import { filterLongTermReviews } from "../../../domain/stats";
 import type {
   AppSettings,
   AnswerPitchMode,
+  DuetPracticeLevel,
   NoteName,
   PracticeQueueStrategy,
   PracticeSessionRecord,
@@ -45,6 +47,12 @@ interface PracticeStaffPageStartInput {
 
 interface PracticeSessionStartValues {
   answerPitchMode: AnswerPitchMode;
+  isDuetPractice: boolean;
+  metronomeSyncEnabled: boolean;
+  midiAutoPlayTarget: boolean;
+  midiPlayAnswerNote: boolean;
+  duetLevel?: DuetPracticeLevel;
+  duetAllowDottedRhythms: boolean;
   midi: Pick<MidiInputController, "isConnected">;
   prefersReducedMotion: boolean;
   queueNotes: TargetNote[];
@@ -85,6 +93,8 @@ interface PracticeSessionStartServices {
     "start" | "stop" | "resetCapture"
   >;
   runSessionStart: (action: () => Promise<void>) => Promise<void>;
+  startSynchronizedMetronome: () => Promise<boolean>;
+  stopSynchronizedMetronome: () => void;
 }
 
 interface PracticeSessionStartUi {
@@ -118,6 +128,12 @@ export function usePracticeSessionStart({
 }: UsePracticeSessionStartOptions) {
   const {
     answerPitchMode,
+    isDuetPractice,
+    metronomeSyncEnabled,
+    midiAutoPlayTarget,
+    midiPlayAnswerNote,
+    duetLevel,
+    duetAllowDottedRhythms,
     midi,
     prefersReducedMotion,
     queueNotes,
@@ -146,6 +162,8 @@ export function usePracticeSessionStart({
     persistConfig,
     practiceMicrophone,
     runSessionStart,
+    startSynchronizedMetronome,
+    stopSynchronizedMetronome,
   } = services;
   const {
     resetCapture: resetPracticeMicrophoneCapture,
@@ -165,11 +183,15 @@ export function usePracticeSessionStart({
   } = ui;
 
   const startSession = useCallback(async (): Promise<void> => {
-    if (queueNotes.length === 0 || (answerPitchMode === "exact-pitch" && !midi.isConnected)) {
+    if (
+      (!isDuetPractice && queueNotes.length === 0) ||
+      (answerPitchMode === "exact-pitch" && !midi.isConnected)
+    ) {
       return;
     }
     let microphoneStarted = false;
     let sessionStarted = false;
+    let synchronizedMetronomeStarted = false;
     try {
       await runSessionStart(async () => {
         void unlockAudio().catch(() => undefined);
@@ -177,24 +199,22 @@ export function usePracticeSessionStart({
         if (!preflightResult.proceed) {
           return;
         }
-        if (preflightResult.settings) {
-          applySettingsSnapshot(preflightResult.settings);
-        }
         const loadedPreflightSettings = preflightResult.settings ?? (await persistConfig());
         const preflightSettings =
-          answerPitchMode === "microphone" &&
-          loadedPreflightSettings.answerPitchMode !== "microphone"
-            ? { ...loadedPreflightSettings, answerPitchMode: "microphone" as const }
+          !isDuetPractice && loadedPreflightSettings.answerPitchMode !== answerPitchMode
+            ? { ...loadedPreflightSettings, answerPitchMode }
             : loadedPreflightSettings;
-        const availablePreflightAnswerPitchMode = resolveAvailableAnswerPitchMode(
-          preflightSettings.answerPitchMode,
-          midi.isConnected
-        );
+        if (preflightResult.settings) {
+          applySettingsSnapshot(preflightSettings);
+        }
+        const availablePreflightAnswerPitchMode = isDuetPractice
+          ? "exact-pitch"
+          : resolveAvailableAnswerPitchMode(preflightSettings.answerPitchMode, midi.isConnected);
         const nextSettings =
-          preflightSettings.answerPitchMode === availablePreflightAnswerPitchMode
-            ? preflightSettings
-            : { ...preflightSettings, answerPitchMode: availablePreflightAnswerPitchMode };
-        if (nextSettings !== preflightSettings) {
+          !isDuetPractice && preflightSettings.answerPitchMode !== availablePreflightAnswerPitchMode
+            ? { ...preflightSettings, answerPitchMode: availablePreflightAnswerPitchMode }
+            : preflightSettings;
+        if (!isDuetPractice && nextSettings !== preflightSettings) {
           await onSettingsSaved(nextSettings, { feedback: false });
         }
         const nextMode = nextSettings.defaultMode;
@@ -202,24 +222,52 @@ export function usePracticeSessionStart({
         const nextSchedulerReviews = preflightResult.reviews
           ? filterLongTermReviews(preflightResult.reviews)
           : schedulerReviews;
-        const practiceSettings =
-          nextSettings.staffNotationMode === "grand"
-            ? { ...nextSettings, includeInterStaffLedgerSpellings: false }
-            : nextSettings;
+        const practiceSettings = isDuetPractice
+          ? {
+              ...nextSettings,
+              answerPitchMode: "exact-pitch" as const,
+              enabledGroupIds: ["C3-B3", "C4-B4"] as AppSettings["enabledGroupIds"],
+              enabledPitchIds: undefined,
+              crossGroupPitchIds: undefined,
+              staffNotationMode: "grand" as const,
+              includeInterStaffLedgerSpellings: false,
+              promptDisplayMode: "staff-page" as const,
+            }
+          : metronomeSyncEnabled
+            ? { ...nextSettings, promptDisplayMode: "staff-page" as const }
+            : nextSettings.staffNotationMode === "grand"
+              ? { ...nextSettings, includeInterStaffLedgerSpellings: false }
+              : nextSettings;
         const microphoneSettings =
           availablePreflightAnswerPitchMode === "microphone"
             ? { ...practiceSettings, playAnswerNote: false }
             : practiceSettings;
+        const inputModeSettings =
+          availablePreflightAnswerPitchMode === "exact-pitch"
+            ? {
+                ...microphoneSettings,
+                playAnswerNote: midiPlayAnswerNote,
+              }
+            : microphoneSettings;
         const builtStartSnapshot = buildPracticeSessionStartSnapshot({
           autoPlayTarget:
             availablePreflightAnswerPitchMode === "microphone"
               ? false
-              : nextSettings.autoPlayTarget,
+              : availablePreflightAnswerPitchMode === "exact-pitch"
+                ? midiAutoPlayTarget
+                : nextSettings.autoPlayTarget,
           mode: nextMode,
           prefersReducedMotion,
-          settings: { ...microphoneSettings, queueStrategy: nextQueueStrategy },
-          smoothStaffPageScroll: staffPageUiPreferences.smoothStaffPageScroll,
+          settings: { ...inputModeSettings, queueStrategy: nextQueueStrategy },
+          smoothStaffPageScroll: metronomeSyncEnabled
+            ? false
+            : staffPageUiPreferences.smoothStaffPageScroll,
           startPausedReading,
+          duetLevel: isDuetPractice ? (duetLevel ?? "level-1") : undefined,
+          duetCurriculumVersion: isDuetPractice ? DUET_PRACTICE_CURRICULUM_VERSION : undefined,
+          duetAllowDottedRhythms: isDuetPractice ? duetAllowDottedRhythms : undefined,
+          metronomeSync:
+            metronomeSyncEnabled && availablePreflightAnswerPitchMode === "exact-pitch",
         });
         if (!builtStartSnapshot) {
           return;
@@ -240,6 +288,10 @@ export function usePracticeSessionStart({
         const shouldStartPaused =
           presentationConfig.promptDisplayMode === "staff-page" &&
           presentationConfig.startPausedReading;
+        if (practiceConfig.metronomeSync && !shouldStartPaused) {
+          synchronizedMetronomeStarted = await startSynchronizedMetronome();
+          if (!synchronizedMetronomeStarted) return;
+        }
         if (availablePreflightAnswerPitchMode === "microphone") {
           if (shouldStartPaused) {
             stopPracticeMicrophone();
@@ -320,9 +372,16 @@ export function usePracticeSessionStart({
       if (microphoneStarted && !sessionStarted) {
         stopPracticeMicrophone();
       }
+      if (synchronizedMetronomeStarted && !sessionStarted) {
+        stopSynchronizedMetronome();
+      }
     }
   }, [
     answerPitchMode,
+    isDuetPractice,
+    metronomeSyncEnabled,
+    duetLevel,
+    duetAllowDottedRhythms,
     adaptiveSchedulerRef,
     applySettingsSnapshot,
     beginSessionState,
@@ -334,7 +393,9 @@ export function usePracticeSessionStart({
     lastTargetNoteIdRef,
     melodyGenerationStateRef,
     melodyQueueRef,
+    midiAutoPlayTarget,
     midi.isConnected,
+    midiPlayAnswerNote,
     pendingAfterPauseRef,
     resetPracticeMicrophoneCapture,
     sessionRef,
@@ -349,6 +410,8 @@ export function usePracticeSessionStart({
     persistConfig,
     queueNotes.length,
     runSessionStart,
+    startSynchronizedMetronome,
+    stopSynchronizedMetronome,
     prefersReducedMotion,
     schedulerReviews,
     sessions,

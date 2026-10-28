@@ -1,5 +1,5 @@
 import { ALL_NOTES, NOTE_NAMES, normalizeCurrentPracticeGroupIds } from "./notes";
-import { isStatisticalReview } from "./reviews";
+import { isCompletedReview, isStatisticalReview } from "./reviews";
 import adaptiveV2Spec from "./adaptiveV2Spec.json";
 import type {
   NoteName,
@@ -102,7 +102,7 @@ export function getLongTermStatsEligibility(reviews: ReviewRecord[]): LongTermSt
       continue;
     }
     statisticalReviewCount += 1;
-    if (review.wrongAnswers.length > 0) {
+    if (review.wrongAnswers.length > 0 || review.wasMissed) {
       errorReviewCount += 1;
     }
     if (review.wrongAnswers.length >= HEAVY_ERROR_WRONG_ANSWER_COUNT) {
@@ -191,11 +191,15 @@ export function localDateKey(iso: string): string {
   return `${year}-${month}-${day}`;
 }
 
-function commonConfusions(reviews: ReviewRecord[]): NoteConfusionStat[] {
+function commonConfusions(
+  reviews: ReviewRecord[],
+  targetNoteId: TargetNoteId,
+  targetNoteName: NoteName
+): NoteConfusionStat[] {
   const counts = new Map<NoteName, number>();
   for (const review of reviews) {
-    for (const wrongAnswer of review.wrongAnswers) {
-      if (wrongAnswer.noteName === review.noteName) {
+    for (const wrongAnswer of getWrongAnswersForTarget(review, targetNoteId)) {
+      if (wrongAnswer.noteName === targetNoteName) {
         continue;
       }
       counts.set(wrongAnswer.noteName, (counts.get(wrongAnswer.noteName) ?? 0) + 1);
@@ -236,7 +240,7 @@ export function buildDailyStats(reviews: ReviewRecord[]): DailyStat[] {
   return [...byDate.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, dayReviews]) => {
-      const times = dayReviews.map((review) => review.activeMs);
+      const times = dayReviews.filter(isCompletedReview).map((review) => review.activeMs);
       const completedReviews = dayReviews.length;
       const totalActiveMs = totalActiveMsByDate.get(date) ?? 0;
       return {
@@ -287,7 +291,7 @@ export function buildPracticeSessionStats(
   return [...reviewsBySession.entries()]
     .map(([sessionId, sessionReviews]) => {
       const session = sessionsById.get(sessionId);
-      const times = sessionReviews.map((review) => review.activeMs);
+      const times = sessionReviews.filter(isCompletedReview).map((review) => review.activeMs);
       return {
         sessionId,
         startedAt: session?.startedAt ?? earliestReviewStartedAt(sessionReviews),
@@ -316,10 +320,41 @@ function reviewCompletedAt(review: ReviewRecord): number {
 }
 
 interface RecognitionNoteWindow {
-  recent: { activeMs: number; hasError: boolean }[];
+  recent: { activeMs?: number; hasError: boolean }[];
   recentErrorCount: number;
   sortedActiveMs: number[];
   totalCount: number;
+}
+
+function getReviewTargetNoteIds(review: ReviewRecord): TargetNoteId[] {
+  return [...new Set([review.targetNoteId, ...(review.duetTargetNoteIds ?? [])])];
+}
+
+function wasTargetMissed(review: ReviewRecord, targetNoteId: TargetNoteId): boolean {
+  if (!review.wasMissed) return false;
+  // Older duet records do not carry per-target completion state, so retain their
+  // historical behavior and treat the timeout as a miss for every target.
+  if (!review.duetCompletedTargetNoteIds) return true;
+  return !review.duetCompletedTargetNoteIds.includes(targetNoteId);
+}
+
+function getWrongAnswersForTarget(
+  review: ReviewRecord,
+  targetNoteId: TargetNoteId
+): ReviewRecord["wrongAnswers"] {
+  const hasDuetAttribution = Boolean(
+    review.duetTargetNoteIds?.length &&
+    review.wrongAnswers.some((answer) => answer.duetTargetNoteId !== undefined)
+  );
+  if (!hasDuetAttribution) return review.wrongAnswers;
+  return review.wrongAnswers.filter((answer) => answer.duetTargetNoteId === targetNoteId);
+}
+
+function reviewHasTargetError(review: ReviewRecord, targetNoteId: TargetNoteId): boolean {
+  return (
+    getWrongAnswersForTarget(review, targetNoteId).length > 0 ||
+    wasTargetMissed(review, targetNoteId)
+  );
 }
 
 function sortedInsertionIndex(values: readonly number[], value: number): number {
@@ -336,18 +371,24 @@ function sortedInsertionIndex(values: readonly number[], value: number): number 
   return low;
 }
 
-function addRecognitionReview(window: RecognitionNoteWindow, review: ReviewRecord): void {
+function addRecognitionReview(
+  window: RecognitionNoteWindow,
+  review: ReviewRecord,
+  targetNoteId: TargetNoteId
+): void {
   const recentReview = {
-    activeMs: review.activeMs,
-    hasError: review.wrongAnswers.length > 0,
+    ...(isCompletedReview(review) ? { activeMs: review.activeMs } : {}),
+    hasError: reviewHasTargetError(review, targetNoteId),
   };
   window.totalCount += 1;
   window.recent.push(recentReview);
-  window.sortedActiveMs.splice(
-    sortedInsertionIndex(window.sortedActiveMs, recentReview.activeMs),
-    0,
-    recentReview.activeMs
-  );
+  if (recentReview.activeMs !== undefined) {
+    window.sortedActiveMs.splice(
+      sortedInsertionIndex(window.sortedActiveMs, recentReview.activeMs),
+      0,
+      recentReview.activeMs
+    );
+  }
   if (recentReview.hasError) {
     window.recentErrorCount += 1;
   }
@@ -356,8 +397,10 @@ function addRecognitionReview(window: RecognitionNoteWindow, review: ReviewRecor
     return;
   }
   const removed = window.recent.shift()!;
-  const sortedIndex = window.sortedActiveMs.indexOf(removed.activeMs);
-  window.sortedActiveMs.splice(sortedIndex, 1);
+  if (removed.activeMs !== undefined) {
+    const sortedIndex = window.sortedActiveMs.indexOf(removed.activeMs);
+    if (sortedIndex >= 0) window.sortedActiveMs.splice(sortedIndex, 1);
+  }
   if (removed.hasError) {
     window.recentErrorCount -= 1;
   }
@@ -372,7 +415,11 @@ export function buildRecognitionTrend(
   const targetIds = [...new Set(targetNoteIds)].sort();
   const targetIdSet = new Set(targetIds);
   const statisticalReviews = reviews
-    .filter((review) => targetIdSet.has(review.targetNoteId) && isStatisticalReview(review))
+    .filter(
+      (review) =>
+        getReviewTargetNoteIds(review).some((targetId) => targetIdSet.has(targetId)) &&
+        isStatisticalReview(review)
+    )
     .map((review) => ({
       completedAt: reviewCompletedAt(review),
       review,
@@ -422,10 +469,10 @@ export function buildRecognitionTrend(
       statisticalReviews[reviewIndex].completedAt <= boundary.boundaryTime
     ) {
       const review = statisticalReviews[reviewIndex].review;
-      const noteWindow = byNote.get(review.targetNoteId);
-      if (noteWindow) {
-        addRecognitionReview(noteWindow, review);
-      }
+      getReviewTargetNoteIds(review).forEach((targetNoteId) => {
+        const noteWindow = byNote.get(targetNoteId);
+        if (noteWindow) addRecognitionReview(noteWindow, review, targetNoteId);
+      });
       reviewIndex += 1;
     }
     const cohort = targetIds.filter((noteId) => (byNote.get(noteId)?.totalCount ?? 0) >= 20);
@@ -433,20 +480,21 @@ export function buildRecognitionTrend(
       const noteWindow = byNote.get(noteId)!;
       return {
         errorRate: noteWindow.recentErrorCount / noteWindow.recent.length,
-        medianMs: percentileFromSorted(noteWindow.sortedActiveMs, 0.5)!,
-        p10Ms: percentileFromSorted(noteWindow.sortedActiveMs, 0.1)!,
-        p90Ms: percentileFromSorted(noteWindow.sortedActiveMs, 0.9)!,
+        medianMs: percentileFromSorted(noteWindow.sortedActiveMs, 0.5),
+        p10Ms: percentileFromSorted(noteWindow.sortedActiveMs, 0.1),
+        p90Ms: percentileFromSorted(noteWindow.sortedActiveMs, 0.9),
       };
     });
+    const reactionTimeMetrics = noteMetrics.filter((metric) => metric.medianMs !== undefined);
     return {
       boundaryAt: boundary.boundaryAt,
       coveredNoteCount: cohort.length,
       coveredNoteIds: cohort,
       errorRate: average(noteMetrics.map((metric) => metric.errorRate)),
       key: boundary.key,
-      medianMs: average(noteMetrics.map((metric) => metric.medianMs)),
-      p10Ms: average(noteMetrics.map((metric) => metric.p10Ms)),
-      p90Ms: average(noteMetrics.map((metric) => metric.p90Ms)),
+      medianMs: average(reactionTimeMetrics.map((metric) => metric.medianMs!)),
+      p10Ms: average(reactionTimeMetrics.map((metric) => metric.p10Ms!)),
+      p90Ms: average(reactionTimeMetrics.map((metric) => metric.p90Ms!)),
       totalNoteCount: targetIds.length,
     };
   });
@@ -476,14 +524,19 @@ export function buildNoteStats(
   return ALL_NOTES.filter((note) => !allowedGroups || allowedGroups.has(note.groupId)).map(
     (note) => {
       const noteReviews = reviews.filter(
-        (review) => review.targetNoteId === note.id && isStatisticalReview(review)
+        (review) =>
+          (review.targetNoteId === note.id || review.duetTargetNoteIds?.includes(note.id)) &&
+          isStatisticalReview(review)
       );
-      const times = noteReviews.map((review) => review.activeMs);
-      const reviewsWithErrors = noteReviews.filter(
-        (review) => review.wrongAnswers.length > 0
+      const times = noteReviews.filter(isCompletedReview).map((review) => review.activeMs);
+      const reviewsWithErrors = noteReviews.filter((review) =>
+        reviewHasTargetError(review, note.id)
       ).length;
       const errorCount = noteReviews.reduce(
-        (count, review) => count + review.wrongAnswers.length,
+        (count, review) =>
+          count +
+          getWrongAnswersForTarget(review, note.id).length +
+          Number(wasTargetMissed(review, note.id)),
         0
       );
       const p10Ms = percentile(times, 0.1);
@@ -491,7 +544,7 @@ export function buildNoteStats(
       const p90Ms = percentile(times, 0.9);
       const errorRate = noteReviews.length === 0 ? 0 : reviewsWithErrors / noteReviews.length;
       const speedScore = medianMs === undefined ? 2 : medianMs / 1000;
-      const confusionStats = commonConfusions(noteReviews);
+      const confusionStats = commonConfusions(noteReviews, note.id, note.noteName);
       return {
         targetNoteId: note.id,
         groupId: note.groupId,

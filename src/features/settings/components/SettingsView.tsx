@@ -59,6 +59,7 @@ import {
 } from "../../../shared/diagnostics/globalDebug";
 import { LOCAL_STORAGE_PREFERENCES_RESET_EVENT } from "../../../storage/localPreferenceEvents";
 import { MicrophoneParameterBenchmarkDialog } from "./MicrophoneParameterBenchmarkDialog";
+import { clearMetronomeHiddenUntil } from "../../metronome/metronomeVisibility";
 
 type StoredBackupState = BackupState & { restoreRequiredBeforeBackup?: boolean };
 type SettingsActionFeedback = { description?: string; kind?: "danger"; title: string };
@@ -371,6 +372,29 @@ export function SettingsView({
                   }))
                 }
               />
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>木鱼节拍器</strong>
+                <span>退出后可在这里恢复显示</span>
+              </div>
+              <button
+                onClick={() => {
+                  if (clearMetronomeHiddenUntil()) {
+                    toast.success("木鱼节拍器已重新启用", {
+                      description: "返回练习页面后，悬浮木鱼会显示。",
+                      duration: 3500,
+                    });
+                    return;
+                  }
+                  toast.error("无法重新启用木鱼节拍器", {
+                    description: "浏览器暂时无法访问本地设置，请稍后重试。",
+                  });
+                }}
+                type="button"
+              >
+                重新启用
+              </button>
             </div>
           </section>
 

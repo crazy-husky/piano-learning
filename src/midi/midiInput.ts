@@ -26,6 +26,7 @@ export interface MidiNoteInput {
   keyName: PianoKeyName;
   midiNoteNumber: number;
   octave: number;
+  timestamp?: number;
 }
 
 export type MidiNoteInputEvent =

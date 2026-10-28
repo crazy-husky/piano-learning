@@ -58,4 +58,21 @@ describe("practice session rules", () => {
     expect(shouldIgnoreReviewForSession(session)).toBe(false);
     expect(shouldKeepPracticeSession(session, [makeReview({ targetNoteId: "C4" })])).toBe(true);
   });
+
+  it("keeps missed duet prompts even when the saved queue selects one note name", () => {
+    const duetSession: Parameters<typeof shouldIgnoreReviewForSession>[0] = {
+      queueStrategy: "note-drill",
+      drillNoteNames: ["C"],
+      startSnapshot: { practiceConfig: { duetDifficulty: "sync" } },
+    };
+    const missedReview = makeReview({
+      targetNoteId: "C4",
+      answeredAt: undefined,
+      answeredCorrectly: false,
+      wasMissed: true,
+    });
+
+    expect(shouldIgnoreReviewForSession(duetSession)).toBe(false);
+    expect(shouldKeepPracticeSession(duetSession, [missedReview])).toBe(true);
+  });
 });

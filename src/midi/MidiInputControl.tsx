@@ -26,6 +26,9 @@ export function MidiInputControl({
   midi,
 }: MidiInputControlProps): JSX.Element {
   const hasInputs = midi.status === "ready" && midi.inputs.length > 0;
+  const selectedInputId = midi.inputs.some((input) => input.id === midi.selectedInputId)
+    ? midi.selectedInputId
+    : "";
   const classNames = ["midi-input-control", className, midi.isConnected ? "is-connected" : ""]
     .filter(Boolean)
     .join(" ");
@@ -39,8 +42,11 @@ export function MidiInputControl({
           disabled={disabled}
           onChange={(event) => midi.selectInput(event.currentTarget.value)}
           title={midi.selectedInput?.name}
-          value={midi.selectedInputId ?? midi.inputs[0]?.id ?? ""}
+          value={selectedInputId}
         >
+          <option disabled value="">
+            请选择 MIDI 设备
+          </option>
           {midi.inputs.map((input) => (
             <option key={input.id} value={input.id}>
               {input.manufacturer ? `${input.manufacturer} · ` : ""}

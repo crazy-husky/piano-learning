@@ -6,9 +6,11 @@ export type AppRoutePath =
   | "/practice/game/songs"
   | "/practice/game/songs/play"
   | "/stats"
+  | "/metronome"
   | "/vocal"
   | "/settings";
-export type AppRoutePage = "home" | "study" | "practice" | "game" | "stats" | "settings" | "vocal";
+export type AppRoutePage =
+  "home" | "study" | "practice" | "game" | "stats" | "metronome" | "settings" | "vocal";
 export type PracticeRouteTab = "free" | "distance" | "name-key" | "songs";
 export type PracticeDistanceMode = "look" | "play";
 
@@ -28,6 +30,7 @@ const ROUTE_PATHS = new Set<AppRoutePath>([
   "/practice/game/songs",
   "/practice/game/songs/play",
   "/stats",
+  "/metronome",
   "/vocal",
   "/settings",
 ]);

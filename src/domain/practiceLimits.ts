@@ -1,0 +1,1 @@
+export const MAX_PRACTICE_QUESTIONS = 2000;

@@ -23,7 +23,6 @@ type PracticeInputOptions = {
   isPausedRef: MutableRefObject<boolean>;
   isRunning: boolean;
   midi: MidiInputController;
-  onEscape: () => void;
   onResume: () => void;
   onStartSession: () => void;
   onSubmitAnswer: (answer: PracticeAnswerInput) => void;
@@ -32,7 +31,7 @@ type PracticeInputOptions = {
 
 type PracticeInputHandlers = Pick<
   PracticeInputOptions,
-  "onEscape" | "onResume" | "onStartSession" | "onSubmitAnswer" | "onTogglePause"
+  "onResume" | "onStartSession" | "onSubmitAnswer" | "onTogglePause"
 >;
 
 export function usePracticeInput({
@@ -41,7 +40,6 @@ export function usePracticeInput({
   isPausedRef,
   isRunning,
   midi,
-  onEscape,
   onResume,
   onStartSession,
   onSubmitAnswer,
@@ -56,13 +54,12 @@ export function usePracticeInput({
   const heldMidiInputsRef = useRef(new Map<string, PianoKeyName>());
   const pendingMidiPressDiagnosticSampleIdRef = useRef<number | undefined>(undefined);
   const handlersRef = useRef<PracticeInputHandlers>({
-    onEscape,
     onResume,
     onStartSession,
     onSubmitAnswer,
     onTogglePause,
   });
-  handlersRef.current = { onEscape, onResume, onStartSession, onSubmitAnswer, onTogglePause };
+  handlersRef.current = { onResume, onStartSession, onSubmitAnswer, onTogglePause };
   const subscribeMidi = midi.subscribe;
 
   useLayoutEffect(() => {
@@ -102,6 +99,7 @@ export function usePracticeInput({
         markMidiLatencyStage(event.note.diagnosticSampleId, "practiceSubscriber");
         current.onSubmitAnswer({
           diagnosticSampleId: event.note.diagnosticSampleId,
+          inputTimeMs: event.note.timestamp,
           midiNoteNumber: event.note.midiNoteNumber,
           noteName: event.note.keyName,
           octave: event.note.octave,
@@ -132,11 +130,6 @@ export function usePracticeInput({
     function onKeyDown(event: KeyboardEvent): void {
       if (event.repeat) return;
       const current = handlersRef.current;
-      if (event.code === "Escape") {
-        event.preventDefault();
-        current.onEscape();
-        return;
-      }
       if (event.code === "Space") {
         if (isInteractiveShortcutTarget(event.target)) return;
         event.preventDefault();

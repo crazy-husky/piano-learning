@@ -1,7 +1,9 @@
 import type { ReviewRecord } from "./types";
 
 type CompletedReviewScope = Pick<ReviewRecord, "answeredCorrectly" | "interrupted">;
-type StatisticalReviewScope = CompletedReviewScope & Pick<ReviewRecord, "ignored">;
+type StatisticalReviewScope = CompletedReviewScope &
+  Pick<ReviewRecord, "ignored"> &
+  Partial<Pick<ReviewRecord, "wasMissed">>;
 
 export function isCompletedReview(review: CompletedReviewScope): boolean {
   return review.answeredCorrectly && !review.interrupted;
@@ -9,5 +11,8 @@ export function isCompletedReview(review: CompletedReviewScope): boolean {
 
 // `ignored` is retained as a storage/data-import guard even though current single-note drills do not persist ignored reviews.
 export function isStatisticalReview(review: StatisticalReviewScope): boolean {
-  return !review.ignored && isCompletedReview(review);
+  return (
+    !review.ignored &&
+    (isCompletedReview(review) || (review.wasMissed === true && !review.interrupted))
+  );
 }

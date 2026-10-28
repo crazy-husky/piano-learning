@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, Dumbbell, Music2, Settings } from "lucide-react";
+import { BarChart3, BookOpen, Dumbbell, Music2, Settings, Timer } from "lucide-react";
 import { useEffect } from "react";
 import { ensureSwiftF0PracticeRuntimeReady } from "../../vocal-pitch/logic/swiftF0PracticeClient";
 import type { PracticeMicrophoneAlgorithm } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
@@ -6,6 +6,7 @@ import type { AppRoutePath } from "../../../routing/appRoutes";
 
 interface HomeViewProps {
   microphoneAlgorithm: PracticeMicrophoneAlgorithm;
+  onOpenMetronome: () => void;
   onNavigate: (path: AppRoutePath) => void;
 }
 
@@ -49,6 +50,13 @@ const menuItems: Array<{
     tone: "pink",
   },
   {
+    label: "节拍器",
+    description: "调节速度，跟随木鱼节拍练习",
+    icon: Timer,
+    path: "/metronome",
+    tone: "orange",
+  },
+  {
     label: "统计",
     description: "查看练习与识别表现",
     icon: BarChart3,
@@ -75,7 +83,11 @@ const menuItems: Array<{
   },
 ];
 
-export function HomeView({ microphoneAlgorithm, onNavigate }: HomeViewProps): JSX.Element {
+export function HomeView({
+  microphoneAlgorithm,
+  onNavigate,
+  onOpenMetronome,
+}: HomeViewProps): JSX.Element {
   useEffect(() => {
     if (microphoneAlgorithm !== "swiftf0") return;
 
@@ -140,7 +152,7 @@ export function HomeView({ microphoneAlgorithm, onNavigate }: HomeViewProps): JS
           <button
             className={`home-menu-card tone-${tone}${hideOnMobile ? " home-menu-hide-on-mobile" : ""}`}
             key={path}
-            onClick={() => onNavigate(path)}
+            onClick={() => (path === "/metronome" ? onOpenMetronome() : onNavigate(path))}
             type="button"
           >
             <span className="home-menu-icon">

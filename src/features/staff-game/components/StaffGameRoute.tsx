@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import type { PracticeNavigationExitTarget } from "../../practice/components/PracticeView";
 import { usePracticeMicrophoneInput } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import type { PracticeMicrophonePreferences } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
 import { StaffGameView } from "./StaffGameView";
@@ -19,11 +20,9 @@ interface StaffGameRouteProps {
   onRunningChange: (running: boolean) => void;
   navigationExitRequest?: {
     id: number;
-    targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal";
+    targetView: PracticeNavigationExitTarget;
   } | null;
-  onNavigationExit?: (
-    targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal"
-  ) => void;
+  onNavigationExit?: (targetView: PracticeNavigationExitTarget) => void;
 }
 
 export function StaffGameRoute({

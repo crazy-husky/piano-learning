@@ -14,6 +14,8 @@ export type StoredAnswerPitchMode = AnswerPitchMode | "absolute-pitch";
 export type PracticeQueueStrategy = "adaptive" | "focused" | "melody" | "note-drill";
 export type PromptDisplayMode = "single-note" | "staff-page";
 export type PromptNoteDuration = "whole" | "quarter" | "eighth" | "sixteenth";
+export type DuetPracticeLevel =
+  "level-1" | "level-2" | "level-3" | "level-4" | "level-5" | "level-6";
 export type EffectiveQueueAlgorithm =
   "adaptive-v1" | "adaptive-v2" | "focused-v1" | "melody-v1" | "melody-v2";
 export type QueueComparisonFamily = "adaptive" | "melody-v1" | "melody-v2";
@@ -66,6 +68,8 @@ export interface PracticeGroup {
 export interface WrongAnswer {
   noteName: NoteName;
   atActiveMs: number;
+  /** The outstanding duet target this wrong input was closest to; null means unassigned. */
+  duetTargetNoteId?: TargetNoteId | null;
   midiNoteNumber?: number;
   confidence?: number;
   clipping?: boolean;
@@ -94,6 +98,12 @@ export interface ReviewRecord {
   interruptReason?: InterruptReason;
   activeMs: number;
   wrongAnswers: WrongAnswer[];
+  /** True when a simultaneous-note prompt timed out without being completed. */
+  wasMissed?: boolean;
+  /** Both note ids for a simultaneous-note prompt; targetNoteId remains the treble-side anchor. */
+  duetTargetNoteIds?: TargetNoteId[];
+  /** Target notes already completed when a duet prompt timed out. */
+  duetCompletedTargetNoteIds?: TargetNoteId[];
   replayCount: number;
   focusLosses: FocusLoss[];
   ignored?: boolean;
@@ -103,6 +113,7 @@ export type AnswerEventMode =
   "free-practice" | "staff-game" | "song" | "staff-distance" | "name-to-key";
 export type AnswerInputMode = "microphone" | "midi" | "virtual-keyboard" | "computer-keyboard";
 export type StaffGameChallengeMode = "learning" | "arcade";
+export type DuetPracticeDifficulty = "sync" | "parallel" | "independent";
 
 /** Canonical per-prompt answer record. Attempts are capped by the writer. */
 export interface AnswerEvent {
@@ -123,7 +134,15 @@ export interface AnswerEvent {
   sensitivityLevel?: 1 | 2 | 3 | 4 | 5;
   microphoneAlgorithm?: "swiftf0" | "yin";
   difficulty?: string;
+  duetDifficulty?: DuetPracticeDifficulty;
+  duetLevel?: DuetPracticeLevel;
   targetMidi?: number;
+  targetMidiHigh?: number;
+  targetMidiLow?: number;
+  duetTargetNoteIds?: TargetNoteId[];
+  /** Target notes already completed when a duet prompt timed out. */
+  duetCompletedTargetNoteIds?: TargetNoteId[];
+  duetTargetMidis?: { treble: number[]; bass: number[] };
   targetNoteId?: string;
   targetGroupId?: PracticeGroupId;
   targetNoteName?: NoteName;
@@ -166,6 +185,8 @@ export interface AnswerAttempt {
   midi?: number;
   noteName?: NoteName;
   atMs: number;
+  /** The outstanding duet target this wrong input was closest to; null means unassigned. */
+  duetTargetNoteId?: TargetNoteId | null;
   confidence?: number;
   inputMode?: AnswerInputMode;
   microphoneAlgorithm?: "swiftf0" | "yin";
@@ -252,6 +273,11 @@ export interface PracticeSessionStartSnapshot {
     queueStrategy: PracticeQueueStrategy;
     staffNotationMode: StaffNotationMode;
     targetNoteSetKey: string;
+    duetDifficulty?: DuetPracticeDifficulty;
+    duetLevel?: DuetPracticeLevel;
+    duetCurriculumVersion?: number;
+    duetAllowDottedRhythms?: boolean;
+    metronomeSync?: boolean;
   };
   presentationConfig: {
     autoPlayTarget: boolean;

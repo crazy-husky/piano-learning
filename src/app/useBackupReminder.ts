@@ -30,7 +30,7 @@ import type {
 const BACKUP_REMINDER_SUPPRESSED_DATE_KEY = "anki-note.backupReminderSuppressedDate";
 const BACKUP_REMINDER_SUPPRESSED_WEEK_KEY = "anki-note.backupReminderSuppressedWeek";
 
-type View = "home" | "practice" | "study" | "stats" | "settings" | "vocal";
+type View = "home" | "practice" | "study" | "stats" | "settings" | "vocal" | "metronome";
 type StoredBackupState = BackupState & { restoreRequiredBeforeBackup?: boolean };
 type BackupReminderAction = "choose-directory";
 
