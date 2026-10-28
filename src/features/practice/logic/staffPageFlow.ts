@@ -1,4 +1,8 @@
-import { PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
+import {
+  getPracticeStaffMeasureWidthPx,
+  PRACTICE_PAGE_STAFF_LAYOUT,
+  PRACTICE_STAFF_WIDTH_TUNING,
+} from "../../../shared/staff/staffLayoutProfiles";
 
 export const DESKTOP_STAFF_PAGE_NOTE_COUNT = PRACTICE_PAGE_STAFF_LAYOUT.multirow.notesPerRow;
 export const MOBILE_STAFF_PAGE_NOTE_COUNT = 8;
@@ -10,6 +14,33 @@ export const DUET_MOBILE_MEASURES_PER_ROW = 2;
 export interface StaffPageMeasureRows<T> {
   rowStartIndices: number[];
   rows: T[][];
+}
+
+export function getStaffPageMeasureWidthsPx(
+  measures: readonly number[],
+  noteOnsets?: readonly number[],
+  beatsPerMeasure: number = PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
+): ReadonlyMap<number, number> {
+  const onsetColumnsByMeasure = new Map<number, Set<number>>();
+  measures.forEach((measure, index) => {
+    let onsetColumns = onsetColumnsByMeasure.get(measure);
+    if (!onsetColumns) {
+      onsetColumns = new Set<number>();
+      onsetColumnsByMeasure.set(measure, onsetColumns);
+    }
+    const onset = noteOnsets?.[index];
+    if (onset !== undefined && Number.isFinite(onset)) {
+      // Generated triplets can accumulate tiny floating-point differences.
+      onsetColumns.add(Math.round(onset * 1_000_000) / 1_000_000);
+    }
+  });
+
+  return new Map(
+    [...onsetColumnsByMeasure].map(([measure, onsetColumns]) => [
+      measure,
+      getPracticeStaffMeasureWidthPx([...onsetColumns], beatsPerMeasure),
+    ])
+  );
 }
 
 export function chunkStaffPageGroupsByMeasure<T>(
@@ -48,6 +79,57 @@ export function chunkStaffPageGroupsByMeasure<T>(
       rowMeasures.add(measure);
       groupIndex = measureEndIndex;
       if (measureEventCount > capacity) break;
+    }
+
+    rowStartIndices.push(rowStartIndex);
+    rows.push(row);
+  }
+
+  return { rowStartIndices, rows };
+}
+
+export function chunkStaffPageGroupsByAdaptiveMeasureWidth<T>(
+  groups: readonly T[],
+  measures: readonly number[],
+  maxMeasureAreaWidthPx: number,
+  maxMeasuresPerRow: number,
+  maxRowCount = Number.POSITIVE_INFINITY,
+  noteOnsets?: readonly number[],
+  beatsPerMeasure: number = PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
+): StaffPageMeasureRows<T> {
+  const widthBudget = Math.max(1, maxMeasureAreaWidthPx);
+  const measureLimit = Math.max(1, Math.floor(maxMeasuresPerRow));
+  const rows: T[][] = [];
+  const rowStartIndices: number[] = [];
+  const measureWidths = getStaffPageMeasureWidthsPx(measures, noteOnsets, beatsPerMeasure);
+  let groupIndex = 0;
+
+  while (groupIndex < groups.length && rows.length < maxRowCount) {
+    const rowStartIndex = groupIndex;
+    const row: T[] = [];
+    let rowWidth = 0;
+    let rowMeasureCount = 0;
+
+    while (groupIndex < groups.length) {
+      const measure = measures[groupIndex];
+      let measureEndIndex = groupIndex + 1;
+      while (measureEndIndex < groups.length && measures[measureEndIndex] === measure) {
+        measureEndIndex += 1;
+      }
+
+      const measureWidth =
+        measureWidths.get(measure) ?? getPracticeStaffMeasureWidthPx([], beatsPerMeasure);
+      if (
+        row.length > 0 &&
+        (rowMeasureCount >= measureLimit || rowWidth + measureWidth > widthBudget)
+      ) {
+        break;
+      }
+
+      row.push(...groups.slice(groupIndex, measureEndIndex));
+      rowWidth += measureWidth;
+      rowMeasureCount += 1;
+      groupIndex = measureEndIndex;
     }
 
     rowStartIndices.push(rowStartIndex);

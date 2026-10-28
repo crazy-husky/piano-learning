@@ -22,6 +22,9 @@ import type {
   TargetNote,
 } from "../../../domain/types";
 import {
+  PRACTICE_STAFF_CLEF_AND_METER_RESERVE_PX,
+  PRACTICE_STAFF_WIDTH_TUNING,
+  getPracticeStaffMeasureWidthPx,
   PRACTICE_PAGE_STAFF_LAYOUT,
   type PracticePageStaffLayoutProfile,
 } from "../../../shared/staff/staffLayoutProfiles";
@@ -40,6 +43,7 @@ import {
   getBarlineGapCenter,
   getCrossStaffOuterStemDirection,
   getMeasureAlignedEndBeat,
+  getQuarterNoteBeats,
   getStaffPageBarlineInterval,
   getStaffPageBeamRuns,
   getVisibleBeamStemDirection,
@@ -48,7 +52,12 @@ import {
 } from "../logic/staffPageNotation";
 import type { ScoreChaseCursor } from "../logic/scoreChase";
 import type { ScorePlaybackCursor } from "../logic/scorePlayback";
-import { chunkStaffPageGroupsByMeasure, getStaffPageRowIndex } from "../logic/staffPageFlow";
+import {
+  chunkStaffPageGroupsByAdaptiveMeasureWidth,
+  chunkStaffPageGroupsByMeasure,
+  getStaffPageMeasureWidthsPx,
+  getStaffPageRowIndex,
+} from "../logic/staffPageFlow";
 import { STAFF_PAGE_MANUAL_SCROLL_EVENT } from "./staffPageScroll";
 
 interface StaffPagePromptProps {
@@ -92,6 +101,8 @@ interface StaffPagePromptProps {
   minDisplayWidthPx?: number;
   visibleRowCount?: number;
   virtualizeRows?: boolean;
+  adaptiveWidthLayout?: boolean;
+  adaptiveMeasureAreaWidthPx?: number;
   isFiniteScore?: boolean;
   followRowIndex?: number;
   trackedNoteIndex?: number;
@@ -1306,19 +1317,18 @@ function addStaffPageLyric(
 }
 
 function getBarlineX(
-  nextTickable: StaffPageTickable,
+  nextTickable: StaffPageTickable | undefined,
   previousNote: StaveNote | undefined,
   nextNote: StaveNote | undefined
 ): number | undefined {
-  if (!previousNote) {
+  if (!previousNote || (!nextNote && !nextTickable)) {
     return undefined;
   }
   const previousBounds = previousNote.getBoundingBox();
   const nextBounds = nextNote?.getBoundingBox();
-  return getBarlineGapCenter(
-    previousBounds.getX() + previousBounds.getW(),
-    nextBounds?.getX() ?? nextTickable.getAbsoluteX()
-  );
+  const nextX = nextBounds?.getX() ?? nextTickable?.getAbsoluteX();
+  if (nextX === undefined) return undefined;
+  return getBarlineGapCenter(previousBounds.getX() + previousBounds.getW(), nextX);
 }
 
 function alignRowNotesEvenly(
@@ -1335,17 +1345,58 @@ function alignRowNotesEvenly(
   );
 }
 
+function getMeasureAlignedBeatX(
+  beat: number,
+  rowStartBeat: number,
+  beatsPerMeasure: number,
+  measureCount: number,
+  noteArea: { left: number; right: number },
+  measureWidthsPx?: readonly number[]
+): number | undefined {
+  if (
+    !Number.isFinite(beat) ||
+    !Number.isFinite(rowStartBeat) ||
+    !Number.isFinite(beatsPerMeasure) ||
+    beatsPerMeasure <= 0 ||
+    measureCount <= 0
+  ) {
+    return undefined;
+  }
+
+  const equalMeasureWidth = (noteArea.right - noteArea.left) / measureCount;
+  const relativeBeat = Math.max(0, beat - rowStartBeat);
+  const measureOffset = Math.min(
+    measureCount - 1,
+    Math.floor((relativeBeat + 0.000001) / beatsPerMeasure)
+  );
+  const measureWidth = measureWidthsPx?.[measureOffset] ?? equalMeasureWidth;
+  const measureLeft =
+    noteArea.left +
+    (measureWidthsPx
+      ? measureWidthsPx.slice(0, measureOffset).reduce((total, width) => total + width, 0)
+      : measureOffset * equalMeasureWidth);
+  const beatWithinMeasure = relativeBeat - measureOffset * beatsPerMeasure;
+  const inset =
+    Math.min(PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx, measureWidth) *
+    PRACTICE_STAFF_WIDTH_TUNING.measureEdgeInsetRatio;
+
+  return (
+    measureLeft +
+    inset +
+    (beatWithinMeasure / beatsPerMeasure) * Math.max(1, measureWidth - inset * 2)
+  );
+}
+
 function alignTickablesToMeasureColumns(
   tickableGroups: readonly (readonly StaffPageTickable[])[],
   rowStartBeat: number,
   ticksPerQuarter: number,
   beatsPerMeasure: number,
   measureCount: number,
-  noteArea: { left: number; right: number }
+  noteArea: { left: number; right: number },
+  measureWidthsPx?: readonly number[]
 ): void {
   if (measureCount <= 0 || beatsPerMeasure <= 0) return;
-  const barWidth = (noteArea.right - noteArea.left) / measureCount;
-  const inset = Math.min(26, barWidth * 0.14);
   const contexts = new Map<ReturnType<StaveNote["checkTickContext"]>, { beat: number }>();
 
   tickableGroups.forEach((tickables) => {
@@ -1359,17 +1410,15 @@ function alignTickablesToMeasureColumns(
   });
 
   contexts.forEach(({ beat }, tickContext) => {
-    const relativeBeat = Math.max(0, beat - rowStartBeat);
-    const measureOffset = Math.min(
-      measureCount - 1,
-      Math.floor((relativeBeat + 0.000001) / beatsPerMeasure)
+    const targetCenter = getMeasureAlignedBeatX(
+      beat,
+      rowStartBeat,
+      beatsPerMeasure,
+      measureCount,
+      noteArea,
+      measureWidthsPx
     );
-    const beatWithinMeasure = relativeBeat - measureOffset * beatsPerMeasure;
-    const targetCenter =
-      noteArea.left +
-      measureOffset * barWidth +
-      inset +
-      (beatWithinMeasure / beatsPerMeasure) * Math.max(1, barWidth - inset * 2);
+    if (targetCenter === undefined) return;
     const representative = [...tickContext.getTickables()].find(
       (tickable): tickable is StaveNote => tickable instanceof StaveNote && !tickable.isRest()
     );
@@ -1443,6 +1492,8 @@ export function StaffPagePrompt({
   minDisplayWidthPx = layout.width.minPx,
   visibleRowCount = layout.multirow.rows,
   virtualizeRows = false,
+  adaptiveWidthLayout = false,
+  adaptiveMeasureAreaWidthPx = 0,
   isFiniteScore = false,
   followRowIndex,
   trackedNoteIndex,
@@ -1543,6 +1594,17 @@ export function StaffPagePrompt({
   );
   const { rows, rowStartIndices } = useMemo(() => {
     if (keepMeasuresTogether && noteMeasures?.length === sourceNoteGroups.length) {
+      if (adaptiveWidthLayout) {
+        return chunkStaffPageGroupsByAdaptiveMeasureWidth(
+          sourceNoteGroups,
+          noteMeasures,
+          adaptiveMeasureAreaWidthPx,
+          maxMeasuresPerRow,
+          maxRowCount,
+          noteOnsets,
+          beatsPerMeasure ?? PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
+        );
+      }
       return chunkStaffPageGroupsByMeasure(
         sourceNoteGroups,
         noteMeasures,
@@ -1557,12 +1619,67 @@ export function StaffPagePrompt({
       rows: chunkedRows,
     };
   }, [
+    adaptiveMeasureAreaWidthPx,
+    adaptiveWidthLayout,
+    beatsPerMeasure,
     keepMeasuresTogether,
     maxMeasuresPerRow,
     maxRowCount,
     noteMeasures,
+    noteOnsets,
     notesPerRow,
     sourceNoteGroups,
+  ]);
+  const adaptiveRowStaveWidthPx = useMemo(() => {
+    if (!adaptiveWidthLayout) return 0;
+
+    const measureBeatCount =
+      beatsPerMeasure ?? PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure;
+    const defaultEventsPerMeasure = Math.max(
+      1,
+      Math.round(measureBeatCount / getQuarterNoteBeats(noteDuration))
+    );
+    const defaultMeasureWidthPx = getPracticeStaffMeasureWidthPx([], measureBeatCount);
+
+    return rows.reduce((widestRowWidthPx, rowGroups, rowIndex) => {
+      const rowStartIndex = rowStartIndices[rowIndex] ?? rowIndex * notesPerRow;
+      const rowMeasureNumbers = [
+        ...new Set(
+          noteMeasures
+            ?.slice(rowStartIndex, rowStartIndex + rowGroups.length)
+            .filter((measure): measure is number => measure !== undefined)
+        ),
+      ];
+      const rowMeasureWidths = getStaffPageMeasureWidthsPx(
+        noteMeasures?.slice(rowStartIndex, rowStartIndex + rowGroups.length) ?? [],
+        noteOnsets?.slice(rowStartIndex, rowStartIndex + rowGroups.length),
+        measureBeatCount
+      );
+      const rowNoteAreaWidthPx =
+        keepMeasuresTogether && rowMeasureNumbers.length > 0
+          ? rowMeasureNumbers.reduce(
+              (total, measure) => total + (rowMeasureWidths.get(measure) ?? defaultMeasureWidthPx),
+              0
+            )
+          : rowGroups.length * (defaultMeasureWidthPx / defaultEventsPerMeasure);
+      const rowStaveWidthPx =
+        rowNoteAreaWidthPx +
+        layout.horizontal.minNoteAreaSidePaddingPx * 2 +
+        PRACTICE_STAFF_CLEF_AND_METER_RESERVE_PX;
+
+      return Math.max(widestRowWidthPx, rowStaveWidthPx);
+    }, 0);
+  }, [
+    adaptiveWidthLayout,
+    beatsPerMeasure,
+    keepMeasuresTogether,
+    layout.horizontal.minNoteAreaSidePaddingPx,
+    noteDuration,
+    noteMeasures,
+    noteOnsets,
+    notesPerRow,
+    rowStartIndices,
+    rows,
   ]);
   const cursorRowsKey = useMemo(() => {
     if (!virtualizeRows) return "";
@@ -1637,10 +1754,9 @@ export function StaffPagePrompt({
       const localBottom = Math.max(localTop + 1, viewportBottom - frameTop);
       const containerWidth =
         rendererTargetRef.current?.clientWidth || currentFrame.clientWidth || 920;
-      const displayWidth = Math.max(
-        minDisplayWidthPx,
-        Math.min(layout.width.maxPx, containerWidth)
-      );
+      const displayWidth = adaptiveWidthLayout
+        ? Math.max(1, containerWidth)
+        : Math.max(minDisplayWidthPx, Math.min(layout.width.maxPx, containerWidth));
       const renderedScale = containerWidth / displayWidth;
       const rowStepPx = (layout.vertical.viewHeightPx + layout.multirow.rowGapPx) * renderedScale;
       const overscanRows = 2;
@@ -1673,7 +1789,7 @@ export function StaffPagePrompt({
       window.removeEventListener("resize", scheduleSync);
       if (animationFrameId !== 0) window.cancelAnimationFrame(animationFrameId);
     };
-  }, [layout, minDisplayWidthPx, rows.length, virtualizeRows]);
+  }, [adaptiveWidthLayout, layout, minDisplayWidthPx, rows.length, virtualizeRows]);
 
   useEffect(() => {
     const markManualScroll = (): void => {
@@ -2081,7 +2197,9 @@ export function StaffPagePrompt({
           rowGroup.setAttribute("data-staff-row-index", String(rowIndex));
           rowGroup.setAttribute("data-note-start-index", String(rowStartIndex));
           const visibleRowGroups = Array.from(
-            { length: keepMeasuresTogether ? rowGroups.length : notesPerRow },
+            {
+              length: keepMeasuresTogether || adaptiveWidthLayout ? rowGroups.length : notesPerRow,
+            },
             (_, slotIndex) => rowGroups[slotIndex] ?? []
           );
           const rowSlots = visibleRowGroups.map((group) => group[0]);
@@ -2092,7 +2210,37 @@ export function StaffPagePrompt({
                 .filter((measure): measure is number => measure !== undefined)
             ),
           ];
-          const rowMeasureCount = Math.max(1, rowMeasureNumbers.length);
+          const defaultEventsPerMeasure = Math.max(
+            1,
+            Math.round(4 / getQuarterNoteBeats(noteDuration))
+          );
+          const rowMeasureCount = Math.max(
+            1,
+            keepMeasuresTogether
+              ? rowMeasureNumbers.length
+              : adaptiveWidthLayout
+                ? Math.ceil(rowGroups.length / defaultEventsPerMeasure)
+                : rowMeasureNumbers.length
+          );
+          const rowMeasureWidths = getStaffPageMeasureWidthsPx(
+            noteMeasures?.slice(rowStartIndex, rowStartIndex + rowGroups.length) ?? [],
+            noteOnsets?.slice(rowStartIndex, rowStartIndex + rowGroups.length),
+            beatsPerMeasure ?? PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
+          );
+          const rowMeasureWidthsPx = rowMeasureNumbers.map(
+            (measure) =>
+              rowMeasureWidths.get(measure) ??
+              getPracticeStaffMeasureWidthPx(
+                [],
+                beatsPerMeasure ?? PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
+              )
+          );
+          const rowHorizontal = adaptiveWidthLayout
+            ? {
+                ...layout.horizontal,
+                noteAreaSidePaddingPx: layout.horizontal.minNoteAreaSidePaddingPx,
+              }
+            : layout.horizontal;
           const rowFirstMeasure =
             rowMeasureNumbers[0] ??
             (beatsPerMeasure && beatsPerMeasure > 0
@@ -2116,6 +2264,12 @@ export function StaffPagePrompt({
           const rowOnsets = noteOnsets
             ? rowSlots.map((_, slotIndex) => noteOnsets[rowStartIndex + slotIndex])
             : undefined;
+          const rowStartBeat =
+            beatsPerMeasure && beatsPerMeasure > 0
+              ? Math.floor(
+                  (rowOnsets?.find((onset) => onset !== undefined) ?? 0) / beatsPerMeasure
+                ) * beatsPerMeasure
+              : 0;
           const beamOptions =
             noteDurations && noteMeasures && noteOnsets
               ? {
@@ -2140,12 +2294,25 @@ export function StaffPagePrompt({
           let barlineTopY: number;
           let barlineBottomY: number;
           let lyricAnchorY: number;
+          const rowFrameMetrics = adaptiveWidthLayout
+            ? {
+                ...frameMetrics,
+                staveWidth: Math.min(
+                  frameMetrics.staveWidth,
+                  logicalPx(adaptiveRowStaveWidthPx, surface.scale)
+                ),
+              }
+            : frameMetrics;
           const system = drawStaffSystem({
             brace: true,
-            columnCount: keepMeasuresTogether ? rowMeasureCount : notesPerRow,
+            columnCount: keepMeasuresTogether
+              ? rowMeasureCount
+              : adaptiveWidthLayout
+                ? rowGroups.length
+                : notesPerRow,
             context,
-            frame: frameMetrics,
-            horizontal: layout.horizontal,
+            frame: rowFrameMetrics,
+            horizontal: rowHorizontal,
             mode: staffNotationMode,
             scale: surface.scale,
             useLedgerGap,
@@ -2155,6 +2322,18 @@ export function StaffPagePrompt({
             yOffset: baseY,
           });
           const { noteArea } = system;
+          const measureWidthScale =
+            adaptiveWidthLayout && rowMeasureWidthsPx.length > 0
+              ? Math.min(
+                  1,
+                  (noteArea.right - noteArea.left) /
+                    rowMeasureWidthsPx.reduce((total, width) => total + width, 0)
+                )
+              : 1;
+          const fittedMeasureWidths = rowMeasureWidthsPx.map((width) => width * measureWidthScale);
+          const fittedMeasureWidthsInSvgUnits = fittedMeasureWidths.map((width) =>
+            logicalPx(width, surface.scale)
+          );
           const distributionArea = distributeNotesEvenly
             ? {
                 ...noteArea,
@@ -2323,12 +2502,6 @@ export function StaffPagePrompt({
                 laneTickables.reduce((total, tickable) => total + tickable.getTicks().value(), 0)
               )
             );
-            const rowStartBeat =
-              beatsPerMeasure && beatsPerMeasure > 0
-                ? Math.floor(
-                    (rowOnsets?.find((onset) => onset !== undefined) ?? 0) / beatsPerMeasure
-                  ) * beatsPerMeasure
-                : 0;
             const ticksPerQuarter = new Voice({ numBeats: 1, beatValue: 4 })
               .getTotalTicks()
               .value();
@@ -2380,7 +2553,8 @@ export function StaffPagePrompt({
                 ticksPerQuarter,
                 beatsPerMeasure,
                 rowMeasureCount,
-                noteArea
+                noteArea,
+                adaptiveWidthLayout ? fittedMeasureWidthsInSvgUnits : undefined
               );
             }
             if (distributeNotesEvenly) {
@@ -2619,15 +2793,25 @@ export function StaffPagePrompt({
               (_, index) => (index + 1) * barlineInterval
             );
           for (const boundaryIndex of barlineBoundaries) {
-            if (boundaryIndex >= notesPerRow) continue;
+            if (
+              boundaryIndex >=
+              (keepMeasuresTogether || adaptiveWidthLayout ? rowGroups.length : notesPerRow)
+            ) {
+              continue;
+            }
             const nextTickable = layoutTickables[boundaryIndex];
             const boundaryBeat = rowOnsets?.[boundaryIndex];
             const boundaryMeasure = noteMeasures?.[rowStartIndex + boundaryIndex];
+            const measureOffset =
+              boundaryMeasure === undefined ? -1 : boundaryMeasure - rowFirstMeasure;
             const fixedMeasureBarlineX =
-              keepMeasuresTogether && boundaryMeasure !== undefined
+              keepMeasuresTogether && measureOffset >= 0
                 ? noteArea.left +
-                  ((boundaryMeasure - rowFirstMeasure) / rowMeasureCount) *
-                    (noteArea.right - noteArea.left)
+                  (adaptiveWidthLayout
+                    ? fittedMeasureWidthsInSvgUnits
+                        .slice(0, measureOffset)
+                        .reduce((sum, width) => sum + width, 0)
+                    : (measureOffset / rowMeasureCount) * (noteArea.right - noteArea.left))
                 : undefined;
             const barlineX =
               fixedMeasureBarlineX ??
@@ -2643,7 +2827,53 @@ export function StaffPagePrompt({
               addBarline(rowGroup, barlineX, barlineTopY, barlineBottomY, palette.ink);
             }
           }
-          if (timedStaveNotes.length > 0) {
+          if (rowOnsets) {
+            const rowEndBeat = Math.max(
+              ...timedStaveNotes.map((note) => note.endBeat),
+              ...rowOnsets.filter((onset): onset is number => onset !== undefined)
+            );
+            rowSlots.forEach((_, slotIndex) => {
+              const startBeat = rowOnsets[slotIndex];
+              const staveNotes = Object.values(cursorTickablesBySlot[slotIndex] ?? {}).filter(
+                (tickable): tickable is StaveNote => tickable instanceof StaveNote
+              );
+              if (startBeat === undefined || staveNotes.length === 0) return;
+              const noteIndex = rowStartIndex + slotIndex;
+              const nextStartBeat = noteOnsets?.[noteIndex + 1];
+              const endBeat =
+                nextStartBeat !== undefined && nextStartBeat > startBeat
+                  ? nextStartBeat
+                  : Math.max(
+                      startBeat + quarterBeatsForDuration(rowSelectedDurations[slotIndex]!),
+                      rowEndBeat
+                    );
+              const alignedBeatX =
+                keepMeasuresTogether && beatsPerMeasure && rowMeasureCount > 0
+                  ? getMeasureAlignedBeatX(
+                      startBeat,
+                      rowStartBeat,
+                      beatsPerMeasure,
+                      rowMeasureCount,
+                      noteArea,
+                      adaptiveWidthLayout ? fittedMeasureWidthsInSvgUnits : undefined
+                    )
+                  : undefined;
+              const markerX =
+                alignedBeatX ??
+                staveNotes.reduce((total, staveNote) => total + staveNoteCenterX(staveNote), 0) /
+                  staveNotes.length;
+              addStaffProgressMarker(
+                rowGroup,
+                noteIndex,
+                markerX,
+                barlineTopY,
+                barlineBottomY,
+                "practice",
+                logicalPx(14, surface.scale),
+                { startBeat, endBeat: Math.max(startBeat + 0.001, endBeat) }
+              );
+            });
+          } else if (timedStaveNotes.length > 0) {
             const notesByStartBeat = new Map<number, TimedStaveNote[]>();
             timedStaveNotes.forEach((note) => {
               const startBeat = Number(note.startBeat.toFixed(4));
@@ -2658,12 +2888,12 @@ export function StaffPagePrompt({
             sortedStartBeats.forEach((startBeat, markerIndex) => {
               const groupedNotes = notesByStartBeat.get(startBeat)!;
               const nextStartBeat = sortedStartBeats[markerIndex + 1] ?? rowEndBeat;
-              const matchingEventIndex = rowOnsets?.findIndex(
+              const matchingEventIndex = noteOnsets?.findIndex(
                 (onset) => onset !== undefined && Math.abs(onset - startBeat) < 0.001
               );
               const noteIndex =
                 matchingEventIndex !== undefined && matchingEventIndex >= 0
-                  ? rowStartIndex + matchingEventIndex
+                  ? matchingEventIndex
                   : -1;
               const markerX =
                 groupedNotes.reduce((total, note) => total + note.markerX, 0) / groupedNotes.length;
@@ -2867,6 +3097,9 @@ export function StaffPagePrompt({
     isFiniteScore,
     visibleRowCount,
     virtualizeRows,
+    adaptiveWidthLayout,
+    adaptiveRowStaveWidthPx,
+    adaptiveMeasureAreaWidthPx,
     virtualRowWindow.end,
     virtualRowWindow.start,
   ]);

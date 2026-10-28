@@ -51,7 +51,6 @@ export interface PracticeSetupUiPreferences {
   duetLevel: DuetPracticeLevel;
   duetCurriculumVersion: number;
   duetAllowDottedRhythms: boolean;
-  metronomeSyncEnabled: boolean;
   autoPlayTarget: boolean;
   midiAutoPlayTarget: boolean;
   chaseEnabled: boolean;
@@ -76,7 +75,6 @@ interface PracticeSetupActions {
   onPracticeModeChange: (mode: "single" | "duet") => void;
   onDuetLevelChange: (level: DuetPracticeLevel) => void;
   onDuetAllowDottedRhythmsChange: (enabled: boolean) => void;
-  onMetronomeSyncEnabledChange: (enabled: boolean) => void;
   onAutoPlayTargetChange: (enabled: boolean) => void;
   onFixedCountChange: (count: number) => void;
   onFixedDurationSecondsChange: (seconds: number) => void;
@@ -257,7 +255,6 @@ export function PracticeSetupView({
     practiceMode,
     duetLevel,
     duetAllowDottedRhythms,
-    metronomeSyncEnabled,
     autoPlayTarget: nonMidiAutoPlayTarget,
     midiAutoPlayTarget,
     drillNoteNames,
@@ -266,12 +263,14 @@ export function PracticeSetupView({
     mode,
     playAnswerNote: nonMidiPlayAnswerNote,
     midiPlayAnswerNote,
-    promptDisplayMode,
+    promptDisplayMode: savedPromptDisplayMode,
     promptNoteDurations,
     queueStrategy,
   } = preferences;
   const isDuetPractice = practiceMode === "duet";
   const activeAnswerPitchMode = isDuetPractice ? "exact-pitch" : answerPitchMode;
+  const promptDisplayMode =
+    activeAnswerPitchMode === "exact-pitch" ? "staff-page" : savedPromptDisplayMode;
   const autoPlayTarget =
     activeAnswerPitchMode === "exact-pitch" ? midiAutoPlayTarget : nonMidiAutoPlayTarget;
   const playAnswerNote =
@@ -281,7 +280,6 @@ export function PracticeSetupView({
     onPracticeModeChange,
     onDuetLevelChange,
     onDuetAllowDottedRhythmsChange,
-    onMetronomeSyncEnabledChange,
     onAutoPlayTargetChange: setAutoPlayTarget,
     onFixedCountChange: setFixedCount,
     onFixedDurationSecondsChange: setFixedDurationSeconds,
@@ -810,31 +808,13 @@ export function PracticeSetupView({
             </section>
 
             {activeAnswerPitchMode === "exact-pitch" ? (
-              <section aria-label="节拍与谱面" className="practice-free-section">
+              <section aria-label="节拍同步" className="practice-free-section">
                 <div className="practice-free-field">
-                  <span className="control-label">节拍与谱面</span>
-                  <label
-                    className={`practice-checkbox-option${metronomeBeatsPerBar !== 4 && !metronomeSyncEnabled ? " is-disabled" : ""}`}
-                    title={
-                      metronomeBeatsPerBar !== 4
-                        ? "同步练习的谱面为 4/4，请先将节拍器拍号设为 4/4"
-                        : undefined
-                    }
-                  >
-                    <input
-                      checked={metronomeSyncEnabled}
-                      disabled={metronomeBeatsPerBar !== 4 && !metronomeSyncEnabled}
-                      onChange={(event) =>
-                        onMetronomeSyncEnabledChange(event.currentTarget.checked)
-                      }
-                      type="checkbox"
-                    />
-                    <span>节拍器与谱面同步</span>
-                  </label>
+                  <span className="control-label">节拍同步</span>
                   <small className="practice-free-helper">
                     {metronomeBeatsPerBar === 4
-                      ? "开启后谱面按节拍自动推进；错音或漏音标红，音高正确但节奏偏差用琥珀色标记。"
-                      : "当前谱面为 4/4，请先在木鱼节拍器中将拍号调为 4/4。"}
+                      ? "MIDI 弹奏时，谱面会按木鱼节拍自动推进并反馈节奏。"
+                      : "同步谱面目前使用 4/4，请先在木鱼节拍器中将拍号调为 4/4。"}
                   </small>
                   {metronomeError ? (
                     <small className="practice-free-warning" role="alert">
@@ -972,10 +952,17 @@ export function PracticeSetupView({
                         <button
                           aria-pressed={promptDisplayMode === "single-note"}
                           className={promptDisplayMode === "single-note" ? "active" : ""}
-                          disabled={promptNoteDurations.length > 1}
+                          disabled={
+                            promptNoteDurations.length > 1 ||
+                            activeAnswerPitchMode === "exact-pitch"
+                          }
                           onClick={() => setPromptDisplayMode("single-note")}
                           title={
-                            promptNoteDurations.length > 1 ? "多选时值需要使用谱页展示" : undefined
+                            activeAnswerPitchMode === "exact-pitch"
+                              ? "MIDI 弹奏会自动同步节拍，请使用连续看谱"
+                              : promptNoteDurations.length > 1
+                                ? "多选时值需要使用谱页展示"
+                                : undefined
                           }
                           type="button"
                         >

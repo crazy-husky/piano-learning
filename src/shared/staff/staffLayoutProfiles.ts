@@ -59,7 +59,7 @@ export interface StaffLayoutProfile {
 
 export interface PracticePageStaffLayoutProfile {
   notationScale: number;
-  horizontal: StaffHorizontalProfile;
+  horizontal: ResponsiveStaffHorizontalProfile;
   vertical: StaffVerticalProfile;
   width: {
     minPx: number;
@@ -70,6 +70,110 @@ export interface PracticePageStaffLayoutProfile {
     notesPerRow: number;
     rowGapPx: number;
   };
+}
+
+const PRACTICE_STAFF_REFERENCE_MEASURE_WIDTH_PX = 180;
+
+/**
+ * Shared width tuning for practice score rows. Adjusting the reference measure
+ * width also scales note spacing, stave insets, and the clef reservation.
+ */
+export const PRACTICE_STAFF_WIDTH_TUNING = {
+  /** Base note-area width for a four-quarter-beat measure. */
+  referenceMeasureWidthPx: PRACTICE_STAFF_REFERENCE_MEASURE_WIDTH_PX,
+  /** The reference measure spans four quarter-note beats. */
+  referenceBeatsPerMeasure: 4,
+  /** Minimum horizontal gap between distinct rhythmic onset columns. */
+  minRhythmicColumnGapRatio: 0.45,
+  /** Width ratios derived from the reference measure width. */
+  staffSidePaddingRatio: 0.125,
+  noteAreaSidePaddingRatio: 0.25,
+  minNoteAreaSidePaddingRatio: 0.125,
+  clefAndMeterReserveRatio: 0.35,
+  measureEdgeInsetRatio: 0.14,
+  /** Prevent very dense subdivisions from demanding an unbounded row width. */
+  maxMeasureDensityScale: 2,
+  /** Upper bound for measures placed on a single practice row. */
+  maxMeasuresPerRow: 6,
+  /** Resize observation is debounced to avoid redraws during continuous resizing. */
+  resizeDebounceMs: 140,
+  /** Ignore sub-pixel / small layout changes that do not affect row capacity. */
+  resizeWidthThresholdPx: 8,
+} as const;
+
+/** Additional note-column separation derived from the reference measure. */
+export const PRACTICE_STAFF_REFERENCE_NOTE_COLUMN_WIDTH_PX =
+  PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx /
+  PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure;
+/** Horizontal room reserved for clef and time signature, derived from the base. */
+export const PRACTICE_STAFF_CLEF_AND_METER_RESERVE_PX =
+  PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx *
+  PRACTICE_STAFF_WIDTH_TUNING.clefAndMeterReserveRatio;
+
+export function getPracticeStaffMeasureWidthPx(
+  noteOnsets: readonly number[],
+  beatsPerMeasure: number = PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
+): number {
+  const safeBeatsPerMeasure = Number.isFinite(beatsPerMeasure)
+    ? Math.max(1, beatsPerMeasure)
+    : PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure;
+  const baseWidth =
+    (PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx * safeBeatsPerMeasure) /
+    PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure;
+  const edgeInset =
+    Math.min(baseWidth, PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx) *
+    PRACTICE_STAFF_WIDTH_TUNING.measureEdgeInsetRatio;
+  const minimumColumnGapPx =
+    PRACTICE_STAFF_REFERENCE_NOTE_COLUMN_WIDTH_PX *
+    PRACTICE_STAFF_WIDTH_TUNING.minRhythmicColumnGapRatio;
+  const uniqueOnsets = [
+    ...new Set(
+      noteOnsets.filter(Number.isFinite).map((onset) => Math.round(onset * 1_000_000) / 1_000_000)
+    ),
+  ].sort((left, right) => left - right);
+  const smallestOnsetGap = uniqueOnsets.slice(1).reduce((smallestGap, onset, index) => {
+    const gap = onset - uniqueOnsets[index]!;
+    return gap > 0 ? Math.min(smallestGap, gap) : smallestGap;
+  }, Number.POSITIVE_INFINITY);
+  const minimumContentWidth = Number.isFinite(smallestOnsetGap)
+    ? edgeInset * 2 + (minimumColumnGapPx * safeBeatsPerMeasure) / smallestOnsetGap
+    : baseWidth;
+  const maximumWidth = baseWidth * PRACTICE_STAFF_WIDTH_TUNING.maxMeasureDensityScale;
+
+  // A measure keeps its meter-based base width even when it contains fewer
+  // notes; closer rhythmic onsets can expand it to preserve a minimum note gap.
+  return Math.ceil(Math.max(baseWidth, Math.min(maximumWidth, minimumContentWidth)));
+}
+
+export function getPracticeStaffMeasureAreaWidthPx(
+  availableWidthPx: number,
+  horizontal: ResponsiveStaffHorizontalProfile
+): number {
+  // Adaptive rows use the compressed note-area padding so a measure width
+  // accepted here also fits the stave that drawStaffSystem can actually draw.
+  return Math.max(
+    1,
+    availableWidthPx -
+      horizontal.staffSidePaddingPx * 2 -
+      horizontal.minNoteAreaSidePaddingPx * 2 -
+      PRACTICE_STAFF_CLEF_AND_METER_RESERVE_PX
+  );
+}
+
+export function getPracticeStaffMeasuresPerRow(
+  availableWidthPx: number,
+  horizontal: ResponsiveStaffHorizontalProfile,
+  beatsPerMeasure: number = PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
+): number {
+  const measureWidthPx = getPracticeStaffMeasureWidthPx([], beatsPerMeasure);
+  const widthForMeasureAreas = getPracticeStaffMeasureAreaWidthPx(availableWidthPx, horizontal);
+  return Math.max(
+    1,
+    Math.min(
+      PRACTICE_STAFF_WIDTH_TUNING.maxMeasuresPerRow,
+      Math.floor(widthForMeasureAreas / measureWidthPx)
+    )
+  );
 }
 
 /** 具有响应式列布局的谱表共有接口。 */
@@ -215,9 +319,17 @@ export const PRACTICE_SINGLE_STAFF_LAYOUT = {
 export const PRACTICE_PAGE_STAFF_LAYOUT = {
   notationScale: 1,
   horizontal: {
-    staffSidePaddingPx: 24,
-    noteAreaSidePaddingPx: 45,
-    minNoteAreaSidePaddingPx: 24,
+    clefReservePx: PRACTICE_STAFF_CLEF_AND_METER_RESERVE_PX,
+    preferredColumnGapPx: PRACTICE_STAFF_REFERENCE_NOTE_COLUMN_WIDTH_PX,
+    staffSidePaddingPx:
+      PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx *
+      PRACTICE_STAFF_WIDTH_TUNING.staffSidePaddingRatio,
+    noteAreaSidePaddingPx:
+      PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx *
+      PRACTICE_STAFF_WIDTH_TUNING.noteAreaSidePaddingRatio,
+    minNoteAreaSidePaddingPx:
+      PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx *
+      PRACTICE_STAFF_WIDTH_TUNING.minNoteAreaSidePaddingRatio,
   },
   vertical: {
     centerYPx: 60,
@@ -253,8 +365,8 @@ export const MOBILE_PRACTICE_PAGE_STAFF_LAYOUT = {
   },
 } as const satisfies PracticePageStaffLayoutProfile;
 
-// Duet rows use fixed-width measure columns; a slightly narrower desktop score
-// keeps three measures readable without stretching them across ultrawide viewports.
+// Non-continuous duet score views keep a compact width; continuous practice
+// rows size against their measured renderer width.
 export const DUET_PRACTICE_PAGE_STAFF_LAYOUT = {
   ...PRACTICE_PAGE_STAFF_LAYOUT,
   width: {

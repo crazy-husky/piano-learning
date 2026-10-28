@@ -72,9 +72,13 @@ import {
   DUET_PRACTICE_PAGE_STAFF_LAYOUT,
   MOBILE_DUET_PRACTICE_PAGE_STAFF_LAYOUT,
   MOBILE_PRACTICE_PAGE_STAFF_LAYOUT,
+  PRACTICE_PAGE_STAFF_LAYOUT,
+  PRACTICE_STAFF_WIDTH_TUNING,
+  getPracticeStaffMeasureAreaWidthPx,
+  getPracticeStaffMeasuresPerRow,
 } from "../../../shared/staff/staffLayoutProfiles";
 import {
-  chunkStaffPageGroupsByMeasure,
+  chunkStaffPageGroupsByAdaptiveMeasureWidth,
   buildStaffPageView,
   DESKTOP_STAFF_PAGE_NOTE_COUNT,
   DUET_DESKTOP_STAFF_PAGE_NOTE_COUNT,
@@ -299,7 +303,6 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
     duetLevel: "level-1",
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms: false,
-    metronomeSyncEnabled: false,
     autoPlayTarget: settings.autoPlayTarget,
     midiAutoPlayTarget: false,
     chaseEnabled: DEFAULT_SCORE_CHASE_PREFERENCES.enabled,
@@ -351,8 +354,6 @@ function parsePracticeSetupUiPreferences(
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms:
       typeof value.duetAllowDottedRhythms === "boolean" ? value.duetAllowDottedRhythms : false,
-    metronomeSyncEnabled:
-      typeof value.metronomeSyncEnabled === "boolean" ? value.metronomeSyncEnabled : false,
     autoPlayTarget:
       typeof value.autoPlayTarget === "boolean" ? value.autoPlayTarget : fallback.autoPlayTarget,
     midiAutoPlayTarget:
@@ -542,6 +543,7 @@ export function PracticeView({
     visible: boolean;
   } | null>(null);
   const staffPagePromptContainerRef = useRef<HTMLDivElement | null>(null);
+  const [staffPageRendererWidthPx, setStaffPageRendererWidthPx] = useState(0);
   const [syncCountInBeat, setSyncCountInBeat] = useState<number | null>(null);
   const [syncProgressMarkerLeadEnabled, setSyncProgressMarkerLeadEnabled] = useState(false);
   const [syncTimingAnnouncement, setSyncTimingAnnouncement] = useState<string | null>(null);
@@ -566,6 +568,7 @@ export function PracticeView({
       ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
       : false
   );
+
   const runningStartSnapshot =
     phase === "running" &&
     (session?.schemaVersion === 3 || session?.schemaVersion === 4 || session?.schemaVersion === 5)
@@ -592,6 +595,7 @@ export function PracticeView({
     : runningStartSnapshot
       ? normalizeAnswerPitchMode(runningStartSnapshot.practiceConfig.answerPitchMode)
       : normalizeAnswerPitchMode(practiceSetupPreferences.answerPitchMode);
+  const isMetronomeSyncRequired = practiceTab === "free" && answerPitchMode === "exact-pitch";
   const activePracticeInputMode: PracticeInputMode | null =
     practiceTab === "free"
       ? answerPitchMode === "microphone"
@@ -616,10 +620,93 @@ export function PracticeView({
     if (activePracticeInputMode) onInputModeChange(activePracticeInputMode);
   }, [activePracticeInputMode, onInputModeChange]);
   const mode = runningStartSnapshot?.practiceConfig.mode ?? practiceSetupPreferences.mode;
-  const promptDisplayMode = isDuetPractice
-    ? "staff-page"
-    : (runningStartSnapshot?.presentationConfig.promptDisplayMode ??
-      practiceSetupPreferences.promptDisplayMode);
+  const promptDisplayMode =
+    isDuetPractice || isMetronomeSyncRequired
+      ? "staff-page"
+      : (runningStartSnapshot?.presentationConfig.promptDisplayMode ??
+        practiceSetupPreferences.promptDisplayMode);
+  const isContinuousStaffPage = practiceTab === "free" && promptDisplayMode === "staff-page";
+  const isMobileStaffPage = isMobileViewport && promptDisplayMode === "staff-page";
+  const responsivePracticeStaffLayout = isDuetPractice
+    ? isMobileStaffPage
+      ? MOBILE_DUET_PRACTICE_PAGE_STAFF_LAYOUT
+      : DUET_PRACTICE_PAGE_STAFF_LAYOUT
+    : isMobileStaffPage
+      ? MOBILE_PRACTICE_PAGE_STAFF_LAYOUT
+      : PRACTICE_PAGE_STAFF_LAYOUT;
+  const fallbackRendererWidthPx = isMobileStaffPage
+    ? typeof window !== "undefined"
+      ? window.innerWidth
+      : 360
+    : isContinuousStaffPage
+      ? Math.min(
+          typeof window !== "undefined"
+            ? window.innerWidth
+            : PRACTICE_PAGE_STAFF_LAYOUT.width.maxPx,
+          PRACTICE_PAGE_STAFF_LAYOUT.width.maxPx
+        )
+      : responsivePracticeStaffLayout.width.maxPx;
+  const adaptiveRendererWidthPx = staffPageRendererWidthPx || fallbackRendererWidthPx;
+  const adaptiveMeasureAreaWidthPx = getPracticeStaffMeasureAreaWidthPx(
+    adaptiveRendererWidthPx,
+    responsivePracticeStaffLayout.horizontal
+  );
+  const adaptiveMeasuresPerRow = getPracticeStaffMeasuresPerRow(
+    adaptiveRendererWidthPx,
+    responsivePracticeStaffLayout.horizontal,
+    PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
+  );
+
+  useLayoutEffect(() => {
+    if (phase !== "running" || promptDisplayMode !== "staff-page") {
+      setStaffPageRendererWidthPx(0);
+      return undefined;
+    }
+
+    const prompt = staffPagePromptContainerRef.current;
+    const renderer = prompt?.querySelector<HTMLElement>(".staff-page-renderer");
+    if (!renderer) return undefined;
+
+    let resizeTimer = 0;
+    let lastObservedWidth = renderer.clientWidth;
+    const commitWidth = (width: number): void => {
+      if (!Number.isFinite(width) || width <= 0) return;
+      if (
+        Math.abs(width - lastObservedWidth) < PRACTICE_STAFF_WIDTH_TUNING.resizeWidthThresholdPx
+      ) {
+        return;
+      }
+      lastObservedWidth = width;
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        setStaffPageRendererWidthPx((current) =>
+          Math.abs(current - width) < PRACTICE_STAFF_WIDTH_TUNING.resizeWidthThresholdPx
+            ? current
+            : width
+        );
+      }, PRACTICE_STAFF_WIDTH_TUNING.resizeDebounceMs);
+    };
+
+    const initialWidth = renderer.clientWidth;
+    if (initialWidth > 0) {
+      lastObservedWidth = initialWidth;
+      setStaffPageRendererWidthPx((current) =>
+        Math.abs(current - initialWidth) < PRACTICE_STAFF_WIDTH_TUNING.resizeWidthThresholdPx
+          ? current
+          : initialWidth
+      );
+    }
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? renderer.clientWidth;
+      commitWidth(width);
+    });
+    observer.observe(renderer);
+
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(resizeTimer);
+    };
+  }, [phase, promptDisplayMode]);
   const isMetronomeSyncActive =
     phase === "running" &&
     practiceTab === "free" &&
@@ -686,7 +773,6 @@ export function PracticeView({
       setPracticeSetupPreferences((current) => ({
         ...current,
         answerPitchMode: nextAnswerPitchMode,
-        ...(nextAnswerPitchMode === "exact-pitch" ? {} : { metronomeSyncEnabled: false }),
       }));
     },
     [setPracticeSetupPreferences]
@@ -736,16 +822,9 @@ export function PracticeView({
   const setDuetAllowDottedRhythms = (enabled: boolean): void => {
     setPracticeSetupPreferences((current) => ({ ...current, duetAllowDottedRhythms: enabled }));
   };
-  const setMetronomeSyncEnabled = (enabled: boolean): void => {
-    setPracticeSetupPreferences((current) => ({
-      ...current,
-      metronomeSyncEnabled: enabled,
-      ...(enabled ? { promptDisplayMode: "staff-page" as const } : {}),
-    }));
-  };
   const setPromptDisplayMode = (nextPromptDisplayMode: PromptDisplayMode): void => {
     setPracticeSetupPreferences((current) =>
-      current.metronomeSyncEnabled ||
+      isMetronomeSyncRequired ||
       (nextPromptDisplayMode === "single-note" && current.promptNoteDurations.length > 1)
         ? current
         : { ...current, promptDisplayMode: nextPromptDisplayMode }
@@ -929,7 +1008,6 @@ export function PracticeView({
         duetLevel: current.duetLevel,
         duetCurriculumVersion: current.duetCurriculumVersion,
         duetAllowDottedRhythms: current.duetAllowDottedRhythms,
-        metronomeSyncEnabled: current.metronomeSyncEnabled,
         midiAutoPlayTarget: current.midiAutoPlayTarget,
         midiPlayAnswerNote: current.midiPlayAnswerNote,
         chaseEnabled: current.chaseEnabled,
@@ -1409,11 +1487,17 @@ export function PracticeView({
       drillNoteNames,
       enabledNotes: coreEnabledNotes,
       duetLevel: isDuetPractice ? duetLevel : undefined,
+      adaptiveMeasureAreaWidthPx:
+        isContinuousStaffPage || isDuetPractice ? adaptiveMeasureAreaWidthPx : undefined,
+      adaptiveMaxMeasuresPerRow: isContinuousStaffPage
+        ? adaptiveMeasuresPerRow
+        : isDuetPractice
+          ? isMobileViewport
+            ? DUET_MOBILE_MEASURES_PER_ROW
+            : DUET_DESKTOP_MEASURES_PER_ROW
+          : undefined,
       allowDottedRhythms: duetAllowDottedRhythms,
-      forceRhythmGeneration:
-        practiceTab === "free" &&
-        practiceSetupPreferences.metronomeSyncEnabled &&
-        answerPitchMode === "exact-pitch",
+      forceRhythmGeneration: isMetronomeSyncRequired,
       promptNoteDurations,
       rangeExtensionNotes,
       retainHistory: practiceTab === "free" && promptDisplayMode === "staff-page",
@@ -1763,10 +1847,7 @@ export function PracticeView({
     values: {
       answerPitchMode,
       isDuetPractice,
-      metronomeSyncEnabled:
-        practiceTab === "free" &&
-        practiceSetupPreferences.metronomeSyncEnabled &&
-        answerPitchMode === "exact-pitch",
+      metronomeSyncRequired: isMetronomeSyncRequired,
       midiAutoPlayTarget: practiceSetupPreferences.midiAutoPlayTarget,
       midiPlayAnswerNote: practiceSetupPreferences.midiPlayAnswerNote,
       duetLevel,
@@ -1839,6 +1920,41 @@ export function PracticeView({
     await playTargetNote(prompt.note).catch(() => undefined);
   }, [answerPitchMode, markPromptInput]);
 
+  const adaptiveEventsPerMeasure = Math.max(
+    1,
+    Math.round(4 / getQuarterNoteBeats(effectivePromptNoteDuration))
+  );
+  const adaptiveEventsPerRow = adaptiveMeasuresPerRow * adaptiveEventsPerMeasure;
+  const adaptiveStaffRows = useMemo(() => {
+    if (
+      !isContinuousStaffPage ||
+      !staffPageRhythm ||
+      staffPageRhythm.measures.length !== staffPageNotes.length
+    ) {
+      return null;
+    }
+    const groups =
+      staffPageNoteGroups.length === staffPageNotes.length
+        ? staffPageNoteGroups
+        : staffPageNotes.map((note) => [note]);
+    return chunkStaffPageGroupsByAdaptiveMeasureWidth(
+      groups,
+      staffPageRhythm.measures,
+      adaptiveMeasureAreaWidthPx,
+      adaptiveMeasuresPerRow,
+      undefined,
+      staffPageRhythm.onsets,
+      PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
+    );
+  }, [
+    adaptiveMeasureAreaWidthPx,
+    adaptiveMeasuresPerRow,
+    isContinuousStaffPage,
+    staffPageNoteGroups,
+    staffPageNotes,
+    staffPageRhythm,
+  ]);
+
   const duetStaffPageNoteCount = isMobileViewport
     ? DUET_MOBILE_STAFF_PAGE_NOTE_COUNT
     : DUET_DESKTOP_STAFF_PAGE_NOTE_COUNT;
@@ -1847,9 +1963,11 @@ export function PracticeView({
     : DUET_DESKTOP_MEASURES_PER_ROW;
   const freePlaybackNotesPerRow = isDuetPractice
     ? duetStaffPageNoteCount
-    : isMobileViewport
-      ? MOBILE_STAFF_PAGE_NOTE_COUNT
-      : DESKTOP_STAFF_PAGE_NOTE_COUNT;
+    : isContinuousStaffPage
+      ? adaptiveEventsPerRow
+      : isMobileViewport
+        ? MOBILE_STAFF_PAGE_NOTE_COUNT
+        : DESKTOP_STAFF_PAGE_NOTE_COUNT;
   const duetStaffRows = useMemo(() => {
     if (
       !isDuetPractice ||
@@ -1858,25 +1976,28 @@ export function PracticeView({
     ) {
       return null;
     }
-    return chunkStaffPageGroupsByMeasure(
+    return chunkStaffPageGroupsByAdaptiveMeasureWidth(
       staffPageNotes,
       staffPageRhythm.measures,
-      duetStaffPageNoteCount,
+      adaptiveMeasureAreaWidthPx,
+      duetMaxMeasuresPerRow,
       undefined,
-      duetMaxMeasuresPerRow
+      staffPageRhythm.onsets,
+      PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
     );
   }, [
+    adaptiveMeasureAreaWidthPx,
     isDuetPractice,
     duetMaxMeasuresPerRow,
-    duetStaffPageNoteCount,
     staffPageNotes,
     staffPageRhythm,
   ]);
   const freePlaybackRows = useMemo<SongRowPlaybackNote[][]>(() => {
     const rows: SongRowPlaybackNote[][] = [];
     staffPageNotes.forEach((note, noteIndex) => {
-      const rowIndex =
-        isDuetPractice && duetStaffRows
+      const rowIndex = adaptiveStaffRows
+        ? getStaffPageRowIndex(adaptiveStaffRows.rowStartIndices, noteIndex)
+        : isDuetPractice && duetStaffRows
           ? getStaffPageRowIndex(duetStaffRows.rowStartIndices, noteIndex)
           : Math.floor(noteIndex / freePlaybackNotesPerRow);
       if (rowIndex < 0) return;
@@ -1899,6 +2020,7 @@ export function PracticeView({
     return rows;
   }, [
     duetStaffRows,
+    adaptiveStaffRows,
     effectivePromptNoteDuration,
     freePlaybackNotesPerRow,
     isDuetPractice,
@@ -2489,9 +2611,7 @@ export function PracticeView({
   ]);
 
   const setupDisabledReason =
-    practiceTab === "free" &&
-    practiceSetupPreferences.metronomeSyncEnabled &&
-    metronomePreferences.beatsPerBar !== 4
+    isMetronomeSyncRequired && metronomePreferences.beatsPerBar !== 4
       ? "谱面同步目前使用 4/4 拍，请先将节拍器拍号设为 4/4"
       : (isDuetPractice || (practiceTab === "free" && answerPitchMode === "exact-pitch")) &&
           !midi.isConnected
@@ -2533,12 +2653,10 @@ export function PracticeView({
 
   const remainingMs =
     mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
-  const isContinuousStaffPage = practiceTab === "free" && promptDisplayMode === "staff-page";
   const mobileStaffPageRowCount = 1;
   const mobileStaffPageNoteCount = MOBILE_STAFF_PAGE_NOTE_COUNT * mobileStaffPageRowCount;
   const staffPageRowCount = 1;
   const showPracticeKeyboard = activePracticeInputMode === "virtual-keyboard";
-  const isMobileStaffPage = isMobileViewport && promptDisplayMode === "staff-page";
   const mobileStaffPageStartIndex = isContinuousStaffPage
     ? 0
     : Math.floor(Math.max(0, staffPageIndex) / mobileStaffPageNoteCount) * mobileStaffPageNoteCount;
@@ -2629,7 +2747,11 @@ export function PracticeView({
       : DESKTOP_STAFF_PAGE_NOTE_COUNT;
   const staffPageRenderedRowCount = Math.max(
     1,
-    duetStaffRows?.rows.length ?? Math.ceil(staffPageNotes.length / staffPageNoteCount)
+    adaptiveStaffRows?.rows.length ??
+      duetStaffRows?.rows.length ??
+      Math.ceil(
+        staffPageNotes.length / (isContinuousStaffPage ? adaptiveEventsPerRow : staffPageNoteCount)
+      )
   );
   const freeCursorIndexOffset =
     staffPageFirstNoteOffset + (isMobileStaffPage ? mobileStaffPageStartIndex : 0);
@@ -2651,14 +2773,21 @@ export function PracticeView({
     freeChaseCurrentIndex === undefined ? -1 : freeChaseCurrentIndex - freeCursorIndexOffset;
   const freeChaseFollowRowIndex =
     freeChaseLocalIndex >= 0
-      ? isDuetPractice && duetStaffRows
-        ? getStaffPageRowIndex(duetStaffRows.rowStartIndices, freeChaseLocalIndex)
-        : Math.floor(freeChaseLocalIndex / staffPageNoteCount)
+      ? adaptiveStaffRows
+        ? getStaffPageRowIndex(adaptiveStaffRows.rowStartIndices, freeChaseLocalIndex)
+        : isDuetPractice && duetStaffRows
+          ? getStaffPageRowIndex(duetStaffRows.rowStartIndices, freeChaseLocalIndex)
+          : Math.floor(freeChaseLocalIndex / staffPageNoteCount)
       : undefined;
   const freePracticeFollowRowIndex = isContinuousStaffPage
-    ? isDuetPractice && duetStaffRows
-      ? getStaffPageRowIndex(duetStaffRows.rowStartIndices, Math.max(0, staffPageIndex))
-      : Math.floor(Math.max(0, staffPageIndex) / staffPageNoteCount)
+    ? adaptiveStaffRows
+      ? getStaffPageRowIndex(adaptiveStaffRows.rowStartIndices, Math.max(0, staffPageIndex))
+      : isDuetPractice && duetStaffRows
+        ? getStaffPageRowIndex(duetStaffRows.rowStartIndices, Math.max(0, staffPageIndex))
+        : Math.floor(
+            Math.max(0, staffPageIndex) /
+              (isDuetPractice ? staffPageNoteCount : adaptiveEventsPerRow)
+          )
     : freeChaseFollowRowIndex;
   const shouldShowStaffPageContinuationHint =
     isContinuousStaffPage &&
@@ -2706,13 +2835,20 @@ export function PracticeView({
     const note = prompt?.querySelector<SVGElement>(
       `[data-staff-page-note-index="${trackedFreeScoreNoteIndex}"]`
     );
-    const rowIndex =
-      isDuetPractice && duetStaffRows
+    const rowIndex = adaptiveStaffRows
+      ? getStaffPageRowIndex(adaptiveStaffRows.rowStartIndices, trackedFreeScoreNoteIndex)
+      : isDuetPractice && duetStaffRows
         ? getStaffPageRowIndex(duetStaffRows.rowStartIndices, trackedFreeScoreNoteIndex)
         : Math.floor(trackedFreeScoreNoteIndex / staffPageNoteCount);
     const row = prompt?.querySelector<SVGElement>(`[data-staff-row-index="${rowIndex}"]`);
     return note ?? row ?? null;
-  }, [duetStaffRows, isDuetPractice, staffPageNoteCount, trackedFreeScoreNoteIndex]);
+  }, [
+    adaptiveStaffRows,
+    duetStaffRows,
+    isDuetPractice,
+    staffPageNoteCount,
+    trackedFreeScoreNoteIndex,
+  ]);
   const {
     formatQualifiedTimeMedian,
     formatQualifiedTimeP90,
@@ -2814,7 +2950,6 @@ export function PracticeView({
         distanceStageActive={isStaffDistanceStageActive || isNameToKeyStageActive}
         actions={{
           onAnswerPitchModeChange: setAnswerPitchMode,
-          onMetronomeSyncEnabledChange: setMetronomeSyncEnabled,
           onPracticeModeChange: setPracticeMode,
           onDuetLevelChange: setDuetLevel,
           onDuetAllowDottedRhythmsChange: setDuetAllowDottedRhythms,
@@ -3117,15 +3252,7 @@ export function PracticeView({
                 mode === "fixed-count" &&
                 staffPageFirstNoteOffset + staffPageNotes.length >= fixedCount
               }
-              layout={
-                isDuetPractice
-                  ? isMobileStaffPage
-                    ? MOBILE_DUET_PRACTICE_PAGE_STAFF_LAYOUT
-                    : DUET_PRACTICE_PAGE_STAFF_LAYOUT
-                  : isMobileStaffPage
-                    ? MOBILE_PRACTICE_PAGE_STAFF_LAYOUT
-                    : undefined
-              }
+              layout={responsivePracticeStaffLayout}
               noteDuration={effectivePromptNoteDuration}
               noteDurations={visibleStaffPageRhythm?.durations}
               noteMeasures={visibleStaffPageRhythm?.measures}
@@ -3140,21 +3267,29 @@ export function PracticeView({
               showGrandStaffRests={
                 isDuetPractice && (duetLevel === "level-1" || duetLevel === "level-2")
               }
-              keepMeasuresTogether={isDuetPractice}
-              maxMeasuresPerRow={duetMaxMeasuresPerRow}
+              keepMeasuresTogether={
+                isDuetPractice || (isContinuousStaffPage && visibleStaffPageRhythm !== undefined)
+              }
+              maxMeasuresPerRow={
+                isContinuousStaffPage ? adaptiveMeasuresPerRow : duetMaxMeasuresPerRow
+              }
               onToggleRowPlayback={isMetronomeSyncActive ? undefined : toggleFreeScoreRowPlayback}
               scrollDurationMs={staffPageScrollDurationMs}
               staffNotationMode={staffNotationMode}
               useLedgerGap={useLedgerGap}
               virtualizeRows={isContinuousStaffPage}
-              distributeNotesEvenly={isMobileStaffPage && !visibleStaffPageRhythm}
+              adaptiveWidthLayout={isContinuousStaffPage || isDuetPractice}
+              adaptiveMeasureAreaWidthPx={adaptiveMeasureAreaWidthPx}
+              distributeNotesEvenly={false}
               timeSignature={visibleStaffPageRhythm ? "4/4" : undefined}
               notesPerRow={
-                isDuetPractice
-                  ? staffPageNoteCount
-                  : isMobileStaffPage
-                    ? MOBILE_STAFF_PAGE_NOTE_COUNT
-                    : undefined
+                isContinuousStaffPage
+                  ? adaptiveEventsPerRow
+                  : isDuetPractice
+                    ? staffPageNoteCount
+                    : isMobileStaffPage
+                      ? MOBILE_STAFF_PAGE_NOTE_COUNT
+                      : undefined
               }
               maxRowCount={
                 isContinuousStaffPage

@@ -46,12 +46,13 @@
 @media (max-width: 1100px), (hover: none) and (pointer: coarse) {
   .practice-topline {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "title title"
-      "progress actions";
-    align-items: center;
-    row-gap: 6px;
+      "title"
+      "progress"
+      "actions";
+    align-items: start;
+    row-gap: 8px;
   }
 
   .practice-running-title {
@@ -67,11 +68,43 @@
   .practice-topline .progress-readout {
     grid-area: progress;
     justify-self: start;
+    min-height: 44px;
   }
 
   .practice-topline .topline-actions {
     grid-area: actions;
-    justify-self: end;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-self: stretch;
+    width: 100%;
+    max-width: 560px;
+    gap: 8px;
+  }
+
+  .practice-topline .topline-actions > button,
+  .practice-topline .topline-actions > .midi-input-control {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    min-height: 44px;
+  }
+
+  .practice-topline .topline-actions > button {
+    white-space: nowrap;
+  }
+
+  .practice-topline .topline-actions > .midi-input-control {
+    flex: initial;
+  }
+
+  .practice-topline .topline-actions .midi-input-control-select,
+  .practice-topline .topline-actions .midi-input-control-button {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    min-height: 44px;
   }
 }
 
@@ -93,41 +126,23 @@
 }
 
 @media (max-width: 600px) {
-  .practice-running-shell .practice-topline {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "title"
-      "progress"
-      "actions";
-    align-items: start;
-    row-gap: 8px;
-  }
-
   .practice-running-shell .progress-readout {
-    min-width: 0;
-    min-height: 36px;
+    min-width: 118px;
+    min-height: 44px;
   }
 
-  .practice-running-shell .topline-actions {
-    width: 100%;
-    display: grid;
-    grid-template-columns: repeat(3, max-content);
-    justify-self: stretch;
-    justify-content: start;
-    gap: 6px;
-  }
-
-  .practice-running-shell .topline-actions > button {
-    min-width: 0;
+  .practice-running-shell .topline-actions > button,
+  .practice-running-shell .topline-actions .midi-input-control-select,
+  .practice-running-shell .topline-actions .midi-input-control-button {
     gap: 5px;
-    padding-inline: 7px;
+    padding-inline: 8px;
     font-size: 13px;
     white-space: nowrap;
   }
 
   .practice-running-shell .topline-actions > .song-chase-settings-button {
-    grid-column: 1 / -1;
-    justify-self: start;
+    grid-column: auto;
+    justify-self: stretch;
   }
 }
 
