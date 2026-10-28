@@ -10,6 +10,7 @@ interface PauseOverlayProps {
   onReloadAfterRecoveryFailure?: () => void;
   microphoneError?: string | null;
   microphoneConnecting?: boolean;
+  microphoneIsPreparingModel?: boolean;
   onRetryMicrophone?: () => unknown | Promise<unknown>;
   showKeyboardShortcuts?: boolean;
 }
@@ -24,6 +25,7 @@ export function PauseOverlay({
   onReloadAfterRecoveryFailure,
   microphoneError,
   microphoneConnecting = false,
+  microphoneIsPreparingModel = false,
   onRetryMicrophone,
   showKeyboardShortcuts = true,
 }: PauseOverlayProps): JSX.Element {
@@ -44,9 +46,14 @@ export function PauseOverlay({
         <span>已暂停</span>
         {(microphoneError || microphoneConnecting) && onRetryMicrophone ? (
           <div aria-live="polite" className="practice-microphone-error-actions">
-            <span>{microphoneError ?? "正在连接麦克风…"}</span>
+            <span>
+              {microphoneIsPreparingModel
+                ? "正在准备识别模型…"
+                : (microphoneError ?? "正在连接麦克风…")}
+            </span>
             <PracticeMicrophoneRetryButton
               isConnecting={microphoneConnecting}
+              isPreparingModel={microphoneIsPreparingModel}
               onRetry={onRetryMicrophone}
             />
           </div>

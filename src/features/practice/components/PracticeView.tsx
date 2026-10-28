@@ -947,11 +947,26 @@ export function PracticeView({
   );
   const preparePracticeMicrophone = practiceMicrophone.prepare;
   useEffect(() => {
-    if (answerPitchMode !== "microphone" || practiceMicrophonePreferences.algorithm !== "swiftf0") {
+    const microphoneInputSelected =
+      (practiceTab === "free" && !isDuetPractice && answerPitchMode === "microphone") ||
+      (practiceTab === "distance" && distanceInputMode === "microphone") ||
+      (practiceTab === "name-key" && nameKeyInputMode === "microphone") ||
+      (practiceTab === "songs" && !songPracticeSelection && !midi.isConnected);
+    if (!microphoneInputSelected || practiceMicrophonePreferences.algorithm !== "swiftf0") {
       return;
     }
     void preparePracticeMicrophone().catch(() => undefined);
-  }, [answerPitchMode, preparePracticeMicrophone, practiceMicrophonePreferences.algorithm]);
+  }, [
+    answerPitchMode,
+    distanceInputMode,
+    isDuetPractice,
+    midi.isConnected,
+    nameKeyInputMode,
+    practiceTab,
+    preparePracticeMicrophone,
+    practiceMicrophonePreferences.algorithm,
+    songPracticeSelection,
+  ]);
   const registerSongPracticeMicrophoneAnswer = useCallback(
     (handler: (answer: PracticeAnswerInput) => void): void => {
       songPracticeMicrophoneAnswerRef.current = handler;
@@ -2899,6 +2914,7 @@ export function PracticeView({
             microphone={{
               error: practiceMicrophone.error,
               isListening: practiceMicrophone.isListening,
+              isPreparingSwiftF0: practiceMicrophone.isPreparingSwiftF0,
               start: practiceMicrophone.start,
               status: practiceMicrophone.status,
               stop: practiceMicrophone.stop,
@@ -2937,6 +2953,7 @@ export function PracticeView({
               error: practiceMicrophone.error,
               inputLevel: practiceMicrophone.inputLevel,
               isListening: practiceMicrophone.isListening,
+              isPreparingSwiftF0: practiceMicrophone.isPreparingSwiftF0,
               start: practiceMicrophone.start,
               status: practiceMicrophone.status,
               stop: practiceMicrophone.stop,
@@ -2994,6 +3011,7 @@ export function PracticeView({
         }}
         isBusy={showStartingSessionStatus}
         microphoneError={practiceMicrophone.error}
+        microphoneIsPreparingModel={practiceMicrophone.isPreparingSwiftF0}
         microphoneStatus={practiceMicrophone.status}
         metronomeError={metronomeAudioError}
         onRetryMicrophone={() =>
@@ -3178,6 +3196,7 @@ export function PracticeView({
           practiceMicrophone.status === "requesting" ? (
             <PracticeMicrophoneRetryButton
               isConnecting={practiceMicrophone.status === "requesting"}
+              isPreparingModel={practiceMicrophone.isPreparingSwiftF0}
               onRetry={() => practiceMicrophone.start()}
             />
           ) : null}
@@ -3442,6 +3461,7 @@ export function PracticeView({
               : null
           }
           microphoneConnecting={practiceMicrophone.status === "requesting"}
+          microphoneIsPreparingModel={practiceMicrophone.isPreparingSwiftF0}
           onRetryMicrophone={answerPitchMode === "microphone" ? resumePractice : undefined}
           showKeyboardShortcuts={!isMobileViewport}
         />

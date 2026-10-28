@@ -22,6 +22,7 @@ import { PracticeFullscreenToggle } from "../components/PracticeFullscreenFrame"
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { PracticeQuestionLimitDialog } from "../../../shared/components/PracticeQuestionLimitDialog";
+import { useMidiConnectionAttention } from "../../../shared/hooks/useMidiConnectionAttention";
 import {
   VirtualPianoKeyboard,
   VIRTUAL_PIANO_WHITE_KEYS,
@@ -63,6 +64,7 @@ interface NameToKeyMicrophone {
   error: string | null;
   inputLevel: number;
   isListening: boolean;
+  isPreparingSwiftF0: boolean;
   start: (options?: { includeAccidentals?: boolean }) => Promise<boolean>;
   status: PracticeMicrophoneStatus;
   stop: () => void;
@@ -244,8 +246,14 @@ export function NameToKeyPracticeView({
   onStageChange,
 }: NameToKeyPracticeViewProps): JSX.Element {
   const {
+    canRequestConnection: canRequestMidiConnection,
+    isActive: isMidiConnectionAttentionActive,
+    show: showMidiConnectionAttention,
+  } = useMidiConnectionAttention(midi);
+  const {
     error: microphoneError,
     inputLevel: microphoneInputLevel,
+    isPreparingSwiftF0,
     status: microphoneStatus,
     start: startMicrophone,
     stop: stopMicrophone,
@@ -284,6 +292,15 @@ export function NameToKeyPracticeView({
   const [roundEvents, setRoundEvents] = useState<AnswerEvent[]>([]);
   const [isStarting, setIsStarting] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [midiAttentionSource, setMidiAttentionSource] = useState<"input-mode" | "start" | null>(
+    null
+  );
+  useEffect(() => {
+    if (midi.isConnected && midiAttentionSource !== null) {
+      setMidiAttentionSource(null);
+      setStatusMessage("");
+    }
+  }, [midi.isConnected, midiAttentionSource]);
   useEffect(() => {
     if (!isActive || isStarting) return;
     const wasConnected = previousMidiConnectionRef.current;
@@ -735,6 +752,8 @@ export function NameToKeyPracticeView({
       const preflight = await onBeforePracticeStart();
       if (!preflight.proceed) return;
       if (preferences.inputMode === "midi" && !midi.isConnected) {
+        setMidiAttentionSource("start");
+        showMidiConnectionAttention();
         setStatusMessage("先连接 MIDI 键盘，再开始这一局。下方可以选择设备。 ");
         return;
       }
@@ -907,7 +926,11 @@ export function NameToKeyPracticeView({
               </div>
               {preferences.inputMode === "midi" ? (
                 <div className="practice-midi-heading-status">
-                  <MidiInputControl ariaLabel="音名找键 MIDI 输入设备" midi={midi} />
+                  <MidiInputControl
+                    ariaLabel="音名找键 MIDI 输入设备"
+                    className={isMidiConnectionAttentionActive ? "needs-attention" : undefined}
+                    midi={midi}
+                  />
                 </div>
               ) : null}
             </header>
@@ -921,7 +944,11 @@ export function NameToKeyPracticeView({
                     <button
                       aria-pressed={preferences.inputMode === "virtual-keyboard"}
                       className={preferences.inputMode === "virtual-keyboard" ? "is-selected" : ""}
-                      onClick={() => setInputMode("virtual-keyboard")}
+                      onClick={() => {
+                        setInputMode("virtual-keyboard");
+                        setMidiAttentionSource(null);
+                        setStatusMessage("");
+                      }}
                       type="button"
                     >
                       <Play aria-hidden="true" size={17} />
@@ -930,7 +957,17 @@ export function NameToKeyPracticeView({
                     <button
                       aria-pressed={preferences.inputMode === "midi"}
                       className={preferences.inputMode === "midi" ? "is-selected" : ""}
-                      onClick={() => setInputMode("midi")}
+                      onClick={() => {
+                        setInputMode("midi");
+                        if (canRequestMidiConnection) {
+                          setMidiAttentionSource("input-mode");
+                          setStatusMessage("先连接并选择 MIDI 键盘，再开始练习。");
+                          showMidiConnectionAttention();
+                        } else {
+                          setMidiAttentionSource(null);
+                          setStatusMessage("");
+                        }
+                      }}
                       type="button"
                     >
                       <Music2 aria-hidden="true" size={17} />
@@ -939,7 +976,11 @@ export function NameToKeyPracticeView({
                     <button
                       aria-pressed={preferences.inputMode === "microphone"}
                       className={preferences.inputMode === "microphone" ? "is-selected" : ""}
-                      onClick={() => setInputMode("microphone")}
+                      onClick={() => {
+                        setInputMode("microphone");
+                        setMidiAttentionSource(null);
+                        setStatusMessage("");
+                      }}
                       type="button"
                     >
                       <Mic aria-hidden="true" size={17} />
@@ -956,20 +997,24 @@ export function NameToKeyPracticeView({
                   {preferences.inputMode === "microphone" &&
                   (microphoneError ||
                     microphoneStatus === "error" ||
-                    microphoneStatus === "requesting") ? (
+                    microphoneStatus === "requesting" ||
+                    isPreparingSwiftF0) ? (
                     <div
                       className="practice-microphone-error-actions name-key-microphone-error"
                       aria-live="polite"
                     >
                       <span>
                         {microphoneStatus === "requesting"
-                          ? "正在连接麦克风…"
+                          ? isPreparingSwiftF0
+                            ? "正在准备识别模型…"
+                            : "正在连接麦克风…"
                           : statusMessage ||
                             microphoneError ||
                             "麦克风连接失败，请检查权限和输入设备后重试。"}
                       </span>
                       <PracticeMicrophoneRetryButton
                         isConnecting={microphoneStatus === "requesting"}
+                        isPreparingModel={isPreparingSwiftF0}
                         onRetry={retryMicrophone}
                       />
                     </div>
@@ -1170,7 +1215,10 @@ export function NameToKeyPracticeView({
               preferences.inputMode === "microphone" &&
               (microphoneError || microphoneStatus === "error" || microphoneStatus === "requesting")
             ) ? (
-              <p className="name-key-status-message" role="alert">
+              <p
+                className={`name-key-status-message${isMidiConnectionAttentionActive && midiAttentionSource === "input-mode" && preferences.inputMode === "midi" && !midi.isConnected ? " is-midi-attention" : ""}`}
+                role="alert"
+              >
                 {statusMessage}
               </p>
             ) : null}
@@ -1247,7 +1295,9 @@ export function NameToKeyPracticeView({
                   ) : (
                     <span role="status">
                       {microphoneStatus === "requesting"
-                        ? "正在连接麦克风…"
+                        ? isPreparingSwiftF0
+                          ? "正在准备识别模型…"
+                          : "正在连接麦克风…"
                         : (microphoneError ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))}
                     </span>
                   )}
@@ -1256,6 +1306,7 @@ export function NameToKeyPracticeView({
                   microphoneStatus === "requesting" ? (
                     <PracticeMicrophoneRetryButton
                       isConnecting={microphoneStatus === "requesting"}
+                      isPreparingModel={isPreparingSwiftF0}
                       onRetry={retryMicrophone}
                     />
                   ) : null}
@@ -1398,6 +1449,7 @@ export function NameToKeyPracticeView({
                 microphoneStatus === "requesting") ? (
                 <PracticeMicrophoneRetryButton
                   isConnecting={microphoneStatus === "requesting"}
+                  isPreparingModel={isPreparingSwiftF0}
                   onRetry={retryMicrophone}
                 />
               ) : null}

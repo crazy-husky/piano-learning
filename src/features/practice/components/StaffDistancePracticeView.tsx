@@ -34,6 +34,7 @@ import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
+import { useMidiConnectionAttention } from "../../../shared/hooks/useMidiConnectionAttention";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import {
@@ -293,6 +294,21 @@ export function StaffDistancePracticeView({
   onSettingsSaved,
   settings,
 }: StaffDistancePracticeViewProps): JSX.Element {
+  const {
+    canRequestConnection: canRequestMidiConnection,
+    isActive: isMidiConnectionAttentionActive,
+    show: showMidiConnectionAttention,
+  } = useMidiConnectionAttention(midi);
+  const [midiAttentionSource, setMidiAttentionSource] = useState<"input-mode" | "start" | null>(
+    null
+  );
+  const showMidiAttention = useCallback(
+    (source: "input-mode" | "start"): void => {
+      setMidiAttentionSource(source);
+      showMidiConnectionAttention();
+    },
+    [showMidiConnectionAttention]
+  );
   const [preferences, setPreferences] = useLocalStorageState(
     STAFF_DISTANCE_PREFERENCES_KEY,
     DEFAULT_PREFERENCES,
@@ -467,6 +483,7 @@ export function StaffDistancePracticeView({
     let microphoneStarted = false;
     try {
       if (trainingMode === "play" && preferences.inputMethod === "midi" && !midi.isConnected) {
+        showMidiAttention("start");
         setStartError("尚未连接 MIDI 键盘。请先点击“连接 MIDI”，或切换为麦克风输入。");
         return;
       }
@@ -519,6 +536,7 @@ export function StaffDistancePracticeView({
     midi.isConnected,
     onBeforePracticeStart,
     preferences,
+    showMidiAttention,
     settings,
     setupDisabledReason,
     trainingMode,
@@ -747,7 +765,11 @@ export function StaffDistancePracticeView({
         {trainingMode === "play" && preferences.inputMethod === "midi" ? (
           <div className="practice-setup-heading-meta">
             <div className="practice-midi-heading-status staff-distance-midi-status">
-              <MidiInputControl ariaLabel="音距速推 MIDI 输入设备" midi={midi} />
+              <MidiInputControl
+                ariaLabel="音距速推 MIDI 输入设备"
+                className={isMidiConnectionAttentionActive ? "needs-attention" : undefined}
+                midi={midi}
+              />
             </div>
           </div>
         ) : null}
@@ -822,10 +844,14 @@ export function StaffDistancePracticeView({
                   <button
                     aria-pressed={preferences.inputMethod === "midi"}
                     className={preferences.inputMethod === "midi" ? "active" : ""}
-                    disabled={!midi.isConnected}
+                    disabled={
+                      !midi.isConnected &&
+                      (midi.status === "unsupported" || midi.status === "insecure-context")
+                    }
                     onClick={() => {
                       setStartError(null);
                       setInputMethod("midi");
+                      if (canRequestMidiConnection) showMidiAttention("input-mode");
                     }}
                     type="button"
                     title={!midi.isConnected ? "连接 MIDI 后可用" : undefined}
@@ -835,22 +861,34 @@ export function StaffDistancePracticeView({
                 </div>
               </div>
             ) : null}
+            {trainingMode === "play" && preferences.inputMethod === "midi" && !midi.isConnected ? (
+              <p
+                className={`practice-free-warning${isMidiConnectionAttentionActive && midiAttentionSource === "input-mode" ? " is-midi-attention" : ""}`}
+                role="status"
+              >
+                请连接并选择 MIDI 设备，再开始练习。
+              </p>
+            ) : null}
             {trainingMode === "play" &&
             preferences.inputMethod === "microphone" &&
             (microphone.error ||
               microphone.status === "error" ||
-              microphone.status === "requesting") ? (
+              microphone.status === "requesting" ||
+              microphone.isPreparingSwiftF0) ? (
               <div
                 className="practice-microphone-error-actions staff-distance-microphone-error"
                 aria-live="polite"
               >
                 <span>
                   {microphone.status === "requesting"
-                    ? "正在连接麦克风…"
+                    ? microphone.isPreparingSwiftF0
+                      ? "正在准备识别模型…"
+                      : "正在连接麦克风…"
                     : (microphone.error ?? "麦克风连接失败，请检查权限和输入设备后重试。")}
                 </span>
                 <PracticeMicrophoneRetryButton
                   isConnecting={microphone.status === "requesting"}
+                  isPreparingModel={microphone.isPreparingSwiftF0}
                   onRetry={async () => {
                     const connected = await microphone.start({ includeAccidentals: false });
                     if (connected) setStartError(null);

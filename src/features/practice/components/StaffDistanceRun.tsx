@@ -1344,7 +1344,9 @@ export function StaffDistanceRun({
           <strong>已暂停</strong>
           <span>
             {inputMethod === "microphone" && microphone.status === "requesting"
-              ? "正在连接麦克风…"
+              ? microphone.isPreparingSwiftF0
+                ? "正在准备识别模型…"
+                : "正在连接麦克风…"
               : (inputError ?? "练习计时已停止")}
           </span>
           <button className="primary" onClick={togglePause} type="button">

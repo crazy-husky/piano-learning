@@ -90,6 +90,7 @@ interface SongPracticeMicrophone {
   error: string | null;
   inputLevel: number;
   isListening: boolean;
+  isPreparingSwiftF0: boolean;
   start: (options?: { includeAccidentals?: boolean }) => Promise<boolean>;
   status: PracticeMicrophoneStatus;
   stop: () => void;
@@ -1374,9 +1375,12 @@ export function SongPracticeView({
               ) : microphone.status === "requesting" ? (
                 <span className="song-practice-current-input" role="status">
                   <AudioLines aria-hidden="true" size={15} />
-                  当前输入方式：麦克风（连接中）
+                  {microphone.isPreparingSwiftF0
+                    ? "当前输入方式：正在准备识别模型"
+                    : "当前输入方式：麦克风（连接中）"}
                   <PracticeMicrophoneRetryButton
                     isConnecting
+                    isPreparingModel={microphone.isPreparingSwiftF0}
                     onRetry={() => reconnectMicrophone()}
                   />
                 </span>
