@@ -42,6 +42,12 @@ import { AppStartupSkeleton, RouteLoadingSkeleton } from "../shared/components/L
 import { HomeView } from "../features/home/components/HomeView";
 import { ModuleLayout } from "../features/learning/components/ModuleLayout";
 import { ModuleGuideView } from "../features/learning/components/ModuleGuideView";
+import { LearningModuleStatsView } from "../features/learning/components/LearningModuleStatsView";
+import {
+  PlaygroundLayout,
+  type PlaygroundTab,
+} from "../features/learning/components/PlaygroundLayout";
+import { PlaygroundStatsView } from "../features/learning/components/PlaygroundStatsView";
 import { getLearningModule } from "../features/learning/learningModules";
 import { StaffGameRoute } from "../features/staff-game/components/StaffGameRoute";
 import { PracticeFullscreenFrame } from "../features/practice/components/PracticeFullscreenFrame";
@@ -1183,6 +1189,44 @@ export function App({
     ]
   );
 
+  const selectPlaygroundTab = useCallback(
+    (tab: PlaygroundTab): void => {
+      if (tab === "challenge") {
+        selectStaffGameModeFromNavigation("levels");
+        return;
+      }
+      if (tab === "songs") {
+        selectStaffGameModeFromNavigation("songs");
+        return;
+      }
+      const nextPath: AppRoutePath = "/playground/stats";
+      if (
+        (practiceRunning || practiceStageActive) &&
+        view === "practice" &&
+        isStaffGameRoutePath(routeRef.current.path)
+      ) {
+        pendingRoutePathRef.current = nextPath;
+        if (!practiceExitRequest) {
+          practiceExitRequestIdRef.current += 1;
+          setPracticeExitRequest({
+            id: practiceExitRequestIdRef.current,
+            targetView: "stats",
+          });
+        }
+        return;
+      }
+      navigateToRoute(nextPath, { query: { scope: "challenge" } });
+    },
+    [
+      navigateToRoute,
+      practiceExitRequest,
+      practiceRunning,
+      practiceStageActive,
+      selectStaffGameModeFromNavigation,
+      view,
+    ]
+  );
+
   const startStaffGameSong = useCallback(
     (songId: string): void => {
       const isAlreadyOnSongPlayRoute = routeRef.current.path === "/playground/songs/play";
@@ -1513,11 +1557,14 @@ export function App({
                   )
                 ) : null}
                 {moduleTab === "stats" ? (
-                  data.practiceHistoryLoaded ? (
-                    <StatsView
+                  data.practiceHistoryLoaded &&
+                  (route.levelId !== 1 || data.staffRecallHistoryLoaded) ? (
+                    <LearningModuleStatsView
+                      levelId={route.levelId}
                       settings={data.settings}
                       reviews={data.reviews}
                       sessions={data.sessions}
+                      staffRecallRuns={data.staffRecallRuns}
                       onSettingsSaved={(settings) => saveSettings(settings, { feedback: false })}
                     />
                   ) : (
@@ -1588,25 +1635,55 @@ export function App({
               )
             ) : null}
             {isStaffGamePage ? (
-              <StaffGameRoute
-                midi={midi}
-                microphonePreferences={practiceMicrophonePreferences}
-                initialMode={isStaffGameSongRoutePath(route.path) ? "songs" : "levels"}
-                initialSongSelectionStep={
-                  route.path === "/practice/game/songs/play" ? "detail" : "list"
-                }
-                initialSongId={route.songId}
-                isSongPlayRoute={route.path === "/practice/game/songs/play"}
-                onModeChange={selectStaffGameMode}
-                onSongStart={startStaffGameSong}
-                onSongSelectionExit={returnFromStaffGameSongSelection}
-                onExit={() => selectPracticeGameRoute(false)}
-                onRunningChange={setPracticeRunning}
-                navigationExitRequest={practiceExitRequest}
-                onNavigationExit={handleNavigationExit}
-              />
+              <PlaygroundLayout
+                activeTab={isStaffGameSongRoutePath(route.path) ? "songs" : "challenge"}
+                onTabChange={selectPlaygroundTab}
+              >
+                <StaffGameRoute
+                  midi={midi}
+                  microphonePreferences={practiceMicrophonePreferences}
+                  initialMode={isStaffGameSongRoutePath(route.path) ? "songs" : "levels"}
+                  initialSongSelectionStep={
+                    route.path === "/practice/game/songs/play" ||
+                    route.path === "/playground/songs/play"
+                      ? "detail"
+                      : "list"
+                  }
+                  initialSongId={route.songId}
+                  isSongPlayRoute={
+                    route.path === "/practice/game/songs/play" ||
+                    route.path === "/playground/songs/play"
+                  }
+                  onModeChange={selectStaffGameMode}
+                  onSongStart={startStaffGameSong}
+                  onSongSelectionExit={returnFromStaffGameSongSelection}
+                  onExit={() => selectPracticeGameRoute(false)}
+                  onRunningChange={setPracticeRunning}
+                  navigationExitRequest={practiceExitRequest}
+                  onNavigationExit={handleNavigationExit}
+                />
+              </PlaygroundLayout>
             ) : null}
-            {!route.levelId && view === "stats" ? (
+            {!route.levelId && route.path === "/playground/stats" ? (
+              data.practiceHistoryLoaded ? (
+                <PlaygroundLayout activeTab="stats" onTabChange={selectPlaygroundTab}>
+                  <PlaygroundStatsView
+                    activeTab={route.playgroundStatsTab ?? "challenge"}
+                    dataSetId={data.settings.dataSetId}
+                    onTabChange={(tab) =>
+                      navigateToRoute("/playground/stats", { query: { scope: tab } })
+                    }
+                  />
+                </PlaygroundLayout>
+              ) : (
+                <HistoryLoadingState
+                  error={historyLoadErrors.practice}
+                  label="游乐场统计"
+                  onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
+                />
+              )
+            ) : null}
+            {!route.levelId && view === "stats" && route.path !== "/playground/stats" ? (
               data.practiceHistoryLoaded ? (
                 <StatsView
                   settings={data.settings}

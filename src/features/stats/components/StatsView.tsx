@@ -59,6 +59,7 @@ interface StatsViewProps {
   reviews: ReviewRecord[];
   sessions?: PracticeSessionRecord[];
   onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
+  moduleScope?: "single-note";
 }
 
 const STATS_TAB_LABELS: Record<StatsTab, string> = {
@@ -96,6 +97,7 @@ export function StatsView({
   settings,
   reviews,
   sessions = EMPTY_SESSIONS,
+  moduleScope,
 }: StatsViewProps): JSX.Element {
   const isNightMode = useNightMode();
   const [statsUiPreferences, setStatsUiPreferences] = useLocalStorageState(
@@ -116,6 +118,9 @@ export function StatsView({
     setArchives,
   } = useStaffGameWrongNoteArchives();
   const [primaryContentReady, setPrimaryContentReady] = useState(false);
+  const [answerEvents, setAnswerEvents] = useState<
+    Awaited<ReturnType<typeof db.answerEvents.toArray>>
+  >([]);
   const [proficiencySamples, setProficiencySamples] = useState<StaffGameProficiencySample[]>([]);
   const [proficiencyInputMode, setProficiencyInputMode] =
     useState<ProficiencyInputMode>("microphone");
@@ -149,8 +154,8 @@ export function StatsView({
   const [customRangeDraft, setCustomRangeDraft] = useState(() =>
     String(statsUiPreferences.customRangeDays)
   );
-  const [visitedTabs, setVisitedTabs] = useState<Set<StatsTab>>(
-    () => new Set(["overview", statsUiPreferences.activeTab])
+  const [visitedTabs, setVisitedTabs] = useState<Set<StatsTab>>(() =>
+    moduleScope ? new Set(["notes"]) : new Set(["overview", statsUiPreferences.activeTab])
   );
   const [leavingTab, setLeavingTab] = useState<StatsTab | null>(null);
   const tabTransitionTimeout = useRef<number | undefined>(undefined);
@@ -187,10 +192,16 @@ export function StatsView({
         const samples = events
           .map(answerEventToStaffGameProficiencySample)
           .filter((sample): sample is NonNullable<typeof sample> => !!sample);
-        if (active) setProficiencySamples(samples);
+        if (active) {
+          setAnswerEvents(events);
+          setProficiencySamples(samples);
+        }
       })
       .catch(() => {
-        if (active) setProficiencySamples([]);
+        if (active) {
+          setAnswerEvents([]);
+          setProficiencySamples([]);
+        }
       });
     return () => {
       active = false;
@@ -214,11 +225,44 @@ export function StatsView({
   const sessionProgressMode = sessionProgressPreferences.mode;
   const sessionProgressAllHistory = sessionProgressPreferences.allHistory;
   const sessionProgressHistoryLimit = sessionProgressPreferences.historyLimit;
+  const moduleSessionIds = useMemo(() => {
+    if (!moduleScope) return null;
+    return new Set(
+      answerEvents
+        .filter(
+          (event) =>
+            event.dataSetId === settings.dataSetId &&
+            event.mode === "free-practice" &&
+            !event.duetTargetNoteIds?.length &&
+            event.duetDifficulty === undefined &&
+            event.duetLevel === undefined &&
+            event.targetMidiHigh === undefined &&
+            event.targetMidiLow === undefined
+        )
+        .map((event) => event.sessionId)
+    );
+  }, [answerEvents, moduleScope, settings.dataSetId]);
+  const statsSessions = useMemo(
+    () =>
+      moduleSessionIds ? sessions.filter((session) => moduleSessionIds.has(session.id)) : sessions,
+    [moduleSessionIds, sessions]
+  );
   const sessionProgressEffectiveHistoryLimit = resolveHistoryLimit(
     sessionProgressHistoryLimit,
     sessionProgressAllHistory,
-    sessions.length
+    statsSessions.length
   );
+  const statsReviews = useMemo(
+    () =>
+      moduleSessionIds
+        ? reviews.filter((review) => moduleSessionIds.has(review.sessionId))
+        : reviews,
+    [moduleSessionIds, reviews]
+  );
+  const noteMetric =
+    moduleScope && statsUiPreferences.noteMetric === "proficiency"
+      ? "speed"
+      : statsUiPreferences.noteMetric;
   const recognitionVisibleSeries = useMemo(
     () =>
       RECOGNITION_SERIES_KEYS.filter(
@@ -271,8 +315,8 @@ export function StatsView({
     timeTertileThresholds,
   } = useStatsViewData({
     settings: statsRangeSettings,
-    reviews,
-    sessions,
+    reviews: statsReviews,
+    sessions: statsSessions,
     range,
     primaryContentReady,
     recognitionStatsReady,
@@ -287,12 +331,13 @@ export function StatsView({
     return proficiencySamples.filter(
       (sample) =>
         sample.dataSetId === settings.dataSetId &&
+        !moduleScope &&
         (!cutoff || new Date(sample.endedAt) >= cutoff) &&
         sample.mode === "staff-game" &&
         (proficiencyGameMode === "all" ||
           (sample.staffGameSource === "challenge" && sample.gameMode === proficiencyGameMode))
     );
-  }, [proficiencyGameMode, proficiencySamples, range, settings.dataSetId]);
+  }, [moduleScope, proficiencyGameMode, proficiencySamples, range, settings.dataSetId]);
   const proficiencyNoteStats = useMemo(
     () =>
       aggregateStaffGameProficiencySamples(
@@ -402,7 +447,8 @@ export function StatsView({
     });
   };
 
-  const activeTab = statsUiPreferences.activeTab;
+  const visibleTabs: readonly StatsTab[] = moduleScope ? ["notes"] : STATS_TABS;
+  const activeTab: StatsTab = moduleScope ? "notes" : statsUiPreferences.activeTab;
   const tabIsVisible = (tab: StatsTab): boolean => activeTab === tab || leavingTab === tab;
   const renderTabPanel = (tab: StatsTab, children: JSX.Element): JSX.Element => (
     <div
@@ -419,13 +465,14 @@ export function StatsView({
     </div>
   );
   const currentNoteNotes =
-    statsUiPreferences.noteMetric === "proficiency"
+    noteMetric === "proficiency"
       ? proficiencyStaffNotes
-      : statsUiPreferences.noteMetric === "speed"
+      : noteMetric === "speed"
         ? timeStaffNotes
         : errorStaffNotes;
+  const effectiveWeakNoteSortMode = moduleScope ? "errors" : weakNoteSortMode;
   const weakNoteRows =
-    weakNoteSortMode === "response"
+    effectiveWeakNoteSortMode === "response"
       ? proficiencyNoteStats
           .filter((item) => item.appearanceCount >= 3 && item.meanResponseTimeMs !== null)
           .sort((left, right) => right.meanResponseTimeMs! - left.meanResponseTimeMs!)
@@ -470,52 +517,54 @@ export function StatsView({
             value: `${item.value} 次错音`,
           }));
   const noteRangeHasMetricData =
-    statsUiPreferences.noteMetric === "proficiency"
+    noteMetric === "proficiency"
       ? proficiencyNoteStats.length > 0
-      : statsUiPreferences.noteMetric === "errors"
+      : noteMetric === "errors"
         ? noteRangeHasData
         : timeStaffNotes.some((item) => item.value !== undefined);
 
   return (
     <section className="stats-shell stats-tabbed-shell">
       <div className="stats-page-heading">
-        <h1>统计</h1>
+        <h1>{moduleScope ? "单音诊断" : "统计"}</h1>
       </div>
 
-      <div
-        aria-label="统计页签"
-        className="stats-main-tabs"
-        onKeyDown={(event) => {
-          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-          event.preventDefault();
-          const currentIndex = STATS_TABS.indexOf(activeTab);
-          const direction = event.key === "ArrowRight" ? 1 : -1;
-          const nextTab =
-            STATS_TABS[(currentIndex + direction + STATS_TABS.length) % STATS_TABS.length]!;
-          setActiveTab(nextTab);
-          window.requestAnimationFrame(() =>
-            document.getElementById(`stats-tab-${nextTab}`)?.focus()
-          );
-        }}
-        role="tablist"
-        tabIndex={-1}
-      >
-        {STATS_TABS.map((tab) => (
-          <button
-            aria-controls={visitedTabs.has(tab) ? `stats-panel-${tab}` : undefined}
-            aria-selected={activeTab === tab}
-            className={activeTab === tab ? "is-active" : ""}
-            id={`stats-tab-${tab}`}
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            role="tab"
-            tabIndex={activeTab === tab ? 0 : -1}
-            type="button"
-          >
-            {STATS_TAB_LABELS[tab]}
-          </button>
-        ))}
-      </div>
+      {!moduleScope ? (
+        <div
+          aria-label="统计页签"
+          className="stats-main-tabs"
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            const currentIndex = visibleTabs.indexOf(activeTab);
+            const direction = event.key === "ArrowRight" ? 1 : -1;
+            const nextTab =
+              visibleTabs[(currentIndex + direction + visibleTabs.length) % visibleTabs.length]!;
+            setActiveTab(nextTab);
+            window.requestAnimationFrame(() =>
+              document.getElementById(`stats-tab-${nextTab}`)?.focus()
+            );
+          }}
+          role="tablist"
+          tabIndex={-1}
+        >
+          {visibleTabs.map((tab) => (
+            <button
+              aria-controls={visitedTabs.has(tab) ? `stats-panel-${tab}` : undefined}
+              aria-selected={activeTab === tab}
+              className={activeTab === tab ? "is-active" : ""}
+              id={`stats-tab-${tab}`}
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              role="tab"
+              tabIndex={activeTab === tab ? 0 : -1}
+              type="button"
+            >
+              {STATS_TAB_LABELS[tab]}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="stats-date-filter-row">
         <div className="toolbar stats-range-filter">
@@ -622,15 +671,15 @@ export function StatsView({
                     <div>
                       <h2>单音诊断</h2>
                       <p>
-                        {statsUiPreferences.noteMetric === "proficiency"
+                        {noteMetric === "proficiency"
                           ? "熟练度按输入方式和敏感度档位分别统计"
                           : "按当前统计音域与时间范围汇总"}
                       </p>
                     </div>
                     <div aria-label="音域图表指标" className="segmented stats-compact-segmented">
                       <button
-                        aria-pressed={statsUiPreferences.noteMetric === "speed"}
-                        className={statsUiPreferences.noteMetric === "speed" ? "active" : ""}
+                        aria-pressed={noteMetric === "speed"}
+                        className={noteMetric === "speed" ? "active" : ""}
                         onClick={() =>
                           setStatsUiPreferences((current) => ({ ...current, noteMetric: "speed" }))
                         }
@@ -639,8 +688,8 @@ export function StatsView({
                         识别速度
                       </button>
                       <button
-                        aria-pressed={statsUiPreferences.noteMetric === "errors"}
-                        className={statsUiPreferences.noteMetric === "errors" ? "active" : ""}
+                        aria-pressed={noteMetric === "errors"}
+                        className={noteMetric === "errors" ? "active" : ""}
                         onClick={() =>
                           setStatsUiPreferences((current) => ({ ...current, noteMetric: "errors" }))
                         }
@@ -648,22 +697,26 @@ export function StatsView({
                       >
                         错音次数
                       </button>
-                      <button
-                        aria-pressed={statsUiPreferences.noteMetric === "proficiency"}
-                        className={statsUiPreferences.noteMetric === "proficiency" ? "active" : ""}
-                        onClick={() =>
-                          setStatsUiPreferences((current) => ({
-                            ...current,
-                            noteMetric: "proficiency",
-                          }))
-                        }
-                        type="button"
-                      >
-                        熟练度
-                      </button>
+                      {!moduleScope ? (
+                        <button
+                          aria-pressed={statsUiPreferences.noteMetric === "proficiency"}
+                          className={
+                            statsUiPreferences.noteMetric === "proficiency" ? "active" : ""
+                          }
+                          onClick={() =>
+                            setStatsUiPreferences((current) => ({
+                              ...current,
+                              noteMetric: "proficiency",
+                            }))
+                          }
+                          type="button"
+                        >
+                          熟练度
+                        </button>
+                      ) : null}
                     </div>
                   </header>
-                  {statsUiPreferences.noteMetric === "proficiency" ? (
+                  {!moduleScope && noteMetric === "proficiency" ? (
                     <div className="stats-proficiency-filters">
                       <label>
                         练习模式
@@ -739,7 +792,7 @@ export function StatsView({
                   ) : (
                     <>
                       <div className="note-heat-row-heading stats-note-range-legend">
-                        {statsUiPreferences.noteMetric === "speed" ? (
+                        {noteMetric === "speed" ? (
                           <>
                             <h3>识别速度</h3>
                             <div className="range-legend">
@@ -767,7 +820,7 @@ export function StatsView({
                               </span>
                             </div>
                           </>
-                        ) : statsUiPreferences.noteMetric === "proficiency" ? (
+                        ) : noteMetric === "proficiency" ? (
                           <>
                             <h3>熟练度诊断</h3>
                             <div className="range-legend">
@@ -822,15 +875,15 @@ export function StatsView({
                       </div>
                       <StatsRangeStaff
                         label={
-                          statsUiPreferences.noteMetric === "speed"
+                          noteMetric === "speed"
                             ? "识别速度音域分布"
-                            : statsUiPreferences.noteMetric === "proficiency"
+                            : noteMetric === "proficiency"
                               ? "熟练度音域分布"
                               : "错音次数音域分布"
                         }
                         notes={currentNoteNotes}
                         staffNotationMode={rangeSettingsScope.staffNotationMode}
-                        tone={statsUiPreferences.noteMetric === "speed" ? "blue" : "red"}
+                        tone={noteMetric === "speed" ? "blue" : "red"}
                       />
                     </>
                   )}
@@ -849,12 +902,12 @@ export function StatsView({
                         onChange={(event) =>
                           setWeakNoteSortMode(event.target.value as "errors" | "response")
                         }
-                        value={weakNoteSortMode}
+                        value={effectiveWeakNoteSortMode}
                       >
                         <option value="errors">错音次数</option>
-                        <option value="response">平均反应耗时</option>
+                        {!moduleScope ? <option value="response">平均反应耗时</option> : null}
                       </select>
-                      {weakNoteSortMode === "response" ? (
+                      {effectiveWeakNoteSortMode === "response" ? (
                         <small>
                           {proficiencyInputMode === "microphone"
                             ? "麦克风"
@@ -871,7 +924,7 @@ export function StatsView({
                   </div>
                   {weakNoteRows.length === 0 ? (
                     <p className="stats-inline-empty" role="status">
-                      {weakNoteSortMode === "response"
+                      {effectiveWeakNoteSortMode === "response"
                         ? "此范围内暂无足够的反应时间样本"
                         : "此时间范围内暂无错音记录"}
                     </p>
