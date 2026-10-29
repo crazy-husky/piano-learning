@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AppSettings, PracticeSessionRecord, ReviewRecord } from "../../../domain/types";
+import type {
+  AnswerEvent,
+  AppSettings,
+  PracticeSessionRecord,
+  ReviewRecord,
+} from "../../../domain/types";
 import type { StaffGameProficiencySample } from "../../../domain/types";
 import { db } from "../../../data/db";
 import { answerEventToStaffGameProficiencySample } from "../../../data/answerEvents";
@@ -118,9 +123,7 @@ export function StatsView({
     setArchives,
   } = useStaffGameWrongNoteArchives();
   const [primaryContentReady, setPrimaryContentReady] = useState(false);
-  const [answerEvents, setAnswerEvents] = useState<
-    Awaited<ReturnType<typeof db.answerEvents.toArray>>
-  >([]);
+  const [answerEvents, setAnswerEvents] = useState<AnswerEvent[]>([]);
   const [proficiencySamples, setProficiencySamples] = useState<StaffGameProficiencySample[]>([]);
   const [proficiencyInputMode, setProficiencyInputMode] =
     useState<ProficiencyInputMode>("microphone");

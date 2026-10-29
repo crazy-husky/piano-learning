@@ -94,6 +94,9 @@ import {
   appRouteFromHash,
   appRoutePathForPage,
   appRouteUrl,
+  appRoutesEqual,
+  isProtectedPracticeRoute,
+  isSamePracticeContext,
   isStaffGameRoutePath,
   isStaffGameSongRoutePath,
   type AppRoute,
@@ -117,9 +120,6 @@ const PracticeView = lazy(() =>
   import("../features/practice/components/PracticeView").then((module) => ({
     default: module.PracticeView,
   }))
-);
-const StatsView = lazy(() =>
-  import("../features/stats/components/StatsView").then((module) => ({ default: module.StatsView }))
 );
 const StudyView = lazy(() =>
   import("../features/study/components/StudyView").then((module) => ({ default: module.StudyView }))
@@ -374,7 +374,7 @@ export function App({
   const [practiceStageActive, setPracticeStageActive] = useState(false);
   const practiceStageActiveRef = useRef(false);
   practiceStageActiveRef.current = practiceStageActive;
-  const pendingRoutePathRef = useRef<AppRoutePath | null>(null);
+  const pendingNavigationRef = useRef<{ route: AppRoute; replace: boolean } | null>(null);
   const [mobileBackPosition, setMobileBackPosition] = useState<{
     left: number;
     top: number;
@@ -389,12 +389,22 @@ export function App({
     moved: boolean;
   } | null>(null);
   const ignoreMobileBackClickRef = useRef(false);
-  const view: View =
-    route.page === "game" ? "practice" : route.page === "metronome" ? "home" : route.page;
   const module = route.levelId ? getLearningModule(route.levelId) : null;
   const moduleTab: LearningModuleTab = route.moduleTab ?? "practice";
+  const view: View =
+    route.levelId !== undefined
+      ? moduleTab === "stats"
+        ? "stats"
+        : moduleTab === "guide" || route.levelId === 1
+          ? "study"
+          : "practice"
+      : route.page === "game"
+        ? "practice"
+        : route.page === "metronome"
+          ? "home"
+          : route.page;
   const isPracticePageRoute =
-    route.path === "/practice" || (route.levelId !== undefined && route.levelId > 1);
+    route.levelId !== undefined && route.levelId > 1 && moduleTab === "practice";
 
   useEffect(() => {
     if (view !== "practice" || isStaffGameRoutePath(route.path)) {
@@ -722,24 +732,32 @@ export function App({
   const navigateToRoute = useCallback(
     (
       path: AppRoutePath,
-      options: { query?: Record<string, string>; replace?: boolean } = {}
+      options: { query?: Record<string, string>; replace?: boolean; force?: boolean } = {}
     ): void => {
       const queryString = options.query ? new URLSearchParams(options.query).toString() : "";
       const nextRoute = appRouteFromHash(`#${path}${queryString ? `?${queryString}` : ""}`);
       const currentRoute = routeRef.current;
+      if (
+        !options.force &&
+        (practiceRunningRef.current || practiceStageActiveRef.current) &&
+        isProtectedPracticeRoute(currentRoute) &&
+        !isSamePracticeContext(currentRoute, nextRoute)
+      ) {
+        pendingNavigationRef.current = { route: nextRoute, replace: Boolean(options.replace) };
+        if (!practiceExitRequest) {
+          practiceExitRequestIdRef.current += 1;
+          setPracticeExitRequest({
+            id: practiceExitRequestIdRef.current,
+            targetView: nextRoute.page === "game" ? "practice" : nextRoute.page,
+          });
+        }
+        return;
+      }
       if (path === "/playground/songs" && !isStaffGameSongRoutePath(currentRoute.path)) {
         staffGameSelectionReturnPathRef.current = currentRoute.path;
         staffGameSelectionRoutePushedRef.current = !options.replace;
       }
-      if (
-        currentRoute.path === nextRoute.path &&
-        currentRoute.songId === nextRoute.songId &&
-        currentRoute.practiceTab === nextRoute.practiceTab &&
-        currentRoute.practiceDistanceMode === nextRoute.practiceDistanceMode &&
-        currentRoute.moduleTab === nextRoute.moduleTab &&
-        currentRoute.playgroundStatsTab === nextRoute.playgroundStatsTab
-      )
-        return;
+      if (appRoutesEqual(currentRoute, nextRoute)) return;
       const url = appRouteUrl(nextRoute.path, options.query ?? appRouteQuery(nextRoute));
       if (options.replace) {
         window.history.replaceState(window.history.state, "", url);
@@ -749,7 +767,7 @@ export function App({
       routeRef.current = nextRoute;
       setRoute(nextRoute);
     },
-    []
+    [practiceExitRequest]
   );
 
   const selectModuleTab = useCallback(
@@ -786,34 +804,27 @@ export function App({
     const synchronizeRoute = (): void => {
       const incomingRoute = appRouteFromHash(window.location.hash);
       const currentRoute = routeRef.current;
-      if (
-        incomingRoute.path === currentRoute.path &&
-        incomingRoute.songId === currentRoute.songId &&
-        incomingRoute.practiceTab === currentRoute.practiceTab &&
-        incomingRoute.practiceDistanceMode === currentRoute.practiceDistanceMode &&
-        incomingRoute.moduleTab === currentRoute.moduleTab &&
-        incomingRoute.playgroundStatsTab === currentRoute.playgroundStatsTab
-      ) {
+      if (appRoutesEqual(incomingRoute, currentRoute)) {
         practiceHistoryRestorePendingRef.current = false;
         return;
       }
       if (practiceHistoryRestorePendingRef.current) return;
       if (
         !isStaffGameSongRoutePath(currentRoute.path) &&
-        incomingRoute.path === "/practice/game/songs"
+        incomingRoute.path === "/playground/songs"
       ) {
         staffGameSelectionReturnPathRef.current = currentRoute.path;
         staffGameSelectionRoutePushedRef.current = true;
       }
       if (
-        currentRoute.path === "/practice/game/songs" &&
-        incomingRoute.path === "/practice/game/songs/play"
+        currentRoute.path === "/playground/songs" &&
+        incomingRoute.path === "/playground/songs/play"
       ) {
         staffGamePlayRoutePushedRef.current = staffGameSelectionRoutePushedRef.current;
       }
       if (
-        currentRoute.path === "/practice/game/songs/play" &&
-        incomingRoute.path === "/practice/game/songs"
+        currentRoute.path === "/playground/songs/play" &&
+        incomingRoute.path === "/playground/songs"
       ) {
         staffGamePlayRoutePushedRef.current = false;
       }
@@ -825,18 +836,14 @@ export function App({
       }
       if (
         (practiceRunningRef.current || practiceStageActiveRef.current) &&
-        currentRoute.path === "/practice" &&
-        (incomingRoute.path !== "/practice" ||
-          incomingRoute.practiceTab !== currentRoute.practiceTab ||
-          incomingRoute.practiceDistanceMode !== currentRoute.practiceDistanceMode ||
-          incomingRoute.moduleTab !== currentRoute.moduleTab)
+        isProtectedPracticeRoute(currentRoute) &&
+        !isSamePracticeContext(currentRoute, incomingRoute)
       ) {
-        pendingRoutePathRef.current = null;
+        pendingNavigationRef.current = { route: incomingRoute, replace: true };
         practiceExitRequestIdRef.current += 1;
         setPracticeExitRequest({
           id: practiceExitRequestIdRef.current,
-          returnToSetup: true,
-          targetView: "practice",
+          targetView: incomingRoute.page === "game" ? "practice" : incomingRoute.page,
         });
         practiceHistoryRestorePendingRef.current = true;
         window.history.forward();
@@ -846,7 +853,7 @@ export function App({
         return;
       }
       if (currentRoute.page === "vocal" && incomingRoute.page !== "vocal") {
-        pendingRoutePathRef.current = incomingRoute.path;
+        pendingNavigationRef.current = { route: incomingRoute, replace: true };
         vocalExitRequestIdRef.current += 1;
         setVocalExitRequest({
           id: vocalExitRequestIdRef.current,
@@ -859,25 +866,14 @@ export function App({
         );
         return;
       }
-      const isLeavingPractice =
-        currentRoute.page === "practice" && incomingRoute.page !== "practice";
-      const isLeavingStaffGame = currentRoute.page === "game" && incomingRoute.page !== "game";
-      if (
-        (practiceRunningRef.current || practiceStageActiveRef.current) &&
-        (isLeavingPractice || isLeavingStaffGame)
-      ) {
-        pendingRoutePathRef.current = incomingRoute.path;
-        practiceExitRequestIdRef.current += 1;
-        setPracticeExitRequest({
-          id: practiceExitRequestIdRef.current,
-          targetView: incomingRoute.page === "game" ? "practice" : incomingRoute.page,
-        });
-        window.history.pushState(
+      const incomingQuery = appRouteQuery(incomingRoute);
+      const canonicalHash = `${incomingRoute.path}${incomingQuery ? `?${new URLSearchParams(incomingQuery).toString()}` : ""}`;
+      if (window.location.hash.slice(1) !== canonicalHash) {
+        window.history.replaceState(
           window.history.state,
           "",
-          appRouteUrl(currentRoute.path, appRouteQuery(currentRoute))
+          appRouteUrl(incomingRoute.path, incomingQuery)
         );
-        return;
       }
       routeRef.current = incomingRoute;
       setRoute(incomingRoute);
@@ -959,10 +955,13 @@ export function App({
     if (!appDataAvailable) return undefined;
     const needsPracticeHistory =
       ((view === "practice" && !isStaffGameRoutePath(route.path)) ||
-        view === "stats" ||
-        (route.levelId !== undefined && moduleTab === "stats")) &&
+        (view === "stats" && route.levelId !== 1) ||
+        (route.levelId !== undefined && route.levelId > 1 && moduleTab === "stats")) &&
       !practiceHistoryLoaded;
-    const needsStaffRecallHistory = view === "study" && !staffRecallHistoryLoaded;
+    const needsStaffRecallHistory =
+      ((view === "study" && (!route.levelId || (route.levelId === 1 && moduleTab !== "guide"))) ||
+        (route.levelId === 1 && moduleTab === "stats")) &&
+      !staffRecallHistoryLoaded;
     if (!needsPracticeHistory && !needsStaffRecallHistory) return undefined;
 
     let cancelled = false;
@@ -1059,46 +1058,18 @@ export function App({
   const selectView = useCallback(
     (nextView: View): void => {
       const nextPath = appRoutePathForPage(nextView);
-      const nextRoute = appRouteFromHash(`#${nextPath}`);
-      const isSameRoute =
-        nextRoute.path === route.path &&
-        nextRoute.songId === route.songId &&
-        nextRoute.practiceTab === route.practiceTab &&
-        nextRoute.practiceDistanceMode === route.practiceDistanceMode &&
-        nextRoute.moduleTab === route.moduleTab &&
-        nextRoute.playgroundStatsTab === route.playgroundStatsTab;
-      if ((practiceRunning || practiceStageActive) && view === "practice" && !isSameRoute) {
-        pendingRoutePathRef.current = nextPath;
-        if (!practiceExitRequest) {
-          practiceExitRequestIdRef.current += 1;
-          setPracticeExitRequest({
-            id: practiceExitRequestIdRef.current,
-            targetView: nextView,
-          });
-        }
-        return;
-      }
       if (view === "vocal" && nextPath !== route.path) {
-        pendingRoutePathRef.current = nextPath;
+        pendingNavigationRef.current = {
+          route: appRouteFromHash(`#${nextPath}`),
+          replace: false,
+        };
         vocalExitRequestIdRef.current += 1;
         setVocalExitRequest({ id: vocalExitRequestIdRef.current, targetView: nextView });
         return;
       }
       navigateToRoute(nextPath);
     },
-    [
-      navigateToRoute,
-      practiceExitRequest,
-      practiceRunning,
-      practiceStageActive,
-      route.path,
-      route.practiceTab,
-      route.practiceDistanceMode,
-      route.moduleTab,
-      route.playgroundStatsTab,
-      route.songId,
-      view,
-    ]
+    [navigateToRoute, route.path, view]
   );
 
   const handleNavigationExit = useCallback(
@@ -1106,13 +1077,16 @@ export function App({
       const returnToSetup = practiceExitRequest?.returnToSetup === true;
       setPracticeExitRequest(null);
       if (returnToSetup) {
-        pendingRoutePathRef.current = null;
+        pendingNavigationRef.current = null;
         return;
       }
-      const path = pendingRoutePathRef.current ?? appRoutePathForPage(targetView);
-      const replace = pendingRoutePathRef.current !== null;
-      pendingRoutePathRef.current = null;
-      navigateToRoute(path, { replace });
+      const pending = pendingNavigationRef.current;
+      pendingNavigationRef.current = null;
+      navigateToRoute(pending?.route.path ?? appRoutePathForPage(targetView), {
+        query: pending ? appRouteQuery(pending.route) : undefined,
+        replace: pending?.replace,
+        force: true,
+      });
     },
     [navigateToRoute, practiceExitRequest]
   );
@@ -1120,10 +1094,12 @@ export function App({
   const handleVocalNavigationExit = useCallback(
     (targetView: PracticeNavigationExitTarget): void => {
       setVocalExitRequest(null);
-      const path = pendingRoutePathRef.current ?? appRoutePathForPage(targetView);
-      const replace = pendingRoutePathRef.current !== null;
-      pendingRoutePathRef.current = null;
-      navigateToRoute(path, { replace });
+      const pending = pendingNavigationRef.current;
+      pendingNavigationRef.current = null;
+      navigateToRoute(pending?.route.path ?? appRoutePathForPage(targetView), {
+        query: pending ? appRouteQuery(pending.route) : undefined,
+        replace: pending?.replace,
+      });
     },
     [navigateToRoute]
   );
@@ -1159,34 +1135,18 @@ export function App({
     (mode: "levels" | "songs"): void => {
       const nextPath: AppRoutePath =
         mode === "songs" ? "/playground/songs" : "/playground/challenge";
-      if (
-        (practiceRunning || practiceStageActive) &&
-        view === "practice" &&
-        nextPath !== route.path
-      ) {
-        pendingRoutePathRef.current = nextPath;
-        if (!practiceExitRequest) {
-          practiceExitRequestIdRef.current += 1;
-          setPracticeExitRequest({ id: practiceExitRequestIdRef.current, targetView: "practice" });
-        }
-        return;
-      }
       if (view === "vocal" && nextPath !== route.path) {
-        pendingRoutePathRef.current = nextPath;
+        pendingNavigationRef.current = {
+          route: appRouteFromHash(`#${nextPath}`),
+          replace: false,
+        };
         vocalExitRequestIdRef.current += 1;
         setVocalExitRequest({ id: vocalExitRequestIdRef.current, targetView: "practice" });
         return;
       }
       selectStaffGameMode(mode);
     },
-    [
-      practiceExitRequest,
-      practiceRunning,
-      practiceStageActive,
-      route.path,
-      selectStaffGameMode,
-      view,
-    ]
+    [route.path, selectStaffGameMode, view]
   );
 
   const selectPlaygroundTab = useCallback(
@@ -1200,31 +1160,9 @@ export function App({
         return;
       }
       const nextPath: AppRoutePath = "/playground/stats";
-      if (
-        (practiceRunning || practiceStageActive) &&
-        view === "practice" &&
-        isStaffGameRoutePath(routeRef.current.path)
-      ) {
-        pendingRoutePathRef.current = nextPath;
-        if (!practiceExitRequest) {
-          practiceExitRequestIdRef.current += 1;
-          setPracticeExitRequest({
-            id: practiceExitRequestIdRef.current,
-            targetView: "stats",
-          });
-        }
-        return;
-      }
       navigateToRoute(nextPath, { query: { scope: "challenge" } });
     },
-    [
-      navigateToRoute,
-      practiceExitRequest,
-      practiceRunning,
-      practiceStageActive,
-      selectStaffGameModeFromNavigation,
-      view,
-    ]
+    [navigateToRoute, selectStaffGameModeFromNavigation]
   );
 
   const startStaffGameSong = useCallback(
@@ -1557,8 +1495,9 @@ export function App({
                   )
                 ) : null}
                 {moduleTab === "stats" ? (
-                  data.practiceHistoryLoaded &&
-                  (route.levelId !== 1 || data.staffRecallHistoryLoaded) ? (
+                  (
+                    route.levelId === 1 ? data.staffRecallHistoryLoaded : data.practiceHistoryLoaded
+                  ) ? (
                     <LearningModuleStatsView
                       levelId={route.levelId}
                       settings={data.settings}
@@ -1569,70 +1508,17 @@ export function App({
                     />
                   ) : (
                     <HistoryLoadingState
-                      error={historyLoadErrors.practice}
+                      error={
+                        route.levelId === 1
+                          ? historyLoadErrors.staffRecall
+                          : historyLoadErrors.practice
+                      }
                       label="统计记录"
                       onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
                     />
                   )
                 ) : null}
               </ModuleLayout>
-            ) : null}
-            {!route.levelId && view === "practice" && !isStaffGameRoutePath(route.path) ? (
-              data.practiceHistoryLoaded ? (
-                <PracticeFullscreenFrame enabled={practiceFullscreenAvailable}>
-                  <PracticeView
-                    midi={midi}
-                    metronomeController={metronomeController}
-                    practiceMicrophonePreferences={practiceMicrophonePreferences}
-                    practicePagePreferences={practicePagePreferences}
-                    settings={data.settings}
-                    sessions={data.practiceHistoryLoaded ? data.sessions : []}
-                    reviews={data.practiceHistoryLoaded ? data.reviews : []}
-                    navigationExitRequest={practiceExitRequest}
-                    practiceTab={route.practiceTab ?? "free"}
-                    practiceDistanceMode={route.practiceDistanceMode}
-                    onPracticeDistanceModeChange={(mode, replace = false) =>
-                      navigateToRoute("/practice", {
-                        query: { tab: "distance", distanceMode: mode },
-                        replace,
-                      })
-                    }
-                    onPracticeTabChange={(tab) => navigateToRoute("/practice", { query: { tab } })}
-                    onDataChanged={refreshPracticeHistory}
-                    onNavigationExit={handleNavigationExit}
-                    onOpenStats={() => selectView("stats")}
-                    onBeforePracticeStart={preflightBeforePracticeStart}
-                    onPracticeFinished={showBackupReminderAfterActivity}
-                    onRunningChange={setPracticeRunning}
-                    onPracticeStageChange={setPracticeStageActive}
-                    onFullscreenAvailabilityChange={setPracticeFullscreenAvailable}
-                    onVirtualKeyboardActiveChange={setPracticeVirtualKeyboardActive}
-                    onInputModeChange={handlePracticeInputModeChange}
-                    onMetronomeSyncToggleChange={registerPracticeMetronomeSyncToggle}
-                    onMetronomeSyncPauseChange={registerPracticeMetronomeSyncPause}
-                    onSettingsSaved={(settings, options) =>
-                      saveSettings(settings, { ...options, feedback: false })
-                    }
-                  />
-                  {route.path === "/practice" &&
-                  practiceInputModeState?.routeKey === practiceInputRouteKey &&
-                  practiceInputModeState.mode !== "microphone" ? (
-                    <MetronomeFloating
-                      controller={metronomeController}
-                      hiddenForVisit={practiceMetronomeHiddenForVisit}
-                      activePractice={practiceRunning}
-                      onHideForVisit={() => setPracticeMetronomeHiddenForVisit(true)}
-                      onSyncPauseToggle={toggleSynchronizedPractice}
-                    />
-                  ) : null}
-                </PracticeFullscreenFrame>
-              ) : (
-                <HistoryLoadingState
-                  error={historyLoadErrors.practice}
-                  label="练习记录"
-                  onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
-                />
-              )
             ) : null}
             {isStaffGamePage ? (
               <PlaygroundLayout
@@ -1644,16 +1530,10 @@ export function App({
                   microphonePreferences={practiceMicrophonePreferences}
                   initialMode={isStaffGameSongRoutePath(route.path) ? "songs" : "levels"}
                   initialSongSelectionStep={
-                    route.path === "/practice/game/songs/play" ||
-                    route.path === "/playground/songs/play"
-                      ? "detail"
-                      : "list"
+                    route.path === "/playground/songs/play" ? "detail" : "list"
                   }
                   initialSongId={route.songId}
-                  isSongPlayRoute={
-                    route.path === "/practice/game/songs/play" ||
-                    route.path === "/playground/songs/play"
-                  }
+                  isSongPlayRoute={route.path === "/playground/songs/play"}
                   onModeChange={selectStaffGameMode}
                   onSongStart={startStaffGameSong}
                   onSongSelectionExit={returnFromStaffGameSongSelection}
@@ -1679,40 +1559,6 @@ export function App({
                 <HistoryLoadingState
                   error={historyLoadErrors.practice}
                   label="游乐场统计"
-                  onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
-                />
-              )
-            ) : null}
-            {!route.levelId && view === "stats" && route.path !== "/playground/stats" ? (
-              data.practiceHistoryLoaded ? (
-                <StatsView
-                  settings={data.settings}
-                  reviews={data.reviews}
-                  sessions={data.sessions}
-                  onSettingsSaved={(settings) => saveSettings(settings, { feedback: false })}
-                />
-              ) : (
-                <HistoryLoadingState
-                  error={historyLoadErrors.practice}
-                  label="统计记录"
-                  onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
-                />
-              )
-            ) : null}
-            {!route.levelId && view === "study" ? (
-              data.staffRecallHistoryLoaded ? (
-                <StudyView
-                  onBeforeStaffRecallStart={preflightBeforeStaffRecallStart}
-                  onDataChanged={refreshStaffRecallHistory}
-                  onSettingsSaved={(settings) => saveSettings(settings, { feedback: false })}
-                  onStaffRecallFinished={showBackupReminderAfterActivity}
-                  settings={data.settings}
-                  staffRecallRuns={data.staffRecallRuns}
-                />
-              ) : (
-                <HistoryLoadingState
-                  error={historyLoadErrors.staffRecall}
-                  label="学习记录"
                   onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
                 />
               )

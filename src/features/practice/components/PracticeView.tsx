@@ -192,7 +192,7 @@ interface PracticeViewProps {
   onMetronomeSyncToggleChange?: (toggle: (() => void) | undefined) => void;
   onMetronomeSyncPauseChange?: (pause: (() => void) | undefined) => void;
   showPracticeKindTabs?: boolean;
-  practiceModeLock?: PracticeMode;
+  practiceModeLock?: "single" | "duet";
 }
 
 export type PracticeNavigationExitTarget =

@@ -9,16 +9,10 @@ export type AppRoutePath =
   | "/playground/songs"
   | "/playground/songs/play"
   | "/playground/stats"
-  // Legacy paths remain recognized during the staged route migration.
-  | "/study"
-  | "/practice"
-  | "/practice/game"
-  | "/practice/game/songs"
-  | "/practice/game/songs/play"
-  | "/stats"
   | "/metronome"
   | "/vocal"
   | "/settings";
+
 export type AppRoutePage =
   "home" | "study" | "practice" | "game" | "stats" | "metronome" | "settings" | "vocal";
 export type PracticeRouteTab = "free" | "distance" | "name-key" | "songs";
@@ -49,12 +43,6 @@ const ROUTE_PATHS = new Set<AppRoutePath>([
   "/playground/songs",
   "/playground/songs/play",
   "/playground/stats",
-  "/study",
-  "/practice",
-  "/practice/game",
-  "/practice/game/songs",
-  "/practice/game/songs/play",
-  "/stats",
   "/metronome",
   "/vocal",
   "/settings",
@@ -70,10 +58,13 @@ export function appRouteFromHash(hash: string): AppRoute {
   const query = new URLSearchParams(rawQuery);
   const levelMatch = /^\/level\/([1-5])$/.exec(path);
   const levelId = levelMatch ? (Number(levelMatch[1]) as LearningLevelId) : undefined;
+  const requestedModuleTab = query.get("tab");
   const moduleTab: LearningModuleTab | undefined = levelId
-    ? query.get("tab") === "guide" || query.get("tab") === "stats"
-      ? query.get("tab")
-      : "practice"
+    ? requestedModuleTab === "guide"
+      ? "guide"
+      : requestedModuleTab === "stats"
+        ? "stats"
+        : "practice"
     : undefined;
   const playgroundStatsTab: PlaygroundStatsTab | undefined =
     path === "/playground/stats"
@@ -82,26 +73,11 @@ export function appRouteFromHash(hash: string): AppRoute {
         : "challenge"
       : undefined;
   const songId =
-    path === "/practice/game/songs/play" || path === "/playground/songs/play"
-      ? query.get("songId")?.slice(0, 80) || undefined
-      : undefined;
-  const requestedPracticeTab = query.get("tab");
+    path === "/playground/songs/play" ? query.get("songId")?.slice(0, 80) || undefined : undefined;
   const requestedDistanceMode = query.get("distanceMode");
-  const practiceTab: PracticeRouteTab | undefined =
-    path === "/practice"
-      ? requestedPracticeTab === "distance" ||
-        requestedPracticeTab === "name-key" ||
-        requestedPracticeTab === "songs"
-        ? requestedPracticeTab
-        : "free"
-      : undefined;
   const practiceDistanceMode: PracticeDistanceMode | undefined =
-    path === "/practice" && practiceTab === "distance"
-      ? requestedDistanceMode === "play"
-        ? "play"
-        : requestedDistanceMode === "look"
-          ? "look"
-          : undefined
+    levelId === 4 && (requestedDistanceMode === "play" || requestedDistanceMode === "look")
+      ? requestedDistanceMode
       : undefined;
   const page: AppRoutePage =
     path === "/"
@@ -110,13 +86,12 @@ export function appRouteFromHash(hash: string): AppRoute {
         ? "study"
         : levelId !== undefined
           ? "practice"
-          : path.startsWith("/practice/game") ||
-              (path.startsWith("/playground/") && path !== "/playground/stats")
+          : path.startsWith("/playground/") && path !== "/playground/stats"
             ? "game"
             : path === "/playground/stats"
               ? "stats"
               : (path.slice(1) as Exclude<AppRoutePage, "home">);
-  const levelPracticeTab: PracticeRouteTab | undefined =
+  const practiceTab: PracticeRouteTab | undefined =
     levelId === 2 || levelId === 5
       ? "free"
       : levelId === 3
@@ -124,17 +99,14 @@ export function appRouteFromHash(hash: string): AppRoute {
         : levelId === 4
           ? "distance"
           : undefined;
+
   return {
     page,
     path,
-    ...(levelId ? { levelId, moduleTab, practiceTab: levelPracticeTab } : { practiceTab }),
-    ...(levelId === 4 && requestedDistanceMode === "play"
-      ? { practiceDistanceMode: "play" as const }
-      : levelId === 4 && requestedDistanceMode === "look"
-        ? { practiceDistanceMode: "look" as const }
-        : { practiceDistanceMode }),
+    ...(levelId ? { levelId, moduleTab, practiceTab } : {}),
+    ...(practiceDistanceMode ? { practiceDistanceMode } : {}),
     ...(playgroundStatsTab ? { playgroundStatsTab } : {}),
-    songId,
+    ...(songId ? { songId } : {}),
   };
 }
 
@@ -153,15 +125,6 @@ export function appRouteQuery(route: AppRoute): Record<string, string> | undefin
   if (route.path === "/playground/songs/play" && route.songId) {
     return { songId: route.songId };
   }
-  if (route.path === "/practice") {
-    return {
-      tab: route.practiceTab ?? "free",
-      ...(route.practiceTab === "distance" && route.practiceDistanceMode
-        ? { distanceMode: route.practiceDistanceMode }
-        : {}),
-    };
-  }
-  if (route.songId) return { songId: route.songId };
   return undefined;
 }
 
@@ -169,25 +132,49 @@ export function isStaffGameRoutePath(path: AppRoutePath): boolean {
   return (
     path === "/playground/challenge" ||
     path === "/playground/songs" ||
-    path === "/playground/songs/play" ||
-    path === "/practice/game" ||
-    path === "/practice/game/songs" ||
-    path === "/practice/game/songs/play"
+    path === "/playground/songs/play"
   );
 }
 
 export function isStaffGameSongRoutePath(path: AppRoutePath): boolean {
+  return path === "/playground/songs" || path === "/playground/songs/play";
+}
+
+export function isProtectedPracticeRoute(route: AppRoute): boolean {
   return (
-    path === "/playground/songs" ||
-    path === "/playground/songs/play" ||
-    path === "/practice/game/songs" ||
-    path === "/practice/game/songs/play"
+    route.page === "game" ||
+    (route.levelId !== undefined && route.levelId > 1 && route.moduleTab === "practice")
+  );
+}
+
+export function isSamePracticeContext(current: AppRoute, next: AppRoute): boolean {
+  if (current.page === "game" && next.page === "game") return true;
+  return (
+    current.page === "practice" &&
+    next.page === "practice" &&
+    current.levelId === next.levelId &&
+    current.moduleTab === "practice" &&
+    next.moduleTab === "practice"
+  );
+}
+
+export function appRoutesEqual(left: AppRoute, right: AppRoute): boolean {
+  return (
+    left.path === right.path &&
+    left.songId === right.songId &&
+    left.practiceTab === right.practiceTab &&
+    left.practiceDistanceMode === right.practiceDistanceMode &&
+    left.moduleTab === right.moduleTab &&
+    left.playgroundStatsTab === right.playgroundStatsTab
   );
 }
 
 export function appRoutePathForPage(page: AppRoutePage): AppRoutePath {
   if (page === "home") return "/";
+  if (page === "study") return "/level/1";
+  if (page === "practice") return "/level/2";
   if (page === "game") return "/playground/challenge";
+  if (page === "stats") return "/playground/stats";
   return `/${page}` as AppRoutePath;
 }
 

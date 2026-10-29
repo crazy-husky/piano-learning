@@ -1,24 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { appRouteFromHash, appRouteQuery } from "./appRoutes";
 
-describe("practice route tabs", () => {
-  it("defaults to the free practice tab", () => {
-    expect(appRouteFromHash("#/practice")).toMatchObject({
+describe("learning module routes", () => {
+  it("defaults module routes to the practice tab", () => {
+    expect(appRouteFromHash("#/level/2")).toMatchObject({
       page: "practice",
-      path: "/practice",
+      path: "/level/2",
+      levelId: 2,
+      moduleTab: "practice",
       practiceTab: "free",
     });
   });
 
-  it.each(["free", "distance", "name-key", "songs"] as const)(
-    "restores the %s tab from the route query",
-    (tab) => {
-      expect(appRouteFromHash(`#/practice?tab=${tab}`).practiceTab).toBe(tab);
-      expect(appRouteQuery(appRouteFromHash(`#/practice?tab=${tab}`))).toEqual({ tab });
-    }
-  );
+  it.each(["guide", "practice", "stats"] as const)("restores the %s module tab", (tab) => {
+    const route = appRouteFromHash(`#/level/4?tab=${tab}`);
+    expect(route.moduleTab).toBe(tab);
+    expect(appRouteQuery(route)).toEqual({ tab });
+  });
 
-  it("falls back to free practice for unknown tab values", () => {
-    expect(appRouteFromHash("#/practice?tab=unknown").practiceTab).toBe("free");
+  it("routes unknown legacy paths to the home page", () => {
+    expect(appRouteFromHash("#/practice").path).toBe("/");
+    expect(appRouteFromHash("#/stats").path).toBe("/");
   });
 });
