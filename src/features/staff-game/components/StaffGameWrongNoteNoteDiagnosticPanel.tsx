@@ -19,16 +19,22 @@ function octaveGroupLabel(octave: number): string {
 
 export function StaffGameWrongNoteNoteDiagnosticPanel({
   archives,
+  fixedGameMode,
   onChangeRange,
   range,
+  showModeControl = true,
   showRangeControl = true,
 }: {
   archives: readonly StaffGameWrongNoteArchive[];
+  fixedGameMode?: StaffGameWrongNoteGameModeFilter;
   range: StaffGameWrongNoteRange;
   onChangeRange: (range: StaffGameWrongNoteRange) => void;
+  showModeControl?: boolean;
   showRangeControl?: boolean;
 }): JSX.Element {
-  const [gameMode, setGameMode] = useState<StaffGameWrongNoteGameModeFilter>("learning");
+  const [selectedGameMode, setSelectedGameMode] =
+    useState<StaffGameWrongNoteGameModeFilter>("learning");
+  const gameMode = fixedGameMode ?? selectedGameMode;
   const filteredArchives = useMemo(
     () => filterStaffGameWrongNoteArchivesByGameMode(archives, gameMode),
     [archives, gameMode]
@@ -41,20 +47,22 @@ export function StaffGameWrongNoteNoteDiagnosticPanel({
   return (
     <div className="staff-game-archive-note-panel">
       <div className="staff-game-archive-note-toolbar">
-        <label>
-          <span>练习模式</span>
-          <select
-            aria-label="单音诊断练习模式"
-            onChange={(event) =>
-              setGameMode(event.target.value as StaffGameWrongNoteGameModeFilter)
-            }
-            value={gameMode}
-          >
-            <option value="learning">学习测试</option>
-            <option value="arcade">娱乐模式</option>
-            <option value="all">全部练习（含错题复习）</option>
-          </select>
-        </label>
+        {showModeControl ? (
+          <label>
+            <span>练习模式</span>
+            <select
+              aria-label="单音诊断练习模式"
+              onChange={(event) =>
+                setSelectedGameMode(event.target.value as StaffGameWrongNoteGameModeFilter)
+              }
+              value={gameMode}
+            >
+              <option value="learning">学习测试</option>
+              <option value="arcade">娱乐模式</option>
+              <option value="all">全部练习（含错题复习）</option>
+            </select>
+          </label>
+        ) : null}
         {showRangeControl ? (
           <label>
             <span>记录时间</span>

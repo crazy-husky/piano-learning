@@ -41,13 +41,13 @@
 
 .midi-input-control.needs-attention .midi-input-control-select,
 .midi-input-control.needs-attention .midi-input-control-button {
-  animation: midi-input-attention-pulse 900ms ease-in-out infinite;
+  animation: midi-input-attention-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes midi-input-attention-pulse {
   0%,
   100% {
-    border-color: var(--line);
+    border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent);
   }
 
@@ -69,23 +69,39 @@
 .practice-free-answer-option-copy > small.is-midi-attention,
 .practice-free-warning.is-midi-attention,
 .practice-start-tooltip.is-midi-attention,
+.staff-distance-start-error.is-midi-attention,
 .name-key-status-message.is-midi-attention,
-.song-arrangement-note.is-midi-attention {
-  animation: midi-prompt-attention-pulse 900ms ease-in-out infinite;
+.song-chase-hint.is-midi-attention,
+.song-arrangement-note.is-midi-attention,
+.song-selection-error.is-midi-attention,
+.ui-confirm-content.is-midi-attention,
+.staff-game-mic-dialog.is-midi-attention {
+  border: 1px solid color-mix(in srgb, var(--danger) 70%, var(--line));
+  animation: midi-input-attention-pulse 1.4s ease-in-out infinite;
+}
+
+.practice-free-answer-option-copy > small.is-midi-attention,
+.practice-free-warning.is-midi-attention,
+.practice-start-tooltip.is-midi-attention,
+.staff-distance-start-error.is-midi-attention,
+.name-key-status-message.is-midi-attention,
+.song-chase-hint.is-midi-attention,
+.song-arrangement-note.is-midi-attention,
+.song-selection-error.is-midi-attention,
+.ui-confirm-content.is-midi-attention {
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--danger-surface) 38%, var(--surface));
   color: var(--danger);
 }
 
-@keyframes midi-prompt-attention-pulse {
-  0%,
-  100% {
-    opacity: 0.68;
-    text-shadow: 0 0 0 transparent;
-  }
+.practice-free-answer-option-copy > small.is-midi-attention {
+  display: inline-block;
+}
 
-  50% {
-    opacity: 1;
-    text-shadow: 0 0 8px color-mix(in srgb, var(--danger) 42%, transparent);
-  }
+[data-sonner-toast].midi-attention-toast {
+  border: 1px solid color-mix(in srgb, var(--danger) 70%, var(--line));
+  animation: midi-input-attention-pulse 1.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -94,10 +110,15 @@
   .practice-start-tooltip.is-midi-attention,
   .staff-distance-start-error.is-midi-attention,
   .name-key-status-message.is-midi-attention,
-  .song-arrangement-note.is-midi-attention {
+  .song-chase-hint.is-midi-attention,
+  .song-arrangement-note.is-midi-attention,
+  .song-selection-error.is-midi-attention,
+  .ui-confirm-content.is-midi-attention,
+  .staff-game-mic-dialog.is-midi-attention,
+  [data-sonner-toast].midi-attention-toast {
     animation: none;
-    opacity: 1;
-    text-shadow: none;
+    border-color: var(--danger);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 28%, transparent);
   }
 }
 

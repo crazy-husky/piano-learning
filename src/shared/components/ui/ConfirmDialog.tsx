@@ -5,6 +5,7 @@ export interface ConfirmDialogOptions {
   cancelLabel?: string;
   confirmLabel?: string;
   confirmOnly?: boolean;
+  className?: string;
   description: string;
   destructive?: boolean;
   title: string;
@@ -47,7 +48,9 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }): JS
         {request ? (
           <AlertDialog.Portal>
             <AlertDialog.Overlay className="ui-confirm-overlay" />
-            <AlertDialog.Content className="ui-confirm-content">
+            <AlertDialog.Content
+              className={`ui-confirm-content${request.className ? ` ${request.className}` : ""}`}
+            >
               <AlertDialog.Title className="ui-confirm-title">{request.title}</AlertDialog.Title>
               <AlertDialog.Description className="ui-confirm-description">
                 {request.description}

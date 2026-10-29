@@ -18,7 +18,7 @@ const EVENT_FILTERS: Record<ModuleEventKind, (event: AnswerEvent) => boolean> = 
 
 const COPY: Record<ModuleEventKind, { title: string; empty: string; description: string }> = {
   "name-to-key": {
-    title: "极速找键统计",
+    title: "音名找键统计",
     empty: "完成音名找键练习后，这里会显示练习次数、准确率和反应时间。",
     description: "只统计音名找键练习，不混入其他练习数据。",
   },
@@ -39,6 +39,12 @@ function formatDuration(milliseconds: number | null): string {
   return milliseconds < 1000
     ? `${Math.round(milliseconds)} 毫秒`
     : `${(milliseconds / 1000).toFixed(1)} 秒`;
+}
+
+function getLocalDateKey(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function isDuetEvent(event: AnswerEvent): boolean {
@@ -82,8 +88,11 @@ export function ModuleEventStats({
     .map((event) => event.responseTimeMs ?? event.rawResponseTimeMs)
     .filter((value): value is number => value !== null && value !== undefined && value > 0)
     .sort((left, right) => left - right);
+  const middle = Math.floor(responseTimes.length / 2);
   const medianResponse = responseTimes.length
-    ? responseTimes[Math.floor((responseTimes.length - 1) / 2)]!
+    ? responseTimes.length % 2 === 0
+      ? (responseTimes[middle - 1]! + responseTimes[middle]!) / 2
+      : responseTimes[middle]!
     : null;
   const copy = COPY[kind];
   const lastFourteenDays = useMemo(() => {
@@ -95,7 +104,7 @@ export function ModuleEventStats({
       counts.set(key, 0);
     }
     for (const event of selectedEvents) {
-      const key = event.occurredAt.slice(0, 10);
+      const key = getLocalDateKey(event.occurredAt);
       if (counts.has(key)) counts.set(key, counts.get(key)! + 1);
     }
     return [...counts.entries()];

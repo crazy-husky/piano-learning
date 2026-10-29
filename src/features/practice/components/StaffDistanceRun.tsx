@@ -1156,7 +1156,9 @@ export function StaffDistanceRun({
           {trainingMode === "play" && inputMethod === "midi" ? (
             <MidiInputControl
               ariaLabel="音距速推 MIDI 输入设备"
-              className="staff-distance-run-midi-control"
+              className={`${
+                !midi.isConnected ? "needs-attention " : ""
+              }staff-distance-run-midi-control`}
               midi={midi}
             />
           ) : null}

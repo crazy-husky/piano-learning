@@ -130,7 +130,9 @@ export function PracticeChaseSettingsDialog({
               ))}
             </div>
             {mode === "song" && draft.handMode === "both" && !isMidiConnected ? (
-              <small className="song-chase-hint">双手练习需要连接 MIDI 键盘。</small>
+              <small className="song-chase-hint is-midi-attention">
+                双手练习需要连接 MIDI 键盘。
+              </small>
             ) : null}
           </fieldset>
         ) : null}

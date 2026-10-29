@@ -14,7 +14,6 @@ export function useMidiConnectionAttention(midi: MidiConnectionState): {
     !midi.isConnected && midi.status !== "unsupported" && midi.status !== "insecure-context";
 
   const show = useCallback((): void => {
-    if (!canRequestConnection) return;
     setIsActive(true);
     if (timeoutRef.current !== null) {
       window.clearTimeout(timeoutRef.current);
@@ -23,7 +22,7 @@ export function useMidiConnectionAttention(midi: MidiConnectionState): {
       setIsActive(false);
       timeoutRef.current = null;
     }, 3000);
-  }, [canRequestConnection]);
+  }, []);
 
   useEffect(() => {
     if (midi.isConnected) {

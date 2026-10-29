@@ -779,3 +779,26 @@
     justify-content: center;
   }
 }
+
+.practice-setup-shell.is-name-key-practice-setup.is-name-key-practice-running {
+  min-height: 0;
+  padding: 12px 0 16px;
+}
+
+.practice-setup-shell.is-name-key-practice-running .name-key-run-card {
+  min-height: 0;
+}
+
+@media (max-width: 820px) {
+  main:has(.practice-setup-shell.is-name-key-practice-running) {
+    padding-bottom: 0;
+  }
+
+  .practice-setup-shell.is-name-key-practice-setup.is-name-key-practice-running {
+    padding: 8px 16px max(8px, env(safe-area-inset-bottom));
+  }
+
+  .practice-setup-shell.is-name-key-practice-running .name-key-prompt {
+    min-height: clamp(116px, 20vh, 170px);
+  }
+}

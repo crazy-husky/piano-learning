@@ -50,6 +50,7 @@ import {
 import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
 import { VirtualPianoKeyboard } from "../../../shared/components/VirtualPianoKeyboard";
+import { MidiInputControl } from "../../../midi/MidiInputControl";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import type { MidiAccessStatus } from "../../../midi/midiInput";
 import type {
@@ -3654,6 +3655,14 @@ export function StaffGameView({
     );
   }
 
+  const showMissingMidiWarning =
+    phase === "ready" &&
+    songSelectionStep === null &&
+    gameMode === "levels" &&
+    settings.inputMode === "midi" &&
+    midi.status === "ready" &&
+    midi.inputs.length === 0;
+
   return (
     <section
       className={`practice-shell staff-game-shell${phase === "ready" ? " is-ready" : ""}${rushModeActive ? " is-rush-mode" : ""}`}
@@ -3822,7 +3831,7 @@ export function StaffGameView({
         />
 
         <div
-          className={`staff-game-playfield${phase === "paused" ? " is-paused" : ""}${phase === "ready" && gameMode === "levels" ? " is-ready" : ""}${preserveRushBubbleScreenTop ? " is-rush-mode" : ""}${rushBubbleScreenTopStart?.token === target?.token ? " has-screen-top-rush-bubble" : ""}`}
+          className={`staff-game-playfield${phase === "paused" ? " is-paused" : ""}${phase === "ready" && gameMode === "levels" ? " is-ready" : ""}${preserveRushBubbleScreenTop ? " is-rush-mode" : ""}${rushBubbleScreenTopStart?.token === target?.token ? " has-screen-top-rush-bubble" : ""}${showMissingMidiWarning ? " has-midi-device-warning" : ""}`}
           ref={playfieldRef}
         >
           <div aria-hidden="true" className="staff-game-scene-glow" />
@@ -3988,6 +3997,15 @@ export function StaffGameView({
               song={selectedSong}
               starImage={starParticleArt}
               variant="song-detail"
+            />
+          ) : null}
+
+          {showMissingMidiWarning ? (
+            <MidiInputControl
+              ariaLabel="未检测到 MIDI 设备，重试连接"
+              className="staff-game-midi-device-warning needs-attention"
+              label="重新检测 MIDI 设备"
+              midi={midi}
             />
           ) : null}
 
@@ -4404,6 +4422,7 @@ export function StaffGameView({
         gameArtStyle={gameArtStyle}
         gameEffectsEnabled={settings.gameEffectsEnabled}
         gameError={gameError}
+        isMidiAttention={settings.inputMode === "midi" && /MIDI/i.test(gameError)}
         isMidiInput={settings.inputMode === "midi"}
         wrongNoteExitLabel={roundPurposeRef.current === "wrong-note-review" ? "退出复习" : null}
         isStarting={isStarting}

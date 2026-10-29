@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Gamepad2, Music, Settings, Timer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { db } from "../../../data/db";
 import { ensureSwiftF0PracticeRuntimeReady } from "../../vocal-pitch/logic/swiftF0PracticeClient";
@@ -105,6 +105,34 @@ export function HomeView({ microphoneAlgorithm, onNavigate }: HomeViewProps): JS
         <h1 id="home-title">学习路线</h1>
         <p>从看懂谱面开始，逐步练到双手协同。每个阶段都可以随时进入。</p>
       </header>
+      <nav aria-label="快捷入口" className="home-quick-links">
+        <span className="home-quick-links-title">快捷入口</span>
+        <div className="home-quick-links-grid">
+          <button
+            className="home-quick-link-challenge"
+            onClick={() => onNavigate("/playground/challenge")}
+            type="button"
+          >
+            <Gamepad2 aria-hidden="true" size={19} />
+            <span>气泡闯关</span>
+            <span aria-label="新功能" className="home-quick-link-new">
+              NEW
+            </span>
+          </button>
+          <button onClick={() => onNavigate("/playground/songs/score")} type="button">
+            <Music aria-hidden="true" size={19} />
+            <span>歌曲律动</span>
+          </button>
+          <button onClick={() => onNavigate("/metronome")} type="button">
+            <Timer aria-hidden="true" size={19} />
+            <span>节拍器</span>
+          </button>
+          <button onClick={() => onNavigate("/settings")} type="button">
+            <Settings aria-hidden="true" size={19} />
+            <span>设置</span>
+          </button>
+        </div>
+      </nav>
       <ol aria-label="五个学习阶段" className="learning-path-list">
         {LEARNING_MODULES.map((module) => {
           const Icon = module.icon;

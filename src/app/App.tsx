@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   BellOff,
+  ChevronDown,
   FolderOpen,
   Gamepad2,
   GripVertical,
@@ -45,7 +46,8 @@ import { ModuleGuideView } from "../features/learning/components/ModuleGuideView
 import { LearningModuleStatsView } from "../features/learning/components/LearningModuleStatsView";
 import {
   PlaygroundLayout,
-  type PlaygroundTab,
+  type PlaygroundChallengeMode,
+  type PlaygroundSongMode,
 } from "../features/learning/components/PlaygroundLayout";
 import { PlaygroundStatsView } from "../features/learning/components/PlaygroundStatsView";
 import { getLearningModule } from "../features/learning/learningModules";
@@ -163,6 +165,25 @@ const LOCAL_PREFERENCE_FEEDBACK_KEYS = new Set([
   "anki-note.midiInputId.v2",
 ]);
 
+const LEARNING_MODULE_TAB_STORAGE_PREFIX = "anki-note.learningModuleTab.v1.";
+
+function readLearningModuleTab(levelId: number): LearningModuleTab | null {
+  try {
+    const tab = window.localStorage.getItem(`${LEARNING_MODULE_TAB_STORAGE_PREFIX}${levelId}`);
+    return tab === "guide" || tab === "practice" || tab === "stats" ? tab : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberLearningModuleTab(levelId: number, tab: LearningModuleTab): void {
+  try {
+    window.localStorage.setItem(`${LEARNING_MODULE_TAB_STORAGE_PREFIX}${levelId}`, tab);
+  } catch {
+    // Keep navigation usable when local storage is unavailable.
+  }
+}
+
 function HistoryLoadingState({
   error,
   label,
@@ -241,7 +262,11 @@ export function App({
           id: "midi-device-status",
         });
       } else if (previous.isConnected && !next.isConnected) {
-        toast.info("MIDI 已断开", { duration: 2000, id: "midi-device-status" });
+        toast.info("MIDI 已断开", {
+          className: "midi-attention-toast",
+          duration: 2000,
+          id: "midi-device-status",
+        });
       } else if (previous.isConnected && next.isConnected && previous.inputId !== next.inputId) {
         const previousInputWasRemoved = !midi.inputs.some((input) => input.id === previous.inputId);
         const name = midi.selectedInput?.name;
@@ -253,11 +278,13 @@ export function App({
         );
       } else if (previous.status === "requesting" && next.status === "error") {
         toast.error(midi.errorMessage ?? "MIDI 连接失败", {
+          className: "midi-attention-toast",
           duration: 2000,
           id: "midi-device-status",
         });
       } else if (previous.status === "requesting" && next.status === "ready" && !next.isConnected) {
         toast.info("未检测到 MIDI 输入设备", {
+          className: "midi-attention-toast",
           duration: 2000,
           id: "midi-device-status",
         });
@@ -292,6 +319,9 @@ export function App({
   }, []);
 
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
+  const [playgroundNavExpanded, setPlaygroundNavExpanded] = useState(() =>
+    route.path.startsWith("/playground/")
+  );
   const [isHomeMetronomeOpen, setIsHomeMetronomeOpen] = useState(() => route.page === "metronome");
   const metronomeController = useMetronomeController();
   const stopMetronome = metronomeController.stop;
@@ -304,6 +334,9 @@ export function App({
   } | null>(null);
   const routeRef = useRef(route);
   routeRef.current = route;
+  useEffect(() => {
+    if (route.path.startsWith("/playground/")) setPlaygroundNavExpanded(true);
+  }, [route.path]);
   const practiceHistoryRestorePendingRef = useRef(false);
   const staffGameSelectionReturnPathRef = useRef<AppRoutePath>("/");
   const staffGameSelectionRoutePushedRef = useRef(false);
@@ -404,7 +437,8 @@ export function App({
           ? "home"
           : route.page;
   const isPracticePageRoute =
-    route.levelId !== undefined && route.levelId > 1 && moduleTab === "practice";
+    (route.levelId !== undefined && route.levelId > 1 && moduleTab === "practice") ||
+    route.path === "/playground/songs/score";
 
   useEffect(() => {
     if (view !== "practice" || isStaffGameRoutePath(route.path)) {
@@ -772,11 +806,31 @@ export function App({
 
   const selectModuleTab = useCallback(
     (tab: LearningModuleTab): void => {
-      if (!routeRef.current.levelId) return;
+      const levelId = routeRef.current.levelId;
+      if (levelId === undefined) return;
+      rememberLearningModuleTab(levelId, tab);
       const path = routeRef.current.path;
       const currentQuery = appRouteQuery(routeRef.current) ?? {};
       navigateToRoute(path, {
         query: { ...currentQuery, tab },
+      });
+    },
+    [navigateToRoute]
+  );
+
+  const navigateFromHome = useCallback(
+    (path: AppRoutePath): void => {
+      const levelMatch = /^\/level\/([1-5])$/.exec(path);
+      if (!levelMatch) {
+        navigateToRoute(path);
+        return;
+      }
+
+      const rememberedTab = readLearningModuleTab(Number(levelMatch[1]));
+      navigateToRoute(path, {
+        query: {
+          tab: rememberedTab === "stats" ? "practice" : (rememberedTab ?? "guide"),
+        },
       });
     },
     [navigateToRoute]
@@ -1149,18 +1203,28 @@ export function App({
     [route.path, selectStaffGameMode, view]
   );
 
-  const selectPlaygroundTab = useCallback(
-    (tab: PlaygroundTab): void => {
-      if (tab === "challenge") {
+  const selectPlaygroundSongMode = useCallback(
+    (mode: PlaygroundSongMode): void => {
+      if (mode === "score") {
+        navigateToRoute("/playground/songs/score");
+        return;
+      }
+      if (mode === "stats") {
+        navigateToRoute("/playground/stats", { query: { scope: "songs" } });
+        return;
+      }
+      selectStaffGameModeFromNavigation("songs");
+    },
+    [navigateToRoute, selectStaffGameModeFromNavigation]
+  );
+
+  const selectPlaygroundChallengeMode = useCallback(
+    (mode: PlaygroundChallengeMode): void => {
+      if (mode === "game") {
         selectStaffGameModeFromNavigation("levels");
         return;
       }
-      if (tab === "songs") {
-        selectStaffGameModeFromNavigation("songs");
-        return;
-      }
-      const nextPath: AppRoutePath = "/playground/stats";
-      navigateToRoute(nextPath, { query: { scope: "challenge" } });
+      navigateToRoute("/playground/stats", { query: { scope: "challenge" } });
     },
     [navigateToRoute, selectStaffGameModeFromNavigation]
   );
@@ -1267,7 +1331,7 @@ export function App({
     practiceRunning ? "app-shell-practice-running" : "",
     view === "practice" ? "app-shell-practice-page" : "",
     view === "home" ? "app-shell-home" : "",
-    isStaffGamePage ? "app-shell-game-immersive" : "",
+    isStaffGamePage && (practiceRunning || practiceStageActive) ? "app-shell-game-immersive" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -1291,15 +1355,60 @@ export function App({
             <House aria-hidden="true" size={18} />
             首页
           </button>
-          <button
-            aria-current={route.path.startsWith("/playground/") ? "page" : undefined}
-            className={route.path.startsWith("/playground/") ? "active" : ""}
-            onClick={() => selectStaffGameModeFromNavigation("levels")}
-            type="button"
-          >
-            <Gamepad2 aria-hidden="true" size={18} />
-            游乐场
-          </button>
+          <div className="app-nav-game-group">
+            <button
+              aria-expanded={playgroundNavExpanded}
+              className={`app-nav-game-toggle${route.path.startsWith("/playground/") ? " active" : ""}`}
+              onClick={() => setPlaygroundNavExpanded((expanded) => !expanded)}
+              type="button"
+            >
+              <Gamepad2 aria-hidden="true" size={18} />
+              游乐场
+              <ChevronDown aria-hidden="true" className="app-nav-game-chevron" size={13} />
+            </button>
+            {playgroundNavExpanded ? (
+              <div className="app-nav-game-submenu" id="playground-submenu">
+                <button
+                  aria-current={
+                    route.path === "/playground/challenge" ||
+                    (route.path === "/playground/stats" && route.playgroundStatsTab === "challenge")
+                      ? "page"
+                      : undefined
+                  }
+                  className={
+                    route.path === "/playground/challenge" ||
+                    (route.path === "/playground/stats" && route.playgroundStatsTab === "challenge")
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() => selectStaffGameModeFromNavigation("levels")}
+                  type="button"
+                >
+                  气泡闯关
+                </button>
+                <button
+                  aria-current={
+                    isStaffGameSongRoutePath(route.path) ||
+                    route.path === "/playground/songs/score" ||
+                    (route.path === "/playground/stats" && route.playgroundStatsTab === "songs")
+                      ? "page"
+                      : undefined
+                  }
+                  className={
+                    isStaffGameSongRoutePath(route.path) ||
+                    route.path === "/playground/songs/score" ||
+                    (route.path === "/playground/stats" && route.playgroundStatsTab === "songs")
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() => selectStaffGameModeFromNavigation("songs")}
+                  type="button"
+                >
+                  歌曲
+                </button>
+              </div>
+            ) : null}
+          </div>
           <button
             aria-current={route.page === "metronome" ? "page" : undefined}
             className={route.page === "metronome" ? "active" : ""}
@@ -1410,7 +1519,7 @@ export function App({
             {view === "home" ? (
               <HomeView
                 microphoneAlgorithm={practiceMicrophonePreferences.algorithm}
-                onNavigate={navigateToRoute}
+                onNavigate={navigateFromHome}
               />
             ) : null}
             {route.levelId && module ? (
@@ -1520,10 +1629,75 @@ export function App({
                 ) : null}
               </ModuleLayout>
             ) : null}
+            {route.path === "/playground/songs/score" ? (
+              <PlaygroundLayout
+                activeTab="songs"
+                onSongModeChange={selectPlaygroundSongMode}
+                showSongModes={!practiceRunning && !practiceStageActive}
+                songMode="score"
+              >
+                {data.practiceHistoryLoaded ? (
+                  <PracticeFullscreenFrame enabled={practiceFullscreenAvailable}>
+                    <PracticeView
+                      midi={midi}
+                      metronomeController={metronomeController}
+                      practiceMicrophonePreferences={practiceMicrophonePreferences}
+                      practicePagePreferences={practicePagePreferences}
+                      settings={data.settings}
+                      sessions={data.sessions}
+                      reviews={data.reviews}
+                      navigationExitRequest={practiceExitRequest}
+                      practiceTab="songs"
+                      showPracticeKindTabs={false}
+                      onPracticeDistanceModeChange={() => undefined}
+                      onPracticeTabChange={() => undefined}
+                      onDataChanged={refreshPracticeHistory}
+                      onNavigationExit={handleNavigationExit}
+                      onOpenStats={() =>
+                        navigateToRoute("/playground/stats", { query: { scope: "songs" } })
+                      }
+                      onBeforePracticeStart={preflightBeforePracticeStart}
+                      onPracticeFinished={showBackupReminderAfterActivity}
+                      onRunningChange={setPracticeRunning}
+                      onPracticeStageChange={setPracticeStageActive}
+                      onFullscreenAvailabilityChange={setPracticeFullscreenAvailable}
+                      onVirtualKeyboardActiveChange={setPracticeVirtualKeyboardActive}
+                      onInputModeChange={handlePracticeInputModeChange}
+                      onMetronomeSyncToggleChange={registerPracticeMetronomeSyncToggle}
+                      onMetronomeSyncPauseChange={registerPracticeMetronomeSyncPause}
+                      onSettingsSaved={(settings, options) =>
+                        saveSettings(settings, { ...options, feedback: false })
+                      }
+                    />
+                    {practiceInputModeState?.routeKey === practiceInputRouteKey &&
+                    practiceInputModeState.mode !== "microphone" ? (
+                      <MetronomeFloating
+                        controller={metronomeController}
+                        hiddenForVisit={practiceMetronomeHiddenForVisit}
+                        activePractice={practiceRunning}
+                        onHideForVisit={() => setPracticeMetronomeHiddenForVisit(true)}
+                        onSyncPauseToggle={toggleSynchronizedPractice}
+                      />
+                    ) : null}
+                  </PracticeFullscreenFrame>
+                ) : (
+                  <HistoryLoadingState
+                    error={historyLoadErrors.practice}
+                    label="歌曲练习记录"
+                    onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
+                  />
+                )}
+              </PlaygroundLayout>
+            ) : null}
             {isStaffGamePage ? (
               <PlaygroundLayout
                 activeTab={isStaffGameSongRoutePath(route.path) ? "songs" : "challenge"}
-                onTabChange={selectPlaygroundTab}
+                challengeMode="game"
+                onChallengeModeChange={selectPlaygroundChallengeMode}
+                onSongModeChange={selectPlaygroundSongMode}
+                showChallengeModes={!practiceRunning && !practiceStageActive}
+                songMode={isStaffGameSongRoutePath(route.path) ? "bubble" : undefined}
+                showSongModes={route.path === "/playground/songs"}
               >
                 <StaffGameRoute
                   midi={midi}
@@ -1546,15 +1720,33 @@ export function App({
             ) : null}
             {!route.levelId && route.path === "/playground/stats" ? (
               data.practiceHistoryLoaded ? (
-                <PlaygroundLayout activeTab="stats" onTabChange={selectPlaygroundTab}>
-                  <PlaygroundStatsView
-                    activeTab={route.playgroundStatsTab ?? "challenge"}
-                    dataSetId={data.settings.dataSetId}
-                    onTabChange={(tab) =>
-                      navigateToRoute("/playground/stats", { query: { scope: tab } })
-                    }
-                  />
-                </PlaygroundLayout>
+                route.playgroundStatsTab === "songs" ? (
+                  <PlaygroundLayout
+                    activeTab="songs"
+                    onSongModeChange={selectPlaygroundSongMode}
+                    songMode="stats"
+                  >
+                    <PlaygroundStatsView
+                      activeTab="songs"
+                      dataSetId={data.settings.dataSetId}
+                      onTabChange={() => undefined}
+                      showTabs={false}
+                    />
+                  </PlaygroundLayout>
+                ) : (
+                  <PlaygroundLayout
+                    activeTab="challenge"
+                    challengeMode="stats"
+                    onChallengeModeChange={selectPlaygroundChallengeMode}
+                  >
+                    <PlaygroundStatsView
+                      activeTab="challenge"
+                      dataSetId={data.settings.dataSetId}
+                      onTabChange={() => undefined}
+                      showTabs={false}
+                    />
+                  </PlaygroundLayout>
+                )
               ) : (
                 <HistoryLoadingState
                   error={historyLoadErrors.practice}

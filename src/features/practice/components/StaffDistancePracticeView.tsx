@@ -485,8 +485,13 @@ export function StaffDistancePracticeView({
       if (trainingMode === "play" && preferences.inputMethod === "midi" && !midi.isConnected) {
         const notice = getMidiUnavailableNotice(midi.status);
         if (notice) {
-          setStartError(null);
-          void confirmDialog({ ...notice, confirmLabel: "确认", confirmOnly: true });
+          showMidiAttention("start");
+          void confirmDialog({
+            ...notice,
+            className: "is-midi-attention",
+            confirmLabel: "确认",
+            confirmOnly: true,
+          });
         } else {
           showMidiAttention("start");
           setStartError("尚未连接 MIDI 键盘。请先点击“连接 MIDI”，或切换为麦克风输入。");
@@ -1149,7 +1154,17 @@ export function StaffDistancePracticeView({
               microphone.status === "error" ||
               microphone.status === "requesting")
           ) ? (
-            <p className="staff-distance-start-error" role="alert">
+            <p
+              className={`staff-distance-start-error${
+                isMidiConnectionAttentionActive &&
+                trainingMode === "play" &&
+                preferences.inputMethod === "midi" &&
+                !midi.isConnected
+                  ? " is-midi-attention"
+                  : ""
+              }`}
+              role="alert"
+            >
               {startError}
             </p>
           ) : null}

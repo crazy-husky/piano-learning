@@ -20,6 +20,7 @@ export function MetronomeDialog({
     rootRef: dialogRef,
     enabled: true,
     expanded: !isMinimized,
+    initialPosition: "center",
     onLongPress: () => undefined,
     positionKey: isMinimized ? DIALOG_COMPACT_POSITION_KEY : DIALOG_POSITION_KEY,
     fallbackPositionKey: DIALOG_POSITION_KEY,

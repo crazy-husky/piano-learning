@@ -18,6 +18,7 @@ import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import { MAX_PRACTICE_QUESTIONS } from "../../../domain/practiceLimits";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
+import { getMidiUnavailableNotice } from "../../../midi/midiUnavailableNotice";
 import { PracticeFullscreenToggle } from "../components/PracticeFullscreenFrame";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
@@ -245,11 +246,8 @@ export function NameToKeyPracticeView({
   onRunningChange,
   onStageChange,
 }: NameToKeyPracticeViewProps): JSX.Element {
-  const {
-    canRequestConnection: canRequestMidiConnection,
-    isActive: isMidiConnectionAttentionActive,
-    show: showMidiConnectionAttention,
-  } = useMidiConnectionAttention(midi);
+  const { isActive: isMidiConnectionAttentionActive, show: showMidiConnectionAttention } =
+    useMidiConnectionAttention(midi);
   const {
     error: microphoneError,
     inputLevel: microphoneInputLevel,
@@ -754,7 +752,12 @@ export function NameToKeyPracticeView({
       if (preferences.inputMode === "midi" && !midi.isConnected) {
         setMidiAttentionSource("start");
         showMidiConnectionAttention();
-        setStatusMessage("先连接 MIDI 键盘，再开始这一局。下方可以选择设备。 ");
+        const notice = getMidiUnavailableNotice(midi.status);
+        setStatusMessage(
+          notice
+            ? `${notice.title}：${notice.description}`
+            : "先连接 MIDI 键盘，再开始这一局。下方可以选择设备。"
+        );
         return;
       }
       if (preferences.inputMode === "microphone") {
@@ -959,13 +962,18 @@ export function NameToKeyPracticeView({
                       className={preferences.inputMode === "midi" ? "is-selected" : ""}
                       onClick={() => {
                         setInputMode("midi");
-                        if (canRequestMidiConnection) {
-                          setMidiAttentionSource("input-mode");
-                          setStatusMessage("先连接并选择 MIDI 键盘，再开始练习。");
-                          showMidiConnectionAttention();
-                        } else {
+                        if (midi.isConnected) {
                           setMidiAttentionSource(null);
                           setStatusMessage("");
+                        } else {
+                          setMidiAttentionSource("input-mode");
+                          const notice = getMidiUnavailableNotice(midi.status);
+                          setStatusMessage(
+                            notice
+                              ? `${notice.title}：${notice.description}`
+                              : "先连接并选择 MIDI 键盘，再开始练习。"
+                          );
+                          showMidiConnectionAttention();
                         }
                       }}
                       type="button"
@@ -1216,7 +1224,14 @@ export function NameToKeyPracticeView({
               (microphoneError || microphoneStatus === "error" || microphoneStatus === "requesting")
             ) ? (
               <p
-                className={`name-key-status-message${isMidiConnectionAttentionActive && midiAttentionSource === "input-mode" && preferences.inputMode === "midi" && !midi.isConnected ? " is-midi-attention" : ""}`}
+                className={`name-key-status-message${
+                  isMidiConnectionAttentionActive &&
+                  midiAttentionSource !== null &&
+                  preferences.inputMode === "midi" &&
+                  !midi.isConnected
+                    ? " is-midi-attention"
+                    : ""
+                }`}
                 role="alert"
               >
                 {statusMessage}
@@ -1354,7 +1369,13 @@ export function NameToKeyPracticeView({
                 </button>
               ) : null}
               {preferences.inputMode === "midi" ? (
-                <MidiInputControl ariaLabel="音名找键 MIDI 输入设备" midi={midi} />
+                <MidiInputControl
+                  ariaLabel="音名找键 MIDI 输入设备"
+                  className={
+                    stage === "running" && !midi.isConnected ? "needs-attention" : undefined
+                  }
+                  midi={midi}
+                />
               ) : null}
               <PracticeFullscreenToggle />
             </div>

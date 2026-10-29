@@ -27,12 +27,6 @@ export function ModuleLayout({
           <h1 id="learning-module-title">{module.name}</h1>
           <p>{module.summary}</p>
         </div>
-        <module.icon
-          aria-hidden="true"
-          className="learning-module-icon"
-          size={30}
-          strokeWidth={1.8}
-        />
       </header>
 
       <div aria-label={`${module.name}页签`} className="learning-module-tabs" role="tablist">

@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 interface StaffGameStatusOverlaysProps {
   gameError: string;
   isMidiInput: boolean;
+  isMidiAttention: boolean;
   gameArtStyle: CSSProperties;
   isStarting: boolean;
   isMicrophoneReloadAvailable: boolean;
@@ -31,6 +32,7 @@ export function StaffGameErrorFlash({ active }: { active: boolean }) {
 export function StaffGameStatusOverlays({
   gameError,
   isMidiInput,
+  isMidiAttention,
   gameArtStyle,
   isStarting,
   isMicrophoneReloadAvailable,
@@ -56,7 +58,7 @@ export function StaffGameStatusOverlays({
               <section
                 aria-labelledby="staff-game-mic-dialog-title"
                 aria-modal="true"
-                className="staff-game-mic-dialog"
+                className={`staff-game-mic-dialog${isMidiAttention ? " is-midi-attention" : ""}`}
                 role="alertdialog"
               >
                 <span className="staff-game-mic-dialog-icon">

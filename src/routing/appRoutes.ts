@@ -8,6 +8,7 @@ export type AppRoutePath =
   | "/playground/challenge"
   | "/playground/songs"
   | "/playground/songs/play"
+  | "/playground/songs/score"
   | "/playground/stats"
   | "/metronome"
   | "/vocal"
@@ -42,6 +43,7 @@ const ROUTE_PATHS = new Set<AppRoutePath>([
   "/playground/challenge",
   "/playground/songs",
   "/playground/songs/play",
+  "/playground/songs/score",
   "/playground/stats",
   "/metronome",
   "/vocal",
@@ -86,24 +88,29 @@ export function appRouteFromHash(hash: string): AppRoute {
         ? "study"
         : levelId !== undefined
           ? "practice"
-          : path.startsWith("/playground/") && path !== "/playground/stats"
-            ? "game"
-            : path === "/playground/stats"
-              ? "stats"
-              : (path.slice(1) as Exclude<AppRoutePage, "home">);
+          : path === "/playground/songs/score"
+            ? "practice"
+            : path.startsWith("/playground/") && path !== "/playground/stats"
+              ? "game"
+              : path === "/playground/stats"
+                ? "stats"
+                : (path.slice(1) as Exclude<AppRoutePage, "home">);
   const practiceTab: PracticeRouteTab | undefined =
-    levelId === 2 || levelId === 5
-      ? "free"
-      : levelId === 3
-        ? "name-key"
-        : levelId === 4
-          ? "distance"
-          : undefined;
+    path === "/playground/songs/score"
+      ? "songs"
+      : levelId === 2 || levelId === 5
+        ? "free"
+        : levelId === 3
+          ? "name-key"
+          : levelId === 4
+            ? "distance"
+            : undefined;
 
   return {
     page,
     path,
     ...(levelId ? { levelId, moduleTab, practiceTab } : {}),
+    ...(!levelId && practiceTab ? { practiceTab } : {}),
     ...(practiceDistanceMode ? { practiceDistanceMode } : {}),
     ...(playgroundStatsTab ? { playgroundStatsTab } : {}),
     ...(songId ? { songId } : {}),
@@ -143,12 +150,14 @@ export function isStaffGameSongRoutePath(path: AppRoutePath): boolean {
 export function isProtectedPracticeRoute(route: AppRoute): boolean {
   return (
     route.page === "game" ||
+    route.path === "/playground/songs/score" ||
     (route.levelId !== undefined && route.levelId > 1 && route.moduleTab === "practice")
   );
 }
 
 export function isSamePracticeContext(current: AppRoute, next: AppRoute): boolean {
   if (current.page === "game" && next.page === "game") return true;
+  if (current.path === "/playground/songs/score" && next.path === current.path) return true;
   return (
     current.page === "practice" &&
     next.page === "practice" &&

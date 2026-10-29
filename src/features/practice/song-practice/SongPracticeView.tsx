@@ -1239,7 +1239,10 @@ export function SongPracticeView({
     resetSongChase();
     commitPendingCorrectAdvance();
     if (nextMode === "both" && !midi.isConnected) {
-      toast.error("混弹需要连接 MIDI 键盘。当前手型和进度已保留。", { duration: 3500 });
+      toast.error("混弹需要连接 MIDI 键盘。当前手型和进度已保留。", {
+        className: "midi-attention-toast",
+        duration: 3500,
+      });
       return;
     }
     const nextSourceArrangement = resolveSongPracticeArrangement(selection.score, nextMode);
@@ -1296,7 +1299,10 @@ export function SongPracticeView({
       return;
     }
     if (settings.handMode === "both" && !midi.isConnected) {
-      toast.error("双手追赶需要连接 MIDI 键盘。", { duration: 3500 });
+      toast.error("双手追赶需要连接 MIDI 键盘。", {
+        className: "midi-attention-toast",
+        duration: 3500,
+      });
       return;
     }
     if (settings.handMode !== activeHandMode) changeHandMode(settings.handMode);
@@ -1425,7 +1431,9 @@ export function SongPracticeView({
               </div>
               <MidiInputControl
                 ariaLabel="歌曲跟弹 MIDI 输入设备"
-                className="song-practice-midi-control"
+                className={`${
+                  activeInputMode === "midi" && !midi.isConnected ? "needs-attention " : ""
+                }song-practice-midi-control`}
                 disabled={isInputSwitching}
                 midi={midi}
               />

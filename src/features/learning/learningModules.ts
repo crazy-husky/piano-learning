@@ -47,7 +47,7 @@ export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
   },
   {
     id: 3,
-    name: "极速找键",
+    name: "音名找键",
     summary: "把音名快速映射到键盘位置，减少寻找和确认时间。",
     icon: Keyboard,
     guide: {
@@ -68,7 +68,7 @@ export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
       title: "看懂音程，提前预判",
       goal: "快速判断相邻音之间的级进、跳进和方向变化。",
       principle:
-        "把注意力从孤立音符转到音符之间的关系，可以用已知位置推导下一个音，减少每个音都重新查找的负担。",
+        "单音极速反应训练的是看见一个音后迅速认出音高并找到琴键；音距速推训练的是相邻音之间的方向和距离。先建立单音与琴键的映射，再学会用已知音推测下一个音，才能从逐个认音过渡到连续读谱。",
       highlight: "先看移动方向和跨越的线间级数，再确认具体音高。",
       steps: ["找到第一个音作为参照", "判断音符向上或向下移动", "按音距推导并核对目标位置"],
     },

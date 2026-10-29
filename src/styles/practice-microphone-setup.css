@@ -2560,3 +2560,22 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Mirror the learning-module panel: the 86px sidebar, shell gutter, and desktop inset. */
+@media (min-width: 700px) and (max-width: 820px) {
+  .learning-module-panel.is-practice .practice-free-action-dock {
+    right: auto;
+    left: calc(50% + 43px);
+    width: calc(100vw - 134px);
+    transform: translateX(-50%);
+  }
+}
+
+@media (min-width: 821px) {
+  .learning-module-panel.is-practice .practice-free-action-dock {
+    right: auto;
+    left: calc(50% + 43px);
+    width: min(1124px, calc(100vw - 190px));
+    transform: translateX(-50%);
+  }
+}

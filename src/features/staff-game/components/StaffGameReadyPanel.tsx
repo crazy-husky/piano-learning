@@ -395,7 +395,8 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
         className={`staff-game-ready-input-row${props.inputMode === "midi" ? " has-midi-picker" : ""}`}
       >
         {renderInputSetting()}
-        {props.inputMode === "midi" ? (
+        {props.inputMode === "midi" &&
+        !(props.midi.status === "ready" && props.midi.inputs.length === 0) ? (
           <MidiInputControl
             ariaLabel="闯关 MIDI 输入设备"
             className="staff-game-ready-midi-picker"

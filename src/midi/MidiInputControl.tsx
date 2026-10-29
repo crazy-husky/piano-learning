@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { MidiInputController } from "./useMidiInput";
 
 export interface MidiInputControlProps {
@@ -25,13 +26,50 @@ export function MidiInputControl({
   label = "连接 MIDI",
   midi,
 }: MidiInputControlProps): JSX.Element {
+  const [isRetryAttentionActive, setIsRetryAttentionActive] = useState(false);
+  const retryAttentionTimerRef = useRef<number | null>(null);
   const hasInputs = midi.status === "ready" && midi.inputs.length > 0;
   const selectedInputId = midi.inputs.some((input) => input.id === midi.selectedInputId)
     ? midi.selectedInputId
     : "";
-  const classNames = ["midi-input-control", className, midi.isConnected ? "is-connected" : ""]
+  const classNames = [
+    "midi-input-control",
+    className,
+    isRetryAttentionActive ? "needs-attention" : "",
+    midi.isConnected ? "is-connected" : "",
+  ]
     .filter(Boolean)
     .join(" ");
+
+  useEffect(() => {
+    if (!midi.isConnected) return;
+    setIsRetryAttentionActive(false);
+    if (retryAttentionTimerRef.current !== null) {
+      window.clearTimeout(retryAttentionTimerRef.current);
+      retryAttentionTimerRef.current = null;
+    }
+  }, [midi.isConnected]);
+
+  useEffect(
+    () => () => {
+      if (retryAttentionTimerRef.current !== null) {
+        window.clearTimeout(retryAttentionTimerRef.current);
+      }
+    },
+    []
+  );
+
+  const requestConnection = (): void => {
+    setIsRetryAttentionActive(true);
+    if (retryAttentionTimerRef.current !== null) {
+      window.clearTimeout(retryAttentionTimerRef.current);
+    }
+    retryAttentionTimerRef.current = window.setTimeout(() => {
+      setIsRetryAttentionActive(false);
+      retryAttentionTimerRef.current = null;
+    }, 3000);
+    void midi.connect();
+  };
 
   if (hasInputs) {
     return (
@@ -74,7 +112,7 @@ export function MidiInputControl({
         aria-label={ariaLabel === "MIDI 输入设备" ? buttonLabel : ariaLabel}
         className="midi-input-control-button"
         disabled={disabled || unsupported || midi.status === "requesting"}
-        onClick={() => void midi.connect()}
+        onClick={requestConnection}
         title={midi.errorMessage}
         type="button"
       >

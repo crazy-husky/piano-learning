@@ -106,6 +106,7 @@ export function useDraggableMetronomeFloating({
   rootRef,
   enabled,
   expanded,
+  initialPosition = "saved",
   onLongPress,
   positionKey = FLOATING_POSITION_KEY,
   fallbackPositionKey,
@@ -113,6 +114,7 @@ export function useDraggableMetronomeFloating({
   rootRef: RefObject<HTMLDivElement | null>;
   enabled: boolean;
   expanded: boolean;
+  initialPosition?: "center" | "saved";
   onLongPress: () => void;
   positionKey?: string;
   fallbackPositionKey?: string;
@@ -128,6 +130,8 @@ export function useDraggableMetronomeFloating({
   const [position, setPosition] = useState<Position | null>(null);
   const positionRef = useRef<Position | null>(null);
   const positionKeyRef = useRef(positionKey);
+  const initialPositionKeyRef = useRef(positionKey);
+  const hasUserDraggedRef = useRef(false);
   const dragRef = useRef<DragGesture | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const suppressClickUntilRef = useRef(0);
@@ -186,11 +190,32 @@ export function useDraggableMetronomeFloating({
       const current = positionRef.current;
       const positionKeyChanged = positionKeyRef.current !== positionKey;
       if (positionKeyChanged) positionKeyRef.current = positionKey;
+      const fallbackPosition =
+        fallbackPositionKey && (initialPosition !== "center" || hasUserDraggedRef.current)
+          ? readSavedPosition(fallbackPositionKey)
+          : null;
+
+      if (
+        initialPosition === "center" &&
+        !hasUserDraggedRef.current &&
+        positionKey === initialPositionKeyRef.current
+      ) {
+        const centered = clampPosition(
+          {
+            left: (window.innerWidth - rect.width) / 2,
+            top: (window.innerHeight - rect.height) / 2,
+          },
+          rect.width,
+          rect.height
+        );
+        if (!current || current.left !== centered.left || current.top !== centered.top) {
+          updatePosition(centered);
+        }
+        return;
+      }
 
       if (positionKeyChanged || !current) {
-        const saved =
-          readSavedPosition(positionKey) ??
-          (fallbackPositionKey ? readSavedPosition(fallbackPositionKey) : null);
+        const saved = readSavedPosition(positionKey) ?? fallbackPosition;
         if (saved) {
           updatePosition(positionFromRatios(saved, rect.width, rect.height));
           return;
@@ -198,9 +223,7 @@ export function useDraggableMetronomeFloating({
       }
 
       if (current) {
-        const saved =
-          readSavedPosition(positionKey) ??
-          (fallbackPositionKey ? readSavedPosition(fallbackPositionKey) : null);
+        const saved = readSavedPosition(positionKey) ?? fallbackPosition;
         if (saved) {
           updatePosition(positionFromRatios(saved, rect.width, rect.height));
           return;
@@ -217,7 +240,7 @@ export function useDraggableMetronomeFloating({
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", fitCurrentPosition);
     };
-  }, [enabled, expanded, fallbackPositionKey, positionKey, rootRef]);
+  }, [enabled, expanded, fallbackPositionKey, initialPosition, positionKey, rootRef]);
 
   useEffect(
     () => () => {
@@ -290,6 +313,7 @@ export function useDraggableMetronomeFloating({
     if (!gesture.moved && Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD) return;
 
     gesture.moved = true;
+    hasUserDraggedRef.current = true;
     cancelLongPress();
     event.preventDefault();
     updatePosition(

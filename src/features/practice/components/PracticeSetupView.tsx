@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BarChart3, ChevronDown, Keyboard, Mic, Music2, Play, Settings2 } from "lucide-react";
-import { toast } from "sonner";
 import type {
   AnswerPitchMode,
   DuetPracticeLevel,
@@ -331,7 +330,12 @@ export function PracticeSetupView({
   const showMidiUnavailableNotice = (): boolean => {
     const notice = getMidiUnavailableNotice(midi.status);
     if (!notice) return false;
-    void confirmDialog({ ...notice, confirmLabel: "确认", confirmOnly: true });
+    void confirmDialog({
+      ...notice,
+      className: "is-midi-attention",
+      confirmLabel: "确认",
+      confirmOnly: true,
+    });
     return true;
   };
   const handleMidiAnswerModeClick = (): void => {
@@ -354,6 +358,11 @@ export function PracticeSetupView({
   ): void => setSongPreferences((current) => ({ ...current, ...update }));
   const [isStartingSongPractice, setIsStartingSongPractice] = useState(false);
   const [songStartError, setSongStartError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!midi.isConnected || !midiAttentionSource?.startsWith("song-")) return;
+    setMidiAttentionSource(null);
+    setSongStartError(null);
+  }, [midi.isConnected, midiAttentionSource]);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [isCustomCountSelected, setIsCustomCountSelected] = useState(
     () =>
@@ -448,11 +457,13 @@ export function PracticeSetupView({
 
   const startSongPractice = async (): Promise<void> => {
     if (requiresMidi && !midi.isConnected) {
-      setSongStartError(null);
-      if (!showMidiUnavailableNotice()) {
-        showMidiAttention("song-start");
-        toast.error("混弹需要连接 MIDI 键盘，请连接后再进入练习。", { duration: 3500 });
-      }
+      const notice = getMidiUnavailableNotice(midi.status);
+      showMidiAttention("song-start");
+      setSongStartError(
+        notice
+          ? `${notice.title}：${notice.description}`
+          : "混弹需要连接 MIDI 键盘，请连接后再进入练习。"
+      );
       return;
     }
     if (isStartingSongPractice) {
@@ -486,7 +497,7 @@ export function PracticeSetupView({
 
   return (
     <section
-      className={`practice-shell practice-setup-shell${activeTab === "free" ? " is-free-practice-setup" : ""}${activeTab === "distance" ? " is-distance-practice-setup" : ""}${activeTab === "name-key" ? " is-name-key-practice-setup" : ""}${activeTab === "songs" ? " is-song-practice-setup" : ""}`}
+      className={`practice-shell practice-setup-shell${activeTab === "free" ? " is-free-practice-setup" : ""}${activeTab === "distance" ? " is-distance-practice-setup" : ""}${activeTab === "name-key" ? " is-name-key-practice-setup" : ""}${activeTab === "name-key" && distanceStageActive ? " is-name-key-practice-running" : ""}${activeTab === "songs" ? " is-song-practice-setup" : ""}`}
     >
       {showPracticeKindTabs ? (
         <div aria-label="练习类型" className="practice-kind-tabs" role="tablist">
@@ -815,7 +826,8 @@ export function PracticeSetupView({
                         <small
                           className={
                             isMidiConnectAttentionActive &&
-                            midiAttentionSource === "answer-mode" &&
+                            (midiAttentionSource === "answer-mode" ||
+                              midiAttentionSource === "start") &&
                             !midi.isConnected
                               ? "is-midi-attention"
                               : undefined
@@ -848,7 +860,12 @@ export function PracticeSetupView({
                   </div>
                   {isDuetPractice && !midi.isConnected ? (
                     <p
-                      className={`practice-free-warning${isMidiConnectAttentionActive && midiAttentionSource === "answer-mode" ? " is-midi-attention" : ""}`}
+                      className={`practice-free-warning${
+                        isMidiConnectAttentionActive &&
+                        (midiAttentionSource === "answer-mode" || midiAttentionSource === "start")
+                          ? " is-midi-attention"
+                          : ""
+                      }`}
                       role="status"
                     >
                       {getMidiUnavailableNotice(midi.status)
@@ -1213,7 +1230,8 @@ export function PracticeSetupView({
                   disabled={(setupDisabled && !freePracticeNeedsMidi) || showStartingSessionStatus}
                   onClick={() => {
                     if (freePracticeNeedsMidi) {
-                      if (!showMidiUnavailableNotice()) showMidiAttention("start");
+                      showMidiAttention("start");
+                      showMidiUnavailableNotice();
                       return;
                     }
                     void startSession();
@@ -1392,7 +1410,12 @@ export function PracticeSetupView({
               </div>
               {showSongArrangementWarning ? (
                 <p
-                  className={`song-arrangement-note${isMidiConnectAttentionActive && midiAttentionSource === "song-hand" ? " is-midi-attention" : ""}`}
+                  className={`song-arrangement-note${
+                    isMidiConnectAttentionActive &&
+                    (midiAttentionSource === "song-hand" || midiAttentionSource === "song-start")
+                      ? " is-midi-attention"
+                      : ""
+                  }`}
                   role="note"
                 >
                   {requiresMidi && !midi.isConnected
@@ -1407,7 +1430,16 @@ export function PracticeSetupView({
           (!midi.isConnected && microphoneError) ||
           microphoneIsPreparingModel ||
           microphoneStatus === "requesting" ? (
-            <div aria-live="polite" className="song-selection-error">
+            <div
+              aria-live="polite"
+              className={`song-selection-error${
+                isMidiConnectAttentionActive &&
+                midiAttentionSource === "song-start" &&
+                !midi.isConnected
+                  ? " is-midi-attention"
+                  : ""
+              }`}
+            >
               <p>
                 {microphoneStatus === "requesting"
                   ? microphoneIsPreparingModel

@@ -900,3 +900,21 @@
     font-size: 14px;
   }
 }
+
+.staff-game-shell.is-ready .staff-game-playfield.is-ready.has-midi-device-warning {
+  --staff-game-midi-device-warning-offset: 60px;
+}
+
+.staff-game-shell.is-ready
+  .staff-game-playfield.is-ready.has-midi-device-warning
+  > .staff-game-ready-card {
+  max-height: calc(100% - var(--staff-game-midi-device-warning-offset) - 12px);
+  margin-block-start: var(--staff-game-midi-device-warning-offset);
+  margin-block-end: 12px;
+}
+
+@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  .staff-game-shell.is-ready .staff-game-playfield.is-ready.has-midi-device-warning {
+    --staff-game-midi-device-warning-offset: clamp(56px, 7dvh, 64px);
+  }
+}

@@ -3171,7 +3171,11 @@ export function PracticeView({
             </button>
           ) : null}
           {answerPitchMode === "exact-pitch" ? (
-            <MidiInputControl ariaLabel="自由练习 MIDI 输入设备" midi={midi} />
+            <MidiInputControl
+              ariaLabel="自由练习 MIDI 输入设备"
+              className={phase === "running" && !midi.isConnected ? "needs-attention" : undefined}
+              midi={midi}
+            />
           ) : null}
           <PracticeFullscreenToggle />
         </div>

@@ -1044,3 +1044,23 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.staff-game-shell.is-ready .staff-game-midi-device-warning {
+  position: absolute;
+  z-index: 20;
+  top: 8px;
+  left: 50%;
+  display: flex;
+  width: min(470px, calc(100% - 32px));
+  transform: translateX(-50%);
+}
+
+.staff-game-shell.is-ready .staff-game-midi-device-warning .midi-input-control-button {
+  width: 100%;
+  min-height: var(--staff-ready-control-height);
+  border-radius: var(--staff-ready-radius-sm);
+  background: color-mix(in srgb, var(--danger-surface) 84%, white);
+  color: var(--danger);
+  font-size: var(--staff-ready-text-sm);
+  font-weight: 700;
+}
