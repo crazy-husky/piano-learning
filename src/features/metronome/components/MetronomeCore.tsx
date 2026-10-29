@@ -37,7 +37,7 @@ interface MetronomeCoreProps {
 
 const TEMPO_MIN = 30;
 const TEMPO_MAX = 240;
-const TEMPO_PRESETS = [60, 90, 120, 150] as const;
+const TEMPO_PRESETS = [40, 50, 60, 90, 120, 150] as const;
 const BEAT_SOUND_LABELS: Record<MetronomeBeatSound, string> = {
   woodfish1: "木鱼原声",
   woodfish2: "木鱼音色 A",
@@ -178,7 +178,7 @@ function TempoPresets({ controller }: { controller: MetronomeController }): JSX.
 function BeatSoundPattern({ controller }: { controller: MetronomeController }): JSX.Element {
   return (
     <div className="metronome-beat-pattern-wrap">
-      <span className="metronome-beat-pattern-label">每拍木鱼声 · 点击圆点循环切换</span>
+      <span className="metronome-beat-pattern-label">点击下方圆点切换木鱼声</span>
       <div aria-label="每拍音效模式" className="metronome-beat-pattern" role="group">
         {controller.preferences.beatSounds.map((sound, index) => {
           const isActive = controller.isPlaying && index === Math.max(0, controller.beatIndex - 1);

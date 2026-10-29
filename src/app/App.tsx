@@ -53,6 +53,7 @@ import type {
 import { MetronomeDialog } from "../features/metronome/components/MetronomeDialog";
 import { MetronomeFloating } from "../features/metronome/components/MetronomeFloating";
 import { useMetronomeController } from "../features/metronome/useMetronomeController";
+import { useMetronomeScreenWakeLock } from "../features/metronome/useMetronomeScreenWakeLock";
 import { useBlurButtonAfterPointerClick } from "./hooks/useBlurButtonAfterPointerClick";
 import { useLocalStorageState } from "../shared/hooks/useLocalStorageState";
 import {
@@ -288,6 +289,7 @@ export function App({
   const metronomeController = useMetronomeController();
   const stopMetronome = metronomeController.stop;
   const practiceMetronomeSyncToggleRef = useRef<(() => void) | null>(null);
+  const practiceMetronomeSyncPauseRef = useRef<(() => void) | null>(null);
   const [practiceMetronomeHiddenForVisit, setPracticeMetronomeHiddenForVisit] = useState(false);
   const [practiceInputModeState, setPracticeInputModeState] = useState<{
     mode: PracticeInputMode;
@@ -409,9 +411,28 @@ export function App({
     },
     []
   );
+  const registerPracticeMetronomeSyncPause = useCallback(
+    (pause: (() => void) | undefined): void => {
+      practiceMetronomeSyncPauseRef.current = pause ?? null;
+    },
+    []
+  );
   const toggleSynchronizedPractice = useCallback((): void => {
     practiceMetronomeSyncToggleRef.current?.();
   }, []);
+  const pauseMetronomeForInactivity = useCallback((): void => {
+    if (!metronomeController.isPlaying) return;
+    if (metronomeController.isSyncLocked && practiceMetronomeSyncPauseRef.current) {
+      practiceMetronomeSyncPauseRef.current();
+      return;
+    }
+    stopMetronome();
+  }, [metronomeController.isPlaying, metronomeController.isSyncLocked, stopMetronome]);
+  useMetronomeScreenWakeLock({
+    isPlaying: metronomeController.isPlaying,
+    onPause: pauseMetronomeForInactivity,
+    subscribeMidiActivity: midi.subscribe,
+  });
   const isStaffGamePage = route.page === "game";
   const [practiceExitRequest, setPracticeExitRequest] =
     useState<PracticeNavigationExitRequest | null>(null);
@@ -1481,6 +1502,7 @@ export function App({
                     onVirtualKeyboardActiveChange={setPracticeVirtualKeyboardActive}
                     onInputModeChange={handlePracticeInputModeChange}
                     onMetronomeSyncToggleChange={registerPracticeMetronomeSyncToggle}
+                    onMetronomeSyncPauseChange={registerPracticeMetronomeSyncPause}
                     onSettingsSaved={(settings, options) =>
                       saveSettings(settings, { ...options, feedback: false })
                     }

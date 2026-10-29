@@ -190,6 +190,7 @@ interface PracticeViewProps {
   practiceDistanceMode?: PracticeDistanceMode;
   onRunningChange: (running: boolean) => void;
   onMetronomeSyncToggleChange?: (toggle: (() => void) | undefined) => void;
+  onMetronomeSyncPauseChange?: (pause: (() => void) | undefined) => void;
 }
 
 export type PracticeNavigationExitTarget =
@@ -438,6 +439,7 @@ export function PracticeView({
   practiceTab,
   onRunningChange,
   onMetronomeSyncToggleChange,
+  onMetronomeSyncPauseChange,
   practiceDistanceMode,
 }: PracticeViewProps): JSX.Element {
   const {
@@ -1350,8 +1352,18 @@ export function PracticeView({
 
   useEffect(() => {
     onMetronomeSyncToggleChange?.(isMetronomeSyncActive ? togglePause : undefined);
-    return () => onMetronomeSyncToggleChange?.(undefined);
-  }, [isMetronomeSyncActive, onMetronomeSyncToggleChange, togglePause]);
+    onMetronomeSyncPauseChange?.(isMetronomeSyncActive ? pausePractice : undefined);
+    return () => {
+      onMetronomeSyncToggleChange?.(undefined);
+      onMetronomeSyncPauseChange?.(undefined);
+    };
+  }, [
+    isMetronomeSyncActive,
+    onMetronomeSyncPauseChange,
+    onMetronomeSyncToggleChange,
+    pausePractice,
+    togglePause,
+  ]);
 
   const pauseForFocusLoss = useCallback(
     (lostFocusAt = new Date().toISOString()): void => {
