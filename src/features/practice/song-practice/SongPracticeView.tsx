@@ -1,4 +1,4 @@
-import { ArrowLeft, AudioLines, Check, Settings } from "lucide-react";
+import { ArrowLeft, AudioLines, Check, RotateCcw, Settings } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
@@ -808,6 +808,57 @@ export function SongPracticeView({
     isWrongFeedbackVisibleRef.current = false;
   }, []);
 
+  const restartCurrentSong = useCallback(async (): Promise<void> => {
+    clearFeedbackTimer();
+    cancelRowPlayback();
+    playbackRowRef.current = null;
+    ignoreMicrophoneUntilRef.current = Date.now() + 400;
+    pendingCorrectAdvanceRef.current = null;
+    answerLockedRef.current = false;
+    heldMidiNumbersRef.current.clear();
+    targetAttemptsRef.current = [];
+    currentTargetVisibleRef.current = true;
+    setIsCurrentTargetVisible(true);
+    setFeedback(null);
+    setIsChaseSettingsOpen(false);
+    resetSongChase();
+    currentIndexRef.current = 0;
+    setCurrentIndex(0);
+    beginProgressSession();
+    initialMicrophoneAttemptRef.current = true;
+
+    if (activeInputModeRef.current !== "microphone") {
+      setHasStarted(true);
+      return;
+    }
+
+    setHasStarted(false);
+    try {
+      const started = await microphoneStart();
+      if (!started) {
+        notifyMicrophoneError(
+          microphone.error ?? "麦克风无法启动。请检查麦克风权限和输入设备后重试。"
+        );
+        return;
+      }
+      setHasStarted(true);
+    } catch (error) {
+      notifyMicrophoneError(
+        error instanceof Error
+          ? error.message
+          : "麦克风无法启动。请检查麦克风权限和输入设备后重试。"
+      );
+    }
+  }, [
+    beginProgressSession,
+    cancelRowPlayback,
+    clearFeedbackTimer,
+    microphone.error,
+    microphoneStart,
+    notifyMicrophoneError,
+    resetSongChase,
+  ]);
+
   const finishAttempt = useCallback(
     (
       correct: boolean,
@@ -1290,6 +1341,29 @@ export function SongPracticeView({
     keyLabel.includes("major") || keyLabel.includes("minor")
       ? keyLabel.replace(/ major| minor/, "")
       : keyLabel;
+  if (isFinished) {
+    return (
+      <section className="practice-shell song-practice-shell song-practice-completion-shell">
+        <div className="panel song-practice-completion-panel">
+          <div aria-hidden="true" className="song-practice-completion-icon">
+            <Check size={28} />
+          </div>
+          <h1>歌曲练习完成</h1>
+          <p>《{selection.score.title}》已弹完。</p>
+          <div className="song-practice-completion-actions">
+            <button className="practice-return-home" onClick={onBack} type="button">
+              <ArrowLeft aria-hidden="true" size={18} />
+              返回配置
+            </button>
+            <button className="primary" onClick={() => void restartCurrentSong()} type="button">
+              <RotateCcw aria-hidden="true" size={18} />
+              再来一次
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="practice-shell song-practice-shell">
       <div className="practice-topline song-practice-topline">

@@ -2950,13 +2950,6 @@ export function PracticeView({
             onNavigationExit={onNavigationExit}
             onDistanceModeChange={onPracticeDistanceModeChange}
             onPracticeFinished={onPracticeFinished}
-            onPracticeSingleNote={() => {
-              onPracticeTabChange("free");
-              setPracticeSetupPreferences((current) => ({
-                ...current,
-                promptDisplayMode: "single-note",
-              }));
-            }}
             onFullscreenAvailabilityChange={setIsStaffDistanceFullscreenActive}
             onRunStageChange={handleStaffDistanceStageChange}
             onRunningChange={setIsStaffDistanceRunning}
@@ -3073,7 +3066,6 @@ export function PracticeView({
         onAllHistoryChange={setSummaryAllHistory}
         onHistoryLimitChange={setSummaryHistoryLimit}
         onModeChange={setSummaryProgressMode}
-        onOpenStats={onOpenStats}
         onReturnToSetup={() => setPhase("setup")}
         onStartAgain={() => void startSession()}
         series={summaryProgressSeries}

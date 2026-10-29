@@ -1028,32 +1028,6 @@ main.has-backup-reminder .setup-grid::after {
   line-height: 1.2;
 }
 
-.practice-summary-dialog .summary-close-button {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition:
-    background-color 150ms ease,
-    color 150ms ease;
-}
-
-.practice-summary-dialog .summary-close-button:hover {
-  background: var(--surface-soft);
-  color: var(--text);
-}
-
-.practice-summary-dialog .summary-close-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 .practice-summary-dialog .summary-quality-warning {
   font-size: 14px;
   line-height: 1.5;
@@ -1132,7 +1106,7 @@ main.has-backup-reminder .setup-grid::after {
 .panel-heading.summary-result-heading {
   align-items: flex-start;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   column-gap: 16px;
   row-gap: 8px;
 }
@@ -1550,7 +1524,7 @@ main.has-backup-reminder .setup-grid::after {
   .practice-summary-dialog .action-row {
     display: grid;
     gap: 8px;
-    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   }
 
   .practice-summary-dialog .action-row > button {
@@ -1559,12 +1533,6 @@ main.has-backup-reminder .setup-grid::after {
     min-width: 0;
     padding-inline: 8px;
     white-space: nowrap;
-  }
-
-  .practice-summary-dialog .action-row > button:last-child {
-    grid-column: 1 / -1;
-    justify-self: center;
-    min-width: 142px;
   }
 
   .practice-summary-dialog .action-row kbd {

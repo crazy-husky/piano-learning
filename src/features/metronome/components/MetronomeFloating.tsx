@@ -16,7 +16,7 @@ import { WoodfishIllustration } from "./WoodfishIllustration";
 const FLOATING_ICON_POSITION_KEY = "anki-note.metronomeFloatingIconPosition";
 const FLOATING_COMPACT_POSITION_KEY = "anki-note.metronomeFloatingCompactPosition";
 const FLOATING_PANEL_POSITION_KEY = "anki-note.metronomeFloatingPosition";
-const MINI_IDLE_DELAY_MS = 2000;
+const MINI_IDLE_DELAY_MS = 5000;
 const MINI_DOCK_THRESHOLD_PX = 50;
 const MINI_EDGE_INSET_PX = 5;
 const COMPACT_HOVER_SUPPRESSION_MS = 500;

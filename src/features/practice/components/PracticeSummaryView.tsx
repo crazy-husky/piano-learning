@@ -1,4 +1,4 @@
-import { BarChart3, RotateCcw, SlidersHorizontal, X } from "lucide-react";
+import { RotateCcw, SlidersHorizontal } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 import { formatTargetNoteLabel, getNoteById } from "../../../domain/notes";
 import { isCompletedReview } from "../../../domain/reviews";
@@ -28,7 +28,6 @@ interface PracticeSummaryViewProps {
   onAllHistoryChange: (allHistory: boolean) => void;
   onHistoryLimitChange: (limit: number) => void;
   onModeChange: (mode: SessionProgressMode) => void;
-  onOpenStats: () => void;
   onReturnToSetup: () => void;
   onStartAgain: () => void;
   series: SessionProgressSeries[];
@@ -50,7 +49,6 @@ export function PracticeSummaryView({
   onAllHistoryChange,
   onHistoryLimitChange,
   onModeChange,
-  onOpenStats,
   onReturnToSetup,
   onStartAgain,
   series,
@@ -83,15 +81,6 @@ export function PracticeSummaryView({
           <h1 id="practice-summary-title" tabIndex={-1}>
             本次结果
           </h1>
-          <button
-            aria-label="关闭结算并返回配置"
-            className="summary-close-button"
-            onClick={onReturnToSetup}
-            title="返回配置"
-            type="button"
-          >
-            <X aria-hidden="true" size={20} />
-          </button>
           {summaryHasTooManyErrors ? (
             <p className="summary-quality-warning">
               错音有点多{">_<"} 这次先不算~ <br />
@@ -164,6 +153,10 @@ export function PracticeSummaryView({
           </section>
         ) : null}
         <div className="action-row">
+          <button onClick={onReturnToSetup}>
+            <SlidersHorizontal size={18} />
+            返回配置
+          </button>
           <button
             aria-keyshortcuts="Enter"
             className="primary"
@@ -179,14 +172,6 @@ export function PracticeSummaryView({
                 {isMidiConnected ? <kbd>C4</kbd> : null}
               </>
             )}
-          </button>
-          <button onClick={onReturnToSetup}>
-            <SlidersHorizontal size={18} />
-            调整配置
-          </button>
-          <button onClick={onOpenStats}>
-            <BarChart3 size={18} />
-            查看统计
           </button>
         </div>
       </div>

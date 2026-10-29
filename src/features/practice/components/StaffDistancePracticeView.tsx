@@ -5,7 +5,6 @@ import {
   Eye,
   Mic,
   Music2,
-  Play,
   RotateCcw,
   Settings2,
 } from "lucide-react";
@@ -86,7 +85,6 @@ interface StaffDistancePracticeViewProps {
   onInputModeChange: (mode: "midi" | "microphone") => void;
   onNavigationExit?: (targetView: PracticeNavigationExitRequest["targetView"]) => void;
   onPracticeFinished: () => void;
-  onPracticeSingleNote: () => void;
   onFullscreenAvailabilityChange: (active: boolean) => void;
   onRunStageChange: (active: boolean) => void;
   onRunningChange: (running: boolean) => void;
@@ -289,7 +287,6 @@ export function StaffDistancePracticeView({
   onInputModeChange,
   onNavigationExit,
   onPracticeFinished,
-  onPracticeSingleNote,
   onFullscreenAvailabilityChange,
   onRunStageChange,
   onRunningChange,
@@ -737,26 +734,21 @@ export function StaffDistancePracticeView({
               </tbody>
             </table>
           </div>
-          {details.trainingMode !== "play" ? (
-            <p className="staff-distance-summary-next-step">
-              想把看谱反应带到弹奏中？可切换到「弹奏下一个音」继续练习。
-            </p>
-          ) : null}
           <div className="staff-distance-summary-actions">
+            <button onClick={() => setSummarySession(null)} type="button">
+              <Settings2 size={16} />
+              返回配置
+            </button>
             <button
               className="primary"
               onClick={() => {
                 setSummarySession(null);
-                onPracticeSingleNote();
+                void startSession();
               }}
               type="button"
             >
-              <Play size={16} />
-              {details.trainingMode === "play" ? "继续自由练习" : "练习单音弹奏"}
-            </button>
-            <button onClick={() => setSummarySession(null)} type="button">
               <RotateCcw size={16} />
-              再练一局
+              再来一次
             </button>
           </div>
         </div>

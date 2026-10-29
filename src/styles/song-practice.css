@@ -472,6 +472,67 @@
   font-size: 13px;
 }
 
+.song-practice-shell.song-practice-completion-shell {
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+}
+
+.song-practice-completion-panel {
+  box-sizing: border-box;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: min(560px, 100%);
+  padding: clamp(28px, 6vw, 52px);
+  text-align: center;
+}
+
+.song-practice-completion-icon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--success-border);
+  border-radius: 50%;
+  background: var(--success-surface);
+  color: var(--success);
+}
+
+.song-practice-completion-panel h1 {
+  margin: 0;
+  font-size: clamp(23px, 4vw, 30px);
+  line-height: 1.2;
+}
+
+.song-practice-completion-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.song-practice-completion-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.song-practice-completion-actions button {
+  box-sizing: border-box;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+}
+
+.song-practice-completion-actions button.primary {
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--accent-fill) 22%, transparent);
+}
+
 .song-practice-keyboard {
   width: min(720px, 100%);
   margin: 0 auto;
@@ -624,6 +685,20 @@
   .song-practice-panel {
     gap: 8px;
     padding: 16px 10px;
+  }
+
+  .song-practice-completion-shell {
+    width: calc(100vw - 16px);
+    padding: 16px 8px max(16px, env(safe-area-inset-bottom));
+  }
+
+  .song-practice-completion-panel {
+    padding: 28px 18px;
+  }
+
+  .song-practice-completion-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .song-practice-heading {

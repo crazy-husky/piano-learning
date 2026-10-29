@@ -1504,11 +1504,11 @@ export function NameToKeyPracticeView({
               }}
               type="button"
             >
-              返回设置
+              返回配置
             </button>
             <button className="primary" onClick={() => void startRound()} type="button">
               <RotateCcw size={17} />
-              再来一局
+              再来一次
             </button>
           </div>
         </div>
