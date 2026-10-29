@@ -192,6 +192,7 @@ interface PracticeViewProps {
   onMetronomeSyncToggleChange?: (toggle: (() => void) | undefined) => void;
   onMetronomeSyncPauseChange?: (pause: (() => void) | undefined) => void;
   showPracticeKindTabs?: boolean;
+  practiceModeLock?: PracticeMode;
 }
 
 export type PracticeNavigationExitTarget =
@@ -443,6 +444,7 @@ export function PracticeView({
   onMetronomeSyncPauseChange,
   practiceDistanceMode,
   showPracticeKindTabs = true,
+  practiceModeLock,
 }: PracticeViewProps): JSX.Element {
   const {
     audioError: metronomeAudioError,
@@ -584,7 +586,8 @@ export function PracticeView({
   const isDuetPractice = runningStartSnapshot
     ? runningStartSnapshot.practiceConfig.duetLevel !== undefined ||
       runningStartSnapshot.practiceConfig.duetDifficulty !== undefined
-    : practiceTab === "free" && practiceSetupPreferences.practiceMode === "duet";
+    : practiceTab === "free" &&
+      (practiceModeLock ?? practiceSetupPreferences.practiceMode) === "duet";
   const duetLevel = runningStartSnapshot
     ? normalizeDuetPracticeLevel(
         runningStartSnapshot.practiceConfig.duetLevel ??
@@ -2931,6 +2934,7 @@ export function PracticeView({
       <PracticeSetupView
         activeTab={practiceTab}
         showPracticeKindTabs={showPracticeKindTabs}
+        showPracticeModeTabs={practiceModeLock === undefined}
         distanceContent={
           <StaffDistancePracticeView
             isActive={practiceTab === "distance"}
@@ -3036,7 +3040,10 @@ export function PracticeView({
           practiceMicrophone.start({ includeAccidentals: practiceTab === "songs" })
         }
         midi={midi}
-        preferences={practiceSetupPreferences}
+        preferences={{
+          ...practiceSetupPreferences,
+          practiceMode: practiceModeLock ?? practiceSetupPreferences.practiceMode,
+        }}
         setupDisabledReason={setupDisabledReason}
         startPausedReading={startPausedReading}
         settings={setupSettings}

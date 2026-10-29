@@ -1467,6 +1467,9 @@ export function App({
                         practiceTab={route.practiceTab ?? "free"}
                         practiceDistanceMode={route.practiceDistanceMode}
                         showPracticeKindTabs={false}
+                        practiceModeLock={
+                          route.levelId === 2 ? "single" : route.levelId === 5 ? "duet" : undefined
+                        }
                         onPracticeDistanceModeChange={(mode, replace = false) =>
                           navigateToRoute(route.path, {
                             query: { tab: "practice", distanceMode: mode },

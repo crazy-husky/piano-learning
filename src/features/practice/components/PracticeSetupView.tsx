@@ -102,6 +102,7 @@ export type PracticeSetupTab = "free" | "distance" | "name-key" | "songs";
 interface PracticeSetupViewProps {
   activeTab: PracticeSetupTab;
   showPracticeKindTabs?: boolean;
+  showPracticeModeTabs?: boolean;
   actions: PracticeSetupActions;
   distanceContent: ReactNode;
   nameKeyContent: ReactNode;
@@ -240,6 +241,7 @@ const SONG_KEY_OPTIONS: Array<{
 export function PracticeSetupView({
   activeTab,
   showPracticeKindTabs = true,
+  showPracticeModeTabs = true,
   actions,
   distanceContent,
   nameKeyContent,
@@ -579,28 +581,30 @@ export function PracticeSetupView({
             >
               <div className="practice-free-field">
                 <span className="control-label">练习方式</span>
-                <div
-                  aria-label="练习方式"
-                  className="segmented practice-free-segmented"
-                  role="group"
-                >
-                  <button
-                    aria-pressed={!isDuetPractice}
-                    className={!isDuetPractice ? "active" : ""}
-                    onClick={() => onPracticeModeChange("single")}
-                    type="button"
+                {showPracticeModeTabs ? (
+                  <div
+                    aria-label="练习方式"
+                    className="segmented practice-free-segmented"
+                    role="group"
                   >
-                    单手（默认）
-                  </button>
-                  <button
-                    aria-pressed={isDuetPractice}
-                    className={isDuetPractice ? "active" : ""}
-                    onClick={() => onPracticeModeChange("duet")}
-                    type="button"
-                  >
-                    左右手合弹
-                  </button>
-                </div>
+                    <button
+                      aria-pressed={!isDuetPractice}
+                      className={!isDuetPractice ? "active" : ""}
+                      onClick={() => onPracticeModeChange("single")}
+                      type="button"
+                    >
+                      单手（默认）
+                    </button>
+                    <button
+                      aria-pressed={isDuetPractice}
+                      className={isDuetPractice ? "active" : ""}
+                      onClick={() => onPracticeModeChange("duet")}
+                      type="button"
+                    >
+                      左右手合弹
+                    </button>
+                  </div>
+                ) : null}
                 {isDuetPractice ? (
                   <>
                     <label
