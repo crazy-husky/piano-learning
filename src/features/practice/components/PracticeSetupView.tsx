@@ -101,6 +101,7 @@ export type PracticeSetupTab = "free" | "distance" | "name-key" | "songs";
 
 interface PracticeSetupViewProps {
   activeTab: PracticeSetupTab;
+  showPracticeKindTabs?: boolean;
   actions: PracticeSetupActions;
   distanceContent: ReactNode;
   nameKeyContent: ReactNode;
@@ -238,6 +239,7 @@ const SONG_KEY_OPTIONS: Array<{
 
 export function PracticeSetupView({
   activeTab,
+  showPracticeKindTabs = true,
   actions,
   distanceContent,
   nameKeyContent,
@@ -484,56 +486,58 @@ export function PracticeSetupView({
     <section
       className={`practice-shell practice-setup-shell${activeTab === "free" ? " is-free-practice-setup" : ""}${activeTab === "distance" ? " is-distance-practice-setup" : ""}${activeTab === "name-key" ? " is-name-key-practice-setup" : ""}${activeTab === "songs" ? " is-song-practice-setup" : ""}`}
     >
-      <div aria-label="练习类型" className="practice-kind-tabs" role="tablist">
-        <button
-          aria-controls="practice-free-panel"
-          aria-selected={activeTab === "free"}
-          className={activeTab === "free" ? "is-active" : ""}
-          disabled={distanceStageActive || isStartingSongPractice}
-          id="practice-free-tab"
-          role="tab"
-          type="button"
-          onClick={() => onSetupTabChange("free")}
-        >
-          自由练习
-        </button>
-        <button
-          aria-controls="practice-distance-panel"
-          aria-selected={activeTab === "distance"}
-          className={activeTab === "distance" ? "is-active" : ""}
-          disabled={distanceStageActive || isStartingSongPractice}
-          id="practice-distance-tab"
-          role="tab"
-          type="button"
-          onClick={() => onSetupTabChange("distance")}
-        >
-          音距速推
-        </button>
-        <button
-          aria-controls="practice-name-key-panel"
-          aria-selected={activeTab === "name-key"}
-          className={activeTab === "name-key" ? "is-active" : ""}
-          disabled={distanceStageActive || isStartingSongPractice}
-          id="practice-name-key-tab"
-          role="tab"
-          type="button"
-          onClick={() => onSetupTabChange("name-key")}
-        >
-          音名找键
-        </button>
-        <button
-          aria-controls="practice-songs-panel"
-          aria-selected={activeTab === "songs"}
-          className={activeTab === "songs" ? "is-active" : ""}
-          disabled={distanceStageActive || isStartingSongPractice}
-          id="practice-songs-tab"
-          role="tab"
-          type="button"
-          onClick={() => onSetupTabChange("songs")}
-        >
-          歌曲
-        </button>
-      </div>
+      {showPracticeKindTabs ? (
+        <div aria-label="练习类型" className="practice-kind-tabs" role="tablist">
+          <button
+            aria-controls="practice-free-panel"
+            aria-selected={activeTab === "free"}
+            className={activeTab === "free" ? "is-active" : ""}
+            disabled={distanceStageActive || isStartingSongPractice}
+            id="practice-free-tab"
+            role="tab"
+            type="button"
+            onClick={() => onSetupTabChange("free")}
+          >
+            自由练习
+          </button>
+          <button
+            aria-controls="practice-distance-panel"
+            aria-selected={activeTab === "distance"}
+            className={activeTab === "distance" ? "is-active" : ""}
+            disabled={distanceStageActive || isStartingSongPractice}
+            id="practice-distance-tab"
+            role="tab"
+            type="button"
+            onClick={() => onSetupTabChange("distance")}
+          >
+            音距速推
+          </button>
+          <button
+            aria-controls="practice-name-key-panel"
+            aria-selected={activeTab === "name-key"}
+            className={activeTab === "name-key" ? "is-active" : ""}
+            disabled={distanceStageActive || isStartingSongPractice}
+            id="practice-name-key-tab"
+            role="tab"
+            type="button"
+            onClick={() => onSetupTabChange("name-key")}
+          >
+            音名找键
+          </button>
+          <button
+            aria-controls="practice-songs-panel"
+            aria-selected={activeTab === "songs"}
+            className={activeTab === "songs" ? "is-active" : ""}
+            disabled={distanceStageActive || isStartingSongPractice}
+            id="practice-songs-tab"
+            role="tab"
+            type="button"
+            onClick={() => onSetupTabChange("songs")}
+          >
+            歌曲
+          </button>
+        </div>
+      ) : null}
       <div
         className="practice-setup-tab-panel"
         hidden={activeTab !== "distance"}

@@ -191,6 +191,7 @@ interface PracticeViewProps {
   onRunningChange: (running: boolean) => void;
   onMetronomeSyncToggleChange?: (toggle: (() => void) | undefined) => void;
   onMetronomeSyncPauseChange?: (pause: (() => void) | undefined) => void;
+  showPracticeKindTabs?: boolean;
 }
 
 export type PracticeNavigationExitTarget =
@@ -441,6 +442,7 @@ export function PracticeView({
   onMetronomeSyncToggleChange,
   onMetronomeSyncPauseChange,
   practiceDistanceMode,
+  showPracticeKindTabs = true,
 }: PracticeViewProps): JSX.Element {
   const {
     audioError: metronomeAudioError,
@@ -2928,6 +2930,7 @@ export function PracticeView({
     return (
       <PracticeSetupView
         activeTab={practiceTab}
+        showPracticeKindTabs={showPracticeKindTabs}
         distanceContent={
           <StaffDistancePracticeView
             isActive={practiceTab === "distance"}

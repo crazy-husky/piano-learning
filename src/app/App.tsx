@@ -1,15 +1,12 @@
 import {
   ArrowLeft,
-  BarChart3,
   BellOff,
-  BookOpen,
-  ChevronDown,
-  Dumbbell,
   FolderOpen,
   Gamepad2,
   GripVertical,
   House,
   Settings,
+  Timer,
   X,
 } from "lucide-react";
 import {
@@ -43,6 +40,9 @@ import { MIDI_LATENCY_DIAGNOSTICS_ENABLED } from "../diagnostics/midiLatencyDiag
 import { BackupConflictResolver } from "../shared/components/BackupConflictResolver";
 import { AppStartupSkeleton, RouteLoadingSkeleton } from "../shared/components/LoadingSkeletons";
 import { HomeView } from "../features/home/components/HomeView";
+import { ModuleLayout } from "../features/learning/components/ModuleLayout";
+import { ModuleGuideView } from "../features/learning/components/ModuleGuideView";
+import { getLearningModule } from "../features/learning/learningModules";
 import { StaffGameRoute } from "../features/staff-game/components/StaffGameRoute";
 import { PracticeFullscreenFrame } from "../features/practice/components/PracticeFullscreenFrame";
 import type {
@@ -92,6 +92,7 @@ import {
   isStaffGameSongRoutePath,
   type AppRoute,
   type AppRoutePath,
+  type LearningModuleTab,
 } from "../routing/appRoutes";
 import {
   DEFAULT_PRACTICE_MICROPHONE_PREFERENCES,
@@ -295,16 +296,9 @@ export function App({
     mode: PracticeInputMode;
     routeKey: string;
   } | null>(null);
-  const [expandedNavigationMenu, setExpandedNavigationMenu] = useState<string | null>(() =>
-    isStaffGameRoutePath(route.path) ? "game" : null
-  );
-  const isGameNavExpanded = expandedNavigationMenu === "game";
   const routeRef = useRef(route);
   routeRef.current = route;
   const practiceHistoryRestorePendingRef = useRef(false);
-  useEffect(() => {
-    setExpandedNavigationMenu(isStaffGameRoutePath(route.path) ? "game" : null);
-  }, [route.path]);
   const staffGameSelectionReturnPathRef = useRef<AppRoutePath>("/");
   const staffGameSelectionRoutePushedRef = useRef(false);
   const staffGamePlayRoutePushedRef = useRef(false);
@@ -391,6 +385,10 @@ export function App({
   const ignoreMobileBackClickRef = useRef(false);
   const view: View =
     route.page === "game" ? "practice" : route.page === "metronome" ? "home" : route.page;
+  const module = route.levelId ? getLearningModule(route.levelId) : null;
+  const moduleTab: LearningModuleTab = route.moduleTab ?? "practice";
+  const isPracticePageRoute =
+    route.path === "/practice" || (route.levelId !== undefined && route.levelId > 1);
 
   useEffect(() => {
     if (view !== "practice" || isStaffGameRoutePath(route.path)) {
@@ -443,36 +441,36 @@ export function App({
   const vocalExitRequestIdRef = useRef(0);
 
   useEffect(() => {
-    if (route.path !== "/practice" && route.path !== "/metronome") {
+    if (!isPracticePageRoute && route.path !== "/metronome") {
       stopMetronome();
     }
-  }, [route.path, stopMetronome]);
+  }, [isPracticePageRoute, route.path, stopMetronome]);
 
   useEffect(() => {
-    if (route.path !== "/practice") setPracticeInputModeState(null);
-  }, [route.path]);
+    if (!isPracticePageRoute) setPracticeInputModeState(null);
+  }, [isPracticePageRoute]);
 
   useEffect(() => {
     setIsHomeMetronomeOpen(route.page === "metronome");
   }, [route.page]);
 
   useEffect(() => {
-    if (route.path !== "/practice") setPracticeMetronomeHiddenForVisit(false);
-  }, [route.path]);
+    if (!isPracticePageRoute) setPracticeMetronomeHiddenForVisit(false);
+  }, [isPracticePageRoute]);
 
   useEffect(() => {
     if (
-      route.path === "/practice" &&
+      isPracticePageRoute &&
       practiceInputModeState?.routeKey === practiceInputRouteKey &&
       practiceInputModeState.mode === "microphone"
     ) {
       stopMetronome();
     }
-  }, [practiceInputModeState, practiceInputRouteKey, route.path, stopMetronome]);
+  }, [isPracticePageRoute, practiceInputModeState, practiceInputRouteKey, stopMetronome]);
 
   useEffect(() => {
-    if (route.path === "/practice") stopMetronome();
-  }, [route.path, route.practiceTab, stopMetronome]);
+    if (isPracticePageRoute) stopMetronome();
+  }, [isPracticePageRoute, route.path, route.practiceTab, stopMetronome]);
 
   useEffect(() => {
     const clampMobileBackPosition = (): void => {
@@ -723,7 +721,7 @@ export function App({
       const queryString = options.query ? new URLSearchParams(options.query).toString() : "";
       const nextRoute = appRouteFromHash(`#${path}${queryString ? `?${queryString}` : ""}`);
       const currentRoute = routeRef.current;
-      if (path === "/practice/game/songs" && !isStaffGameSongRoutePath(currentRoute.path)) {
+      if (path === "/playground/songs" && !isStaffGameSongRoutePath(currentRoute.path)) {
         staffGameSelectionReturnPathRef.current = currentRoute.path;
         staffGameSelectionRoutePushedRef.current = !options.replace;
       }
@@ -731,7 +729,9 @@ export function App({
         currentRoute.path === nextRoute.path &&
         currentRoute.songId === nextRoute.songId &&
         currentRoute.practiceTab === nextRoute.practiceTab &&
-        currentRoute.practiceDistanceMode === nextRoute.practiceDistanceMode
+        currentRoute.practiceDistanceMode === nextRoute.practiceDistanceMode &&
+        currentRoute.moduleTab === nextRoute.moduleTab &&
+        currentRoute.playgroundStatsTab === nextRoute.playgroundStatsTab
       )
         return;
       const url = appRouteUrl(nextRoute.path, options.query ?? appRouteQuery(nextRoute));
@@ -744,6 +744,18 @@ export function App({
       setRoute(nextRoute);
     },
     []
+  );
+
+  const selectModuleTab = useCallback(
+    (tab: LearningModuleTab): void => {
+      if (!routeRef.current.levelId) return;
+      const path = routeRef.current.path;
+      const currentQuery = appRouteQuery(routeRef.current) ?? {};
+      navigateToRoute(path, {
+        query: { ...currentQuery, tab },
+      });
+    },
+    [navigateToRoute]
   );
 
   const closeHomeMetronome = useCallback((): void => {
@@ -772,7 +784,9 @@ export function App({
         incomingRoute.path === currentRoute.path &&
         incomingRoute.songId === currentRoute.songId &&
         incomingRoute.practiceTab === currentRoute.practiceTab &&
-        incomingRoute.practiceDistanceMode === currentRoute.practiceDistanceMode
+        incomingRoute.practiceDistanceMode === currentRoute.practiceDistanceMode &&
+        incomingRoute.moduleTab === currentRoute.moduleTab &&
+        incomingRoute.playgroundStatsTab === currentRoute.playgroundStatsTab
       ) {
         practiceHistoryRestorePendingRef.current = false;
         return;
@@ -808,7 +822,8 @@ export function App({
         currentRoute.path === "/practice" &&
         (incomingRoute.path !== "/practice" ||
           incomingRoute.practiceTab !== currentRoute.practiceTab ||
-          incomingRoute.practiceDistanceMode !== currentRoute.practiceDistanceMode)
+          incomingRoute.practiceDistanceMode !== currentRoute.practiceDistanceMode ||
+          incomingRoute.moduleTab !== currentRoute.moduleTab)
       ) {
         pendingRoutePathRef.current = null;
         practiceExitRequestIdRef.current += 1;
@@ -937,7 +952,9 @@ export function App({
   useEffect(() => {
     if (!appDataAvailable) return undefined;
     const needsPracticeHistory =
-      ((view === "practice" && !isStaffGameRoutePath(route.path)) || view === "stats") &&
+      ((view === "practice" && !isStaffGameRoutePath(route.path)) ||
+        view === "stats" ||
+        (route.levelId !== undefined && moduleTab === "stats")) &&
       !practiceHistoryLoaded;
     const needsStaffRecallHistory = view === "study" && !staffRecallHistoryLoaded;
     if (!needsPracticeHistory && !needsStaffRecallHistory) return undefined;
@@ -985,13 +1002,15 @@ export function App({
     appDataAvailable,
     historyLoadRetryToken,
     practiceHistoryLoaded,
+    route.levelId,
     route.path,
+    moduleTab,
     staffRecallHistoryLoaded,
     view,
   ]);
 
   useEffect(() => {
-    if (route.path !== "/practice") return undefined;
+    if (!isPracticePageRoute) return undefined;
 
     let cancelled = false;
     void import("../audio/piano")
@@ -1003,7 +1022,7 @@ export function App({
     return () => {
       cancelled = true;
     };
-  }, [route.path]);
+  }, [isPracticePageRoute]);
 
   useEffect(() => {
     if (data) {
@@ -1039,7 +1058,9 @@ export function App({
         nextRoute.path === route.path &&
         nextRoute.songId === route.songId &&
         nextRoute.practiceTab === route.practiceTab &&
-        nextRoute.practiceDistanceMode === route.practiceDistanceMode;
+        nextRoute.practiceDistanceMode === route.practiceDistanceMode &&
+        nextRoute.moduleTab === route.moduleTab &&
+        nextRoute.playgroundStatsTab === route.playgroundStatsTab;
       if ((practiceRunning || practiceStageActive) && view === "practice" && !isSameRoute) {
         pendingRoutePathRef.current = nextPath;
         if (!practiceExitRequest) {
@@ -1067,6 +1088,8 @@ export function App({
       route.path,
       route.practiceTab,
       route.practiceDistanceMode,
+      route.moduleTab,
+      route.playgroundStatsTab,
       route.songId,
       view,
     ]
@@ -1101,7 +1124,7 @@ export function App({
 
   const selectPracticeGameRoute = useCallback(
     (isGame: boolean): void => {
-      navigateToRoute(isGame ? "/practice/game" : "/", { replace: !isGame });
+      navigateToRoute(isGame ? "/playground/challenge" : "/", { replace: !isGame });
     },
     [navigateToRoute]
   );
@@ -1110,7 +1133,7 @@ export function App({
     (mode: "levels" | "songs"): void => {
       if (
         mode === "songs" &&
-        routeRef.current.path === "/practice/game/songs/play" &&
+        routeRef.current.path === "/playground/songs/play" &&
         staffGamePlayRoutePushedRef.current
       ) {
         staffGamePlayRoutePushedRef.current = false;
@@ -1118,8 +1141,8 @@ export function App({
         return;
       }
       const returningFromSongGame =
-        mode === "songs" && routeRef.current.path === "/practice/game/songs/play";
-      navigateToRoute(mode === "songs" ? "/practice/game/songs" : "/practice/game", {
+        mode === "songs" && routeRef.current.path === "/playground/songs/play";
+      navigateToRoute(mode === "songs" ? "/playground/songs" : "/playground/challenge", {
         replace: returningFromSongGame,
       });
     },
@@ -1128,7 +1151,8 @@ export function App({
 
   const selectStaffGameModeFromNavigation = useCallback(
     (mode: "levels" | "songs"): void => {
-      const nextPath: AppRoutePath = mode === "songs" ? "/practice/game/songs" : "/practice/game";
+      const nextPath: AppRoutePath =
+        mode === "songs" ? "/playground/songs" : "/playground/challenge";
       if (
         (practiceRunning || practiceStageActive) &&
         view === "practice" &&
@@ -1161,8 +1185,8 @@ export function App({
 
   const startStaffGameSong = useCallback(
     (songId: string): void => {
-      const isAlreadyOnSongPlayRoute = routeRef.current.path === "/practice/game/songs/play";
-      navigateToRoute("/practice/game/songs/play", {
+      const isAlreadyOnSongPlayRoute = routeRef.current.path === "/playground/songs/play";
+      navigateToRoute("/playground/songs/play", {
         query: { songId },
         replace: isAlreadyOnSongPlayRoute,
       });
@@ -1274,22 +1298,11 @@ export function App({
         theme={isNightMode ? "dark" : "light"}
       />
       <div className={shellClassName}>
-        <nav
-          aria-label="主导航"
-          className="app-nav"
-          onClickCapture={(event) => {
-            const target = event.target;
-            if (!(target instanceof Element)) return;
-            const isSecondaryMenuInteraction = target.closest(
-              "[data-nav-submenu-toggle], [data-nav-submenu-content]"
-            );
-            if (!isSecondaryMenuInteraction) setExpandedNavigationMenu(null);
-          }}
-        >
+        <nav aria-label="主导航" className="app-nav">
           <button
             aria-label="首页"
-            aria-current={view === "home" ? "page" : undefined}
-            className={view === "home" ? "active" : ""}
+            aria-current={route.page === "home" ? "page" : undefined}
+            className={route.page === "home" ? "active" : ""}
             onClick={() => selectView("home")}
             type="button"
           >
@@ -1297,73 +1310,22 @@ export function App({
             首页
           </button>
           <button
-            aria-current={view === "study" ? "page" : undefined}
-            className={view === "study" ? "active" : ""}
-            onClick={() => selectView("study")}
+            aria-current={route.path.startsWith("/playground/") ? "page" : undefined}
+            className={route.path.startsWith("/playground/") ? "active" : ""}
+            onClick={() => selectStaffGameModeFromNavigation("levels")}
             type="button"
           >
-            <BookOpen aria-hidden="true" size={18} />
-            学习
+            <Gamepad2 aria-hidden="true" size={18} />
+            游乐场
           </button>
           <button
-            aria-current={route.path === "/practice" ? "page" : undefined}
-            className={route.path === "/practice" ? "active" : ""}
-            onClick={() => selectView("practice")}
+            aria-current={route.page === "metronome" ? "page" : undefined}
+            className={route.page === "metronome" ? "active" : ""}
+            onClick={() => selectView("metronome")}
             type="button"
           >
-            <Dumbbell aria-hidden="true" size={18} />
-            练习
-          </button>
-          <div className="app-nav-game-group">
-            <button
-              aria-expanded={isGameNavExpanded}
-              aria-controls={isGameNavExpanded ? "app-nav-game-submenu" : undefined}
-              className={`app-nav-game-toggle${isStaffGameRoutePath(route.path) ? " active" : ""}`}
-              data-nav-submenu-toggle="game"
-              onClick={() =>
-                setExpandedNavigationMenu((expandedMenu) =>
-                  expandedMenu === "game" ? null : "game"
-                )
-              }
-              type="button"
-            >
-              <Gamepad2 aria-hidden="true" size={18} />
-              游戏
-              <ChevronDown aria-hidden="true" className="app-nav-game-chevron" size={13} />
-            </button>
-            {isGameNavExpanded ? (
-              <div
-                className="app-nav-game-submenu"
-                data-nav-submenu-content="game"
-                id="app-nav-game-submenu"
-              >
-                <button
-                  aria-current={route.path === "/practice/game" ? "page" : undefined}
-                  className={route.path === "/practice/game" ? "active" : ""}
-                  onClick={() => selectStaffGameModeFromNavigation("levels")}
-                  type="button"
-                >
-                  闯关模式
-                </button>
-                <button
-                  aria-current={isStaffGameSongRoutePath(route.path) ? "page" : undefined}
-                  className={isStaffGameSongRoutePath(route.path) ? "active" : ""}
-                  onClick={() => selectStaffGameModeFromNavigation("songs")}
-                  type="button"
-                >
-                  歌曲模式
-                </button>
-              </div>
-            ) : null}
-          </div>
-          <button
-            aria-current={view === "stats" ? "page" : undefined}
-            className={view === "stats" ? "active" : ""}
-            onClick={() => selectView("stats")}
-            type="button"
-          >
-            <BarChart3 aria-hidden="true" size={18} />
-            统计
+            <Timer aria-hidden="true" size={18} />
+            节拍器
           </button>
           {/* 清唱导航入口暂时隐藏，后续需要时可以取消注释并恢复 AudioLines 导入。
           <button
@@ -1377,8 +1339,8 @@ export function App({
           </button>
           */}
           <button
-            aria-current={view === "settings" ? "page" : undefined}
-            className={view === "settings" ? "active" : ""}
+            aria-current={route.page === "settings" ? "page" : undefined}
+            className={route.page === "settings" ? "active" : ""}
             onClick={() => selectView("settings")}
             type="button"
           >
@@ -1467,10 +1429,105 @@ export function App({
               <HomeView
                 microphoneAlgorithm={practiceMicrophonePreferences.algorithm}
                 onNavigate={navigateToRoute}
-                onOpenMetronome={() => setIsHomeMetronomeOpen(true)}
               />
             ) : null}
-            {view === "practice" && !isStaffGameRoutePath(route.path) ? (
+            {route.levelId && module ? (
+              <ModuleLayout activeTab={moduleTab} module={module} onTabChange={selectModuleTab}>
+                {moduleTab === "guide" ? <ModuleGuideView module={module} /> : null}
+                {moduleTab === "practice" && route.levelId === 1 ? (
+                  data.staffRecallHistoryLoaded ? (
+                    <StudyView
+                      onBeforeStaffRecallStart={preflightBeforeStaffRecallStart}
+                      onDataChanged={refreshStaffRecallHistory}
+                      onSettingsSaved={(settings) => saveSettings(settings, { feedback: false })}
+                      onStaffRecallFinished={showBackupReminderAfterActivity}
+                      settings={data.settings}
+                      staffRecallRuns={data.staffRecallRuns}
+                    />
+                  ) : (
+                    <HistoryLoadingState
+                      error={historyLoadErrors.staffRecall}
+                      label="学习记录"
+                      onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
+                    />
+                  )
+                ) : null}
+                {moduleTab === "practice" && route.levelId > 1 ? (
+                  data.practiceHistoryLoaded ? (
+                    <PracticeFullscreenFrame enabled={practiceFullscreenAvailable}>
+                      <PracticeView
+                        midi={midi}
+                        metronomeController={metronomeController}
+                        practiceMicrophonePreferences={practiceMicrophonePreferences}
+                        practicePagePreferences={practicePagePreferences}
+                        settings={data.settings}
+                        sessions={data.sessions}
+                        reviews={data.reviews}
+                        navigationExitRequest={practiceExitRequest}
+                        practiceTab={route.practiceTab ?? "free"}
+                        practiceDistanceMode={route.practiceDistanceMode}
+                        showPracticeKindTabs={false}
+                        onPracticeDistanceModeChange={(mode, replace = false) =>
+                          navigateToRoute(route.path, {
+                            query: { tab: "practice", distanceMode: mode },
+                            replace,
+                          })
+                        }
+                        onPracticeTabChange={() => undefined}
+                        onDataChanged={refreshPracticeHistory}
+                        onNavigationExit={handleNavigationExit}
+                        onOpenStats={() => selectModuleTab("stats")}
+                        onBeforePracticeStart={preflightBeforePracticeStart}
+                        onPracticeFinished={showBackupReminderAfterActivity}
+                        onRunningChange={setPracticeRunning}
+                        onPracticeStageChange={setPracticeStageActive}
+                        onFullscreenAvailabilityChange={setPracticeFullscreenAvailable}
+                        onVirtualKeyboardActiveChange={setPracticeVirtualKeyboardActive}
+                        onInputModeChange={handlePracticeInputModeChange}
+                        onMetronomeSyncToggleChange={registerPracticeMetronomeSyncToggle}
+                        onMetronomeSyncPauseChange={registerPracticeMetronomeSyncPause}
+                        onSettingsSaved={(settings, options) =>
+                          saveSettings(settings, { ...options, feedback: false })
+                        }
+                      />
+                      {practiceInputModeState?.routeKey === practiceInputRouteKey &&
+                      practiceInputModeState.mode !== "microphone" ? (
+                        <MetronomeFloating
+                          controller={metronomeController}
+                          hiddenForVisit={practiceMetronomeHiddenForVisit}
+                          activePractice={practiceRunning}
+                          onHideForVisit={() => setPracticeMetronomeHiddenForVisit(true)}
+                          onSyncPauseToggle={toggleSynchronizedPractice}
+                        />
+                      ) : null}
+                    </PracticeFullscreenFrame>
+                  ) : (
+                    <HistoryLoadingState
+                      error={historyLoadErrors.practice}
+                      label="练习记录"
+                      onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
+                    />
+                  )
+                ) : null}
+                {moduleTab === "stats" ? (
+                  data.practiceHistoryLoaded ? (
+                    <StatsView
+                      settings={data.settings}
+                      reviews={data.reviews}
+                      sessions={data.sessions}
+                      onSettingsSaved={(settings) => saveSettings(settings, { feedback: false })}
+                    />
+                  ) : (
+                    <HistoryLoadingState
+                      error={historyLoadErrors.practice}
+                      label="统计记录"
+                      onRetry={() => setHistoryLoadRetryToken((current) => current + 1)}
+                    />
+                  )
+                ) : null}
+              </ModuleLayout>
+            ) : null}
+            {!route.levelId && view === "practice" && !isStaffGameRoutePath(route.path) ? (
               data.practiceHistoryLoaded ? (
                 <PracticeFullscreenFrame enabled={practiceFullscreenAvailable}>
                   <PracticeView
@@ -1546,7 +1603,7 @@ export function App({
                 onNavigationExit={handleNavigationExit}
               />
             ) : null}
-            {view === "stats" ? (
+            {!route.levelId && view === "stats" ? (
               data.practiceHistoryLoaded ? (
                 <StatsView
                   settings={data.settings}
@@ -1562,7 +1619,7 @@ export function App({
                 />
               )
             ) : null}
-            {view === "study" ? (
+            {!route.levelId && view === "study" ? (
               data.staffRecallHistoryLoaded ? (
                 <StudyView
                   onBeforeStaffRecallStart={preflightBeforeStaffRecallStart}
