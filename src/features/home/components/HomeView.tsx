@@ -25,7 +25,7 @@ export function HomeView({ microphoneAlgorithm, onNavigate }: HomeViewProps): JS
         if (cancelled) return;
         const counts = { ...EMPTY_PROGRESS_COUNTS, 1: recallRunCount };
         for (const event of events) {
-          if (event.mode === "name-to-key") counts[3] += 1;
+          if (event.mode === "name-to-key" || event.mode === "staff-to-name") counts[3] += 1;
           if (event.mode === "staff-distance") counts[4] += 1;
           if (event.mode !== "free-practice") continue;
           const isDuet =

@@ -446,6 +446,21 @@ export function PracticeView({
   showPracticeKindTabs = true,
   practiceModeLock,
 }: PracticeViewProps): JSX.Element {
+  const freePracticeCopy =
+    practiceModeLock === "single"
+      ? {
+          title: "单音极速反应",
+          description: "看谱后迅速识别音高并作答，练习连续、轻松的单手反应。",
+        }
+      : practiceModeLock === "duet"
+        ? {
+            title: "双手协同",
+            description: "同时跟踪高低声部，让左右手在同一节奏中协作。",
+          }
+        : {
+            title: "自由练习",
+            description: "看到音符后，快速识别音高并找到对应琴键。",
+          };
   const {
     audioError: metronomeAudioError,
     getAudioTime: getMetronomeAudioTime,
@@ -2933,6 +2948,8 @@ export function PracticeView({
     return (
       <PracticeSetupView
         activeTab={practiceTab}
+        freePracticeTitle={freePracticeCopy.title}
+        freePracticeDescription={freePracticeCopy.description}
         showPracticeKindTabs={showPracticeKindTabs}
         showPracticeModeTabs={practiceModeLock === undefined}
         distanceContent={
@@ -3105,7 +3122,9 @@ export function PracticeView({
         .join(" ")}
     >
       <div className="practice-topline">
-        {practiceTab === "free" ? <h1 className="practice-running-title">自由练习</h1> : null}
+        {practiceTab === "free" ? (
+          <h1 className="practice-running-title">{freePracticeCopy.title}</h1>
+        ) : null}
         <div className="progress-readout">
           {mode === "open-ended" ? (
             <span>完成 {completedCount}</span>
@@ -3172,7 +3191,7 @@ export function PracticeView({
           ) : null}
           {answerPitchMode === "exact-pitch" ? (
             <MidiInputControl
-              ariaLabel="自由练习 MIDI 输入设备"
+              ariaLabel={`${freePracticeCopy.title} MIDI 输入设备`}
               className={phase === "running" && !midi.isConnected ? "needs-attention" : undefined}
               midi={midi}
             />

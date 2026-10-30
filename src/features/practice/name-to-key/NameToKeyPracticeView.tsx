@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { Check, Mic, Music2, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { toast } from "sonner";
 import { getPianoAudioTime, playPianoNote } from "../../../audio/piano";
@@ -35,6 +43,7 @@ import {
 } from "../../../shared/keyboard/keyboardShortcuts";
 import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
 import { NameToKeyKeyboard } from "./NameToKeyKeyboard";
+import { StaffToNamePracticeView } from "./StaffToNamePracticeView";
 import {
   chooseNameToKeyTarget,
   createNameToKeyTargetPool,
@@ -232,7 +241,7 @@ function NameKeyReferenceDialog({ isOpen, onClose }: NameKeyReferenceDialogProps
   );
 }
 
-export function NameToKeyPracticeView({
+function NameToKeyPracticeContent({
   isActive,
   midi,
   microphone,
@@ -1545,5 +1554,138 @@ export function NameToKeyPracticeView({
         <PracticeQuestionLimitDialog onEnd={() => finishRoundRef.current(false)} />
       ) : null}
     </section>
+  );
+}
+
+type NameKeyPracticeTab = "staff-to-name" | "name-to-key";
+const NAME_KEY_PRACTICE_TAB_KEY = "anki-note.nameKeyPracticeTab.v1";
+
+function parseNameKeyPracticeTab(value: unknown): NameKeyPracticeTab {
+  return value === "staff-to-name" ? "staff-to-name" : "name-to-key";
+}
+
+export function NameToKeyPracticeView({
+  onRunningChange: notifyRunningChange,
+  onStageChange: notifyStageChange,
+  ...viewProps
+}: NameToKeyPracticeViewProps): JSX.Element {
+  const [activeTab, setActiveTab] = useLocalStorageState(
+    NAME_KEY_PRACTICE_TAB_KEY,
+    "name-to-key" as NameKeyPracticeTab,
+    { parse: parseNameKeyPracticeTab }
+  );
+  const practiceTabRefs = useRef<Record<NameKeyPracticeTab, HTMLButtonElement | null>>({
+    "staff-to-name": null,
+    "name-to-key": null,
+  });
+  const [isStageActive, setIsStageActive] = useState(false);
+  const onRunningChange = useCallback(
+    (running: boolean): void => notifyRunningChange(running),
+    [notifyRunningChange]
+  );
+  const onStageChange = useCallback(
+    (active: boolean): void => {
+      setIsStageActive(active);
+      notifyStageChange(active);
+    },
+    [notifyStageChange]
+  );
+  const handlePracticeTabKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    currentTab: NameKeyPracticeTab
+  ): void => {
+    const tabs: NameKeyPracticeTab[] = ["staff-to-name", "name-to-key"];
+    const currentIndex = tabs.indexOf(currentTab);
+    const nextIndex =
+      event.key === "ArrowRight"
+        ? (currentIndex + 1) % tabs.length
+        : event.key === "ArrowLeft"
+          ? (currentIndex - 1 + tabs.length) % tabs.length
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? tabs.length - 1
+              : -1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    const nextTab = tabs[nextIndex]!;
+    setActiveTab(nextTab);
+    practiceTabRefs.current[nextTab]?.focus();
+  };
+
+  return (
+    <div className="name-key-module-content">
+      <div
+        aria-label="音名练习类型"
+        className="name-key-mode-tabs"
+        hidden={isStageActive}
+        role="tablist"
+      >
+        <button
+          aria-controls="staff-to-name-practice-panel"
+          aria-selected={activeTab === "staff-to-name"}
+          className={activeTab === "staff-to-name" ? "is-active" : ""}
+          id="staff-to-name-practice-tab"
+          onKeyDown={(event) => handlePracticeTabKeyDown(event, "staff-to-name")}
+          onClick={() => setActiveTab("staff-to-name")}
+          ref={(element) => {
+            practiceTabRefs.current["staff-to-name"] = element;
+          }}
+          tabIndex={activeTab === "staff-to-name" ? 0 : -1}
+          role="tab"
+          type="button"
+        >
+          看谱认音
+        </button>
+        <button
+          aria-controls="name-to-key-practice-panel"
+          aria-selected={activeTab === "name-to-key"}
+          className={activeTab === "name-to-key" ? "is-active" : ""}
+          id="name-to-key-practice-tab"
+          onKeyDown={(event) => handlePracticeTabKeyDown(event, "name-to-key")}
+          onClick={() => setActiveTab("name-to-key")}
+          ref={(element) => {
+            practiceTabRefs.current["name-to-key"] = element;
+          }}
+          tabIndex={activeTab === "name-to-key" ? 0 : -1}
+          role="tab"
+          type="button"
+        >
+          音名找键
+        </button>
+      </div>
+      {activeTab === "staff-to-name" ? (
+        <div
+          aria-labelledby="staff-to-name-practice-tab"
+          className="name-key-practice-tab-panel"
+          id="staff-to-name-practice-panel"
+          role="tabpanel"
+        >
+          <StaffToNamePracticeView
+            isActive={viewProps.isActive}
+            navigationExitRequest={viewProps.navigationExitRequest}
+            onBeforePracticeStart={viewProps.onBeforePracticeStart}
+            onDataChanged={viewProps.onDataChanged}
+            onNavigationExit={viewProps.onNavigationExit}
+            onPracticeFinished={viewProps.onPracticeFinished}
+            onRunningChange={onRunningChange}
+            onStageChange={onStageChange}
+          />
+        </div>
+      ) : (
+        <div
+          aria-labelledby="name-to-key-practice-tab"
+          className="name-key-practice-tab-panel"
+          id="name-to-key-practice-panel"
+          role="tabpanel"
+        >
+          <NameToKeyPracticeContent
+            {...viewProps}
+            onRunningChange={onRunningChange}
+            onStageChange={onStageChange}
+          />
+        </div>
+      )}
+    </div>
   );
 }

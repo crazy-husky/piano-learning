@@ -110,7 +110,7 @@ export interface ReviewRecord {
 }
 
 export type AnswerEventMode =
-  "free-practice" | "staff-game" | "song" | "staff-distance" | "name-to-key";
+  "free-practice" | "staff-game" | "song" | "staff-distance" | "name-to-key" | "staff-to-name";
 export type AnswerInputMode = "microphone" | "midi" | "virtual-keyboard" | "computer-keyboard";
 export type StaffGameChallengeMode = "learning" | "arcade";
 export type DuetPracticeDifficulty = "sync" | "parallel" | "independent";
@@ -154,6 +154,9 @@ export interface AnswerEvent {
     randomEnharmonics: boolean;
     inputMode: AnswerInputMode;
     range: "C4-B4" | "F1-B6";
+  };
+  staffToNameConfig?: {
+    enabledGroupIds: CurrentPracticeGroupId[];
   };
   recognizedMidi?: number;
   confidence?: number;

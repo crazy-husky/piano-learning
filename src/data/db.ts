@@ -86,7 +86,8 @@ function isPendingAnswerEvent(value: unknown): value is AnswerEvent {
       event.mode === "staff-game" ||
       event.mode === "song" ||
       event.mode === "staff-distance" ||
-      event.mode === "name-to-key") &&
+      event.mode === "name-to-key" ||
+      event.mode === "staff-to-name") &&
     Array.isArray(event.attempts)
   );
 }

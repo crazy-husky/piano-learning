@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import type { AnswerEvent } from "../../../domain/types";
 import { db } from "../../../data/db";
 
-type ModuleEventKind = "name-to-key" | "staff-distance" | "duet";
+type ModuleEventKind = "name-to-key" | "staff-to-name" | "staff-distance" | "duet";
 
 const EVENT_FILTERS: Record<ModuleEventKind, (event: AnswerEvent) => boolean> = {
   "name-to-key": (event) => event.mode === "name-to-key",
+  "staff-to-name": (event) => event.mode === "staff-to-name",
   "staff-distance": (event) => event.mode === "staff-distance",
   duet: (event) =>
     event.mode === "free-practice" &&
@@ -16,11 +17,21 @@ const EVENT_FILTERS: Record<ModuleEventKind, (event: AnswerEvent) => boolean> = 
       event.targetMidiLow !== undefined),
 };
 
-const COPY: Record<ModuleEventKind, { title: string; empty: string; description: string }> = {
+const COPY: Record<
+  ModuleEventKind,
+  { title: string; empty: string; description: string; accuracyLabel?: string }
+> = {
   "name-to-key": {
     title: "音名找键统计",
-    empty: "完成音名找键练习后，这里会显示练习次数、准确率和反应时间。",
+    empty: "完成音名找键练习后，这里会显示练习次数、最终答对率和反应时间。",
     description: "只统计音名找键练习，不混入其他练习数据。",
+    accuracyLabel: "最终答对率",
+  },
+  "staff-to-name": {
+    title: "看谱认音统计",
+    empty: "完成看谱认音练习后，这里会显示练习次数、最终答对率和反应时间。",
+    description: "只统计从五线谱识别音名的练习，不混入音名找键数据。",
+    accuracyLabel: "最终答对率",
   },
   "staff-distance": {
     title: "音距速推统计",
@@ -136,7 +147,7 @@ export function ModuleEventStats({
               <dd>{selectedEvents.length}</dd>
             </div>
             <div>
-              <dt>准确率</dt>
+              <dt>{copy.accuracyLabel ?? "准确率"}</dt>
               <dd>
                 {answeredEvents.length
                   ? `${Math.round((correctCount / answeredEvents.length) * 100)}%`
@@ -198,6 +209,10 @@ export function ModuleEventStats({
 
 export function NameToKeyStats({ dataSetId }: { dataSetId: string }): JSX.Element {
   return <ModuleEventStats dataSetId={dataSetId} kind="name-to-key" />;
+}
+
+export function StaffToNameStats({ dataSetId }: { dataSetId: string }): JSX.Element {
+  return <ModuleEventStats dataSetId={dataSetId} kind="staff-to-name" />;
 }
 
 export function DistanceStats({ dataSetId }: { dataSetId: string }): JSX.Element {

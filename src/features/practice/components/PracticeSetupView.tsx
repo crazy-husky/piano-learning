@@ -100,6 +100,8 @@ export type PracticeSetupTab = "free" | "distance" | "name-key" | "songs";
 
 interface PracticeSetupViewProps {
   activeTab: PracticeSetupTab;
+  freePracticeTitle: string;
+  freePracticeDescription: string;
   showPracticeKindTabs?: boolean;
   showPracticeModeTabs?: boolean;
   actions: PracticeSetupActions;
@@ -239,6 +241,8 @@ const SONG_KEY_OPTIONS: Array<{
 
 export function PracticeSetupView({
   activeTab,
+  freePracticeTitle,
+  freePracticeDescription,
   showPracticeKindTabs = true,
   showPracticeModeTabs = true,
   actions,
@@ -570,14 +574,14 @@ export function PracticeSetupView({
         <div className="practice-free-page practice-setup-framed-page">
           <div className="practice-free-page-header">
             <div>
-              <h1>自由练习</h1>
-              <p className="practice-panel-description">看到音符后，快速识别音高并找到对应琴键。</p>
+              <h1>{freePracticeTitle}</h1>
+              <p className="practice-panel-description">{freePracticeDescription}</p>
             </div>
             {activeAnswerPitchMode === "exact-pitch" ? (
               <div className="practice-setup-heading-meta">
                 <div className="practice-midi-heading-status">
                   <MidiInputControl
-                    ariaLabel="自由练习 MIDI 输入设备"
+                    ariaLabel={`${freePracticeTitle} MIDI 输入设备`}
                     className={isMidiConnectAttentionActive ? "needs-attention" : undefined}
                     midi={midi}
                   />
@@ -826,8 +830,7 @@ export function PracticeSetupView({
                         <small
                           className={
                             isMidiConnectAttentionActive &&
-                            (midiAttentionSource === "answer-mode" ||
-                              midiAttentionSource === "start") &&
+                            midiAttentionSource === "answer-mode" &&
                             !midi.isConnected
                               ? "is-midi-attention"
                               : undefined
