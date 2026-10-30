@@ -1565,7 +1565,11 @@ export function App({
                         practiceDistanceMode={route.practiceDistanceMode}
                         showPracticeKindTabs={false}
                         practiceModeLock={
-                          route.levelId === 2 ? "single" : route.levelId === 6 ? "duet" : undefined
+                          route.levelId === 2 || route.levelId === 5
+                            ? "single"
+                            : route.levelId === 6
+                              ? "duet"
+                              : undefined
                         }
                         practiceProfile={route.levelId === 5 ? "pre-reading" : undefined}
                         onPracticeDistanceModeChange={(mode, replace = false) =>

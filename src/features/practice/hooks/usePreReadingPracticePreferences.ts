@@ -2,7 +2,7 @@ import type { PreReadingBufferSize } from "../../../domain/types";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 
 const PRE_READING_BUFFER_SIZE_KEY = "anki-note.preReadingBufferSize.v1";
-const PRE_READING_METRONOME_SYNC_KEY = "anki-note.preReadingMetronomeSyncEnabled.v1";
+const PRE_READING_METRONOME_SYNC_KEY = "anki-note.preReadingMetronomeSyncEnabled.v2";
 
 function parseBufferSize(value: unknown): PreReadingBufferSize {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 5
@@ -10,8 +10,8 @@ function parseBufferSize(value: unknown): PreReadingBufferSize {
     : 1;
 }
 
-function parseBoolean(value: unknown): boolean {
-  return typeof value === "boolean" ? value : false;
+function parseBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
 }
 
 export function usePreReadingPracticePreferences() {
@@ -22,7 +22,7 @@ export function usePreReadingPracticePreferences() {
   );
   const [metronomeSyncEnabled, setMetronomeSyncEnabled] = useLocalStorageState(
     PRE_READING_METRONOME_SYNC_KEY,
-    false,
+    true,
     { parse: parseBoolean }
   );
 

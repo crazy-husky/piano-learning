@@ -618,64 +618,66 @@ export function PracticeSetupView({
             ) : null}
           </div>
           <div className="practice-free-config-content">
-            <section
-              aria-label="练习方式"
-              className="practice-free-section practice-free-hand-mode"
-            >
-              <div className="practice-free-field">
-                <span className="control-label">练习方式</span>
-                {showPracticeModeTabs ? (
-                  <div
-                    aria-label="练习方式"
-                    className="segmented practice-free-segmented"
-                    role="group"
-                  >
-                    <button
-                      aria-pressed={!isDuetPractice}
-                      className={!isDuetPractice ? "active" : ""}
-                      onClick={() => onPracticeModeChange("single")}
-                      type="button"
+            {showPracticeModeTabs || isDuetPractice ? (
+              <section
+                aria-label="练习方式"
+                className="practice-free-section practice-free-hand-mode"
+              >
+                <div className="practice-free-field">
+                  <span className="control-label">练习方式</span>
+                  {showPracticeModeTabs ? (
+                    <div
+                      aria-label="练习方式"
+                      className="segmented practice-free-segmented"
+                      role="group"
                     >
-                      单手（默认）
-                    </button>
-                    <button
-                      aria-pressed={isDuetPractice}
-                      className={isDuetPractice ? "active" : ""}
-                      onClick={() => onPracticeModeChange("duet")}
-                      type="button"
-                    >
-                      左右手合弹
-                    </button>
-                  </div>
-                ) : null}
-                {isDuetPractice ? (
-                  <>
-                    <label
-                      className="practice-free-duet-difficulty"
-                      htmlFor="practice-duet-difficulty"
-                    >
-                      <span className="control-label">合弹难度</span>
-                      <select
-                        id="practice-duet-difficulty"
-                        value={duetLevel}
-                        onChange={(event) =>
-                          onDuetLevelChange(event.currentTarget.value as DuetPracticeLevel)
-                        }
+                      <button
+                        aria-pressed={!isDuetPractice}
+                        className={!isDuetPractice ? "active" : ""}
+                        onClick={() => onPracticeModeChange("single")}
+                        type="button"
                       >
-                        {DUET_PRACTICE_LEVELS.map((level) => (
-                          <option key={level} value={level}>
-                            {getDuetPracticeLevelLabel(level)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <p className="practice-free-mode-hint">
-                      {getDuetPracticeLevelDescription(duetLevel)}
-                    </p>
-                  </>
-                ) : null}
-              </div>
-            </section>
+                        单手（默认）
+                      </button>
+                      <button
+                        aria-pressed={isDuetPractice}
+                        className={isDuetPractice ? "active" : ""}
+                        onClick={() => onPracticeModeChange("duet")}
+                        type="button"
+                      >
+                        左右手合弹
+                      </button>
+                    </div>
+                  ) : null}
+                  {isDuetPractice ? (
+                    <>
+                      <label
+                        className="practice-free-duet-difficulty"
+                        htmlFor="practice-duet-difficulty"
+                      >
+                        <span className="control-label">合弹难度</span>
+                        <select
+                          id="practice-duet-difficulty"
+                          value={duetLevel}
+                          onChange={(event) =>
+                            onDuetLevelChange(event.currentTarget.value as DuetPracticeLevel)
+                          }
+                        >
+                          {DUET_PRACTICE_LEVELS.map((level) => (
+                            <option key={level} value={level}>
+                              {getDuetPracticeLevelLabel(level)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <p className="practice-free-mode-hint">
+                        {getDuetPracticeLevelDescription(duetLevel)}
+                      </p>
+                    </>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
 
             {!isDuetPractice ? (
               <section className="practice-free-section practice-free-range-section">
