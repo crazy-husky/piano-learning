@@ -23,6 +23,7 @@ import type {
   PracticeQueueStrategy,
   PracticeSessionRecord,
   PracticeSessionStartSnapshot,
+  PreReadingBufferSize,
   ReviewRecord,
   TargetNote,
 } from "../../../domain/types";
@@ -60,6 +61,7 @@ interface PracticeSessionStartValues {
   sessions: PracticeSessionRecord[];
   staffPageUiPreferences: { smoothStaffPageScroll: boolean };
   startPausedReading: boolean;
+  preReadingBufferSize?: PreReadingBufferSize;
 }
 
 interface PracticeSessionStartRuntime {
@@ -141,6 +143,7 @@ export function usePracticeSessionStart({
     sessions,
     staffPageUiPreferences,
     startPausedReading,
+    preReadingBufferSize,
   } = values;
   const {
     adaptiveSchedulerRef,
@@ -222,6 +225,8 @@ export function usePracticeSessionStart({
         const nextSchedulerReviews = preflightResult.reviews
           ? filterLongTermReviews(preflightResult.reviews)
           : schedulerReviews;
+        const preReadingRange =
+          nextSettings.staffRangeProfiles?.[nextSettings.staffNotationMode] ?? nextSettings;
         const practiceSettings = isDuetPractice
           ? {
               ...nextSettings,
@@ -233,11 +238,20 @@ export function usePracticeSessionStart({
               includeInterStaffLedgerSpellings: false,
               promptDisplayMode: "staff-page" as const,
             }
-          : availablePreflightAnswerPitchMode === "exact-pitch"
-            ? { ...nextSettings, promptDisplayMode: "staff-page" as const }
-            : nextSettings.staffNotationMode === "grand"
-              ? { ...nextSettings, includeInterStaffLedgerSpellings: false }
-              : nextSettings;
+          : preReadingBufferSize !== undefined
+            ? {
+                ...nextSettings,
+                ...(preReadingRange ?? {}),
+                answerPitchMode: availablePreflightAnswerPitchMode,
+                includeInterStaffLedgerSpellings: false,
+                promptDisplayMode: "staff-page" as const,
+                staffNotationMode: nextSettings.staffNotationMode,
+              }
+            : availablePreflightAnswerPitchMode === "exact-pitch"
+              ? { ...nextSettings, promptDisplayMode: "staff-page" as const }
+              : nextSettings.staffNotationMode === "grand"
+                ? { ...nextSettings, includeInterStaffLedgerSpellings: false }
+                : nextSettings;
         const microphoneSettings =
           availablePreflightAnswerPitchMode === "microphone"
             ? { ...practiceSettings, playAnswerNote: false }
@@ -268,6 +282,7 @@ export function usePracticeSessionStart({
           duetAllowDottedRhythms: isDuetPractice ? duetAllowDottedRhythms : undefined,
           metronomeSync:
             shouldSynchronizeMetronome && availablePreflightAnswerPitchMode === "exact-pitch",
+          ...(preReadingBufferSize !== undefined ? { preReadingBufferSize } : {}),
         });
         if (!builtStartSnapshot) {
           return;
@@ -417,6 +432,7 @@ export function usePracticeSessionStart({
     sessions,
     resetSessionActiveTimer,
     startPausedReading,
+    preReadingBufferSize,
     staffPageUiPreferences.smoothStaffPageScroll,
     startPrompt,
     startStaffPage,

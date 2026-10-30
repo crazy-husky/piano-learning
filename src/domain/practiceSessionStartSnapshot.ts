@@ -7,6 +7,7 @@ import type {
   PracticeSessionRecordV4,
   PracticeSessionRecordV5,
   PracticeSessionStartSnapshot,
+  PreReadingBufferSize,
   DuetPracticeLevel,
   TargetNote,
 } from "./types";
@@ -22,6 +23,7 @@ export interface BuildPracticeSessionStartSnapshotInput {
   duetCurriculumVersion?: number;
   duetAllowDottedRhythms?: boolean;
   metronomeSync?: boolean;
+  preReadingBufferSize?: PreReadingBufferSize;
 }
 
 export interface BuiltPracticeSessionStartSnapshot {
@@ -87,6 +89,7 @@ export function buildPracticeSessionStartSnapshot({
   duetCurriculumVersion,
   duetAllowDottedRhythms,
   metronomeSync,
+  preReadingBufferSize,
 }: BuildPracticeSessionStartSnapshotInput): BuiltPracticeSessionStartSnapshot | undefined {
   const activity = buildPracticeActivitySnapshot({
     answerPitchMode: settings.answerPitchMode,
@@ -134,6 +137,7 @@ export function buildPracticeSessionStartSnapshot({
             }
           : {}),
         ...(metronomeSync ? { metronomeSync: true } : {}),
+        ...(preReadingBufferSize ? { preReadingBufferSize } : {}),
       },
       presentationConfig: {
         autoPlayTarget,

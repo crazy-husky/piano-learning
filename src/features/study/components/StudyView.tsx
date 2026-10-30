@@ -117,6 +117,7 @@ export interface StaffRecallStartPreflightResult {
 interface StudyViewProps {
   onBeforeStaffRecallStart: () => Promise<StaffRecallStartPreflightResult>;
   onDataChanged: () => void | Promise<void>;
+  onStageChange?: (active: boolean) => void;
   onStaffRecallFinished?: () => void;
   onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
   settings: AppSettings;
@@ -315,6 +316,7 @@ function StudyMapContent({
 export function StudyView({
   onBeforeStaffRecallStart,
   onDataChanged,
+  onStageChange,
   onSettingsSaved,
   onStaffRecallFinished,
   settings,
@@ -329,6 +331,11 @@ export function StudyView({
   const { isBusyVisible: showEnteringStaffRecallStatus, run: runStaffRecallEntry } =
     useDelayedBusy();
   const [staffRecallRangeLocked, setStaffRecallRangeLocked] = useState(false);
+
+  useEffect(() => {
+    onStageChange?.(mode === "staff-recall");
+    return () => onStageChange?.(false);
+  }, [mode, onStageChange]);
 
   const enterStaffRecall = useCallback(async (): Promise<void> => {
     if (mode === "staff-recall") {

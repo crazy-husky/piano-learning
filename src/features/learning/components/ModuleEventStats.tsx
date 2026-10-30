@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import type { AnswerEvent } from "../../../domain/types";
 import { db } from "../../../data/db";
 
-type ModuleEventKind = "name-to-key" | "staff-to-name" | "staff-distance" | "duet";
+type ModuleEventKind = "name-to-key" | "staff-to-name" | "staff-distance" | "pre-reading" | "duet";
 
 const EVENT_FILTERS: Record<ModuleEventKind, (event: AnswerEvent) => boolean> = {
   "name-to-key": (event) => event.mode === "name-to-key",
   "staff-to-name": (event) => event.mode === "staff-to-name",
   "staff-distance": (event) => event.mode === "staff-distance",
+  "pre-reading": (event) => event.mode === "pre-reading",
   duet: (event) =>
     event.mode === "free-practice" &&
     (Boolean(event.duetTargetNoteIds?.length) ||
@@ -37,6 +38,12 @@ const COPY: Record<
     title: "音距速推统计",
     empty: "完成音距速推练习后，这里会显示练习次数、准确率和反应时间。",
     description: "只统计间距推导练习。",
+  },
+  "pre-reading": {
+    title: "提前识谱统计",
+    empty: "完成提前识谱练习后，这里会显示答题数、正确率和反应时间。",
+    description:
+      "只统计开启视线前置的谱页练习。初期反应时间可能因预读负荷暂时变长，可结合正确率观察变化。",
   },
   duet: {
     title: "双手协同统计",

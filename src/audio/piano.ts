@@ -217,6 +217,27 @@ export async function playPianoNote(noteName: PianoKeyName, octave: Octave): Pro
   await playToneName(noteToToneName(noteName, octave));
 }
 
+/** A short, soft low-pass cue used when a pre-reading answer is incorrect. */
+export async function playMuffledMidiNote(midi: number): Promise<void> {
+  if (!Number.isFinite(midi)) return;
+  await unlockAudio();
+  const filter = new Tone.Filter(360, "lowpass");
+  const gain = new Tone.Gain(0.22);
+  const synth = new Tone.Synth({
+    oscillator: { type: "sine" },
+    envelope: { attack: 0.005, decay: 0.08, sustain: 0.12, release: 0.05 },
+  });
+  synth.connect(filter);
+  filter.connect(gain);
+  gain.connect(getPianoOutput());
+  synth.triggerAttackRelease(Tone.Frequency(midi, "midi").toNote(), "16n", undefined, 0.35);
+  window.setTimeout(() => {
+    synth.dispose();
+    filter.dispose();
+    gain.dispose();
+  }, 320);
+}
+
 async function startToneNote(note: string): Promise<SustainedPianoNote> {
   await unlockAudio();
   const sampledPiano = getLoadedSampler();

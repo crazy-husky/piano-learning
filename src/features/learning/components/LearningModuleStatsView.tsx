@@ -6,7 +6,13 @@ import type {
   StaffRecallRunRecord,
 } from "../../../domain/types";
 import type { LearningLevelId } from "../../../routing/appRoutes";
-import { DistanceStats, DuetStats, NameToKeyStats, StaffToNameStats } from "./ModuleEventStats";
+import {
+  DistanceStats,
+  DuetStats,
+  ModuleEventStats,
+  NameToKeyStats,
+  StaffToNameStats,
+} from "./ModuleEventStats";
 import { SingleNoteStats } from "./SingleNoteStats";
 
 function SightReadingStats({ runs }: { runs: StaffRecallRunRecord[] }): JSX.Element {
@@ -171,5 +177,6 @@ export function LearningModuleStatsView({
   }
   if (levelId === 3) return <NameRecognitionStats dataSetId={settings.dataSetId} />;
   if (levelId === 4) return <DistanceStats dataSetId={settings.dataSetId} />;
+  if (levelId === 5) return <ModuleEventStats dataSetId={settings.dataSetId} kind="pre-reading" />;
   return <DuetStats dataSetId={settings.dataSetId} />;
 }

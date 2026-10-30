@@ -1371,6 +1371,10 @@
   line-height: 1.45;
 }
 
+.practice-free-helper.is-warning {
+  color: var(--warning-text);
+}
+
 .practice-free-strategy-field {
   margin-top: 12px;
 }

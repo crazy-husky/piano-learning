@@ -1,7 +1,7 @@
 import { ArrowLeft, Pause, Play, Settings2, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { getPianoAudioTime, playTargetNote } from "../../../audio/piano";
+import { getPianoAudioTime, playMuffledMidiNote, playTargetNote } from "../../../audio/piano";
 import { resolveDrillNoteNames, resolveQueueStrategy } from "../../../data/db";
 import { writeBackupIfSafe } from "../../../data/backup";
 import {
@@ -117,7 +117,12 @@ import {
 import { usePracticeInput } from "../hooks/usePracticeInput";
 import { usePracticeSessionState } from "../hooks/usePracticeSessionState";
 import { usePracticeSessionStart } from "../hooks/usePracticeSessionStart";
-import { usePracticeAnswerFlow } from "../hooks/usePracticeAnswerFlow";
+import {
+  usePracticeAnswerFlow,
+  type PracticeAnswerOutcomePolicy,
+} from "../hooks/usePracticeAnswerFlow";
+import { usePreReadingPracticeController } from "../hooks/usePreReadingPracticeController";
+import { usePreReadingPracticePreferences } from "../hooks/usePreReadingPracticePreferences";
 import { usePracticeStaffPageFlow } from "../hooks/usePracticeStaffPageFlow";
 import { usePracticeSummaryData } from "../hooks/usePracticeSummaryData";
 import { PracticeSummaryView } from "./PracticeSummaryView";
@@ -193,6 +198,7 @@ interface PracticeViewProps {
   onMetronomeSyncPauseChange?: (pause: (() => void) | undefined) => void;
   showPracticeKindTabs?: boolean;
   practiceModeLock?: "single" | "duet";
+  practiceProfile?: "pre-reading";
 }
 
 export type PracticeNavigationExitTarget =
@@ -445,9 +451,15 @@ export function PracticeView({
   practiceDistanceMode,
   showPracticeKindTabs = true,
   practiceModeLock,
+  practiceProfile,
 }: PracticeViewProps): JSX.Element {
-  const freePracticeCopy =
-    practiceModeLock === "single"
+  const isPreReadingPractice = practiceProfile === "pre-reading";
+  const freePracticeCopy = isPreReadingPractice
+    ? {
+        title: "提前识谱",
+        description: "打破逐音视奏，训练眼睛走在手的前面。",
+      }
+    : practiceModeLock === "single"
       ? {
           title: "单音极速反应",
           description: "看谱后迅速识别音高并作答，练习连续、轻松的单手反应。",
@@ -468,6 +480,7 @@ export function PracticeView({
     performanceTimeToAudioTime,
     scheduleAtAudioTime,
     preferences: metronomePreferences,
+    prepare: prepareMetronome,
     setSyncLocked: setMetronomeSyncLocked,
     start: startMetronome,
     stop: stopMetronome,
@@ -482,6 +495,12 @@ export function PracticeView({
     defaultPracticeSetupUiPreferences,
     { parse: parsePracticeSetupUiPreferences }
   );
+  const {
+    bufferSize: preReadingBufferSize,
+    metronomeSyncEnabled: preReadingMetronomeSyncEnabled,
+    setBufferSize: setPreReadingBufferSize,
+    setMetronomeSyncEnabled: setPreReadingMetronomeSyncEnabled,
+  } = usePreReadingPracticePreferences();
   const [sessionProgressPreferences, setSessionProgressPreferences] = useLocalStorageState(
     SESSION_PROGRESS_UI_PREFERENCES_KEY,
     DEFAULT_SESSION_PROGRESS_UI_PREFERENCES,
@@ -632,7 +651,9 @@ export function PracticeView({
     !isDuetPractice &&
     answerPitchMode === "exact-pitch" &&
     supportsMetronomeSyncNoteDurations &&
-    practiceSetupPreferences.metronomeSyncEnabled;
+    (isPreReadingPractice
+      ? preReadingMetronomeSyncEnabled
+      : practiceSetupPreferences.metronomeSyncEnabled);
   const shouldSynchronizeMetronome = isMetronomeSyncMandatory || isMetronomeSyncSelected;
   const activePracticeInputMode: PracticeInputMode | null =
     practiceTab === "free"
@@ -658,8 +679,9 @@ export function PracticeView({
     if (activePracticeInputMode) onInputModeChange(activePracticeInputMode);
   }, [activePracticeInputMode, onInputModeChange]);
   const mode = runningStartSnapshot?.practiceConfig.mode ?? practiceSetupPreferences.mode;
-  const promptDisplayMode =
-    isDuetPractice || requiresMidiStaffPage
+  const promptDisplayMode = isPreReadingPractice
+    ? "staff-page"
+    : isDuetPractice || requiresMidiStaffPage
       ? "staff-page"
       : (runningStartSnapshot?.presentationConfig.promptDisplayMode ??
         practiceSetupPreferences.promptDisplayMode);
@@ -861,9 +883,14 @@ export function PracticeView({
     setPracticeSetupPreferences((current) => ({ ...current, duetAllowDottedRhythms: enabled }));
   };
   const setMetronomeSyncEnabled = (enabled: boolean): void => {
+    if (isPreReadingPractice) {
+      setPreReadingMetronomeSyncEnabled(enabled);
+      return;
+    }
     setPracticeSetupPreferences((current) => ({ ...current, metronomeSyncEnabled: enabled }));
   };
   const setPromptDisplayMode = (nextPromptDisplayMode: PromptDisplayMode): void => {
+    if (isPreReadingPractice) return;
     setPracticeSetupPreferences((current) =>
       requiresMidiStaffPage ||
       (nextPromptDisplayMode === "single-note" && current.promptNoteDurations.length > 1)
@@ -934,11 +961,13 @@ export function PracticeView({
   const syncSessionRef = useRef(false);
   const syncRunningSeenRef = useRef(false);
   const syncStartInFlightRef = useRef(false);
+  const preReadingSyncStartPendingRef = useRef(false);
   const syncAllowBeatWhilePausedRef = useRef(false);
   const startSynchronizedMetronomeRef = useRef<() => Promise<boolean>>(async () => false);
   const syncCountInStartSequenceRef = useRef<number | null>(null);
   const syncCountInBaseBeatRef = useRef(0);
   const syncTempoAnchorsRef = useRef<PracticeTempoAnchor[]>([]);
+  const preReadingCountdownResetRef = useRef<() => void>(() => undefined);
   const sessionReviewsRef = useRef<ReviewRecord[]>([]);
   const lastTargetNoteIdRef = useRef<TargetNote["id"] | undefined>();
   const adaptiveSchedulerRef = useRef<AdaptiveNoteScheduler | null>(null);
@@ -1079,15 +1108,22 @@ export function PracticeView({
   const staffNotationMode = isDuetPractice
     ? "grand"
     : (runningStartSnapshot?.practiceConfig.staffNotationMode ?? settings.staffNotationMode);
+  const preReadingRange = useMemo(
+    () => settings.staffRangeProfiles?.[staffNotationMode] ?? settings,
+    [settings, staffNotationMode]
+  );
   const effectiveEnabledGroupIds = isDuetPractice
     ? DUET_PRACTICE_GROUP_IDS
-    : (runningStartSnapshot?.practiceConfig.enabledGroupIds ?? settings.enabledGroupIds);
+    : (runningStartSnapshot?.practiceConfig.enabledGroupIds ??
+      (isPreReadingPractice ? preReadingRange.enabledGroupIds : settings.enabledGroupIds));
   const effectiveEnabledPitchIds = isDuetPractice
     ? undefined
-    : (runningStartSnapshot?.practiceConfig.enabledPitchIds ?? settings.enabledPitchIds);
+    : (runningStartSnapshot?.practiceConfig.enabledPitchIds ??
+      (isPreReadingPractice ? preReadingRange.enabledPitchIds : settings.enabledPitchIds));
   const effectiveCrossGroupPitchIds = isDuetPractice
     ? undefined
-    : (runningStartSnapshot?.practiceConfig.crossGroupPitchIds ?? settings.crossGroupPitchIds);
+    : (runningStartSnapshot?.practiceConfig.crossGroupPitchIds ??
+      (isPreReadingPractice ? preReadingRange.crossGroupPitchIds : settings.crossGroupPitchIds));
   const effectiveInterStaffLedgerSpellings =
     staffNotationMode === "grand"
       ? false
@@ -1184,9 +1220,32 @@ export function PracticeView({
     [allQueueNotes]
   );
   const schedulerReviews = useMemo(() => filterLongTermReviews(reviews), [reviews]);
+  const savePracticeSetupSettings = useCallback(
+    (nextSettings: AppSettings): void | Promise<void> => {
+      if (!isPreReadingPractice) return onSettingsSaved(nextSettings);
+      return onSettingsSaved({
+        ...settings,
+        staffNotationMode: nextSettings.staffNotationMode,
+        enabledGroupIds: nextSettings.enabledGroupIds,
+        enabledPitchIds: nextSettings.enabledPitchIds,
+        crossGroupPitchIds: nextSettings.crossGroupPitchIds,
+        staffRangeProfiles: nextSettings.staffRangeProfiles,
+        includeInterStaffLedgerSpellings: nextSettings.includeInterStaffLedgerSpellings,
+      });
+    },
+    [isPreReadingPractice, onSettingsSaved, settings]
+  );
   const setupSettings = useMemo<AppSettings>(
     () => ({
       ...settings,
+      ...(isPreReadingPractice
+        ? {
+            staffRangeProfiles: {
+              ...settings.staffRangeProfiles,
+              [staffNotationMode]: preReadingRange,
+            },
+          }
+        : {}),
       staffNotationMode,
       answerPitchMode,
       autoPlayTarget,
@@ -1208,7 +1267,9 @@ export function PracticeView({
       drillNoteNames,
       fixedCount,
       fixedDurationSeconds,
+      isPreReadingPractice,
       mode,
+      preReadingRange,
       promptDisplayMode,
       promptNoteDuration,
       promptNoteDurations,
@@ -1264,6 +1325,7 @@ export function PracticeView({
       if (syncSessionRef.current) {
         syncCountInStartSequenceRef.current = null;
         syncTempoAnchorsRef.current = [];
+        preReadingCountdownResetRef.current();
         setSyncProgressMarkerLeadEnabled(false);
         setSyncCountInBeat(null);
         stopMetronome();
@@ -1438,7 +1500,8 @@ export function PracticeView({
       ...settings,
       answerPitchMode: isDuetPractice ? settings.answerPitchMode : answerPitchMode,
       defaultMode: mode,
-      promptDisplayMode: isDuetPractice ? settings.promptDisplayMode : promptDisplayMode,
+      promptDisplayMode:
+        isDuetPractice || isPreReadingPractice ? settings.promptDisplayMode : promptDisplayMode,
       promptNoteDuration,
       promptNoteDurations,
       fixedCount,
@@ -1454,6 +1517,7 @@ export function PracticeView({
   }, [
     answerPitchMode,
     isDuetPractice,
+    isPreReadingPractice,
     autoPlayTarget,
     playAnswerNote,
     fixedCount,
@@ -1544,6 +1608,41 @@ export function PracticeView({
     [autoPlayTarget, setCurrentNote]
   );
 
+  const adaptiveEventsPerMeasure = Math.max(
+    1,
+    Math.round(4 / getQuarterNoteBeats(effectivePromptNoteDuration))
+  );
+  const adaptiveEventsPerRow = adaptiveMeasuresPerRow * adaptiveEventsPerMeasure;
+  const adaptiveStaffRows = useMemo(() => {
+    if (
+      !isContinuousStaffPage ||
+      !staffPageRhythm ||
+      staffPageRhythm.measures.length !== staffPageNotes.length
+    ) {
+      return null;
+    }
+    const groups =
+      staffPageNoteGroups.length === staffPageNotes.length
+        ? staffPageNoteGroups
+        : staffPageNotes.map((note) => [note]);
+    return chunkStaffPageGroupsByAdaptiveMeasureWidth(
+      groups,
+      staffPageRhythm.measures,
+      adaptiveMeasureAreaWidthPx,
+      adaptiveMeasuresPerRow,
+      undefined,
+      staffPageRhythm.onsets,
+      PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
+    );
+  }, [
+    adaptiveMeasureAreaWidthPx,
+    adaptiveMeasuresPerRow,
+    isContinuousStaffPage,
+    staffPageNoteGroups,
+    staffPageNotes,
+    staffPageRhythm,
+  ]);
+
   const {
     clearStaffPageScrollSchedule,
     markCurrentStaffPageNoteComplete,
@@ -1566,6 +1665,9 @@ export function PracticeView({
             ? DUET_MOBILE_MEASURES_PER_ROW
             : DUET_DESKTOP_MEASURES_PER_ROW
           : undefined,
+      staffPageRowStartIndices: isContinuousStaffPage
+        ? adaptiveStaffRows?.rowStartIndices
+        : undefined,
       allowDottedRhythms: duetAllowDottedRhythms,
       forceRhythmGeneration: requiresMidiStaffPage || isDuetPractice,
       promptNoteDurations,
@@ -1619,18 +1721,101 @@ export function PracticeView({
     if (!page) return 0;
     return page.rhythm?.onsets[page.index] ?? page.index;
   }, []);
+  const appendSynchronizedTempoAnchor = useCallback((audioTime: number, bpm: number): void => {
+    const anchors = syncTempoAnchorsRef.current;
+    const previous = anchors.at(-1);
+    if (!previous || !Number.isFinite(audioTime) || !Number.isFinite(bpm) || bpm <= 0) return;
+
+    // Continue from the prior clock position so a tempo change never rescales
+    // beats that have already elapsed.
+    const beat = getPracticeBeatAtAudioTime(audioTime, anchors, previous.bpm);
+    if (beat === undefined) return;
+
+    const isSameAnchorTime = Math.abs(audioTime - previous.audioTime) <= 0.0001;
+    if (!isSameAnchorTime && (audioTime < previous.audioTime || beat <= previous.beat)) return;
+
+    const anchor: PracticeTempoAnchor = { audioTime, beat, bpm };
+    if (isSameAnchorTime) {
+      anchors[anchors.length - 1] = anchor;
+      return;
+    }
+
+    anchors.push(anchor);
+    if (anchors.length > PRACTICE_TEMPO_ANCHOR_HISTORY_LIMIT) {
+      anchors.splice(0, anchors.length - PRACTICE_TEMPO_ANCHOR_HISTORY_LIMIT);
+    }
+  }, []);
+  const replaceSynchronizedTempoAnchor = useCallback(
+    (audioTime: number, beat: number, bpm: number): void => {
+      syncTempoAnchorsRef.current = [{ audioTime, beat, bpm }];
+    },
+    []
+  );
+  const clearPendingSyncAnswers = useCallback((): void => {
+    pendingEarlySyncAnswersRef.current = [];
+  }, []);
+  const preReadingCurrentNoteIndex = staffPageFirstNoteOffset + staffPageIndex;
+  const preReadingController = usePreReadingPracticeController({
+    bufferSize: preReadingBufferSize,
+    clearPendingAnswers: clearPendingSyncAnswers,
+    currentNoteIndex: preReadingCurrentNoteIndex,
+    enabled: isPreReadingPractice,
+    isMetronomeSyncActive,
+    isPaused,
+    notesReady: staffPageNotes.length > 0,
+    phaseRunning: phase === "running",
+    replaceTempoAnchor: replaceSynchronizedTempoAnchor,
+    scheduleAtAudioTime,
+    sessionId: session?.id,
+    setProgressMarkerLeadEnabled: setSyncProgressMarkerLeadEnabled,
+    syncCountInBeat,
+    syncSessionRef,
+    getCurrentScoreBeat: getCurrentSyncScoreBeat,
+    appendTempoAnchor: appendSynchronizedTempoAnchor,
+  });
+  const {
+    countdownComplete: preReadingCountdownComplete,
+    handleBeat: handlePreReadingBeat,
+    resetCountdown: resetPreReadingCountdown,
+    scoreWindow: preReadingScoreWindow,
+  } = preReadingController;
+  preReadingCountdownResetRef.current = resetPreReadingCountdown;
   const startSynchronizedMetronome = useCallback(async (): Promise<boolean> => {
     if (metronomePreferences.beatsPerBar !== 4) return false;
     pendingEarlySyncAnswersRef.current = [];
     syncSessionRef.current = true;
     syncCountInStartSequenceRef.current = null;
     syncTempoAnchorsRef.current = [];
-    setSyncProgressMarkerLeadEnabled(false);
+    resetPreReadingCountdown();
     syncCountInBaseBeatRef.current = getCurrentSyncScoreBeat();
-    setSyncCountInBeat(4);
+    setSyncCountInBeat(isPreReadingPractice ? null : 4);
     setMetronomeSyncLocked(true);
     syncStartInFlightRef.current = true;
     stopMetronome();
+
+    const shouldDeferPreReadingStart =
+      isPreReadingPractice &&
+      (phase !== "running" ||
+        staffPageNotes.length === 0 ||
+        preReadingScoreWindow.openingSecondsRemaining > 0);
+    if (shouldDeferPreReadingStart) {
+      preReadingSyncStartPendingRef.current = true;
+      try {
+        const prepared = await prepareMetronome();
+        if (!prepared) {
+          preReadingSyncStartPendingRef.current = false;
+          syncSessionRef.current = false;
+          setSyncProgressMarkerLeadEnabled(false);
+          setSyncCountInBeat(null);
+          setMetronomeSyncLocked(false);
+        }
+        return prepared;
+      } finally {
+        syncStartInFlightRef.current = false;
+      }
+    }
+
+    preReadingSyncStartPendingRef.current = false;
     try {
       const started = await startMetronome();
       if (!started) {
@@ -1645,8 +1830,16 @@ export function PracticeView({
     }
   }, [
     getCurrentSyncScoreBeat,
+    isPreReadingPractice,
     metronomePreferences.beatsPerBar,
+    phase,
+    preReadingScoreWindow.openingSecondsRemaining,
+    prepareMetronome,
+    resetPreReadingCountdown,
     setMetronomeSyncLocked,
+    setSyncCountInBeat,
+    setSyncProgressMarkerLeadEnabled,
+    staffPageNotes.length,
     startMetronome,
     stopMetronome,
   ]);
@@ -1656,16 +1849,22 @@ export function PracticeView({
     syncSessionRef.current = false;
     syncCountInStartSequenceRef.current = null;
     syncTempoAnchorsRef.current = [];
+    resetPreReadingCountdown();
+    preReadingSyncStartPendingRef.current = false;
     setSyncProgressMarkerLeadEnabled(false);
     setSyncCountInBeat(null);
     stopMetronome();
     setMetronomeSyncLocked(false);
-  }, [setMetronomeSyncLocked, stopMetronome]);
+  }, [resetPreReadingCountdown, setMetronomeSyncLocked, stopMetronome]);
   useEffect(
     () =>
       subscribeMetronomeBeat((event) => {
         if (!syncSessionRef.current) return;
         if (isPausedRef.current && !syncAllowBeatWhilePausedRef.current) return;
+        if (isPreReadingPractice) {
+          handlePreReadingBeat(event);
+          return;
+        }
         if (syncCountInStartSequenceRef.current === null) {
           if (event.beatIndex !== 0) return;
           syncCountInStartSequenceRef.current = event.sequence;
@@ -1708,23 +1907,43 @@ export function PracticeView({
           return;
         }
         setCountInBeatAtAudioTime(null);
-        const anchor: PracticeTempoAnchor = {
-          audioTime: event.audioTime,
-          beat: syncCountInBaseBeatRef.current + countInElapsed - 4,
-          bpm: event.bpm,
-        };
-        const anchors = syncTempoAnchorsRef.current;
-        const previous = anchors.at(-1);
-        if (previous?.beat === anchor.beat) anchors[anchors.length - 1] = anchor;
-        else {
-          anchors.push(anchor);
-          if (anchors.length > PRACTICE_TEMPO_ANCHOR_HISTORY_LIMIT) {
-            anchors.splice(0, anchors.length - PRACTICE_TEMPO_ANCHOR_HISTORY_LIMIT);
-          }
-        }
+        appendSynchronizedTempoAnchor(event.audioTime, event.bpm);
       }),
-    [getCurrentSyncScoreBeat, scheduleAtAudioTime, subscribeMetronomeBeat]
+    [
+      appendSynchronizedTempoAnchor,
+      getCurrentSyncScoreBeat,
+      handlePreReadingBeat,
+      isPreReadingPractice,
+      scheduleAtAudioTime,
+      subscribeMetronomeBeat,
+    ]
   );
+  useEffect(() => {
+    if (
+      !isMetronomeSyncActive ||
+      !isPreReadingPractice ||
+      isPaused ||
+      !preReadingSyncStartPendingRef.current ||
+      preReadingScoreWindow.openingSecondsRemaining > 0 ||
+      staffPageNotes.length === 0 ||
+      isMetronomePlaying ||
+      syncStartInFlightRef.current
+    ) {
+      return;
+    }
+
+    void startSynchronizedMetronomeRef.current().then((started) => {
+      if (!started) pausePractice("manual-pause");
+    });
+  }, [
+    isMetronomeSyncActive,
+    isPreReadingPractice,
+    isPaused,
+    isMetronomePlaying,
+    pausePractice,
+    preReadingScoreWindow.openingSecondsRemaining,
+    staffPageNotes.length,
+  ]);
   useEffect(() => {
     if (!isMetronomeSyncActive) {
       if (syncRunningSeenRef.current && phase !== "running") {
@@ -1742,7 +1961,12 @@ export function PracticeView({
       stopMetronome();
       return;
     }
-    if (!isPaused && !isMetronomePlaying && !syncStartInFlightRef.current) {
+    if (
+      !isPaused &&
+      !isMetronomePlaying &&
+      !syncStartInFlightRef.current &&
+      !(isPreReadingPractice && preReadingSyncStartPendingRef.current)
+    ) {
       pausePractice("manual-pause");
     }
   }, [
@@ -1750,22 +1974,14 @@ export function PracticeView({
     isPausedRef,
     isPaused,
     isMetronomePlaying,
+    isPreReadingPractice,
     setMetronomeSyncLocked,
     stopMetronome,
     pausePractice,
     phase,
+    preReadingScoreWindow.openingSecondsRemaining,
     stopSynchronizedMetronome,
   ]);
-  useEffect(() => {
-    if (!isMetronomeSyncActive) return;
-    const anchors = syncTempoAnchorsRef.current;
-    const latest = anchors.at(-1);
-    if (!latest || latest.bpm === metronomePreferences.bpm) return;
-    anchors[anchors.length - 1] = {
-      ...latest,
-      bpm: metronomePreferences.bpm,
-    };
-  }, [isMetronomeSyncActive, metronomePreferences.bpm]);
   useEffect(
     () => () => {
       if (!syncSessionRef.current) return;
@@ -1932,6 +2148,7 @@ export function PracticeView({
       sessions,
       staffPageUiPreferences,
       startPausedReading,
+      ...(isPreReadingPractice ? { preReadingBufferSize } : {}),
     },
     runtime: {
       adaptiveSchedulerRef,
@@ -1991,41 +2208,6 @@ export function PracticeView({
     }
     await playTargetNote(prompt.note).catch(() => undefined);
   }, [answerPitchMode, markPromptInput]);
-
-  const adaptiveEventsPerMeasure = Math.max(
-    1,
-    Math.round(4 / getQuarterNoteBeats(effectivePromptNoteDuration))
-  );
-  const adaptiveEventsPerRow = adaptiveMeasuresPerRow * adaptiveEventsPerMeasure;
-  const adaptiveStaffRows = useMemo(() => {
-    if (
-      !isContinuousStaffPage ||
-      !staffPageRhythm ||
-      staffPageRhythm.measures.length !== staffPageNotes.length
-    ) {
-      return null;
-    }
-    const groups =
-      staffPageNoteGroups.length === staffPageNotes.length
-        ? staffPageNoteGroups
-        : staffPageNotes.map((note) => [note]);
-    return chunkStaffPageGroupsByAdaptiveMeasureWidth(
-      groups,
-      staffPageRhythm.measures,
-      adaptiveMeasureAreaWidthPx,
-      adaptiveMeasuresPerRow,
-      undefined,
-      staffPageRhythm.onsets,
-      PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
-    );
-  }, [
-    adaptiveMeasureAreaWidthPx,
-    adaptiveMeasuresPerRow,
-    isContinuousStaffPage,
-    staffPageNoteGroups,
-    staffPageNotes,
-    staffPageRhythm,
-  ]);
 
   const duetStaffPageNoteCount = isMobileViewport
     ? DUET_MOBILE_STAFF_PAGE_NOTE_COUNT
@@ -2228,6 +2410,13 @@ export function PracticeView({
       metronomePreferences.bpm
     );
   }, [getCurrentSyncOnset, metronomePreferences.bpm]);
+  const schedulePracticeContinuationAtAudioTime = useCallback(
+    (callback: () => void, audioTime: number): void => {
+      const delayMs = Math.max(0, (audioTime - getMetronomeAudioTime()) * 1000);
+      window.setTimeout(callback, delayMs);
+    },
+    [getMetronomeAudioTime]
+  );
   const getSynchronizedProgressBeat = useCallback((): number | undefined => {
     if (!isMetronomeSyncActive || isPaused) return undefined;
     return getPracticeBeatAtAudioTime(
@@ -2266,16 +2455,36 @@ export function PracticeView({
       ];
     });
   }, [staffPageFirstNoteOffset]);
+  const preReadingAnswerOutcomePolicy = useMemo<PracticeAnswerOutcomePolicy | undefined>(
+    () =>
+      isPreReadingPractice
+        ? {
+            advanceAfterWrong: !isDuetPractice,
+            onResolvedAnswer: ({ answeredCorrectly, answerMidi, targetNote }) => {
+              if (answeredCorrectly) {
+                void playTargetNote(targetNote).catch(() => undefined);
+              } else {
+                void playMuffledMidiNote(answerMidi ?? getTargetMidiNoteNumber(targetNote)).catch(
+                  () => undefined
+                );
+              }
+            },
+            suppressConfiguredAnswerNote: true,
+            wrongAnswerDelayMs: 180,
+          }
+        : undefined,
+    [isDuetPractice, isPreReadingPractice]
+  );
   const { handleDuetTimeout, handleSynchronizedTimeout, submitAnswer } = usePracticeAnswerFlow({
     values: {
       answerPitchMode,
-      completedCount,
       correctDelayMs: settings.correctDelayMs,
       drillNoteNames,
       enabledNotes,
       fixedCount,
       mode,
       playAnswerNote,
+      outcomePolicy: preReadingAnswerOutcomePolicy,
       promptDisplayMode,
       queueStrategy,
       schedulerReviews,
@@ -2303,7 +2512,7 @@ export function PracticeView({
       onQuestionLimitReached: pauseAtQuestionLimit,
       recordStaffPageChaseTarget: recordFreeStaffPageChaseTarget,
       resumeActiveTimers,
-      scheduleAtAudioTime,
+      scheduleAtAudioTime: schedulePracticeContinuationAtAudioTime,
       selectAndStartNext,
       startStaffPage,
       startStaffPageIndex,
@@ -2317,7 +2526,9 @@ export function PracticeView({
   });
   const submitPracticeAnswer = useCallback(
     (answer: PracticeAnswerInput): void => {
+      if (isPausedRef.current) return;
       if (freeRowPlaybackActiveRef.current !== null) return;
+      if (isPreReadingPractice && preReadingScoreWindow.phase !== "training") return;
       if (isMetronomeSyncActive && answer.source === "midi") {
         // The final count-in callback establishes the first score-beat anchor.
         // Keep accepting MIDI inside that beat's early window while the count-in
@@ -2480,6 +2691,8 @@ export function PracticeView({
       getCurrentSyncOnset,
       getSyncOnsetAtIndex,
       isMetronomeSyncActive,
+      isPreReadingPractice,
+      preReadingScoreWindow.phase,
       metronomePreferences.bpm,
       performanceTimeToAudioTime,
       staffPageFirstNoteOffset,
@@ -2574,6 +2787,7 @@ export function PracticeView({
       !isMetronomeSyncActive ||
       phase !== "running" ||
       isPaused ||
+      (isPreReadingPractice && preReadingScoreWindow.phase !== "training") ||
       syncCountInBeat !== null ||
       syncTempoAnchorsRef.current.length === 0
     ) {
@@ -2591,36 +2805,50 @@ export function PracticeView({
     const timingWindowMs = getPracticeTimingWindowMs(metronomePreferences.bpm, onset.gapBeats);
     const targetIndex = onset.index;
     let isCurrentDeadline = true;
-    scheduleAtAudioTime(
-      () => {
-        if (
-          !isCurrentDeadline ||
-          isPausedRef.current ||
-          answerInputLockedRef.current ||
-          promptRef.current !== prompt ||
-          staffPageRef.current?.index !== targetIndex
-        ) {
-          return;
-        }
-        markSynchronizedTargetMissed();
-        void handleSynchronizedTimeout();
-      },
-      expectedTime + timingWindowMs / 1000
+    let timeoutId: number | null = null;
+    const deadlineAudioTime = expectedTime + timingWindowMs / 1000;
+    const checkDeadline = (): void => {
+      if (
+        !isCurrentDeadline ||
+        isPausedRef.current ||
+        answerInputLockedRef.current ||
+        promptRef.current !== prompt ||
+        staffPageRef.current?.index !== targetIndex
+      ) {
+        return;
+      }
+      const remainingMs = (deadlineAudioTime - getMetronomeAudioTime()) * 1000;
+      if (remainingMs > 5) {
+        // Tone.Draw is designed for visual callbacks. Use the audio clock to
+        // re-check deadlines so a missed-note event cannot stall when a draw
+        // callback is delayed or skipped by the browser.
+        timeoutId = window.setTimeout(checkDeadline, Math.min(remainingMs, 80));
+        return;
+      }
+      markSynchronizedTargetMissed();
+      void handleSynchronizedTimeout();
+    };
+    timeoutId = window.setTimeout(
+      checkDeadline,
+      Math.max(0, (deadlineAudioTime - getMetronomeAudioTime()) * 1000)
     );
     return () => {
       isCurrentDeadline = false;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
     };
   }, [
     answerInputLockedRef,
     currentNote?.id,
+    getMetronomeAudioTime,
     getCurrentSyncOnset,
     handleSynchronizedTimeout,
     isMetronomeSyncActive,
     isPaused,
+    isPreReadingPractice,
     markSynchronizedTargetMissed,
     metronomePreferences.bpm,
     phase,
-    scheduleAtAudioTime,
+    preReadingScoreWindow.phase,
     staffPageIndex,
     syncCountInBeat,
   ]);
@@ -2816,6 +3044,11 @@ export function PracticeView({
   );
   const freeCursorIndexOffset =
     staffPageFirstNoteOffset + (isMobileStaffPage ? mobileStaffPageStartIndex : 0);
+  const visiblePreReadingNoteStates = isPreReadingPractice
+    ? mobileStaffPageNotes.map((_, index) =>
+        preReadingScoreWindow.getNoteVisibility(freeCursorIndexOffset + index)
+      )
+    : undefined;
   const visibleSyncNoteStatuses = useMemo(
     () =>
       syncTimingFeedback
@@ -2952,6 +3185,9 @@ export function PracticeView({
         freePracticeDescription={freePracticeCopy.description}
         showPracticeKindTabs={showPracticeKindTabs}
         showPracticeModeTabs={practiceModeLock === undefined}
+        lockedPromptDisplayMode={isPreReadingPractice ? "staff-page" : undefined}
+        preReadingBufferSize={isPreReadingPractice ? preReadingBufferSize : undefined}
+        onPreReadingBufferSizeChange={isPreReadingPractice ? setPreReadingBufferSize : undefined}
         distanceContent={
           <StaffDistancePracticeView
             isActive={practiceTab === "distance"}
@@ -3023,7 +3259,7 @@ export function PracticeView({
           onPromptDisplayModeChange: setPromptDisplayMode,
           onPromptNoteDurationsChange: setPromptNoteDurations,
           onQueueStrategyChange: setQueueStrategy,
-          onSettingsSaved,
+          onSettingsSaved: savePracticeSetupSettings,
           onStartSongPractice: async (selection) => {
             let activeInputMode: SongPracticeInputMode = midiConnectedRef.current
               ? "midi"
@@ -3059,9 +3295,14 @@ export function PracticeView({
         midi={midi}
         preferences={{
           ...practiceSetupPreferences,
+          metronomeSyncEnabled: isPreReadingPractice
+            ? preReadingMetronomeSyncEnabled
+            : practiceSetupPreferences.metronomeSyncEnabled,
           practiceMode: practiceModeLock ?? practiceSetupPreferences.practiceMode,
+          ...(isPreReadingPractice ? { promptDisplayMode: "staff-page" as const } : {}),
         }}
         setupDisabledReason={setupDisabledReason}
+        metronomeBeatsPerBar={metronomePreferences.beatsPerBar}
         startPausedReading={startPausedReading}
         settings={setupSettings}
         overlay={
@@ -3263,6 +3504,27 @@ export function PracticeView({
           promptDisplayMode === "staff-page" ? "prompt-stage staff-page-stage" : "prompt-stage"
         }
       >
+        {isPreReadingPractice && preReadingScoreWindow.phase !== "idle" ? (
+          <div className="pre-reading-window-status" role="status" aria-live="polite">
+            {preReadingScoreWindow.phase === "training" ? (
+              `记住后方清晰的 ${preReadingBufferSize} 个音，听到节拍后靠记忆弹奏。`
+            ) : isMetronomeSyncActive ? (
+              preReadingScoreWindow.openingSecondsRemaining > 0 ? (
+                <>
+                  全谱预读与节拍对齐 ·{" "}
+                  <strong className="pre-reading-countdown-value">
+                    {preReadingScoreWindow.openingSecondsRemaining}
+                  </strong>{" "}
+                  秒后开始
+                </>
+              ) : (
+                "预读完成，等待节拍器首拍…"
+              )
+            ) : (
+              `全谱预读 · ${preReadingScoreWindow.openingSecondsRemaining} 秒后开始训练`
+            )}
+          </div>
+        ) : null}
         {isMetronomeSyncActive ? (
           <div className="practice-metronome-sync-status" role="status" aria-live="polite">
             {syncCountInBeat !== null ? <strong>准备拍 {syncCountInBeat}</strong> : null}
@@ -3285,6 +3547,9 @@ export function PracticeView({
           >
             <StaffPagePrompt
               notes={mobileStaffPageNotes}
+              canonicalRowStartIndices={
+                isContinuousStaffPage ? adaptiveStaffRows?.rowStartIndices : undefined
+              }
               noteGroups={isDuetPractice ? mobileStaffPageNoteGroups : undefined}
               completedStaffNoteIndices={
                 isDuetPractice ? (visibleCompletedStaffNoteIndices ?? {}) : undefined
@@ -3315,8 +3580,16 @@ export function PracticeView({
               getPracticeProgressBeat={
                 isMetronomeSyncActive ? getSynchronizedProgressBeat : undefined
               }
+              alignPracticeProgressMarkerToNote={isPreReadingPractice}
               followRowIndex={freePracticeFollowRowIndex}
               trackedNoteIndex={trackedFreeScoreNoteIndex}
+              preReadingNoteStates={visiblePreReadingNoteStates}
+              preReadingCurrentNoteIndex={
+                isPreReadingPractice
+                  ? preReadingCurrentNoteIndex - freeCursorIndexOffset
+                  : undefined
+              }
+              isPreReadingPaused={isPreReadingPractice && isPaused}
               onTrackedNoteVisibilityChange={handleFreeTrackedNoteVisibilityChange}
               isFiniteScore={
                 isContinuousStaffPage &&
@@ -3330,7 +3603,10 @@ export function PracticeView({
               noteOnsets={visibleStaffPageRhythm?.onsets}
               syncNoteStatuses={visibleSyncNoteStatuses}
               practiceProgressMarkerEnabled={
-                !isMetronomeSyncActive || syncCountInBeat === null || syncProgressMarkerLeadEnabled
+                !isMetronomeSyncActive ||
+                (syncCountInBeat === null &&
+                  (!isPreReadingPractice || preReadingCountdownComplete)) ||
+                syncProgressMarkerLeadEnabled
               }
               noteBeamGroups={visibleStaffPageRhythm?.noteBeamGroups}
               staffNoteDurations={visibleStaffPageRhythm?.staffNoteDurations}

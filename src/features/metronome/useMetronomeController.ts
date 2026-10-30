@@ -42,6 +42,7 @@ export interface MetronomeController {
   setSyncLocked: (locked: boolean) => void;
   cycleBeatSound: (beatIndex: number) => void;
   setVolume: (value: number) => void;
+  prepare: () => Promise<boolean>;
   start: () => Promise<boolean>;
   stop: () => void;
 }
@@ -187,6 +188,18 @@ export function useMetronomeController(): MetronomeController {
     }
   }, []);
 
+  const prepare = useCallback(async (): Promise<boolean> => {
+    try {
+      await Tone.start();
+      await loadSamples();
+      setAudioError(null);
+      return true;
+    } catch (error) {
+      setAudioError(error instanceof Error ? error.message : "木鱼音效加载失败，请重试。");
+      return false;
+    }
+  }, [loadSamples]);
+
   const start = useCallback(async (): Promise<boolean> => {
     if (isPlayingRef.current) return true;
     if (isLoadingRef.current) return false;
@@ -317,6 +330,7 @@ export function useMetronomeController(): MetronomeController {
     setSyncLocked,
     cycleBeatSound,
     setVolume,
+    prepare,
     start,
     stop,
   };

@@ -173,4 +173,29 @@ describe("practice session start snapshot", () => {
     expect(session.startSnapshot.presentationConfig.autoPlayTarget).toBe(false);
     expect(session.startSnapshot.presentationConfig.playAnswerNote).toBe(false);
   });
+
+  it("stores the pre-reading focus distance only in the session snapshot", () => {
+    const userSettings = makeDefaultSettings();
+    const settings = {
+      ...userSettings,
+      promptDisplayMode: "staff-page" as const,
+      staffNotationMode: "treble-only" as const,
+    };
+    const built = buildPracticeSessionStartSnapshot({
+      autoPlayTarget: false,
+      mode: "open-ended",
+      prefersReducedMotion: false,
+      preReadingBufferSize: 5,
+      settings,
+      smoothStaffPageScroll: true,
+      startPausedReading: false,
+    });
+
+    expect(built?.snapshot.practiceConfig).toMatchObject({
+      preReadingBufferSize: 5,
+      staffNotationMode: "treble-only",
+    });
+    expect(userSettings.staffNotationMode).toBe("grand");
+    expect(userSettings.promptDisplayMode).toBe("staff-page");
+  });
 });

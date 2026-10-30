@@ -196,7 +196,11 @@ export function usePracticeSessionLifecycle({
           occurredAt: review.endedAt,
           promptStartedAt: review.startedAt,
           promptEndedAt: review.endedAt,
-          mode: "free-practice",
+          mode:
+            "startSnapshot" in session &&
+            session.startSnapshot.practiceConfig.preReadingBufferSize !== undefined
+              ? "pre-reading"
+              : "free-practice",
           inputMode,
           deviceInfo: answerDeviceInfo(),
           ...(inputMode === "microphone" ? { ...microphoneContext, microphoneAlgorithm } : {}),

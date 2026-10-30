@@ -23,6 +23,7 @@ interface GlobalRangeControlsProps {
   rangeControlPart?: "all" | "base" | "extensions";
   compactSummary?: boolean;
   summaryAction?: ReactNode;
+  staffNotationModeOverride?: StaffNotationMode;
   settings: AppSettings;
   onSettingsSaved: (settings: AppSettings) => void | Promise<void>;
 }
@@ -64,11 +65,12 @@ export function GlobalRangeControls({
   rangeControlPart = "all",
   compactSummary = false,
   summaryAction,
+  staffNotationModeOverride,
   settings,
   onSettingsSaved,
 }: GlobalRangeControlsProps): JSX.Element {
   const pointerToggleRef = useRef(false);
-  const staffMode = settings.staffNotationMode;
+  const staffMode = staffNotationModeOverride ?? settings.staffNotationMode;
   const activeRange = settings.staffRangeProfiles?.[staffMode] ?? settings;
   const basePitchIds = getStaffCorePitchIds(
     activeRange.enabledPitchIds ?? getPitchIdsForGroups(activeRange.enabledGroupIds),
@@ -122,7 +124,7 @@ export function GlobalRangeControls({
     };
     save({
       ...settings,
-      ...nextRange,
+      ...(staffMode === settings.staffNotationMode ? nextRange : {}),
       staffRangeProfiles: {
         ...settings.staffRangeProfiles,
         [staffMode]: nextRange,
@@ -384,7 +386,7 @@ export function GlobalRangeControls({
           <button
             aria-pressed={settings.staffNotationMode === staffNotationMode}
             className={settings.staffNotationMode === staffNotationMode ? "active" : ""}
-            disabled={disabled}
+            disabled={disabled || staffNotationModeOverride !== undefined}
             key={staffNotationMode}
             type="button"
             onClick={() => selectStaffNotationMode(staffNotationMode)}

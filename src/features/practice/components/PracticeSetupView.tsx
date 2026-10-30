@@ -8,8 +8,10 @@ import type {
   PitchId,
   PracticeMode,
   PracticeQueueStrategy,
+  PreReadingBufferSize,
   PromptDisplayMode,
   PromptNoteDuration,
+  StaffNotationMode,
 } from "../../../domain/types";
 import type { ChaseHandMode } from "../logic/scoreChase";
 import { getDuetPracticeLevelDescription, getDuetPracticeLevelLabel } from "../logic/duetPractice";
@@ -104,6 +106,10 @@ interface PracticeSetupViewProps {
   freePracticeDescription: string;
   showPracticeKindTabs?: boolean;
   showPracticeModeTabs?: boolean;
+  lockedPromptDisplayMode?: PromptDisplayMode;
+  staffNotationModeLock?: StaffNotationMode;
+  preReadingBufferSize?: PreReadingBufferSize;
+  onPreReadingBufferSizeChange?: (bufferSize: PreReadingBufferSize) => void;
   actions: PracticeSetupActions;
   distanceContent: ReactNode;
   nameKeyContent: ReactNode;
@@ -118,6 +124,7 @@ interface PracticeSetupViewProps {
   preferences: PracticeSetupUiPreferences;
   setupDisabledReason?: string;
   metronomeError?: string | null;
+  metronomeBeatsPerBar?: number;
   startPausedReading: boolean;
   settings: AppSettings;
 }
@@ -245,6 +252,10 @@ export function PracticeSetupView({
   freePracticeDescription,
   showPracticeKindTabs = true,
   showPracticeModeTabs = true,
+  lockedPromptDisplayMode,
+  staffNotationModeLock,
+  preReadingBufferSize,
+  onPreReadingBufferSizeChange,
   actions,
   distanceContent,
   nameKeyContent,
@@ -259,6 +270,7 @@ export function PracticeSetupView({
   preferences,
   setupDisabledReason,
   metronomeError,
+  metronomeBeatsPerBar = 4,
   startPausedReading,
   settings,
 }: PracticeSetupViewProps): JSX.Element {
@@ -289,10 +301,23 @@ export function PracticeSetupView({
   const isDuetPractice = practiceMode === "duet";
   const activeAnswerPitchMode = isDuetPractice ? "exact-pitch" : answerPitchMode;
   const promptDisplayMode =
-    activeAnswerPitchMode === "exact-pitch" ? "staff-page" : savedPromptDisplayMode;
+    lockedPromptDisplayMode ??
+    (activeAnswerPitchMode === "exact-pitch" ? "staff-page" : savedPromptDisplayMode);
   const supportsMetronomeSyncNoteDurations =
     promptNoteDurations.length > 0 &&
     promptNoteDurations.every((duration) => duration === "whole" || duration === "quarter");
+  const supportsPreReadingMetronomeSync =
+    preReadingBufferSize === undefined || metronomeBeatsPerBar === 4;
+  const canEnableMetronomeSync =
+    supportsMetronomeSyncNoteDurations && supportsPreReadingMetronomeSync;
+  const preReadingMetronomeSyncUnavailableReason =
+    preReadingBufferSize === undefined
+      ? undefined
+      : !supportsMetronomeSyncNoteDurations
+        ? "节拍同步需要使用四分音符或全音符节奏。"
+        : metronomeBeatsPerBar !== 4
+          ? "当前节拍器不是 4/4 拍，请先调整节拍器拍号。"
+          : undefined;
   const autoPlayTarget =
     activeAnswerPitchMode === "exact-pitch" ? midiAutoPlayTarget : nonMidiAutoPlayTarget;
   const playAnswerNote =
@@ -417,18 +442,19 @@ export function PracticeSetupView({
       (completedSongSessions.get(songId) ?? 0) + progress.completedSessions
     );
   });
-  const activeRange = settings.staffRangeProfiles?.[settings.staffNotationMode] ?? settings;
+  const staffNotationMode = staffNotationModeLock ?? settings.staffNotationMode;
+  const activeRange = settings.staffRangeProfiles?.[staffNotationMode] ?? settings;
   const selectedPitchIds = getStaffSelectedPitchIds(
     activeRange.enabledGroupIds,
     activeRange.enabledPitchIds,
     activeRange.crossGroupPitchIds,
-    settings.staffNotationMode
+    staffNotationMode
   );
   const staffSummary = isDuetPractice
     ? "大谱表（固定）"
-    : settings.staffNotationMode === "treble-only"
+    : staffNotationMode === "treble-only"
       ? "高音谱表"
-      : settings.staffNotationMode === "bass-only"
+      : staffNotationMode === "bass-only"
         ? "低音谱表"
         : "大谱表";
   const rangeSummary = isDuetPractice
@@ -444,9 +470,11 @@ export function PracticeSetupView({
         : `${durationSecondsToInputMinutes(fixedDurationSeconds)}分钟`;
   const displaySummary = isDuetPractice
     ? "谱页模式（固定）"
-    : promptDisplayMode === "single-note"
-      ? "单音模式"
-      : "谱页模式";
+    : lockedPromptDisplayMode
+      ? "谱页模式（固定）"
+      : promptDisplayMode === "single-note"
+        ? "单音模式"
+        : "谱页模式";
   const duetDifficultySummary = getDuetPracticeLevelLabel(duetLevel);
   const answerSummary =
     activeAnswerPitchMode === "note-name"
@@ -655,6 +683,7 @@ export function PracticeSetupView({
                   allowInterStaffLedgerChoice={false}
                   compactSummary
                   rangeControlPart="base"
+                  staffNotationModeOverride={staffNotationModeLock}
                   settings={settings}
                   onSettingsSaved={onSettingsSaved}
                 />
@@ -904,14 +933,17 @@ export function PracticeSetupView({
             </section>
 
             {activeAnswerPitchMode === "exact-pitch" &&
-            (isDuetPractice || supportsMetronomeSyncNoteDurations) ? (
+            (isDuetPractice ||
+              supportsMetronomeSyncNoteDurations ||
+              preReadingBufferSize !== undefined) ? (
               <section aria-label="节拍同步" className="practice-free-section">
                 <div className="practice-free-field">
                   <span className="control-label">节拍同步</span>
                   {!isDuetPractice ? (
                     <label className="practice-checkbox-option">
                       <input
-                        checked={metronomeSyncEnabled}
+                        checked={metronomeSyncEnabled && canEnableMetronomeSync}
+                        disabled={!canEnableMetronomeSync}
                         type="checkbox"
                         onChange={(event) =>
                           onMetronomeSyncEnabledChange(event.currentTarget.checked)
@@ -920,12 +952,45 @@ export function PracticeSetupView({
                       <span>木鱼与谱面同步</span>
                     </label>
                   ) : null}
+                  {preReadingMetronomeSyncUnavailableReason ? (
+                    <small className="practice-free-helper is-warning">
+                      {preReadingMetronomeSyncUnavailableReason}
+                    </small>
+                  ) : null}
                   {metronomeError ? (
                     <small className="practice-free-warning" role="alert">
                       节拍器无法启动：{metronomeError}
                     </small>
                   ) : null}
                 </div>
+              </section>
+            ) : null}
+
+            {activeTab === "free" &&
+            preReadingBufferSize !== undefined &&
+            onPreReadingBufferSizeChange ? (
+              <section aria-label="预读音数" className="practice-free-section">
+                <label className="practice-free-field pre-reading-focus-control">
+                  <span className="control-label">预读提前量</span>
+                  <select
+                    aria-label="预读提前量"
+                    value={preReadingBufferSize}
+                    onChange={(event) =>
+                      onPreReadingBufferSizeChange(
+                        Number(event.currentTarget.value) as PreReadingBufferSize
+                      )
+                    }
+                  >
+                    {([1, 2, 3, 4, 5] as const).map((bufferSize) => (
+                      <option key={bufferSize} value={bufferSize}>
+                        预读 {bufferSize} 个音
+                      </option>
+                    ))}
+                  </select>
+                  <small className="practice-free-helper">
+                    选择需要记住的未来音符数量，数字越大，记忆缓冲区越长。
+                  </small>
+                </label>
               </section>
             ) : null}
 
@@ -984,6 +1049,7 @@ export function PracticeSetupView({
                     <GlobalRangeControls
                       allowInterStaffLedgerChoice={false}
                       rangeControlPart="extensions"
+                      staffNotationModeOverride={staffNotationModeLock}
                       settings={settings}
                       onSettingsSaved={onSettingsSaved}
                     />
@@ -1051,7 +1117,7 @@ export function PracticeSetupView({
                     {isDuetPractice ? "音符时值" : "谱面与节奏"}
                   </span>
                   <div className="practice-free-display-row">
-                    {!isDuetPractice ? (
+                    {!isDuetPractice && !lockedPromptDisplayMode ? (
                       <div aria-label="谱面呈现方式" className="segmented practice-free-segmented">
                         <button
                           aria-pressed={promptDisplayMode === "single-note"}
@@ -1112,6 +1178,11 @@ export function PracticeSetupView({
                       ))}
                     </div>
                   </div>
+                  {lockedPromptDisplayMode ? (
+                    <small className="practice-free-helper">
+                      连续看谱（固定）；为专注训练，此关卡强制使用谱页模式。
+                    </small>
+                  ) : null}
                   {promptNoteDurations.length > 1 ? (
                     <small className="practice-free-helper">
                       混合时值按连续谱面显示，仍逐音答题。

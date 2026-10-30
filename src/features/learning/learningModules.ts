@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { BookOpen, Keyboard, Ruler, Users, Zap } from "lucide-react";
+import { BookOpen, Eye, Keyboard, Ruler, Users, Zap } from "lucide-react";
 import type { LearningLevelId } from "../../routing/appRoutes";
 
 export interface LearningModuleDefinition {
@@ -79,6 +79,24 @@ export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
   },
   {
     id: 5,
+    name: "提前识谱",
+    summary: "打破逐音视奏，训练眼睛走在手的前面。",
+    icon: Eye,
+    guide: {
+      title: "让视线走在手前面",
+      goal: "弹奏当前音时，提前读懂后一个或后两个音，建立连续视奏。",
+      principle:
+        "视奏的关键是眼睛永远比手快 1 秒。视线先落到后续音符，大脑便能预先组织下一步动作，减少逐音停顿。",
+      highlight: "不要死盯当前音符，用余光感受手的起落，让视线提前准备下一个音。",
+      steps: [
+        "看清当前音后，把视线移向后一个音",
+        "用余光感受当前按键动作",
+        "熟悉后把预读范围扩展到后两个音",
+      ],
+    },
+  },
+  {
+    id: 6,
     name: "双手协同",
     summary: "同时跟踪高低声部，让左右手在同一节奏中协作。",
     icon: Users,

@@ -183,6 +183,32 @@
   padding: 30px 0 42px;
 }
 
+.learning-module-shell.is-immersive {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.learning-module-shell.is-immersive > .learning-module-header,
+.learning-module-shell.is-immersive > .learning-module-tabs {
+  display: none;
+}
+
+.learning-module-shell.is-immersive > .learning-module-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.learning-module-shell.is-immersive .practice-fullscreen-frame {
+  height: 100%;
+  min-height: 0;
+}
+
 .app-shell-home > main {
   min-width: 0;
   overflow-x: clip;

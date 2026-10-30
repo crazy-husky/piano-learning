@@ -11,9 +11,9 @@ interface HomeViewProps {
   onNavigate: (path: AppRoutePath) => void;
 }
 
-type ModuleProgressCounts = Record<1 | 2 | 3 | 4 | 5, number>;
+type ModuleProgressCounts = Record<1 | 2 | 3 | 4 | 5 | 6, number>;
 
-const EMPTY_PROGRESS_COUNTS: ModuleProgressCounts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+const EMPTY_PROGRESS_COUNTS: ModuleProgressCounts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
 
 export function HomeView({ microphoneAlgorithm, onNavigate }: HomeViewProps): JSX.Element {
   const [progressCounts, setProgressCounts] = useState<ModuleProgressCounts | null>(null);
@@ -27,6 +27,7 @@ export function HomeView({ microphoneAlgorithm, onNavigate }: HomeViewProps): JS
         for (const event of events) {
           if (event.mode === "name-to-key" || event.mode === "staff-to-name") counts[3] += 1;
           if (event.mode === "staff-distance") counts[4] += 1;
+          if (event.mode === "pre-reading") counts[5] += 1;
           if (event.mode !== "free-practice") continue;
           const isDuet =
             Boolean(event.duetTargetNoteIds?.length) ||
@@ -34,7 +35,7 @@ export function HomeView({ microphoneAlgorithm, onNavigate }: HomeViewProps): JS
             event.duetLevel !== undefined ||
             event.targetMidiHigh !== undefined ||
             event.targetMidiLow !== undefined;
-          counts[isDuet ? 5 : 2] += 1;
+          counts[isDuet ? 6 : 2] += 1;
         }
         setProgressCounts(counts);
       })

@@ -6,8 +6,28 @@ import {
   getStaffPageRefillCount,
   MOBILE_STAFF_PAGE_NOTE_COUNT,
 } from "./staffPageFlow";
+import {
+  getPracticeStaffMeasureAreaWidthPx,
+  getPracticeStaffMeasureWidthPx,
+  getPracticeStaffMeasuresPerRow,
+  PRACTICE_PAGE_STAFF_LAYOUT,
+} from "../../../shared/staff/staffLayoutProfiles";
 
 describe("measure-aware staff-page rows", () => {
+  it("fits two compact 4/4 measures after reducing the inner side padding", () => {
+    const rendererWidthPx = 503;
+    const innerWidthPx = getPracticeStaffMeasureAreaWidthPx(
+      rendererWidthPx,
+      PRACTICE_PAGE_STAFF_LAYOUT.horizontal
+    );
+    const eighthNoteOnsets = Array.from({ length: 8 }, (_, index) => index / 2);
+
+    expect(
+      getPracticeStaffMeasuresPerRow(rendererWidthPx, PRACTICE_PAGE_STAFF_LAYOUT.horizontal)
+    ).toBe(2);
+    expect(getPracticeStaffMeasureWidthPx(eighthNoteOnsets) * 2).toBeLessThanOrEqual(innerWidthPx);
+  });
+
   it("moves a whole measure to the next row when it cannot fit", () => {
     const groups = Array.from({ length: 10 }, (_, index) => `event-${index}`);
     const result = chunkStaffPageGroupsByMeasure(groups, [0, 0, 0, 0, 1, 1, 1, 1, 2, 2], 6);

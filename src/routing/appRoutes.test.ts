@@ -12,6 +12,19 @@ describe("learning module routes", () => {
     });
   });
 
+  it.each([
+    [5, "/level/5"],
+    [6, "/level/6"],
+  ] as const)("routes Level %i to its free-practice module", (levelId, path) => {
+    expect(appRouteFromHash(`#${path}`)).toMatchObject({
+      page: "practice",
+      path,
+      levelId,
+      moduleTab: "practice",
+      practiceTab: "free",
+    });
+  });
+
   it.each(["guide", "practice", "stats"] as const)("restores the %s module tab", (tab) => {
     const route = appRouteFromHash(`#/level/4?tab=${tab}`);
     expect(route.moduleTab).toBe(tab);

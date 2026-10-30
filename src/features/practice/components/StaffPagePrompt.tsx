@@ -1,5 +1,5 @@
 import { Play, Square } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Accidental,
   Beam,
@@ -21,9 +21,11 @@ import type {
   StaffNotationMode,
   TargetNote,
 } from "../../../domain/types";
+import type { PreReadingNoteVisibility } from "../hooks/usePreReadingScoreWindow";
 import {
   PRACTICE_STAFF_CLEF_AND_METER_RESERVE_PX,
   PRACTICE_STAFF_WIDTH_TUNING,
+  getPracticeStaffMeasureEdgeInsetPx,
   getPracticeStaffMeasureWidthPx,
   PRACTICE_PAGE_STAFF_LAYOUT,
   type PracticePageStaffLayoutProfile,
@@ -104,9 +106,13 @@ interface StaffPagePromptProps {
   virtualizeRows?: boolean;
   adaptiveWidthLayout?: boolean;
   adaptiveMeasureAreaWidthPx?: number;
+  canonicalRowStartIndices?: readonly number[];
   isFiniteScore?: boolean;
   followRowIndex?: number;
   trackedNoteIndex?: number;
+  preReadingNoteStates?: readonly PreReadingNoteVisibility[];
+  preReadingCurrentNoteIndex?: number;
+  isPreReadingPaused?: boolean;
   onTrackedNoteVisibilityChange?: (isVisible: boolean) => void;
   breakBeamsAtStaffChange?: boolean;
   monophonicGrandStaff?: boolean;
@@ -120,6 +126,7 @@ interface StaffPagePromptProps {
   playbackProgressIndex?: number | null;
   practiceProgressMarkerEnabled?: boolean;
   getPracticeProgressBeat?: () => number | undefined;
+  alignPracticeProgressMarkerToNote?: boolean;
   playbackCursor?: ScorePlaybackCursor | null;
   chaseCursor?: ScoreChaseCursor | null;
   cursorIndexOffset?: number;
@@ -199,6 +206,14 @@ interface RenderedStaffPageStem {
   midis: number[];
   staff: Staff;
   stem: Stem;
+}
+interface RenderedPreReadingMask {
+  element: SVGRectElement;
+  index: number;
+}
+interface RenderedPreReadingIndicator {
+  element: SVGPolygonElement;
+  index: number;
 }
 interface PlaybackCursorPoint {
   x: number;
@@ -1057,10 +1072,12 @@ function addStaffProgressMarker(
   bottomY: number,
   type: "practice" | "playback",
   width: number,
-  beatRange?: { endBeat: number; startBeat: number }
+  beatRange?: { endBeat: number; startBeat: number },
+  alignPracticeProgressMarkerToNote = false
 ): void {
   const marker = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  const offset = type === "practice" ? -width * 0.22 : width * 0.22;
+  const offset =
+    type === "playback" ? width * 0.22 : alignPracticeProgressMarkerToNote ? 0 : -width * 0.22;
   marker.setAttribute("class", `staff-page-progress-marker is-${type}`);
   marker.setAttribute("data-staff-progress-marker", "");
   marker.setAttribute("data-progress-type", type);
@@ -1110,19 +1127,36 @@ function staveNoteHorizontalBounds(note: StaveNote): {
   markerX: number;
   right: number;
 } {
+  const glyphBounds = note.getBoundingBox();
+  const glyphLeft = glyphBounds.getX();
+  const glyphRight = glyphLeft + glyphBounds.getW();
   const noteHeadBounds = note.noteHeads.map((noteHead) => ({
     left: noteHead.getAbsoluteX(),
     right: noteHead.getAbsoluteX() + noteHead.getWidth(),
   }));
   if (noteHeadBounds.length > 0) {
-    const left = Math.min(...noteHeadBounds.map((bounds) => bounds.left));
-    const right = Math.max(...noteHeadBounds.map((bounds) => bounds.right));
-    return { left, markerX: (left + right) / 2, right };
+    const headLeft = Math.min(...noteHeadBounds.map((bounds) => bounds.left));
+    const headRight = Math.max(...noteHeadBounds.map((bounds) => bounds.right));
+    const stemX = note.hasStem() ? note.getStemX() : undefined;
+    const stemLeft = stemX === undefined ? Number.POSITIVE_INFINITY : stemX - Stem.WIDTH / 2;
+    const stemRight = stemX === undefined ? Number.NEGATIVE_INFINITY : stemX + Stem.WIDTH / 2;
+    return {
+      left: Math.min(headLeft, glyphLeft, stemLeft),
+      markerX: (headLeft + headRight) / 2,
+      right: Math.max(headRight, glyphRight, stemRight),
+    };
   }
-  const bounds = note.getBoundingBox();
-  const left = bounds.getX();
-  const right = left + bounds.getW();
-  return { left, markerX: (left + right) / 2, right };
+  return { left: glyphLeft, markerX: (glyphLeft + glyphRight) / 2, right: glyphRight };
+}
+
+function isBarlineClearOfNotes(
+  x: number,
+  notes: readonly TimedStaveNote[],
+  horizontalClearance: number
+): boolean {
+  return notes.every(
+    (note) => x <= note.left - horizontalClearance || x >= note.right + horizontalClearance
+  );
 }
 
 function getTimedStaveNotes(
@@ -1161,7 +1195,10 @@ function getBarlineXAtBeat(
   if (previous.length === 0 || next.length === 0) return undefined;
   const previousRight = Math.max(...previous.map((note) => note.right));
   const nextLeft = Math.min(...next.map((note) => note.left));
-  return getBarlineGapCenter(previousRight, nextLeft);
+  const minimumGap = 4;
+  return nextLeft - previousRight >= minimumGap
+    ? getBarlineGapCenter(previousRight, nextLeft)
+    : undefined;
 }
 
 function makeStaffPageBeams(
@@ -1400,7 +1437,8 @@ function getMeasureAlignedBeatX(
   beatsPerMeasure: number,
   measureCount: number,
   noteArea: { left: number; right: number },
-  measureWidthsPx?: readonly number[]
+  measureWidthsPx?: readonly number[],
+  effectiveDisplayScale = 1
 ): number | undefined {
   if (
     !Number.isFinite(beat) ||
@@ -1425,9 +1463,7 @@ function getMeasureAlignedBeatX(
       ? measureWidthsPx.slice(0, measureOffset).reduce((total, width) => total + width, 0)
       : measureOffset * equalMeasureWidth);
   const beatWithinMeasure = relativeBeat - measureOffset * beatsPerMeasure;
-  const inset =
-    Math.min(PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx, measureWidth) *
-    PRACTICE_STAFF_WIDTH_TUNING.measureEdgeInsetRatio;
+  const inset = getPracticeStaffMeasureEdgeInsetPx(measureWidth, effectiveDisplayScale);
 
   return (
     measureLeft +
@@ -1443,7 +1479,8 @@ function alignTickablesToMeasureColumns(
   beatsPerMeasure: number,
   measureCount: number,
   noteArea: { left: number; right: number },
-  measureWidthsPx?: readonly number[]
+  measureWidthsPx?: readonly number[],
+  effectiveDisplayScale = 1
 ): void {
   if (measureCount <= 0 || beatsPerMeasure <= 0) return;
   const contexts = new Map<ReturnType<StaveNote["checkTickContext"]>, { beat: number }>();
@@ -1465,7 +1502,8 @@ function alignTickablesToMeasureColumns(
       beatsPerMeasure,
       measureCount,
       noteArea,
-      measureWidthsPx
+      measureWidthsPx,
+      effectiveDisplayScale
     );
     if (targetCenter === undefined) return;
     const representative = [...tickContext.getTickables()].find(
@@ -1544,9 +1582,13 @@ export function StaffPagePrompt({
   virtualizeRows = false,
   adaptiveWidthLayout = false,
   adaptiveMeasureAreaWidthPx = 0,
+  canonicalRowStartIndices,
   isFiniteScore = false,
   followRowIndex,
   trackedNoteIndex,
+  preReadingNoteStates,
+  preReadingCurrentNoteIndex,
+  isPreReadingPaused = false,
   onTrackedNoteVisibilityChange,
   breakBeamsAtStaffChange = false,
   monophonicGrandStaff = false,
@@ -1560,6 +1602,7 @@ export function StaffPagePrompt({
   playbackProgressIndex = null,
   practiceProgressMarkerEnabled = true,
   getPracticeProgressBeat,
+  alignPracticeProgressMarkerToNote = false,
   playbackCursor = null,
   chaseCursor = null,
   cursorIndexOffset = 0,
@@ -1581,6 +1624,8 @@ export function StaffPagePrompt({
   const playbackFollowDelayTimerRef = useRef<number | null>(null);
   const autoScrollAnimationFrameRef = useRef(0);
   const trackedNoteIndexRef = useRef(trackedNoteIndex);
+  const preReadingNoteStatesRef = useRef(preReadingNoteStates);
+  const preReadingCurrentNoteIndexRef = useRef(preReadingCurrentNoteIndex);
   const onTrackedNoteVisibilityChangeRef = useRef(onTrackedNoteVisibilityChange);
   const diagnosticSampleIdRef = useRef(diagnosticSampleId);
   const completedCountRef = useRef(completedCount);
@@ -1596,6 +1641,8 @@ export function StaffPagePrompt({
   const getAudioTimeRef = useRef(getAudioTime);
   const renderedNotesRef = useRef<RenderedStaffPageNote[]>([]);
   const renderedStemsRef = useRef<RenderedStaffPageStem[]>([]);
+  const renderedPreReadingMasksRef = useRef<RenderedPreReadingMask[]>([]);
+  const renderedPreReadingIndicatorsRef = useRef<RenderedPreReadingIndicator[]>([]);
   const cursorLayersRef = useRef(new Map<string, PlaybackCursorLayer>());
   const cursorTargetsRef = useRef(new Map<number, PlaybackCursorTargets>());
   const cursorRowsRef = useRef(new Map<number, number>());
@@ -1635,6 +1682,8 @@ export function StaffPagePrompt({
   chaseCursorRef.current = chaseCursor;
   getAudioTimeRef.current = getAudioTime;
   trackedNoteIndexRef.current = trackedNoteIndex;
+  preReadingNoteStatesRef.current = preReadingNoteStates;
+  preReadingCurrentNoteIndexRef.current = preReadingCurrentNoteIndex;
   onTrackedNoteVisibilityChangeRef.current = onTrackedNoteVisibilityChange;
   wrongIndexRef.current = wrongIndex;
   wrongStaffIndexRef.current = wrongStaffIndex;
@@ -1644,6 +1693,21 @@ export function StaffPagePrompt({
     [noteGroups, notes]
   );
   const { rows, rowStartIndices } = useMemo(() => {
+    if (canonicalRowStartIndices?.length && sourceNoteGroups.length > 0) {
+      const starts = canonicalRowStartIndices
+        .filter((start) => Number.isInteger(start) && start >= 0 && start < sourceNoteGroups.length)
+        .filter((start, index, values) => index === 0 || start > values[index - 1]!);
+      if (starts[0] !== 0) starts.unshift(0);
+      const visibleStarts = starts.slice(0, maxRowCount);
+      return {
+        rowStartIndices: visibleStarts,
+        rows: visibleStarts.map((start, index) =>
+          sourceNoteGroups
+            .slice(start, starts[index + 1] ?? sourceNoteGroups.length)
+            .map((group) => [...group])
+        ),
+      };
+    }
     if (keepMeasuresTogether && noteMeasures?.length === sourceNoteGroups.length) {
       if (adaptiveWidthLayout) {
         return chunkStaffPageGroupsByAdaptiveMeasureWidth(
@@ -1673,6 +1737,7 @@ export function StaffPagePrompt({
     adaptiveMeasureAreaWidthPx,
     adaptiveWidthLayout,
     beatsPerMeasure,
+    canonicalRowStartIndices,
     keepMeasuresTogether,
     maxMeasuresPerRow,
     maxRowCount,
@@ -2012,6 +2077,32 @@ export function StaffPagePrompt({
     autoScrollAnimationFrameRef.current = window.requestAnimationFrame(animateScroll);
   }, [followRowIndex, followRowAtTop, playbackFollowDelayComplete, playingRowIndex, rows.length]);
 
+  const syncPreReadingElements = useCallback((): void => {
+    const noteStates = preReadingNoteStatesRef.current;
+    renderedPreReadingMasksRef.current.forEach(({ element, index }) => {
+      const visibility = noteStates?.[index];
+      const isObscured = visibility === "obscured";
+      const isPlayed = visibility === "played";
+      element.style.opacity = isObscured ? "1" : isPlayed ? "0.42" : "0";
+      element.style.setProperty("stroke-opacity", isObscured ? "0.65" : isPlayed ? "0.28" : "0");
+      element.classList.toggle("is-pre-reading-obscured", isObscured);
+      element.classList.toggle("is-pre-reading-played", isPlayed);
+    });
+    renderedNotesRef.current.forEach(({ element, index }) => {
+      const visibility = noteStates?.[index];
+      element.classList.toggle("is-pre-reading-symbol-obscured", visibility === "obscured");
+      element.classList.toggle("is-pre-reading-symbol-played", visibility === "played");
+    });
+    renderedStemsRef.current.forEach(({ element, index }) => {
+      const visibility = noteStates?.[index];
+      element.classList.toggle("is-pre-reading-symbol-obscured", visibility === "obscured");
+      element.classList.toggle("is-pre-reading-symbol-played", visibility === "played");
+    });
+    renderedPreReadingIndicatorsRef.current.forEach(({ element, index }) => {
+      element.style.opacity = index === preReadingCurrentNoteIndexRef.current ? "1" : "0";
+    });
+  }, []);
+
   useLayoutEffect(() => {
     const frame = frameRef.current;
     const rendererTarget = rendererTargetRef.current;
@@ -2183,6 +2274,8 @@ export function StaffPagePrompt({
       markMidiLatencyStage(renderedDiagnosticSampleId, "staffRenderStarted");
       renderedNotesRef.current = [];
       renderedStemsRef.current = [];
+      renderedPreReadingMasksRef.current = [];
+      renderedPreReadingIndicatorsRef.current = [];
       cursorLayersRef.current = new Map();
       cursorTargetsRef.current = new Map();
       cursorRowsRef.current = new Map();
@@ -2354,6 +2447,7 @@ export function StaffPagePrompt({
           let cursorTickablesBySlot: Array<Partial<Record<Staff, StaveNote>>> = [];
           let barlineTopY: number;
           let barlineBottomY: number;
+          let trebleTopLineY: number;
           let lyricAnchorY: number;
           const rowFrameMetrics = adaptiveWidthLayout
             ? {
@@ -2616,7 +2710,8 @@ export function StaffPagePrompt({
                 beatsPerMeasure,
                 rowMeasureCount,
                 noteArea,
-                adaptiveWidthLayout ? fittedMeasureWidthsInSvgUnits : undefined
+                adaptiveWidthLayout ? fittedMeasureWidthsInSvgUnits : undefined,
+                surface.scale * renderedScale
               );
             }
             if (distributeNotesEvenly) {
@@ -2649,6 +2744,7 @@ export function StaffPagePrompt({
             });
             barlineTopY = treble.getYForLine(0);
             barlineBottomY = bass.getYForLine(4);
+            trebleTopLineY = treble.getYForLine(0);
             lyricAnchorY = treble.getYForLine(4);
           } else {
             const { stave } = system;
@@ -2749,6 +2845,7 @@ export function StaffPagePrompt({
             );
             barlineTopY = stave.getYForLine(0);
             barlineBottomY = stave.getYForLine(4);
+            trebleTopLineY = stave.getYForLine(0);
             lyricAnchorY = barlineBottomY;
           }
 
@@ -2891,16 +2988,23 @@ export function StaffPagePrompt({
                         .reduce((sum, width) => sum + width, 0)
                     : (measureOffset / rowMeasureCount) * (noteArea.right - noteArea.left))
                 : undefined;
-            const barlineX =
-              fixedMeasureBarlineX ??
-              (boundaryBeat !== undefined
+            const measuredBarlineX =
+              boundaryBeat !== undefined
                 ? getBarlineXAtBeat(boundaryBeat, timedStaveNotes)
-                : undefined) ??
+                : undefined;
+            const fallbackBarlineX =
+              fixedMeasureBarlineX ??
               getBarlineX(
                 nextTickable,
                 visibleTickables[boundaryIndex - 1],
                 visibleTickables[boundaryIndex]
               );
+            const minimumBarlineClearance = logicalPx(8, surface.scale * renderedScale);
+            const barlineX = [measuredBarlineX, fallbackBarlineX].find(
+              (candidate): candidate is number =>
+                candidate !== undefined &&
+                isBarlineClearOfNotes(candidate, timedStaveNotes, minimumBarlineClearance)
+            );
             if (barlineX !== undefined) {
               addBarline(rowGroup, barlineX, barlineTopY, barlineBottomY, palette.ink);
             }
@@ -2925,21 +3029,27 @@ export function StaffPagePrompt({
                       startBeat + quarterBeatsForDuration(rowSelectedDurations[slotIndex]!),
                       rowEndBeat
                     );
+              const noteheadCenterX =
+                staveNotes.reduce((total, staveNote) => total + staveNoteCenterX(staveNote), 0) /
+                staveNotes.length;
+              // In pre-reading, the moving beat marker is the user's visual anchor,
+              // so keep it on the actual notehead instead of interpolating by beat.
               const alignedBeatX =
-                keepMeasuresTogether && beatsPerMeasure && rowMeasureCount > 0
+                !alignPracticeProgressMarkerToNote &&
+                keepMeasuresTogether &&
+                beatsPerMeasure &&
+                rowMeasureCount > 0
                   ? getMeasureAlignedBeatX(
                       startBeat,
                       rowStartBeat,
                       beatsPerMeasure,
                       rowMeasureCount,
                       noteArea,
-                      adaptiveWidthLayout ? fittedMeasureWidthsInSvgUnits : undefined
+                      adaptiveWidthLayout ? fittedMeasureWidthsInSvgUnits : undefined,
+                      surface.scale * renderedScale
                     )
                   : undefined;
-              const markerX =
-                alignedBeatX ??
-                staveNotes.reduce((total, staveNote) => total + staveNoteCenterX(staveNote), 0) /
-                  staveNotes.length;
+              const markerX = alignedBeatX ?? noteheadCenterX;
               addStaffProgressMarker(
                 rowGroup,
                 noteIndex,
@@ -2948,7 +3058,8 @@ export function StaffPagePrompt({
                 barlineBottomY,
                 "practice",
                 logicalPx(14, surface.scale),
-                { startBeat, endBeat: Math.max(startBeat + 0.001, endBeat) }
+                { startBeat, endBeat: Math.max(startBeat + 0.001, endBeat) },
+                alignPracticeProgressMarkerToNote
               );
             });
           } else if (timedStaveNotes.length > 0) {
@@ -2983,7 +3094,8 @@ export function StaffPagePrompt({
                 barlineBottomY,
                 "practice",
                 logicalPx(14, surface.scale),
-                { startBeat, endBeat: Math.max(startBeat + 0.001, nextStartBeat) }
+                { startBeat, endBeat: Math.max(startBeat + 0.001, nextStartBeat) },
+                alignPracticeProgressMarkerToNote
               );
             });
           }
@@ -2995,7 +3107,7 @@ export function StaffPagePrompt({
               : staveNoteCenterX(staveNote);
             const markerWidth = logicalPx(14, surface.scale);
             const noteIndex = rowStartIndex + slotIndex;
-            if (timedStaveNotes.length === 0) {
+            if (timedStaveNotes.length === 0 && !rowOnsets) {
               const startBeat = rowOnsets?.[slotIndex];
               const endBeat =
                 startBeat === undefined
@@ -3012,7 +3124,8 @@ export function StaffPagePrompt({
                 markerWidth,
                 startBeat !== undefined && endBeat !== undefined
                   ? { startBeat, endBeat }
-                  : undefined
+                  : undefined,
+                alignPracticeProgressMarkerToNote
               );
             }
             addStaffProgressMarker(
@@ -3055,6 +3168,67 @@ export function StaffPagePrompt({
               playbackNoteHeadElementsRef.current.set(eventIndex, noteHeadElements);
             });
           }
+          if (preReadingNoteStatesRef.current) {
+            cursorTickablesBySlot.forEach((tickables, slotIndex) => {
+              (Object.values(tickables) as Array<StaveNote | undefined>).forEach((staffNote) => {
+                if (!(staffNote instanceof StaveNote)) return;
+                const bounds = staffNote.getBoundingBox();
+                const maskPadding = logicalPx(5, surface.scale);
+                const mask = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                mask.setAttribute("class", "pre-reading-note-mask");
+                mask.setAttribute("data-pre-reading-mask", "");
+                mask.setAttribute("data-note-index", String(rowStartIndex + slotIndex));
+                mask.setAttribute("x", (bounds.getX() - maskPadding).toFixed(2));
+                mask.setAttribute("y", (bounds.getY() - maskPadding).toFixed(2));
+                mask.setAttribute("width", (bounds.getW() + maskPadding * 2).toFixed(2));
+                mask.setAttribute("height", (bounds.getH() + maskPadding * 2).toFixed(2));
+                mask.setAttribute("rx", logicalPx(4, surface.scale).toFixed(2));
+                mask.setAttribute("fill", isNightMode ? "#202723" : "#fffdfa");
+                mask.setAttribute("stroke", palette.active);
+                mask.setAttribute("stroke-opacity", "0.65");
+                mask.setAttribute("aria-hidden", "true");
+                mask.style.opacity = "0";
+                rowGroup.appendChild(mask);
+                renderedPreReadingMasksRef.current.push({
+                  element: mask,
+                  index: rowStartIndex + slotIndex,
+                });
+              });
+            });
+            cursorTickablesBySlot.forEach((tickables, slotIndex) => {
+              const staveNote = tickables.treble ?? tickables.bass;
+              const noteHead = staveNote?.noteHeads[0];
+              const noteHeadY = staveNote?.getYs()[0];
+              if (
+                !staveNote ||
+                !noteHead ||
+                typeof noteHeadY !== "number" ||
+                !Number.isFinite(noteHeadY)
+              ) {
+                return;
+              }
+              const centerX = noteHead.getAbsoluteX() + noteHead.getWidth() / 2;
+              const tipY = trebleTopLineY - logicalPx(4, surface.scale);
+              const baseY = trebleTopLineY - logicalPx(12, surface.scale);
+              const halfWidth = logicalPx(5, surface.scale);
+              const indicator = document.createElementNS(SVG_NAMESPACE, "polygon");
+              indicator.setAttribute("class", "pre-reading-current-note-indicator");
+              indicator.setAttribute("data-note-index", String(rowStartIndex + slotIndex));
+              indicator.setAttribute(
+                "points",
+                `${(centerX - halfWidth).toFixed(2)},${baseY.toFixed(2)} ` +
+                  `${(centerX + halfWidth).toFixed(2)},${baseY.toFixed(2)} ` +
+                  `${centerX.toFixed(2)},${tipY.toFixed(2)}`
+              );
+              indicator.setAttribute("aria-hidden", "true");
+              indicator.style.opacity = "0";
+              rowGroup.appendChild(indicator);
+              renderedPreReadingIndicatorsRef.current.push({
+                element: indicator,
+                index: rowStartIndex + slotIndex,
+              });
+            });
+          }
           context.closeGroup();
         });
       if (getAudioTimeRef.current) {
@@ -3074,6 +3248,13 @@ export function StaffPagePrompt({
               );
             });
           });
+        context.closeGroup();
+      }
+      if (renderedPreReadingIndicatorsRef.current.length > 0) {
+        const indicatorOverlay = context.openGroup("staff-page-pre-reading-indicator-overlay");
+        renderedPreReadingIndicatorsRef.current.forEach(({ element }) => {
+          indicatorOverlay.appendChild(element);
+        });
         context.closeGroup();
       }
       updateStaffProgressMarkers(
@@ -3129,6 +3310,9 @@ export function StaffPagePrompt({
           ? current
           : nextRowPlaybackButtonCenters
       );
+      // ResizeObserver redraws replace the SVG nodes without changing React
+      // props, so restore the latest pre-reading masks on every redraw.
+      syncPreReadingElements();
       markMidiLatencyStage(renderedDiagnosticSampleId, "staffRenderEnded");
     }
 
@@ -3137,6 +3321,7 @@ export function StaffPagePrompt({
     observer.observe(frame);
     return () => observer.disconnect();
   }, [
+    syncPreReadingElements,
     layout,
     followRowAtTop,
     barlineAfterNoteIndices,
@@ -3179,6 +3364,7 @@ export function StaffPagePrompt({
     adaptiveWidthLayout,
     adaptiveRowStaveWidthPx,
     adaptiveMeasureAreaWidthPx,
+    alignPracticeProgressMarkerToNote,
     virtualRowWindow.end,
     virtualRowWindow.start,
   ]);
@@ -3763,12 +3949,23 @@ export function StaffPagePrompt({
     wrongStaffIndex,
   ]);
 
+  useLayoutEffect(() => {
+    syncPreReadingElements();
+  }, [
+    notes,
+    preReadingCurrentNoteIndex,
+    preReadingNoteStates,
+    syncPreReadingElements,
+    trackedNoteIndex,
+    virtualRowWindow,
+  ]);
+
   return (
     <div
       ref={frameRef}
       className={`staff-page${onToggleRowPlayback ? " staff-page-with-row-playback" : ""}${
         isNightMode ? " is-night-mode" : ""
-      }`}
+      }${isPreReadingPaused ? " is-pre-reading-paused" : ""}`}
       aria-label="谱页"
     >
       <div

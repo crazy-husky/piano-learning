@@ -59,13 +59,15 @@ export function generateStaffPageRhythm(
   selectedDurations: readonly PromptNoteDuration[],
   noteCount: number,
   startBeat = 0,
-  random: () => number = Math.random
+  random: () => number = Math.random,
+  previousDuration?: StaffPageNoteDuration
 ): GeneratedStaffPageRhythm {
   const selected = new Set(selectedDurations.length > 0 ? selectedDurations : ["quarter"]);
   const choices = PROMPT_NOTE_DURATIONS.filter((duration) => selected.has(duration));
   const durations: PromptNoteDuration[] = [];
   const onsets: number[] = [];
   let beat = Math.max(0, startBeat);
+  let lastDuration = previousDuration;
 
   while (durations.length < noteCount) {
     const measureStart = Math.floor((beat + 0.001) / 4) * 4;
@@ -77,11 +79,13 @@ export function generateStaffPageRhythm(
     const useWholeMeasure =
       beatInMeasure < 0.001 &&
       available.includes("whole") &&
+      lastDuration !== "whole" &&
       (choices.length === 1 || random() < 0.08);
     if (useWholeMeasure) {
       durations.push("whole");
       onsets.push(beat);
       beat += 4;
+      lastDuration = "whole";
       continue;
     }
 
@@ -103,6 +107,7 @@ export function generateStaffPageRhythm(
     durations.push(duration);
     onsets.push(beat);
     beat += PROMPT_NOTE_DURATION_BEATS[duration];
+    lastDuration = duration;
   }
 
   return {

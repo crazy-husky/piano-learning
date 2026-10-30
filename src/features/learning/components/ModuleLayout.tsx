@@ -11,16 +11,21 @@ const TABS: readonly { id: LearningModuleTab; label: string }[] = [
 export function ModuleLayout({
   activeTab,
   children,
+  immersive = false,
   module,
   onTabChange,
 }: {
   activeTab: LearningModuleTab;
   children: ReactNode;
+  immersive?: boolean;
   module: LearningModuleDefinition;
   onTabChange: (tab: LearningModuleTab) => void;
 }): JSX.Element {
   return (
-    <section aria-labelledby="learning-module-title" className="learning-module-shell">
+    <section
+      aria-labelledby="learning-module-title"
+      className={`learning-module-shell${immersive ? " is-immersive" : ""}`}
+    >
       <header className="learning-module-header">
         <div className="learning-module-heading-copy">
           <span className="learning-module-eyebrow">学习路线 · LEVEL {module.id}</span>

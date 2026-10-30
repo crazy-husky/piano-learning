@@ -175,8 +175,13 @@ export function StaffToNamePracticeView({
   const [isPaused, setIsPaused] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [remainingMs, setRemainingMs] = useState(0);
-  const [customCount, setCustomCount] = useState(100);
-  const [customCountSelected, setCustomCountSelected] = useState(false);
+  const [customCount, setCustomCount] = useState(preferences.fixedCount);
+  const [customCountSelected, setCustomCountSelected] = useState(
+    () =>
+      !PRACTICE_FIXED_COUNT_PRESETS.includes(
+        preferences.fixedCount as (typeof PRACTICE_FIXED_COUNT_PRESETS)[number]
+      )
+  );
   const [statusMessage, setStatusMessage] = useState("");
   const targetRef = useRef<TargetNote | null>(null);
   const lastTargetIdRef = useRef<TargetNote["id"] | null>(null);
@@ -195,6 +200,10 @@ export function StaffToNamePracticeView({
   const eventSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const handledNavigationExitRequestRef = useRef<number | null>(null);
   const finishRoundRef = useRef<(showSummary?: boolean) => void>(() => undefined);
+  const startRequestGenerationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
 
   const targetPool = useMemo(
     () => getNotesForGroups(preferences.enabledGroupIds, false),
@@ -216,6 +225,18 @@ export function StaffToNamePracticeView({
   const accuracy = answeredEvents.length
     ? Math.round((correctCount / answeredEvents.length) * 100)
     : null;
+
+  useEffect(() => {
+    if (!isActive) startRequestGenerationRef.current += 1;
+  }, [isActive]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      startRequestGenerationRef.current += 1;
+    };
+  }, []);
 
   const setNextTarget = useCallback((): void => {
     if (targetPool.length === 0) return;
@@ -408,7 +429,8 @@ export function StaffToNamePracticeView({
   );
 
   const startRound = async (): Promise<void> => {
-    if (!isActive || isStarting) return;
+    if (!isActiveRef.current || isStarting) return;
+    const requestGeneration = ++startRequestGenerationRef.current;
     setIsStarting(true);
     setStatusMessage("");
     try {
@@ -417,7 +439,13 @@ export function StaffToNamePracticeView({
         return;
       }
       const preflight = await onBeforePracticeStart();
-      if (!preflight.proceed) return;
+      if (
+        !preflight.proceed ||
+        requestGeneration !== startRequestGenerationRef.current ||
+        !isActiveRef.current
+      ) {
+        return;
+      }
       sessionIdRef.current = createUuid();
       eventIndexRef.current = 0;
       eventsRef.current = [];
@@ -432,8 +460,12 @@ export function StaffToNamePracticeView({
       setStage("running");
       onStageChange(true);
       setNextTarget();
+    } catch (error) {
+      if (requestGeneration === startRequestGenerationRef.current && isActiveRef.current) {
+        setStatusMessage(error instanceof Error ? error.message : "准备练习时发生错误，请重试。");
+      }
     } finally {
-      setIsStarting(false);
+      if (mountedRef.current) setIsStarting(false);
     }
   };
 

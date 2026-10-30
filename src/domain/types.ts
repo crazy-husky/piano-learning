@@ -9,6 +9,7 @@ export type PitchId = `${NoteName}${Octave}`;
 export type TargetNoteId = PitchId | `${PitchId}-${Staff}`;
 
 export type PracticeMode = "open-ended" | "fixed-count" | "fixed-duration";
+export type PreReadingBufferSize = 1 | 2 | 3 | 4 | 5;
 export type AnswerPitchMode = "note-name" | "exact-pitch" | "microphone";
 export type StoredAnswerPitchMode = AnswerPitchMode | "absolute-pitch";
 export type PracticeQueueStrategy = "adaptive" | "focused" | "melody" | "note-drill";
@@ -110,7 +111,13 @@ export interface ReviewRecord {
 }
 
 export type AnswerEventMode =
-  "free-practice" | "staff-game" | "song" | "staff-distance" | "name-to-key" | "staff-to-name";
+  | "free-practice"
+  | "pre-reading"
+  | "staff-game"
+  | "song"
+  | "staff-distance"
+  | "name-to-key"
+  | "staff-to-name";
 export type AnswerInputMode = "microphone" | "midi" | "virtual-keyboard" | "computer-keyboard";
 export type StaffGameChallengeMode = "learning" | "arcade";
 export type DuetPracticeDifficulty = "sync" | "parallel" | "independent";
@@ -281,6 +288,7 @@ export interface PracticeSessionStartSnapshot {
     duetCurriculumVersion?: number;
     duetAllowDottedRhythms?: boolean;
     metronomeSync?: boolean;
+    preReadingBufferSize?: PreReadingBufferSize;
   };
   presentationConfig: {
     autoPlayTarget: boolean;

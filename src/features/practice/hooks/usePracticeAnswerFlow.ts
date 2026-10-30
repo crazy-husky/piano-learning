@@ -84,17 +84,28 @@ interface PracticeStaffPageStartInput {
 
 interface PracticeAnswerFlowValues {
   answerPitchMode: "microphone" | "exact-pitch" | "note-name";
-  completedCount: number;
   correctDelayMs: number;
   drillNoteNames: NoteName[];
   enabledNotes: TargetNote[];
   fixedCount: number;
   mode: PracticeMode;
   playAnswerNote: boolean;
+  outcomePolicy?: PracticeAnswerOutcomePolicy;
   promptDisplayMode: "single-note" | "staff-page";
   queueStrategy: PracticeQueueStrategy;
   schedulerReviews: ReviewRecord[];
   synchronizedPractice: boolean;
+}
+
+export interface PracticeAnswerOutcomePolicy {
+  advanceAfterWrong?: boolean;
+  onResolvedAnswer?: (outcome: {
+    answeredCorrectly: boolean;
+    answerMidi?: number;
+    targetNote: TargetNote;
+  }) => void;
+  suppressConfiguredAnswerNote?: boolean;
+  wrongAnswerDelayMs?: number;
 }
 
 interface PracticeAnswerFlowRuntime {
@@ -158,13 +169,13 @@ export function usePracticeAnswerFlow({
 }: UsePracticeAnswerFlowOptions) {
   const {
     answerPitchMode,
-    completedCount,
     correctDelayMs,
     drillNoteNames,
     enabledNotes,
     fixedCount,
     mode,
     playAnswerNote,
+    outcomePolicy,
     promptDisplayMode,
     queueStrategy,
     schedulerReviews,
@@ -324,7 +335,7 @@ export function usePracticeAnswerFlow({
         });
       }
       markPromptInput();
-      if (playAnswerNote) {
+      if (playAnswerNote && !outcomePolicy?.suppressConfiguredAnswerNote) {
         const answerOctave = answer.octave;
         if (answerOctave === undefined || (answerOctave >= 1 && answerOctave <= 6)) {
           const playbackOctave =
@@ -375,6 +386,11 @@ export function usePracticeAnswerFlow({
       const answeredCorrectly = duetTargets
         ? matchedDuetStaff !== undefined
         : isPracticeAnswerCorrect(answer, prompt.note, answerPitchMode);
+      outcomePolicy?.onResolvedAnswer?.({
+        answeredCorrectly,
+        answerMidi,
+        targetNote: prompt.note,
+      });
       const duetTargetNoteId =
         !answeredCorrectly && duetTargets
           ? getDuetWrongTargetNoteId(answerMidi, duetTargets, prompt.completedDuetTargetNoteIds)
@@ -417,6 +433,21 @@ export function usePracticeAnswerFlow({
           () => setFeedback((current) => (current?.type === "wrong" ? null : current)),
           450
         );
+        if (outcomePolicy?.advanceAfterWrong) {
+          answerInputLockedRef.current = true;
+          markMidiLatencyStage(diagnosticSampleId, "reviewFinalizeStarted");
+          const advanceAudioTime = synchronizedPractice
+            ? getSynchronizedAdvanceAudioTime()
+            : undefined;
+          const review = await finishCurrentReview(false);
+          markMidiLatencyStage(diagnosticSampleId, "reviewFinalizeEnded");
+          if (!review) return;
+          await advanceAfterResolvedPrompt(review, sessionReviewsRef.current.length, {
+            advanceAudioTime,
+            recordChaseTarget: false,
+            delayMs: synchronizedPractice ? 0 : (outcomePolicy.wrongAnswerDelayMs ?? 180),
+          });
+        }
         return;
       }
 
@@ -460,7 +491,7 @@ export function usePracticeAnswerFlow({
       if (!review) {
         return;
       }
-      const nextCompletedCount = completedCount + 1;
+      const nextCompletedCount = sessionReviewsRef.current.length;
       await advanceAfterResolvedPrompt(review, nextCompletedCount, {
         advanceAudioTime,
         recordChaseTarget: promptDisplayMode === "staff-page",
@@ -470,7 +501,6 @@ export function usePracticeAnswerFlow({
     [
       answerPitchMode,
       answerInputLockedRef,
-      completedCount,
       finishCurrentReview,
       getPromptActiveMs,
       getSynchronizedAdvanceAudioTime,
@@ -478,8 +508,10 @@ export function usePracticeAnswerFlow({
       markCurrentStaffPageStaffNoteComplete,
       markPromptInput,
       playAnswerNote,
+      outcomePolicy,
       promptDisplayMode,
       promptRef,
+      sessionReviewsRef,
       sessionStartSnapshotRef,
       staffPageRef,
       setFeedback,
@@ -504,7 +536,7 @@ export function usePracticeAnswerFlow({
     setWrongAnswerCount((count) => count + 1);
     const review = await finishCurrentReview(false, undefined, { wasMissed: true });
     if (!review) return;
-    const nextCompletedCount = completedCount + 1;
+    const nextCompletedCount = sessionReviewsRef.current.length;
     await advanceAfterResolvedPrompt(review, nextCompletedCount, {
       recordChaseTarget: false,
       delayMs: 0,
@@ -512,10 +544,10 @@ export function usePracticeAnswerFlow({
   }, [
     advanceAfterResolvedPrompt,
     answerInputLockedRef,
-    completedCount,
     finishCurrentReview,
     isPausedRef,
     promptRef,
+    sessionReviewsRef,
     setWrongAnswerCount,
   ]);
 
@@ -527,7 +559,7 @@ export function usePracticeAnswerFlow({
     const advanceAudioTime = getSynchronizedAdvanceAudioTime();
     const review = await finishCurrentReview(false, undefined, { wasMissed: true });
     if (!review) return;
-    const nextCompletedCount = completedCount + 1;
+    const nextCompletedCount = sessionReviewsRef.current.length;
     await advanceAfterResolvedPrompt(review, nextCompletedCount, {
       advanceAudioTime,
       recordChaseTarget: false,
@@ -536,11 +568,11 @@ export function usePracticeAnswerFlow({
   }, [
     advanceAfterResolvedPrompt,
     answerInputLockedRef,
-    completedCount,
     finishCurrentReview,
     getSynchronizedAdvanceAudioTime,
     isPausedRef,
     promptRef,
+    sessionReviewsRef,
     setWrongAnswerCount,
   ]);
 

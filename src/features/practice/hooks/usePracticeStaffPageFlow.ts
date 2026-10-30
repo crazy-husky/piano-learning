@@ -272,6 +272,7 @@ interface PracticeStaffPageFlowValues {
   duetLevel?: DuetPracticeLevel;
   adaptiveMeasureAreaWidthPx?: number;
   adaptiveMaxMeasuresPerRow?: number;
+  staffPageRowStartIndices?: readonly number[];
   allowDottedRhythms: boolean;
   retainHistory: boolean;
   queueStrategy: PracticeQueueStrategy;
@@ -332,6 +333,7 @@ export function usePracticeStaffPageFlow({
     duetLevel,
     adaptiveMeasureAreaWidthPx,
     adaptiveMaxMeasuresPerRow,
+    staffPageRowStartIndices,
     allowDottedRhythms,
     retainHistory,
     queueStrategy,
@@ -633,13 +635,15 @@ export function usePracticeStaffPageFlow({
         : undefined;
       const streamRowStartIndices =
         retainHistory && !duetLevel
-          ? getPracticeStaffRowStartIndices(
-              page.notes,
-              page.rhythm,
-              pageNoteCount,
-              adaptiveMeasureAreaWidthPx,
-              adaptiveMaxMeasuresPerRow
-            )
+          ? staffPageRowStartIndices?.length
+            ? [...staffPageRowStartIndices]
+            : getPracticeStaffRowStartIndices(
+                page.notes,
+                page.rhythm,
+                pageNoteCount,
+                adaptiveMeasureAreaWidthPx,
+                adaptiveMaxMeasuresPerRow
+              )
           : undefined;
       const staffRowStartIndices = measureRowStartIndices ?? streamRowStartIndices;
       const currentRowIndex = staffRowStartIndices
@@ -794,7 +798,13 @@ export function usePracticeStaffPageFlow({
         if (page.rhythm) {
           const appendedRhythm =
             duetAppend?.rhythm ??
-            generateStaffPageRhythm(promptNoteDurations, appendedNotes.length, page.rhythm.endBeat);
+            generateStaffPageRhythm(
+              promptNoteDurations,
+              appendedNotes.length,
+              page.rhythm.endBeat,
+              Math.random,
+              page.rhythm.durations.at(-1)
+            );
           nextRhythm = {
             durations: [...page.rhythm.durations, ...appendedRhythm.durations],
             endBeat: appendedRhythm.endBeat,
@@ -951,6 +961,7 @@ export function usePracticeStaffPageFlow({
       isMobileViewport,
       adaptiveMeasureAreaWidthPx,
       adaptiveMaxMeasuresPerRow,
+      staffPageRowStartIndices,
       adaptiveSchedulerRef,
       isPausedRef,
       melodyGenerationStateRef,

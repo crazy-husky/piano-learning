@@ -820,7 +820,7 @@ export function App({
 
   const navigateFromHome = useCallback(
     (path: AppRoutePath): void => {
-      const levelMatch = /^\/level\/([1-5])$/.exec(path);
+      const levelMatch = /^\/level\/([1-6])$/.exec(path);
       if (!levelMatch) {
         navigateToRoute(path);
         return;
@@ -1523,13 +1523,19 @@ export function App({
               />
             ) : null}
             {route.levelId && module ? (
-              <ModuleLayout activeTab={moduleTab} module={module} onTabChange={selectModuleTab}>
+              <ModuleLayout
+                activeTab={moduleTab}
+                immersive={practiceRunning || practiceStageActive}
+                module={module}
+                onTabChange={selectModuleTab}
+              >
                 {moduleTab === "guide" ? <ModuleGuideView module={module} /> : null}
                 {moduleTab === "practice" && route.levelId === 1 ? (
                   data.staffRecallHistoryLoaded ? (
                     <StudyView
                       onBeforeStaffRecallStart={preflightBeforeStaffRecallStart}
                       onDataChanged={refreshStaffRecallHistory}
+                      onStageChange={setPracticeStageActive}
                       onSettingsSaved={(settings) => saveSettings(settings, { feedback: false })}
                       onStaffRecallFinished={showBackupReminderAfterActivity}
                       settings={data.settings}
@@ -1559,8 +1565,9 @@ export function App({
                         practiceDistanceMode={route.practiceDistanceMode}
                         showPracticeKindTabs={false}
                         practiceModeLock={
-                          route.levelId === 2 ? "single" : route.levelId === 5 ? "duet" : undefined
+                          route.levelId === 2 ? "single" : route.levelId === 6 ? "duet" : undefined
                         }
+                        practiceProfile={route.levelId === 5 ? "pre-reading" : undefined}
                         onPracticeDistanceModeChange={(mode, replace = false) =>
                           navigateToRoute(route.path, {
                             query: { tab: "practice", distanceMode: mode },

@@ -250,6 +250,67 @@
   width: 100%;
 }
 
+.pre-reading-focus-control {
+  max-width: 360px;
+}
+
+.pre-reading-window-status {
+  width: fit-content;
+  max-width: min(100%, 620px);
+  margin: clamp(18px, 3vh, 32px) auto 16px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.pre-reading-countdown-value {
+  display: inline-block;
+  min-width: 1.25em;
+  color: var(--accent);
+  font-size: 1.15em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pre-reading-current-note-indicator {
+  fill: #ee626c;
+  stroke: color-mix(in srgb, #fff 72%, #ee626c);
+  stroke-width: 1px;
+  paint-order: stroke;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  pointer-events: none;
+  transition: opacity 100ms ease-out;
+}
+
+.pre-reading-note-mask {
+  pointer-events: none;
+}
+
+.pre-reading-note-mask.is-pre-reading-obscured {
+  filter: blur(6px);
+  opacity: 1;
+  stroke-width: 1.5px;
+}
+
+.pre-reading-note-mask.is-pre-reading-played {
+  filter: blur(2px);
+  opacity: 0.42;
+  stroke-width: 1.5px;
+}
+
+.is-pre-reading-symbol-obscured {
+  filter: blur(6px);
+  opacity: 0;
+}
+
+.is-pre-reading-symbol-played {
+  filter: blur(2px);
+  opacity: 0.9;
+}
+
 .staff-page-desktop-view .staff-page {
   margin-inline: auto;
 }
@@ -534,7 +595,8 @@
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
 }
 

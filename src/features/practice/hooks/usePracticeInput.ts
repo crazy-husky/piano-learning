@@ -90,6 +90,7 @@ export function usePracticeInput({
         syncHeldMidiKeys();
         return;
       }
+      if (isPausedRef.current) return;
 
       heldMidiInputs.set(event.note.keyId, event.note.keyName);
       pendingMidiPressDiagnosticSampleIdRef.current = event.note.diagnosticSampleId;
@@ -122,7 +123,7 @@ export function usePracticeInput({
       heldMidiInputs.clear();
       setHeldMidiAnswerKeys(new Set());
     };
-  }, [answerPitchMode, canStartOnMidi, isRunning, subscribeMidi]);
+  }, [answerPitchMode, canStartOnMidi, isPausedRef, isRunning, subscribeMidi]);
 
   useEffect(() => {
     if (!isRunning) return undefined;

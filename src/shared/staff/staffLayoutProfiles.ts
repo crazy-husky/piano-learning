@@ -86,13 +86,15 @@ export const PRACTICE_STAFF_WIDTH_TUNING = {
   /** The reference measure spans four quarter-note beats. */
   referenceBeatsPerMeasure: 4,
   /** Minimum horizontal gap between distinct rhythmic onset columns. */
-  minRhythmicColumnGapRatio: 0.45,
+  minRhythmicColumnGapRatio: 0.32,
   /** Width ratios derived from the reference measure width. */
   staffSidePaddingRatio: 0.125,
-  noteAreaSidePaddingRatio: 0.25,
-  minNoteAreaSidePaddingRatio: 0.125,
+  noteAreaSidePaddingRatio: 0.18,
+  minNoteAreaSidePaddingRatio: 0.08,
   clefAndMeterReserveRatio: 0.35,
-  measureEdgeInsetRatio: 0.14,
+  measureEdgeInsetRatio: 0.08,
+  /** Keep the first and last note clear of a measure line, including its stem. */
+  minimumMeasureEdgeInsetPx: 20,
   /** Prevent very dense subdivisions from demanding an unbounded row width. */
   maxMeasureDensityScale: 2,
   /** Upper bound for measures placed on a single practice row. */
@@ -112,6 +114,22 @@ export const PRACTICE_STAFF_CLEF_AND_METER_RESERVE_PX =
   PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx *
   PRACTICE_STAFF_WIDTH_TUNING.clefAndMeterReserveRatio;
 
+export function getPracticeStaffMeasureEdgeInsetPx(
+  measureWidthPx: number,
+  effectiveDisplayScale = 1
+): number {
+  const safeMeasureWidth = Number.isFinite(measureWidthPx) ? Math.max(0, measureWidthPx) : 0;
+  const safeScale =
+    Number.isFinite(effectiveDisplayScale) && effectiveDisplayScale > 0 ? effectiveDisplayScale : 1;
+  const ratioInset =
+    Math.min(safeMeasureWidth, PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx / safeScale) *
+    PRACTICE_STAFF_WIDTH_TUNING.measureEdgeInsetRatio;
+  return Math.min(
+    safeMeasureWidth / 2,
+    Math.max(ratioInset, PRACTICE_STAFF_WIDTH_TUNING.minimumMeasureEdgeInsetPx / safeScale)
+  );
+}
+
 export function getPracticeStaffMeasureWidthPx(
   noteOnsets: readonly number[],
   beatsPerMeasure: number = PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure
@@ -122,9 +140,7 @@ export function getPracticeStaffMeasureWidthPx(
   const baseWidth =
     (PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx * safeBeatsPerMeasure) /
     PRACTICE_STAFF_WIDTH_TUNING.referenceBeatsPerMeasure;
-  const edgeInset =
-    Math.min(baseWidth, PRACTICE_STAFF_WIDTH_TUNING.referenceMeasureWidthPx) *
-    PRACTICE_STAFF_WIDTH_TUNING.measureEdgeInsetRatio;
+  const edgeInset = getPracticeStaffMeasureEdgeInsetPx(baseWidth);
   const minimumColumnGapPx =
     PRACTICE_STAFF_REFERENCE_NOTE_COLUMN_WIDTH_PX *
     PRACTICE_STAFF_WIDTH_TUNING.minRhythmicColumnGapRatio;
