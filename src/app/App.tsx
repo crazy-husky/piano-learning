@@ -319,6 +319,9 @@ export function App({
   }, []);
 
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [route.path]);
   const [playgroundNavExpanded, setPlaygroundNavExpanded] = useState(() =>
     route.path.startsWith("/playground/")
   );
@@ -1563,6 +1566,7 @@ export function App({
                         navigationExitRequest={practiceExitRequest}
                         practiceTab={route.practiceTab ?? "free"}
                         practiceDistanceMode={route.practiceDistanceMode}
+                        isLearningRoutePractice
                         showPracticeKindTabs={false}
                         practiceModeLock={
                           route.levelId === 2 || route.levelId === 5

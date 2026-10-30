@@ -11,7 +11,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { writeBackupNow } from "../../../data/backup";
-import { db } from "../../../data/db";
+import { db, replacePracticeSessionDiscardingAnswerEvents } from "../../../data/db";
 import { createUuid } from "../../../domain/id";
 import { getNotesForSelection, getStaffSelectedPitchIds } from "../../../domain/notes";
 import { validateStaffDistancePractice } from "../../../domain/staffDistancePractice";
@@ -72,6 +72,7 @@ interface StaffDistancePreferences extends StaffDistancePracticeSettings {
 
 interface StaffDistancePracticeViewProps {
   isActive: boolean;
+  showRestartControl?: boolean;
   distanceMode?: PracticeDistanceMode;
   midi: MidiInputController;
   microphone: StaffDistanceMicrophoneInput;
@@ -276,6 +277,7 @@ function formatMedianResponse(session: PracticeSessionRecord): string {
 
 export function StaffDistancePracticeView({
   isActive,
+  showRestartControl = false,
   distanceMode,
   midi,
   microphone,
@@ -614,6 +616,20 @@ export function StaffDistancePracticeView({
     microphone.stop();
   };
 
+  const restartSession = async (): Promise<void> => {
+    if (!showRestartControl || !runSession) return;
+    const nextSession: PracticeSessionRecord = {
+      ...runSession,
+      id: createUuid(),
+      startedAt: new Date().toISOString(),
+      completedCount: 0,
+      interruptedCount: 0,
+      staffDistance: { ...runSession.staffDistance!, questionResults: [] },
+    };
+    await replacePracticeSessionDiscardingAnswerEvents(runSession.id, nextSession);
+    setRunSession(nextSession);
+  };
+
   const toggleUnison = (includeUnison: boolean): void =>
     setPreferences((current) => ({ ...current, includeUnison }));
 
@@ -625,6 +641,7 @@ export function StaffDistancePracticeView({
     const sessionNotes = getDistanceNotes(runSession.staffDistance);
     return (
       <StaffDistanceRun
+        key={runSession.id}
         chaseSettings={{
           enabled: preferences.chaseEnabled,
           handMode: preferences.chaseHandMode,
@@ -641,6 +658,7 @@ export function StaffDistancePracticeView({
         onMicrophoneAnswerHandlerChange={onMicrophoneAnswerHandlerChange}
         navigationExitRequest={navigationExitRequest}
         notes={sessionNotes}
+        onRestart={showRestartControl ? restartSession : undefined}
         onFinish={finishSession}
         onSaveChaseSettings={(chaseSettings: PracticeChaseSettings) =>
           setPreferences((current) => ({

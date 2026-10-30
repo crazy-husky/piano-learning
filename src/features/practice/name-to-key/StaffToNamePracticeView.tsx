@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play, RotateCcw, Square } from "lucide-react";
 import { toast } from "sonner";
 import { answerDeviceInfo } from "../../../data/answerEvents";
-import { saveAnswerEvents } from "../../../data/db";
+import { deletePracticeSessionWithReviews, saveAnswerEvents } from "../../../data/db";
 import { createUuid } from "../../../domain/id";
 import { getNotesForGroups, NOTE_NAMES, PRACTICE_GROUPS } from "../../../domain/notes";
 import type {
@@ -48,6 +48,7 @@ interface StaffToNamePreferences {
 
 interface StaffToNamePracticeViewProps {
   isActive: boolean;
+  showRestartControl?: boolean;
   navigationExitRequest?: {
     id: number;
     targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal" | "metronome";
@@ -155,6 +156,7 @@ function formatDuration(milliseconds: number | null): string {
 
 export function StaffToNamePracticeView({
   isActive,
+  showRestartControl = false,
   navigationExitRequest,
   onBeforePracticeStart,
   onDataChanged,
@@ -174,6 +176,7 @@ export function StaffToNamePracticeView({
   const [feedback, setFeedback] = useState<StaffToNameFeedback | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   const [remainingMs, setRemainingMs] = useState(0);
   const [customCount, setCustomCount] = useState(preferences.fixedCount);
   const [customCountSelected, setCustomCountSelected] = useState(
@@ -490,6 +493,37 @@ export function StaffToNamePracticeView({
     }
   };
 
+  const restartRound = async (): Promise<void> => {
+    if (stage !== "running" || isStarting || isRestarting) return;
+    const previousSessionId = sessionIdRef.current;
+    const wasPaused = isPaused;
+    setIsRestarting(true);
+    try {
+      if (!wasPaused) pauseOrResume();
+      await eventSaveQueueRef.current;
+      await deletePracticeSessionWithReviews(previousSessionId, []);
+      await onDataChanged();
+      if (advanceTimerRef.current !== undefined) window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = undefined;
+      targetRef.current = null;
+      targetResolvedRef.current = true;
+      attemptsRef.current = [];
+      eventsRef.current = [];
+      setRoundEvents([]);
+      setFeedback(null);
+      setTarget(null);
+      setIsPaused(false);
+      setStage("setup");
+      onRunningChange(false);
+      onStageChange(false);
+      await startRound();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "重置练习失败，请重试。");
+    } finally {
+      setIsRestarting(false);
+    }
+  };
+
   useEffect(() => {
     onRunningChange(stage === "running" && !isPaused);
   }, [isPaused, onRunningChange, stage]);
@@ -781,6 +815,18 @@ export function StaffToNamePracticeView({
                 )}
                 {isPaused ? "继续" : "暂停"}
               </button>
+              {showRestartControl ? (
+                <button
+                  aria-label="重新开始当前练习"
+                  disabled={isRestarting}
+                  onClick={() => void restartRound()}
+                  title="重新开始当前练习"
+                  type="button"
+                >
+                  <RotateCcw aria-hidden="true" size={17} />
+                  重新开始
+                </button>
+              ) : null}
               <button aria-label="结束练习" onClick={() => finishRound()} type="button">
                 <Square aria-hidden="true" size={17} />
                 结束

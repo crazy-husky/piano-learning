@@ -1,8 +1,10 @@
+import { RotateCcw } from "lucide-react";
 import { PracticeMicrophoneRetryButton } from "./PracticeMicrophoneRetryButton";
 
 interface PauseOverlayProps {
   onExit?: () => void;
   onResume: () => void;
+  onRestart?: () => void;
   allowBackdropResume?: boolean;
   resumeBlockedMessage?: string;
   resumeMessage?: string;
@@ -18,6 +20,7 @@ interface PauseOverlayProps {
 export function PauseOverlay({
   onExit,
   onResume,
+  onRestart,
   allowBackdropResume = true,
   resumeBlockedMessage,
   resumeMessage,
@@ -61,11 +64,23 @@ export function PauseOverlay({
         {showKeyboardShortcuts ? (
           <small>{resumeBlockedMessage ?? resumeMessage ?? "按空格或点击空白处继续练习"}</small>
         ) : null}
+        {showKeyboardShortcuts && onRestart ? (
+          <button className="pause-overlay-restart" onClick={onRestart} type="button">
+            <RotateCcw aria-hidden="true" size={17} />
+            重新开始
+          </button>
+        ) : null}
         {!showKeyboardShortcuts ? (
           <div className="pause-overlay-touch-actions">
             {onExit ? (
               <button className="pause-overlay-exit" onClick={onExit} type="button">
                 退出练习
+              </button>
+            ) : null}
+            {onRestart ? (
+              <button className="pause-overlay-restart" onClick={onRestart} type="button">
+                <RotateCcw aria-hidden="true" size={17} />
+                重新开始
               </button>
             ) : null}
             <button

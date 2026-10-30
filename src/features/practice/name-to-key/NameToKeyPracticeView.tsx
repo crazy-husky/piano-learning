@@ -11,7 +11,7 @@ import { Check, Mic, Music2, Pause, Play, RotateCcw, Square } from "lucide-react
 import { toast } from "sonner";
 import { getPianoAudioTime, playPianoNote } from "../../../audio/piano";
 import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
-import { saveAnswerEvents } from "../../../data/db";
+import { deletePracticeSessionWithReviews, saveAnswerEvents } from "../../../data/db";
 import { createUuid } from "../../../domain/id";
 import type {
   AnswerAttempt,
@@ -87,6 +87,7 @@ interface NameToKeyMicrophone {
 
 interface NameToKeyPracticeViewProps {
   isActive: boolean;
+  showRestartControl?: boolean;
   midi: MidiInputController;
   microphone: NameToKeyMicrophone;
   navigationExitRequest?: {
@@ -243,6 +244,7 @@ function NameKeyReferenceDialog({ isOpen, onClose }: NameKeyReferenceDialogProps
 
 function NameToKeyPracticeContent({
   isActive,
+  showRestartControl = false,
   midi,
   microphone,
   navigationExitRequest,
@@ -285,6 +287,7 @@ function NameToKeyPracticeContent({
   }, [isActive, onInputModeChange, preferences.inputMode]);
   const [stage, setStage] = useState<NameToKeyStage>("setup");
   const [isPaused, setIsPaused] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   const [isNoteKeyGuideOpen, setIsNoteKeyGuideOpen] = useState(false);
   const isPausedRef = useRef(false);
   isPausedRef.current = isPaused;
@@ -344,6 +347,7 @@ function NameToKeyPracticeContent({
   const sessionIdRef = useRef("");
   const eventIndexRef = useRef(0);
   const roundEventsRef = useRef<AnswerEvent[]>([]);
+  const eventSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const remainingMsRef = useRef(roundDurationMs);
   const activeStartedAtRef = useRef(0);
   const activeElapsedRef = useRef(0);
@@ -375,9 +379,11 @@ function NameToKeyPracticeContent({
     roundEventsRef.current = nextEvents;
     setRoundEvents(nextEvents);
     eventIndexRef.current += 1;
-    void saveAnswerEvents([event]).catch(() => {
-      toast.error("这道题的练习记录暂时保存失败。", { duration: 3500 });
-    });
+    eventSaveQueueRef.current = eventSaveQueueRef.current
+      .then(() => saveAnswerEvents([event]))
+      .catch(() => {
+        toast.error("这道题的练习记录暂时保存失败。", { duration: 3500 });
+      });
   }, []);
 
   const setNextTarget = useCallback((): void => {
@@ -813,6 +819,47 @@ function NameToKeyPracticeContent({
     }
   };
   startRoundRef.current = startRound;
+
+  const restartRound = async (): Promise<void> => {
+    if (stage !== "running" || isStarting || isRestarting) return;
+    const previousSessionId = sessionIdRef.current;
+    const wasPaused = isPaused;
+    setIsRestarting(true);
+    try {
+      if (!wasPaused) {
+        activeElapsedRef.current += Math.max(0, performance.now() - activeStartedAtRef.current);
+        activeStartedAtRef.current = 0;
+        setIsPaused(true);
+        if (microphoneStartedRef.current) {
+          microphoneStartedRef.current = false;
+          stopMicrophone();
+        }
+      }
+      await eventSaveQueueRef.current;
+      await deletePracticeSessionWithReviews(previousSessionId, []);
+      await onDataChanged();
+      if (intervalRef.current !== undefined) window.clearInterval(intervalRef.current);
+      intervalRef.current = undefined;
+      if (advanceTimerRef.current !== undefined) window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = undefined;
+      targetMidiRef.current = null;
+      targetRef.current = null;
+      targetResolvedRef.current = true;
+      roundEventsRef.current = [];
+      setRoundEvents([]);
+      setTarget(null);
+      setFeedback(null);
+      setIsPaused(false);
+      setStage("setup");
+      onRegisterMicrophoneAnswer(null);
+      onStageChange(false);
+      await startRoundRef.current();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "重置练习失败，请重试。");
+    } finally {
+      setIsRestarting(false);
+    }
+  };
 
   const retryMicrophone = useCallback(async (): Promise<boolean> => {
     const connected = await startMicrophone({ includeAccidentals: true });
@@ -1361,6 +1408,18 @@ function NameToKeyPracticeContent({
                 {isPaused ? <Play size={17} /> : <Pause size={17} />}
                 {isPaused ? "继续" : "暂停"}
               </button>
+              {showRestartControl ? (
+                <button
+                  aria-label="重新开始当前练习"
+                  disabled={isRestarting}
+                  onClick={() => void restartRound()}
+                  title="重新开始当前练习"
+                  type="button"
+                >
+                  <RotateCcw aria-hidden="true" size={17} />
+                  重新开始
+                </button>
+              ) : null}
               <button onClick={endRound} type="button">
                 <Square size={16} />
                 结束
@@ -1412,7 +1471,11 @@ function NameToKeyPracticeContent({
               className={`name-key-prompt${feedback ? " has-feedback" : ""}${preferences.inputMode === "microphone" ? " is-microphone" : ""}`}
               aria-live="polite"
             >
-              <span className="name-key-prompt-caption">找到这个音名</span>
+              <span className="name-key-prompt-caption">
+                {preferences.includeOctaveNumbers
+                  ? "请弹出下列音名。"
+                  : "请在小字一组（中央C所在组）弹出下列音名。"}
+              </span>
               <strong>
                 {preferences.includeOctaveNumbers
                   ? target.displayName
@@ -1473,6 +1536,12 @@ function NameToKeyPracticeContent({
                 <Play size={17} />
                 继续
               </button>
+              {showRestartControl ? (
+                <button disabled={isRestarting} onClick={() => void restartRound()} type="button">
+                  <RotateCcw aria-hidden="true" size={17} />
+                  重新开始
+                </button>
+              ) : null}
               {preferences.inputMode === "microphone" &&
               (microphoneError ||
                 microphoneStatus === "error" ||
@@ -1663,6 +1732,7 @@ export function NameToKeyPracticeView({
         >
           <StaffToNamePracticeView
             isActive={viewProps.isActive}
+            showRestartControl={viewProps.showRestartControl}
             navigationExitRequest={viewProps.navigationExitRequest}
             onBeforePracticeStart={viewProps.onBeforePracticeStart}
             onDataChanged={viewProps.onDataChanged}

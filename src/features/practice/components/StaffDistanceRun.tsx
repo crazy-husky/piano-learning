@@ -1,7 +1,8 @@
-import { Pause, Play, Settings2, Square } from "lucide-react";
+import { Pause, Play, RotateCcw, Settings2, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getPianoAudioTime } from "../../../audio/piano";
 import type {
+  AnswerEvent,
   StaffDistanceInputMethod,
   PitchId,
   PracticeMode,
@@ -68,6 +69,7 @@ interface StaffDistanceRunProps {
   noteDurations: readonly PromptNoteDuration[];
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   notes: TargetNote[];
+  onRestart?: () => Promise<void>;
   onFinish: (session: PracticeSessionRecord, showSummary: boolean) => Promise<void>;
   onSaveChaseSettings: (settings: PracticeChaseSettings) => void;
   onNavigationExit?: (targetView: PracticeNavigationExitRequest["targetView"]) => void;
@@ -296,6 +298,7 @@ export function StaffDistanceRun({
   navigationExitRequest,
   notes,
   onFinish,
+  onRestart,
   onSaveChaseSettings,
   onNavigationExit,
   onRunningChange,
@@ -353,6 +356,7 @@ export function StaffDistanceRun({
   >(null);
   const [inputError, setInputError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   const [isQuestionLimitReached, setIsQuestionLimitReached] = useState(false);
   useEffect(() => {
     if (isPaused) setIsChaseSettingsOpen(false);
@@ -412,6 +416,7 @@ export function StaffDistanceRun({
   const advanceTimerRef = useRef<number | undefined>();
   const wrongFeedbackTimerRef = useRef<number | undefined>();
   const endingRef = useRef(false);
+  const answerEventSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const questionLimitReachedRef = useRef(false);
   const handledExitRequestRef = useRef<number | null>(null);
   const finishRef = useRef<
@@ -569,6 +574,33 @@ export function StaffDistanceRun({
     [details, inputMethod, microphone, onFinish, onRunningChange, session, trainingMode]
   );
   finishRef.current = finish;
+
+  const restartCurrentRun = async (): Promise<void> => {
+    if (!onRestart || endingRef.current || isRestarting) return;
+    endingRef.current = true;
+    setIsRestarting(true);
+    if (advanceTimerRef.current !== undefined) window.clearTimeout(advanceTimerRef.current);
+    advanceTimerRef.current = undefined;
+    if (wrongFeedbackTimerRef.current !== undefined) {
+      window.clearTimeout(wrongFeedbackTimerRef.current);
+      wrongFeedbackTimerRef.current = undefined;
+    }
+    pendingAdvanceRef.current = null;
+    activeStartedAtRef.current = 0;
+    questionStartedAtRef.current = 0;
+    isPausedRef.current = true;
+    setIsPaused(true);
+    if (trainingMode === "play" && inputMethod === "microphone") microphone.stop();
+    try {
+      await answerEventSaveQueueRef.current;
+      await onRestart();
+    } catch (error) {
+      endingRef.current = false;
+      setInputError(error instanceof Error ? error.message : "重置练习失败，请重试。");
+    } finally {
+      setIsRestarting(false);
+    }
+  };
 
   const pauseAtQuestionLimit = useCallback((): void => {
     if (questionLimitReachedRef.current) return;
@@ -768,49 +800,50 @@ export function StaffDistanceRun({
               microphoneAlgorithm ?? "swiftf0"
             )
           : 0;
-      void saveAnswerEvents([
-        {
-          id: `${session.id}:distance:${eventIndex}`,
-          dataSetId: "",
-          sessionId: session.id,
-          eventIndex,
-          occurredAt: new Date().toISOString(),
-          promptStartedAt: new Date(Date.now() - responseMs).toISOString(),
-          promptEndedAt: new Date().toISOString(),
-          mode: "staff-distance",
-          inputMode: effectiveInputMode,
-          deviceInfo: answerDeviceInfo(),
-          ...(effectiveInputMode === "microphone"
-            ? { ...microphoneContext, microphoneAlgorithm }
-            : {}),
-          targetMidi: getTargetMidiNoteNumber(currentTo),
-          targetNoteId: currentTo.id,
-          targetGroupId: currentTo.groupId,
-          targetNoteName: currentTo.noteName,
-          targetOctave: currentTo.octave,
-          recognizedMidi: questionAttemptsRef.current.at(-1)?.midi,
-          confidence: questionAttemptsRef.current.at(-1)?.confidence,
-          attempts: questionAttemptsRef.current,
-          isCorrectFirstTry: firstResponse.correct,
-          isCorrectFinal: true,
-          rawResponseTimeMs: responseMs,
-          estimatedSystemDelayMs,
-          responseTimeMs: Math.max(0, responseMs - estimatedSystemDelayMs),
-          activeMs: responseMs,
-          wrongAttempts: wrongAttemptsRef.current,
-          isExtraNote: false,
-          isMissed: false,
-          staffDistance: {
-            distance: pair.distance,
-            direction: pair.direction,
-            maxDistance: details.maxDistance,
-            trainingMode,
-            usedHint: usedHintRef.current,
-          },
+      const answerEvent: AnswerEvent = {
+        id: `${session.id}:distance:${eventIndex}`,
+        dataSetId: "",
+        sessionId: session.id,
+        eventIndex,
+        occurredAt: new Date().toISOString(),
+        promptStartedAt: new Date(Date.now() - responseMs).toISOString(),
+        promptEndedAt: new Date().toISOString(),
+        mode: "staff-distance",
+        inputMode: effectiveInputMode,
+        deviceInfo: answerDeviceInfo(),
+        ...(effectiveInputMode === "microphone"
+          ? { ...microphoneContext, microphoneAlgorithm }
+          : {}),
+        targetMidi: getTargetMidiNoteNumber(currentTo),
+        targetNoteId: currentTo.id,
+        targetGroupId: currentTo.groupId,
+        targetNoteName: currentTo.noteName,
+        targetOctave: currentTo.octave,
+        recognizedMidi: questionAttemptsRef.current.at(-1)?.midi,
+        confidence: questionAttemptsRef.current.at(-1)?.confidence,
+        attempts: questionAttemptsRef.current,
+        isCorrectFirstTry: firstResponse.correct,
+        isCorrectFinal: true,
+        rawResponseTimeMs: responseMs,
+        estimatedSystemDelayMs,
+        responseTimeMs: Math.max(0, responseMs - estimatedSystemDelayMs),
+        activeMs: responseMs,
+        wrongAttempts: wrongAttemptsRef.current,
+        isExtraNote: false,
+        isMissed: false,
+        staffDistance: {
+          distance: pair.distance,
+          direction: pair.direction,
+          maxDistance: details.maxDistance,
+          trainingMode,
+          usedHint: usedHintRef.current,
         },
-      ]).catch((error: unknown) => {
-        console.error("Failed to save staff-distance answer event", error);
-      });
+      };
+      answerEventSaveQueueRef.current = answerEventSaveQueueRef.current
+        .then(() => saveAnswerEvents([answerEvent]))
+        .catch((error: unknown) => {
+          console.error("Failed to save staff-distance answer event", error);
+        });
       resultsRef.current = nextResults;
       const completedNoteIndex = trainingMode === "look" ? questionIndex : questionIndex + 1;
       setCompletedNoteIndices((current) =>
@@ -1129,6 +1162,18 @@ export function StaffDistanceRun({
             {isPaused ? <Play size={16} /> : <Pause size={16} />}
             {isPaused ? "继续" : "暂停"}
           </button>
+          {onRestart ? (
+            <button
+              aria-label="重新开始当前练习"
+              disabled={isRestarting}
+              onClick={() => void restartCurrentRun()}
+              title="重新开始当前练习"
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={16} />
+              重新开始
+            </button>
+          ) : null}
           <button
             disabled={isPaused}
             onClick={() => void finish("manual-stop", true)}
@@ -1355,6 +1400,12 @@ export function StaffDistanceRun({
             <Play size={16} />
             继续
           </button>
+          {onRestart ? (
+            <button disabled={isRestarting} onClick={() => void restartCurrentRun()} type="button">
+              <RotateCcw aria-hidden="true" size={16} />
+              重新开始
+            </button>
+          ) : null}
           {trainingMode === "play" &&
           inputMethod === "microphone" &&
           (microphone.error ||

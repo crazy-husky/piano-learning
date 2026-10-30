@@ -124,6 +124,57 @@ async function updatePendingAnswerEvents(
   );
 }
 
+function enqueuePendingAnswerEventsUnlocked(events: readonly AnswerEvent[]): boolean {
+  if (events.length === 0) return true;
+  const byId = new Map(readPendingAnswerEvents().map((event) => [event.id, event]));
+  for (const event of events.map(boundedAnswerEvent)) byId.set(event.id, event);
+  return writePendingAnswerEvents([...byId.values()]);
+}
+
+function removePendingAnswerEventsUnlocked(ids: readonly string[]): boolean {
+  if (ids.length === 0) return true;
+  const idSet = new Set(ids);
+  return writePendingAnswerEvents(
+    readPendingAnswerEvents().filter((event) => !idSet.has(event.id))
+  );
+}
+
+function discardPendingAnswerEventsForSessionUnlocked(sessionId: string): AnswerEvent[] | null {
+  const pendingEvents = readPendingAnswerEvents();
+  const discardedEvents = pendingEvents.filter((event) => event.sessionId === sessionId);
+  const remainingEvents = pendingEvents.filter((event) => event.sessionId !== sessionId);
+  if (discardedEvents.length === 0) return [];
+  if (!writePendingAnswerEvents(remainingEvents)) return null;
+  return discardedEvents;
+}
+
+function restorePendingAnswerEventsUnlocked(events: readonly AnswerEvent[]): boolean {
+  if (events.length === 0) return true;
+  const byId = new Map(readPendingAnswerEvents().map((event) => [event.id, event]));
+  for (const event of events) byId.set(event.id, event);
+  return writePendingAnswerEvents([...byId.values()]);
+}
+
+async function runAfterDiscardingPendingAnswerEventsUnlocked(
+  sessionId: string,
+  operation: () => Promise<void>
+): Promise<void> {
+  const discardedEvents = discardPendingAnswerEventsForSessionUnlocked(sessionId);
+  if (!discardedEvents) {
+    throw new Error("无法清理待保存的答题记录，请重试后再重新开始。");
+  }
+  try {
+    await operation();
+  } catch (error) {
+    if (!restorePendingAnswerEventsUnlocked(discardedEvents)) {
+      throw new Error("删除练习失败，且无法恢复待保存的答题记录。请重新加载后检查练习记录。", {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+}
+
 export async function enqueuePendingAnswerEvents(events: readonly AnswerEvent[]): Promise<boolean> {
   if (events.length === 0) return true;
   try {
@@ -134,18 +185,6 @@ export async function enqueuePendingAnswerEvents(events: readonly AnswerEvent[])
     });
   } catch {
     return false;
-  }
-}
-
-async function removePendingAnswerEvents(ids: readonly string[]): Promise<void> {
-  if (ids.length === 0) return;
-  try {
-    const idSet = new Set(ids);
-    await updatePendingAnswerEvents((pendingEvents) =>
-      pendingEvents.filter((event) => !idSet.has(event.id))
-    );
-  } catch {
-    // A duplicate is safe: event writes use stable ids and bulkPut.
   }
 }
 
@@ -549,28 +588,32 @@ export async function saveAnswerEvents(events: readonly AnswerEvent[]): Promise<
       dataSetId: event.dataSetId || settings.dataSetId,
     })
   );
-  const queuePersisted = await enqueuePendingAnswerEvents(boundedEvents);
-  try {
-    await writeAnswerEvents(boundedEvents);
-  } catch (error) {
-    if (!queuePersisted) {
-      throw new Error("Answer events could not be saved or queued for retry.", { cause: error });
+  await withAnswerEventMutationLock(async () => {
+    const queuePersisted = enqueuePendingAnswerEventsUnlocked(boundedEvents);
+    try {
+      await writeAnswerEvents(boundedEvents);
+    } catch (error) {
+      if (!queuePersisted) {
+        throw new Error("Answer events could not be saved or queued for retry.", { cause: error });
+      }
+      throw error;
     }
-    throw error;
-  }
-  await removePendingAnswerEvents(boundedEvents.map((event) => event.id));
+    removePendingAnswerEventsUnlocked(boundedEvents.map((event) => event.id));
+  });
 }
 
 export async function retryPendingAnswerEvents(): Promise<number> {
-  const pendingEvents = readPendingAnswerEvents();
-  if (pendingEvents.length === 0) return 0;
-  try {
-    await writeAnswerEvents(pendingEvents);
-    await removePendingAnswerEvents(pendingEvents.map((event) => event.id));
-    return pendingEvents.length;
-  } catch {
-    return 0;
-  }
+  return withAnswerEventMutationLock(async () => {
+    const pendingEvents = readPendingAnswerEvents();
+    if (pendingEvents.length === 0) return 0;
+    try {
+      await writeAnswerEvents(pendingEvents);
+      removePendingAnswerEventsUnlocked(pendingEvents.map((event) => event.id));
+      return pendingEvents.length;
+    } catch {
+      return 0;
+    }
+  });
 }
 
 const LOCAL_LEARNING_PROGRESS_KEYS = [
@@ -879,9 +922,10 @@ export async function saveStaffRecallRun(run: StaffRecallRunRecord): Promise<voi
   await db.staffRecallRuns.put(run);
 }
 
-export async function deletePracticeSessionWithReviews(
+async function removePracticeSessionRecords(
   sessionId: PracticeSessionRecord["id"],
-  reviews: ReviewRecord[]
+  reviews: ReviewRecord[],
+  replacementSession?: PracticeSessionRecord
 ): Promise<void> {
   const reviewIds = reviews.filter((review) => !review.ignored).map((review) => review.id);
   await db.transaction(
@@ -892,6 +936,9 @@ export async function deletePracticeSessionWithReviews(
     db.answerEvents,
     async () => {
       await db.practiceSessions.delete(sessionId);
+      if (replacementSession) {
+        await db.practiceSessions.put(replacementSession);
+      }
       if (reviewIds.length > 0) {
         await db.reviews.bulkDelete(reviewIds);
       }
@@ -925,6 +972,31 @@ export async function deletePracticeSessionWithReviews(
       await db.settings.put(nextSettings);
     }
   );
+}
+
+export async function deletePracticeSessionWithReviews(
+  sessionId: PracticeSessionRecord["id"],
+  reviews: ReviewRecord[]
+): Promise<void> {
+  await withAnswerEventMutationLock(async () => {
+    await runAfterDiscardingPendingAnswerEventsUnlocked(sessionId, () =>
+      removePracticeSessionRecords(sessionId, reviews)
+    );
+  });
+}
+
+export async function replacePracticeSessionDiscardingAnswerEvents(
+  sessionId: PracticeSessionRecord["id"],
+  replacementSession: PracticeSessionRecord
+): Promise<void> {
+  if (sessionId === replacementSession.id) {
+    throw new Error("重新开始练习必须使用新的练习记录 ID。");
+  }
+  await withAnswerEventMutationLock(async () => {
+    await runAfterDiscardingPendingAnswerEventsUnlocked(sessionId, () =>
+      removePracticeSessionRecords(sessionId, [], replacementSession)
+    );
+  });
 }
 
 export async function replaceAllData(

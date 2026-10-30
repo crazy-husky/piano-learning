@@ -63,6 +63,7 @@ export interface PracticeStaffPageRuntime {
 }
 
 export interface CompletePracticeSessionOptions {
+  discard?: boolean;
   showSummary?: boolean;
   updateUi?: boolean;
 }
@@ -296,61 +297,77 @@ export function usePracticeSessionLifecycle({
       const showSummary = options.showSummary ?? true;
       const updateUi = options.updateUi ?? true;
       runtime.endingRef.current = true;
-      services.stopMicrophone();
-      services.clearStaffPageScrollSchedule();
-      const unfinishedReview = runtime.promptRef.current
-        ? await finishCurrentReview(false, unfinishedReason)
-        : null;
-      timers.pauseActiveTimers();
-      const endedAt = new Date().toISOString();
-      const finalReviews = unfinishedReview
-        ? runtime.sessionReviewsRef.current
-        : [...runtime.sessionReviewsRef.current];
-      const finalSession: PracticeSessionRecord = {
-        ...runtime.sessionRef.current,
-        activePracticeMs: timers.getSessionActiveMs(),
-        endedAt,
-        endReason,
-        completedCount: finalReviews.filter(isCompletedReview).length,
-        interruptedCount: finalReviews.filter((review) => review.interrupted).length,
-      };
-      const pendingReviewPersistence = pendingReviewPersistenceRef.current;
-      pendingReviewPersistenceRef.current = [];
-      await Promise.all(pendingReviewPersistence);
-      const shouldKeepSession = shouldKeepPracticeSession(finalSession, finalReviews);
-      if (shouldKeepSession) {
-        await db.practiceSessions.put(finalSession);
-        runtime.sessionRef.current = finalSession;
-      } else {
-        await deletePracticeSessionWithReviews(finalSession.id, finalReviews);
-        runtime.sessionRef.current = null;
+      try {
+        services.stopMicrophone();
+        services.clearStaffPageScrollSchedule();
+        const unfinishedReview =
+          !options.discard && runtime.promptRef.current
+            ? await finishCurrentReview(false, unfinishedReason)
+            : null;
+        timers.pauseActiveTimers();
+        const endedAt = new Date().toISOString();
+        const finalReviews = unfinishedReview
+          ? runtime.sessionReviewsRef.current
+          : [...runtime.sessionReviewsRef.current];
+        const finalSession: PracticeSessionRecord = {
+          ...runtime.sessionRef.current,
+          activePracticeMs: timers.getSessionActiveMs(),
+          endedAt,
+          endReason,
+          completedCount: finalReviews.filter(isCompletedReview).length,
+          interruptedCount: finalReviews.filter((review) => review.interrupted).length,
+        };
+        const pendingReviewPersistence = pendingReviewPersistenceRef.current;
+        pendingReviewPersistenceRef.current = [];
+        await Promise.all(pendingReviewPersistence);
+        const shouldKeepSession =
+          !options.discard && shouldKeepPracticeSession(finalSession, finalReviews);
+        if (options.discard) {
+          await deletePracticeSessionWithReviews(finalSession.id, finalReviews);
+          runtime.sessionRef.current = null;
+          runtime.promptRef.current = null;
+        } else if (shouldKeepSession) {
+          await db.practiceSessions.put(finalSession);
+          runtime.sessionRef.current = finalSession;
+        } else {
+          await deletePracticeSessionWithReviews(finalSession.id, finalReviews);
+          runtime.sessionRef.current = null;
+        }
+        if (updateUi) {
+          ui.finishSessionState({
+            finalSession,
+            reviews: finalReviews,
+            shouldKeepSession,
+            showSummary,
+          });
+          ui.syncStaffPage(null);
+          ui.setIsStaffPageScrolling(false);
+        } else {
+          runtime.staffPageRef.current = null;
+        }
+        runtime.isPausedRef.current = false;
+        runtime.pendingAfterPauseRef.current = null;
+        if (updateUi) {
+          ui.setIsPaused(false);
+        }
+        if (shouldKeepSession) {
+          await writeBackupNow().catch(() => undefined);
+        }
+        await services.onDataChanged();
+        runtime.adaptiveSchedulerRef.current = null;
+        if (shouldKeepSession && updateUi) {
+          services.onPracticeFinished();
+        }
+      } catch (error) {
+        if (options.discard && runtime.sessionRef.current) {
+          timers.pauseActiveTimers();
+          runtime.isPausedRef.current = true;
+          ui.setIsPaused(true);
+        }
+        throw error;
+      } finally {
+        runtime.endingRef.current = false;
       }
-      if (updateUi) {
-        ui.finishSessionState({
-          finalSession,
-          reviews: finalReviews,
-          shouldKeepSession,
-          showSummary,
-        });
-        ui.syncStaffPage(null);
-        ui.setIsStaffPageScrolling(false);
-      } else {
-        runtime.staffPageRef.current = null;
-      }
-      runtime.isPausedRef.current = false;
-      runtime.pendingAfterPauseRef.current = null;
-      if (updateUi) {
-        ui.setIsPaused(false);
-      }
-      if (shouldKeepSession) {
-        await writeBackupNow().catch(() => undefined);
-      }
-      await services.onDataChanged();
-      runtime.adaptiveSchedulerRef.current = null;
-      if (shouldKeepSession && updateUi) {
-        services.onPracticeFinished();
-      }
-      runtime.endingRef.current = false;
     },
     [finishCurrentReview, runtime, services, timers, ui]
   );

@@ -39,6 +39,20 @@
   opacity: 0.6;
 }
 
+@media (max-width: 820px), (hover: none) and (pointer: coarse) {
+  .midi-input-control {
+    min-height: 44px;
+    align-items: stretch;
+  }
+
+  .midi-input-control-select,
+  .midi-input-control-button {
+    box-sizing: border-box;
+    height: 44px;
+    min-height: 44px;
+  }
+}
+
 .midi-input-control.needs-attention .midi-input-control-select,
 .midi-input-control.needs-attention .midi-input-control-button {
   animation: midi-input-attention-pulse 1.4s ease-in-out infinite;

@@ -1,9 +1,31 @@
 import { getTargetMidiNoteNumber } from "../../../domain/answerInput";
-import type { DuetPracticeLevel, NoteName, Staff, TargetNote } from "../../../domain/types";
+import type {
+  DuetPracticeLevel,
+  NoteName,
+  PracticeGroupId,
+  Staff,
+  TargetNote,
+} from "../../../domain/types";
 import type { GeneratedStaffPageRhythm, StaffPageNoteDuration } from "./staffPageNotation";
 
 export const DUET_PROMPT_TIMEOUT_MS = 3_500;
 export const DUET_PRACTICE_CURRICULUM_VERSION = 2;
+
+export type DuetPracticeRangePreset = "standard" | "extended";
+
+export const DEFAULT_DUET_PRACTICE_RANGE_PRESET: DuetPracticeRangePreset = "standard";
+
+export function normalizeDuetPracticeRangePreset(value: unknown): DuetPracticeRangePreset {
+  return value === "extended" ? "extended" : DEFAULT_DUET_PRACTICE_RANGE_PRESET;
+}
+
+export function getDuetPracticeGroupIds(preset: DuetPracticeRangePreset): PracticeGroupId[] {
+  return preset === "extended" ? ["C2-B2", "C3-B3", "C4-B4", "C5-B5"] : ["C3-B3", "C4-B4"];
+}
+
+export function getDuetPracticeRangeSummary(preset: DuetPracticeRangePreset): string {
+  return preset === "extended" ? "C2–B5（左右手各两个八度）" : "C3–B4（左右手各一个八度）";
+}
 
 export interface DuetTargetPair {
   /** Notes in the treble staff for this onset. An empty array means a rest. */
@@ -410,13 +432,31 @@ function getMeasureEvents(
   return [...mergedEvents.values()].sort((left, right) => left.beat - right.beat);
 }
 
-function createNoteLookup(notes: readonly TargetNote[]): Map<Staff, Map<NoteName, TargetNote>> {
-  const lookup = new Map<Staff, Map<NoteName, TargetNote>>([
+function createNoteLookup(notes: readonly TargetNote[]): Map<Staff, Map<NoteName, TargetNote[]>> {
+  const lookup = new Map<Staff, Map<NoteName, TargetNote[]>>([
     ["treble", new Map()],
     ["bass", new Map()],
   ]);
-  notes.forEach((note) => lookup.get(note.staff)?.set(note.noteName, note));
+  notes.forEach((note) => {
+    const staffNotes = lookup.get(note.staff);
+    if (!staffNotes) return;
+    const matchingNotes = staffNotes.get(note.noteName) ?? [];
+    matchingNotes.push(note);
+    matchingNotes.sort((left, right) => left.octave - right.octave);
+    staffNotes.set(note.noteName, matchingNotes);
+  });
   return lookup;
+}
+
+function getMeasureNote(
+  lookup: Map<Staff, Map<NoteName, TargetNote[]>>,
+  staff: Staff,
+  noteName: NoteName,
+  measureIndex: number
+): TargetNote | undefined {
+  const candidates = lookup.get(staff)?.get(noteName);
+  if (!candidates?.length) return undefined;
+  return candidates[Math.floor(measureIndex / 2) % candidates.length];
 }
 
 /** Builds complete four-beat measures from authored 4-bar phrases and rhythm templates. */
@@ -491,10 +531,10 @@ export function createDuetPracticePage(
     );
     for (const measureEvent of measureEvents) {
       const high = measureEvent.high
-        .map((name) => lookup.get("treble")?.get(name))
+        .map((name) => getMeasureNote(lookup, "treble", name, measureIndex))
         .filter((note): note is TargetNote => note !== undefined);
       const low = measureEvent.low
-        .map((name) => lookup.get("bass")?.get(name))
+        .map((name) => getMeasureNote(lookup, "bass", name, measureIndex))
         .filter((note): note is TargetNote => note !== undefined);
       const group = [...high, ...low];
       if (group.length === 0) continue;

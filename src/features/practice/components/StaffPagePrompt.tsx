@@ -66,6 +66,7 @@ interface StaffPagePromptProps {
   barlineAfterNoteIndices?: readonly number[];
   diagnosticSampleId?: number;
   notes: TargetNote[];
+  verticalRangeNotes?: readonly TargetNote[];
   noteGroups?: readonly (readonly TargetNote[])[];
   lyrics?: readonly (readonly string[])[];
   noteMeasures?: readonly number[];
@@ -158,6 +159,56 @@ const COMPLETE_COLOR = "#2f8f5f";
 const WRONG_COLOR = "#c84c3d";
 const AUTO_FOLLOW_RESUME_DELAY_MS = 2000;
 const STAFF_PAGE_ROW_TOP_CLEARANCE_PX = 16;
+const STAFF_PAGE_NOTE_TOP_CLEARANCE_PX = 20;
+const STAFF_PAGE_STAVE_LINE_SPACING_PX = 10;
+const STAFF_PAGE_STAVE_TOP_LINE_OFFSET_PX = 40;
+const STAFF_PAGE_NOTE_NAME_ORDER: Record<TargetNote["noteName"], number> = {
+  C: 0,
+  D: 1,
+  E: 2,
+  F: 3,
+  G: 4,
+  A: 5,
+  B: 6,
+};
+const STAFF_PAGE_TREBLE_TOP_LINE_ORDER = 5 * 7 + STAFF_PAGE_NOTE_NAME_ORDER.F;
+
+function getStaffPageHighNoteTopPaddingPx(
+  notes: readonly TargetNote[],
+  layout: PracticePageStaffLayoutProfile,
+  staffNotationMode: StaffNotationMode,
+  useLedgerGap: boolean
+): number {
+  if (staffNotationMode === "bass-only") return 0;
+
+  const trebleNotes =
+    staffNotationMode === "grand" ? notes.filter((note) => note.staff === "treble") : notes;
+  if (trebleNotes.length === 0) return 0;
+
+  const trebleTopLineY =
+    (staffNotationMode === "grand"
+      ? layout.vertical.centerYPx -
+        (useLedgerGap ? layout.vertical.ledgerGapPx : layout.vertical.gapPx) / 2
+      : layout.vertical.trebleOnlyYPx) + STAFF_PAGE_STAVE_TOP_LINE_OFFSET_PX;
+  const highestNoteY = Math.min(
+    ...trebleNotes.map((note) => {
+      const noteOrder = note.octave * 7 + STAFF_PAGE_NOTE_NAME_ORDER[note.noteName];
+      return (
+        trebleTopLineY -
+        (noteOrder - STAFF_PAGE_TREBLE_TOP_LINE_ORDER) * (STAFF_PAGE_STAVE_LINE_SPACING_PX / 2)
+      );
+    })
+  );
+  const requiredPadding = Math.max(0, STAFF_PAGE_NOTE_TOP_CLEARANCE_PX - highestNoteY);
+
+  // Snap the additional row height to a staff half-space so ledger lines stay
+  // aligned when the enabled range includes notes above the normal treble staff.
+  return (
+    Math.ceil(requiredPadding / (STAFF_PAGE_STAVE_LINE_SPACING_PX / 2)) *
+    (STAFF_PAGE_STAVE_LINE_SPACING_PX / 2)
+  );
+}
+
 function getStaffPageRowCenterY(row: SVGElement): number {
   const staves = Array.from(row.querySelectorAll<SVGElement>(".vf-stave"));
   const firstStave = staves[0]?.getBoundingClientRect();
@@ -167,13 +218,19 @@ function getStaffPageRowCenterY(row: SVGElement): number {
   return (rowBounds.top + rowBounds.bottom) / 2;
 }
 
-function getStaffPageRowTopY(row: SVGElement): number {
+function getStaffPageRowTopY(row: SVGElement, rowStepPx: number): number {
+  const svg = row.ownerSVGElement;
+  const rowIndex = Number(row.getAttribute("data-staff-row-index"));
+  if (svg && Number.isInteger(rowIndex) && rowIndex >= 0 && svg.viewBox.baseVal.width > 0) {
+    const svgBounds = svg.getBoundingClientRect();
+    const renderedScale = svgBounds.width / svg.viewBox.baseVal.width;
+    return svgBounds.top + rowIndex * rowStepPx * renderedScale - STAFF_PAGE_ROW_TOP_CLEARANCE_PX;
+  }
+
   const firstStave = row.querySelector<SVGElement>(".vf-stave")?.getBoundingClientRect();
   if (!firstStave) return row.getBoundingClientRect().top;
 
-  // VexFlow note groups can report large SVG text/stem bounds above the actual
-  // staff lines. Follow the stave itself so those bounds do not leave a blank
-  // band above the visible notation; keep room for the clef above the top line.
+  // Fall back to the stave when this row is detached from its SVG surface.
   return firstStave.top - STAFF_PAGE_ROW_TOP_CLEARANCE_PX;
 }
 
@@ -1554,6 +1611,7 @@ export function StaffPagePrompt({
   barlineAfterNoteIndices,
   diagnosticSampleId,
   notes,
+  verticalRangeNotes,
   noteGroups,
   lyrics,
   noteMeasures,
@@ -1692,6 +1750,17 @@ export function StaffPagePrompt({
     () => noteGroups ?? notes.map((note) => [note]),
     [noteGroups, notes]
   );
+  const rowTopPaddingPx = useMemo(
+    () =>
+      getStaffPageHighNoteTopPaddingPx(
+        verticalRangeNotes ?? noteGroups?.flat() ?? notes,
+        layout,
+        staffNotationMode,
+        useLedgerGap
+      ),
+    [layout, noteGroups, notes, staffNotationMode, useLedgerGap, verticalRangeNotes]
+  );
+  const rowViewHeightPx = layout.vertical.viewHeightPx + rowTopPaddingPx;
   const { rows, rowStartIndices } = useMemo(() => {
     if (canonicalRowStartIndices?.length && sourceNoteGroups.length > 0) {
       const starts = canonicalRowStartIndices
@@ -1874,7 +1943,7 @@ export function StaffPagePrompt({
         ? Math.max(1, containerWidth)
         : Math.max(minDisplayWidthPx, Math.min(layout.width.maxPx, containerWidth));
       const renderedScale = containerWidth / displayWidth;
-      const rowStepPx = (layout.vertical.viewHeightPx + layout.multirow.rowGapPx) * renderedScale;
+      const rowStepPx = (rowViewHeightPx + layout.multirow.rowGapPx) * renderedScale;
       const overscanRows = 2;
       const start = Math.min(
         Math.max(0, Math.floor(localTop / rowStepPx) - overscanRows),
@@ -1905,7 +1974,14 @@ export function StaffPagePrompt({
       window.removeEventListener("resize", scheduleSync);
       if (animationFrameId !== 0) window.cancelAnimationFrame(animationFrameId);
     };
-  }, [adaptiveWidthLayout, layout, minDisplayWidthPx, rows.length, virtualizeRows]);
+  }, [
+    adaptiveWidthLayout,
+    layout,
+    minDisplayWidthPx,
+    rowViewHeightPx,
+    rows.length,
+    virtualizeRows,
+  ]);
 
   useEffect(() => {
     const markManualScroll = (): void => {
@@ -2014,7 +2090,7 @@ export function StaffPagePrompt({
     // Following the continuation hint on a later ResizeObserver/render pass can
     // replace this target and push the newly active row one system too far upward.
     const delta = followRowAtTop
-      ? getStaffPageRowTopY(row) - viewportTop
+      ? getStaffPageRowTopY(row, rowViewHeightPx + layout.multirow.rowGapPx) - viewportTop
       : getStaffPageRowCenterY(row) - (viewportTop + viewportHeight / 2);
     if (Math.abs(delta) < 1) return;
 
@@ -2075,7 +2151,15 @@ export function StaffPagePrompt({
       }
     };
     autoScrollAnimationFrameRef.current = window.requestAnimationFrame(animateScroll);
-  }, [followRowIndex, followRowAtTop, playbackFollowDelayComplete, playingRowIndex, rows.length]);
+  }, [
+    followRowIndex,
+    followRowAtTop,
+    layout.multirow.rowGapPx,
+    playbackFollowDelayComplete,
+    playingRowIndex,
+    rowViewHeightPx,
+    rows.length,
+  ]);
 
   const syncPreReadingElements = useCallback((): void => {
     const noteStates = preReadingNoteStatesRef.current;
@@ -2131,7 +2215,7 @@ export function StaffPagePrompt({
       const viewportTop = viewportBounds ? viewportBounds.top + scrollViewport!.clientTop : 0;
       const viewportHeight = viewportBounds ? scrollViewport!.clientHeight : window.innerHeight;
       const finalRowTarget = followRowAtTop
-        ? getStaffPageRowTopY(finalRow) - viewportTop
+        ? getStaffPageRowTopY(finalRow, rowViewHeightPx + layout.multirow.rowGapPx) - viewportTop
         : getStaffPageRowCenterY(finalRow) - (viewportTop + viewportHeight / 2);
       const desiredScrollTop =
         (isNestedScrollViewport && scrollViewport ? scrollViewport.scrollTop : window.scrollY) +
@@ -2162,7 +2246,7 @@ export function StaffPagePrompt({
       if (animationFrameId !== 0) window.cancelAnimationFrame(animationFrameId);
       frame.style.marginBottom = originalMarginBottom;
     };
-  }, [followRowAtTop, isFiniteScore, rows.length]);
+  }, [followRowAtTop, isFiniteScore, layout.multirow.rowGapPx, rowViewHeightPx, rows.length]);
 
   useEffect(() => {
     let animationFrameId = 0;
@@ -2291,18 +2375,17 @@ export function StaffPagePrompt({
       const surface = createStaffRenderSurface(
         rendererTarget,
         displayWidth,
-        rowCount * layout.vertical.viewHeightPx +
-          Math.max(0, rowCount - 1) * layout.multirow.rowGapPx,
+        rowCount * rowViewHeightPx + Math.max(0, rowCount - 1) * layout.multirow.rowGapPx,
         layout.notationScale
       );
       // The SVG is styled to fill its render target, including when a layout's
       // max width is narrower than the available container. Keep the clipped
       // frame height and row-follow distance in that same rendered scale.
       const renderedScale = containerWidth / displayWidth;
-      const rowStepPx = (layout.vertical.viewHeightPx + layout.multirow.rowGapPx) * renderedScale;
+      const rowStepPx = (rowViewHeightPx + layout.multirow.rowGapPx) * renderedScale;
       const clampedVisibleRowCount = Math.max(1, Math.min(visibleRowCount, rowCount));
       const visibleHeight =
-        (clampedVisibleRowCount * layout.vertical.viewHeightPx +
+        (clampedVisibleRowCount * rowViewHeightPx +
           Math.max(0, clampedVisibleRowCount - 1) * layout.multirow.rowGapPx) *
         renderedScale;
       frame.style.height = `${visibleHeight}px`;
@@ -2337,14 +2420,12 @@ export function StaffPagePrompt({
         .forEach((rowIndex) => {
           const rowGroups = rows[rowIndex];
           if (!rowGroups) return;
-          const rowStep = logicalPx(
-            layout.vertical.viewHeightPx + layout.multirow.rowGapPx,
-            surface.scale
-          );
-          const baseY = rowIndex * rowStep;
+          const rowStep = logicalPx(rowViewHeightPx + layout.multirow.rowGapPx, surface.scale);
+          const rowTopY = rowIndex * rowStep;
+          const baseY = rowTopY + logicalPx(rowTopPaddingPx, surface.scale);
           const visibleYBounds = {
-            bottomY: baseY + logicalPx(layout.vertical.viewHeightPx, surface.scale),
-            topY: baseY,
+            bottomY: rowTopY + logicalPx(rowViewHeightPx, surface.scale),
+            topY: rowTopY,
           };
           const rowGroup = context.openGroup("staff-page-system");
           const rowStartIndex = rowStartIndices[rowIndex] ?? rowIndex * notesPerRow;
@@ -3287,7 +3368,7 @@ export function StaffPagePrompt({
       const firstMeasuredRow = measuredRowCenters[0];
       const svgBounds = surface.svg.getBoundingClientRect();
       const rowStepInSvgUnits = logicalPx(
-        layout.vertical.viewHeightPx + layout.multirow.rowGapPx,
+        rowViewHeightPx + layout.multirow.rowGapPx,
         surface.scale
       );
       const rowStepInCssPixels = rowStepInSvgUnits * (svgBounds.width / surface.width);
@@ -3323,6 +3404,8 @@ export function StaffPagePrompt({
   }, [
     syncPreReadingElements,
     layout,
+    rowTopPaddingPx,
+    rowViewHeightPx,
     followRowAtTop,
     barlineAfterNoteIndices,
     isNightMode,

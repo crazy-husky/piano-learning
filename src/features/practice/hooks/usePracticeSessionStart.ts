@@ -8,7 +8,11 @@ import {
   buildPracticeSessionRecordV5,
   buildPracticeSessionStartSnapshot,
 } from "../../../domain/practiceSessionStartSnapshot";
-import { DUET_PRACTICE_CURRICULUM_VERSION } from "../logic/duetPractice";
+import {
+  DUET_PRACTICE_CURRICULUM_VERSION,
+  getDuetPracticeGroupIds,
+  type DuetPracticeRangePreset,
+} from "../logic/duetPractice";
 import {
   createAdaptiveNoteScheduler,
   selectNextNote,
@@ -53,6 +57,7 @@ interface PracticeSessionStartValues {
   midiAutoPlayTarget: boolean;
   midiPlayAnswerNote: boolean;
   duetLevel?: DuetPracticeLevel;
+  duetRangePreset: DuetPracticeRangePreset;
   duetAllowDottedRhythms: boolean;
   midi: Pick<MidiInputController, "isConnected">;
   prefersReducedMotion: boolean;
@@ -135,6 +140,7 @@ export function usePracticeSessionStart({
     midiAutoPlayTarget,
     midiPlayAnswerNote,
     duetLevel,
+    duetRangePreset,
     duetAllowDottedRhythms,
     midi,
     prefersReducedMotion,
@@ -231,7 +237,7 @@ export function usePracticeSessionStart({
           ? {
               ...nextSettings,
               answerPitchMode: "exact-pitch" as const,
-              enabledGroupIds: ["C3-B3", "C4-B4"] as AppSettings["enabledGroupIds"],
+              enabledGroupIds: getDuetPracticeGroupIds(duetRangePreset),
               enabledPitchIds: undefined,
               crossGroupPitchIds: undefined,
               staffNotationMode: "grand" as const,
@@ -396,6 +402,7 @@ export function usePracticeSessionStart({
     isDuetPractice,
     shouldSynchronizeMetronome,
     duetLevel,
+    duetRangePreset,
     duetAllowDottedRhythms,
     adaptiveSchedulerRef,
     applySettingsSnapshot,

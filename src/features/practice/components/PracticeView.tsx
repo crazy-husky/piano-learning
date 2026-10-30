@@ -1,4 +1,4 @@
-import { ArrowLeft, Pause, Play, Settings2, Volume2 } from "lucide-react";
+import { ArrowLeft, Pause, Play, RotateCcw, Settings2, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getPianoAudioTime, playMuffledMidiNote, playTargetNote } from "../../../audio/piano";
@@ -149,7 +149,13 @@ import {
   ensurePracticeMicrophoneForResume,
   releasePracticeMicrophoneOnPause,
 } from "../logic/practiceInputLifecycle";
-import { getDuetTargetMidis, type DuetTargetPair } from "../logic/duetPractice";
+import {
+  DEFAULT_DUET_PRACTICE_RANGE_PRESET,
+  getDuetPracticeGroupIds,
+  getDuetTargetMidis,
+  normalizeDuetPracticeRangePreset,
+  type DuetTargetPair,
+} from "../logic/duetPractice";
 import {
   getPracticeBeatAtAudioTime,
   getPracticeAudioTimeAtBeat,
@@ -193,6 +199,7 @@ interface PracticeViewProps {
   onInputModeChange: (mode: PracticeInputMode) => void;
   practiceTab: PracticeSetupTab;
   practiceDistanceMode?: PracticeDistanceMode;
+  isLearningRoutePractice?: boolean;
   onRunningChange: (running: boolean) => void;
   onMetronomeSyncToggleChange?: (toggle: (() => void) | undefined) => void;
   onMetronomeSyncPauseChange?: (pause: (() => void) | undefined) => void;
@@ -238,7 +245,6 @@ const PRACTICE_QUEUE_STRATEGIES: readonly PracticeQueueStrategy[] = [
   "note-drill",
 ];
 const CROSS_GROUP_NOTE_RATE = 0.08;
-const DUET_PRACTICE_GROUP_IDS: AppSettings["enabledGroupIds"] = ["C3-B3", "C4-B4"];
 
 function pickRangeExtensionNote(
   notes: readonly TargetNote[],
@@ -312,6 +318,7 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
     practiceMode: "single",
     metronomeSyncEnabled: false,
     duetLevel: "level-1",
+    duetRangePreset: DEFAULT_DUET_PRACTICE_RANGE_PRESET,
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms: false,
     autoPlayTarget: settings.autoPlayTarget,
@@ -364,6 +371,7 @@ function parsePracticeSetupUiPreferences(
       value.duetLevel ?? value.duetDifficulty,
       duetCurriculumVersion
     ),
+    duetRangePreset: normalizeDuetPracticeRangePreset(value.duetRangePreset),
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms:
       typeof value.duetAllowDottedRhythms === "boolean" ? value.duetAllowDottedRhythms : false,
@@ -449,6 +457,7 @@ export function PracticeView({
   onMetronomeSyncToggleChange,
   onMetronomeSyncPauseChange,
   practiceDistanceMode,
+  isLearningRoutePractice = false,
   showPracticeKindTabs = true,
   practiceModeLock,
   practiceProfile,
@@ -549,6 +558,7 @@ export function PracticeView({
   const [isNameToKeyStageActive, setIsNameToKeyStageActive] = useState(false);
   const [isSongPracticeFullscreenActive, setIsSongPracticeFullscreenActive] = useState(false);
   const [isChaseSettingsOpen, setIsChaseSettingsOpen] = useState(false);
+  const [isRestartingPractice, setIsRestartingPractice] = useState(false);
   const handleStaffDistanceStageChange = useCallback(
     (active: boolean): void => {
       setIsStaffDistanceStageActive(active);
@@ -634,6 +644,9 @@ export function PracticeView({
   const duetAllowDottedRhythms =
     runningStartSnapshot?.practiceConfig.duetAllowDottedRhythms ??
     practiceSetupPreferences.duetAllowDottedRhythms;
+  const duetRangePreset = normalizeDuetPracticeRangePreset(
+    practiceSetupPreferences.duetRangePreset
+  );
   const answerPitchMode = isDuetPractice
     ? "exact-pitch"
     : runningStartSnapshot
@@ -879,6 +892,9 @@ export function PracticeView({
   const setDuetLevel = (nextDuetLevel: DuetPracticeLevel): void => {
     setPracticeSetupPreferences((current) => ({ ...current, duetLevel: nextDuetLevel }));
   };
+  const setDuetRangePreset = (preset: PracticeSetupUiPreferences["duetRangePreset"]): void => {
+    setPracticeSetupPreferences((current) => ({ ...current, duetRangePreset: preset }));
+  };
   const setDuetAllowDottedRhythms = (enabled: boolean): void => {
     setPracticeSetupPreferences((current) => ({ ...current, duetAllowDottedRhythms: enabled }));
   };
@@ -1092,6 +1108,7 @@ export function PracticeView({
         practiceMode: current.practiceMode,
         metronomeSyncEnabled: current.metronomeSyncEnabled,
         duetLevel: current.duetLevel,
+        duetRangePreset: current.duetRangePreset,
         duetCurriculumVersion: current.duetCurriculumVersion,
         duetAllowDottedRhythms: current.duetAllowDottedRhythms,
         midiAutoPlayTarget: current.midiAutoPlayTarget,
@@ -1113,7 +1130,8 @@ export function PracticeView({
     [settings, staffNotationMode]
   );
   const effectiveEnabledGroupIds = isDuetPractice
-    ? DUET_PRACTICE_GROUP_IDS
+    ? (runningStartSnapshot?.practiceConfig.enabledGroupIds ??
+      getDuetPracticeGroupIds(duetRangePreset))
     : (runningStartSnapshot?.practiceConfig.enabledGroupIds ??
       (isPreReadingPractice ? preReadingRange.enabledGroupIds : settings.enabledGroupIds));
   const effectiveEnabledPitchIds = isDuetPractice
@@ -2140,6 +2158,7 @@ export function PracticeView({
       midiAutoPlayTarget: practiceSetupPreferences.midiAutoPlayTarget,
       midiPlayAnswerNote: practiceSetupPreferences.midiPlayAnswerNote,
       duetLevel,
+      duetRangePreset,
       duetAllowDottedRhythms,
       midi,
       prefersReducedMotion,
@@ -2191,6 +2210,23 @@ export function PracticeView({
       syncStaffPage,
     },
   });
+  const restartCurrentPractice = useCallback(async (): Promise<void> => {
+    if (!isLearningRoutePractice || phase !== "running" || isRestartingPractice) return;
+    setIsRestartingPractice(true);
+    try {
+      await completeSession("manual-stop", "manual-stop", {
+        discard: true,
+        showSummary: false,
+      });
+      sessionReviewsRef.current = [];
+      sessionStartSnapshotRef.current = null;
+      await startSession();
+    } catch (error) {
+      toast.error(`重新开始练习失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsRestartingPractice(false);
+    }
+  }, [completeSession, isLearningRoutePractice, isRestartingPractice, phase, startSession]);
   const replayTarget = useCallback(async (): Promise<void> => {
     const prompt = promptRef.current;
     if (!prompt || isPausedRef.current || answerPitchMode === "microphone") {
@@ -3191,6 +3227,7 @@ export function PracticeView({
         distanceContent={
           <StaffDistancePracticeView
             isActive={practiceTab === "distance"}
+            showRestartControl={isLearningRoutePractice}
             midi={midi}
             microphone={{
               error: practiceMicrophone.error,
@@ -3221,6 +3258,7 @@ export function PracticeView({
         nameKeyContent={
           <NameToKeyPracticeView
             isActive={practiceTab === "name-key"}
+            showRestartControl={isLearningRoutePractice}
             midi={midi}
             navigationExitRequest={navigationExitRequest}
             microphone={{
@@ -3249,6 +3287,7 @@ export function PracticeView({
           onPracticeModeChange: setPracticeMode,
           onMetronomeSyncEnabledChange: setMetronomeSyncEnabled,
           onDuetLevelChange: setDuetLevel,
+          onDuetRangePresetChange: setDuetRangePreset,
           onDuetAllowDottedRhythmsChange: setDuetAllowDottedRhythms,
           onAutoPlayTargetChange: setAutoPlayTarget,
           onFixedCountChange: setFixedCount,
@@ -3415,6 +3454,18 @@ export function PracticeView({
             {isPaused ? <Play size={18} /> : <Pause size={18} />}
             {isPaused ? "继续" : "暂停"}
           </button>
+          {isLearningRoutePractice ? (
+            <button
+              aria-label="重新开始当前练习"
+              disabled={isRestartingPractice}
+              onClick={() => void restartCurrentPractice()}
+              title="重新开始当前练习"
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={18} />
+              重新开始
+            </button>
+          ) : null}
           {practiceTab === "free" && promptDisplayMode === "staff-page" ? (
             <button
               aria-label="追逐游戏设置"
@@ -3547,6 +3598,7 @@ export function PracticeView({
           >
             <StaffPagePrompt
               notes={mobileStaffPageNotes}
+              verticalRangeNotes={enabledNotes}
               canonicalRowStartIndices={
                 isContinuousStaffPage ? adaptiveStaffRows?.rowStartIndices : undefined
               }
@@ -3747,6 +3799,7 @@ export function PracticeView({
         <PauseOverlay
           onExit={handleExitPractice}
           onResume={resumePractice}
+          onRestart={isLearningRoutePractice ? () => void restartCurrentPractice() : undefined}
           allowBackdropResume={!isMobileViewport}
           resumeBlockedMessage={
             answerPitchMode === "exact-pitch" && !midi.isConnected
