@@ -18,7 +18,7 @@ export type AppRoutePath =
 export type AppRoutePage =
   "home" | "study" | "practice" | "game" | "stats" | "metronome" | "settings" | "vocal";
 export type PracticeRouteTab = "free" | "distance" | "name-key" | "songs";
-export type PracticeDistanceMode = "look" | "play";
+export type PracticeDistanceMode = "look" | "play" | "finger";
 export type LearningLevelId = 1 | 2 | 3 | 4 | 5 | 6;
 export type LearningModuleTab = "guide" | "practice" | "stats";
 export type PlaygroundStatsTab = "challenge" | "songs";
@@ -80,7 +80,10 @@ export function appRouteFromHash(hash: string): AppRoute {
     path === "/playground/songs/play" ? query.get("songId")?.slice(0, 80) || undefined : undefined;
   const requestedDistanceMode = query.get("distanceMode");
   const practiceDistanceMode: PracticeDistanceMode | undefined =
-    levelId === 4 && (requestedDistanceMode === "play" || requestedDistanceMode === "look")
+    levelId === 4 &&
+    (requestedDistanceMode === "play" ||
+      requestedDistanceMode === "look" ||
+      requestedDistanceMode === "finger")
       ? requestedDistanceMode
       : undefined;
   const page: AppRoutePage =

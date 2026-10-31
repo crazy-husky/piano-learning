@@ -463,9 +463,72 @@
 }
 
 .metronome-volume-control input {
-  width: 112px;
-  accent-color: var(--accent);
+  box-sizing: border-box;
+  width: 128px;
+  min-width: 104px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  appearance: none;
+  background: linear-gradient(
+      to right,
+      var(--accent) var(--volume-progress, 0%),
+      color-mix(in srgb, var(--border) 75%, transparent) var(--volume-progress, 0%)
+    )
+    center / calc(100% - 14px) 4px no-repeat;
+  cursor: pointer;
   touch-action: pan-x;
+}
+
+.metronome-volume-control input::-webkit-slider-runnable-track {
+  height: 4px;
+  background: transparent;
+}
+
+.metronome-volume-control input::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  margin-top: -5px;
+  appearance: none;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.metronome-volume-control input::-moz-range-track {
+  height: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.metronome-volume-control input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.metronome-volume-control input:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+.metronome-volume-value {
+  width: 4ch;
+  min-width: 4ch;
+  flex: 0 0 4ch;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .metronome-start-button {
@@ -807,7 +870,12 @@
 }
 
 .metronome-core-panel .metronome-volume-control input {
-  width: 76px;
+  width: 108px;
+  min-width: 96px;
+}
+
+.metronome-core-panel .metronome-volume-value {
+  font-size: 11px;
 }
 
 .metronome-core-panel .metronome-start-button {
@@ -896,6 +964,7 @@
 }
 
 .metronome-compact-bar.is-mini .metronome-compact-woodfish {
+  position: relative;
   width: 60px;
   height: 56px;
   display: grid;
@@ -911,6 +980,46 @@
   transform: translateX(var(--mini-dock-offset-x, 0px));
 }
 
+.metronome-merit-pop {
+  position: absolute;
+  z-index: 1;
+  top: 2px;
+  left: 50%;
+  color: var(--warning, #d88c24);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 1px 3px color-mix(in srgb, var(--panel-surface-strong) 78%, transparent);
+  transform: translate(-50%, 8px);
+  animation: metronome-merit-rise 900ms cubic-bezier(0.2, 0.7, 0.25, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes metronome-merit-rise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.88);
+  }
+  14% {
+    opacity: 0.62;
+  }
+  72% {
+    opacity: 0.52;
+  }
+  82% {
+    opacity: 0.34;
+  }
+  92% {
+    opacity: 0.16;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -34px) scale(1.04);
+  }
+}
+
 .metronome-mini-label {
   color: var(--muted);
   font-size: 10px;
@@ -920,6 +1029,32 @@
 
 .metronome-compact-woodfish .metronome-woodfish {
   width: 42px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .metronome-merit-pop {
+    animation-name: metronome-merit-fade;
+    animation-duration: 900ms;
+  }
+
+  @keyframes metronome-merit-fade {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    14% {
+      opacity: 0.62;
+    }
+    72% {
+      opacity: 0.52;
+    }
+    82% {
+      opacity: 0.34;
+    }
+    92% {
+      opacity: 0.16;
+    }
+  }
 }
 
 .metronome-compact-tempo {
@@ -1109,11 +1244,13 @@ button.metronome-compact-bpm:focus-visible {
   }
 
   .metronome-settings-row {
+    flex-wrap: wrap;
     gap: 10px;
   }
 
   .metronome-volume-control input {
-    width: 92px;
+    width: 108px;
+    min-width: 96px;
   }
 
   .metronome-floating {

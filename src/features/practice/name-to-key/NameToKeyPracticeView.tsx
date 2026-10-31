@@ -7,7 +7,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Check, Mic, Music2, Pause, Play, RotateCcw, Square } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Mic, Music2, Pause, Play, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { getPianoAudioTime, playPianoNote } from "../../../audio/piano";
 import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
@@ -26,10 +26,10 @@ import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import { MAX_PRACTICE_QUESTIONS } from "../../../domain/practiceLimits";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
-import { getMidiUnavailableNotice } from "../../../midi/midiUnavailableNotice";
 import { PracticeFullscreenToggle } from "../components/PracticeFullscreenFrame";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { PracticeQuestionLimitDialog } from "../../../shared/components/PracticeQuestionLimitDialog";
 import { useMidiConnectionAttention } from "../../../shared/hooks/useMidiConnectionAttention";
 import {
@@ -37,6 +37,7 @@ import {
   VIRTUAL_PIANO_WHITE_KEYS,
 } from "../../../shared/components/VirtualPianoKeyboard";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
+import { guideSetupRequirement } from "../../../shared/utils/guideSetupRequirement";
 import {
   isInteractiveShortcutTarget,
   shouldHandleGlobalEnter,
@@ -273,6 +274,8 @@ function NameToKeyPracticeContent({
     DEFAULT_PREFERENCES,
     { parse: parsePreferences }
   );
+  const requiresOctaveInputMode =
+    preferences.includeOctaveNumbers && preferences.inputMode === "virtual-keyboard";
   const previousMidiConnectionRef = useRef(midi.isConnected);
   const inputModeSelectionRevisionRef = useRef(0);
   const setInputMode = useCallback(
@@ -295,13 +298,13 @@ function NameToKeyPracticeContent({
     preferences.mode === "fixed-duration" ? preferences.fixedDurationSeconds * 1000 : 0;
   const [remainingMs, setRemainingMs] = useState(roundDurationMs);
   const [target, setTarget] = useState<NameToKeyTarget | null>(null);
-  const [selectedOctave, setSelectedOctave] = useState(4);
   const [feedback, setFeedback] = useState<{ correctMidi: number; wrongMidi?: number } | null>(
     null
   );
   const [roundEvents, setRoundEvents] = useState<AnswerEvent[]>([]);
   const [isStarting, setIsStarting] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [startError, setStartError] = useState<string | null>(null);
   const [midiAttentionSource, setMidiAttentionSource] = useState<"input-mode" | "start" | null>(
     null
   );
@@ -369,6 +372,15 @@ function NameToKeyPracticeContent({
   const handledNavigationExitRequestRef = useRef<number | null>(null);
 
   const targetPool = useMemo(() => createNameToKeyTargetPool(preferences), [preferences]);
+
+  useEffect(() => {
+    setStartError(null);
+  }, [
+    midi.isConnected,
+    preferences.includeOctaveNumbers,
+    preferences.inputMode,
+    targetPool.length,
+  ]);
 
   useEffect(() => {
     if (stage !== "running") setIsNoteKeyGuideOpen(false);
@@ -628,10 +640,6 @@ function NameToKeyPracticeContent({
         return;
       }
 
-      const wrongOctave = midiToOctave(answeredMidi);
-      if (wrongOctave !== null && wrongOctave >= 1 && wrongOctave <= 6) {
-        setSelectedOctave(wrongOctave);
-      }
       setTarget(target);
       setFeedback({ correctMidi: currentTarget, wrongMidi: answeredMidi });
       const audioTimeMs = getPianoAudioTime() * 1000;
@@ -759,26 +767,50 @@ function NameToKeyPracticeContent({
 
   const startRound = async (): Promise<void> => {
     if (!isActive || isStarting) return;
-    setIsStarting(true);
+    if (requiresOctaveInputMode) {
+      setStartError("请选择作答方式");
+      guideSetupRequirement('[data-setup-guide-target="name-key-answer-mode"]');
+      return;
+    }
+    if (preferences.inputMode === "midi" && !midi.isConnected) {
+      const midiUnavailable = midi.status === "unsupported" || midi.status === "insecure-context";
+      setStartError(
+        midiUnavailable
+          ? "当前环境不支持 MIDI，请切换作答方式"
+          : midi.status === "requesting"
+            ? "MIDI 正在连接，请稍候"
+            : midi.status === "denied"
+              ? "请检查 MIDI 权限"
+              : midi.status === "error"
+                ? "MIDI 连接失败，请重试"
+                : midi.status === "ready" && midi.inputs.length > 0
+                  ? "请选择 MIDI 设备"
+                  : "请连接 MIDI 键盘"
+      );
+      setMidiAttentionSource("start");
+      guideSetupRequirement(
+        midiUnavailable
+          ? '[data-setup-guide-target="name-key-answer-mode"]'
+          : '[data-setup-guide-target="name-key-midi-device"]'
+      );
+      return;
+    }
+    if (targetPool.length === 0) {
+      setStartError("请选择音名范围");
+      guideSetupRequirement('[data-setup-guide-target="name-key-range"]');
+      return;
+    }
+    setStartError(null);
     setStatusMessage("");
+    setIsStarting(true);
     try {
       const preflight = await onBeforePracticeStart();
       if (!preflight.proceed) return;
-      if (preferences.inputMode === "midi" && !midi.isConnected) {
-        setMidiAttentionSource("start");
-        showMidiConnectionAttention();
-        const notice = getMidiUnavailableNotice(midi.status);
-        setStatusMessage(
-          notice
-            ? `${notice.title}：${notice.description}`
-            : "先连接 MIDI 键盘，再开始这一局。下方可以选择设备。"
-        );
-        return;
-      }
       if (preferences.inputMode === "microphone") {
         const microphoneReady = await startMicrophone({ includeAccidentals: true });
         if (!microphoneReady) {
-          setStatusMessage(microphoneError ?? "麦克风没有启动成功，请检查权限后重试。");
+          setStartError("请检查麦克风权限或设备");
+          guideSetupRequirement('[data-setup-guide-target="name-key-microphone-retry"]');
           return;
         }
         microphoneStartedRef.current = true;
@@ -786,10 +818,6 @@ function NameToKeyPracticeContent({
         stopMicrophone();
       }
 
-      if (targetPool.length === 0) {
-        setStatusMessage("当前设置下没有可练习的音，请调整音名选项。");
-        return;
-      }
       sessionIdRef.current = createUuid();
       eventIndexRef.current = 0;
       roundEventsRef.current = [];
@@ -809,7 +837,16 @@ function NameToKeyPracticeContent({
       onStageChange(true);
       setNextTarget();
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "准备练习时发生错误，请重试。");
+      setStartError(error instanceof Error ? error.message : "准备练习时发生错误，请重试。");
+      guideSetupRequirement(
+        preferences.inputMode === "microphone"
+          ? '[data-setup-guide-target="name-key-microphone-retry"]'
+          : preferences.inputMode === "midi" &&
+              midi.status !== "unsupported" &&
+              midi.status !== "insecure-context"
+            ? '[data-setup-guide-target="name-key-midi-device"]'
+            : '[data-setup-guide-target="name-key-answer-mode"]'
+      );
       if (microphoneStartedRef.current) {
         microphoneStartedRef.current = false;
         stopMicrophone();
@@ -931,7 +968,7 @@ function NameToKeyPracticeContent({
     setStatusMessage("");
   };
 
-  const endRound = (): void => finishRoundRef.current();
+  const endRound = (): void => finishRoundRef.current(false);
   const lengthSummary =
     preferences.mode === "open-ended"
       ? "不限"
@@ -940,37 +977,13 @@ function NameToKeyPracticeContent({
         : `${Math.round(preferences.fixedDurationSeconds / 60)}分钟`;
   const rangeSummary = preferences.includeOctaveNumbers ? "F1–B6" : "C4–B4";
   const keyTypeSummary = preferences.includeBlackKeys ? "含黑键" : "白键";
-  const inputModeSummary =
-    preferences.inputMode === "virtual-keyboard"
+  const inputModeSummary = requiresOctaveInputMode
+    ? "请选择 MIDI 或麦克风"
+    : preferences.inputMode === "virtual-keyboard"
       ? "虚拟键盘"
       : preferences.inputMode === "midi"
         ? "MIDI"
         : "麦克风";
-  const visibleOctaves = (() => {
-    const octaves = [preferences.includeOctaveNumbers ? selectedOctave : 4];
-    if (feedback) {
-      const correctOctave = midiToOctave(feedback.correctMidi);
-      const wrongOctave =
-        feedback.wrongMidi === undefined ? null : midiToOctave(feedback.wrongMidi);
-      if (
-        correctOctave !== null &&
-        correctOctave >= 1 &&
-        correctOctave <= 6 &&
-        !octaves.includes(correctOctave)
-      ) {
-        octaves.push(correctOctave);
-      }
-      if (
-        wrongOctave !== null &&
-        wrongOctave >= 1 &&
-        wrongOctave <= 6 &&
-        !octaves.includes(wrongOctave)
-      ) {
-        octaves.push(wrongOctave);
-      }
-    }
-    return octaves.sort((left, right) => left - right);
-  })();
   const mostMissed = summarizeMostMissed(roundEvents);
 
   return (
@@ -979,40 +992,70 @@ function NameToKeyPracticeContent({
         <>
           <div className="name-key-setup-card">
             <header className="name-key-header">
-              <div>
+              <div className="name-key-heading-copy">
                 <h1>音名找键</h1>
-                <p>看到音名，直接找到琴键，练到一眼就知道该按哪里。</p>
-              </div>
-              {preferences.inputMode === "midi" ? (
-                <div className="practice-midi-heading-status">
-                  <MidiInputControl
-                    ariaLabel="音名找键 MIDI 输入设备"
-                    className={isMidiConnectionAttentionActive ? "needs-attention" : undefined}
-                    midi={midi}
-                  />
+                <div className="practice-setup-description-row">
+                  <p>看到音名，直接找到琴键，练到一眼就知道该按哪里。</p>
+                  {preferences.inputMode === "midi" ? (
+                    <div className="practice-midi-heading-status">
+                      <MidiInputControl
+                        ariaLabel="音名找键 MIDI 输入设备"
+                        className={isMidiConnectionAttentionActive ? "needs-attention" : undefined}
+                        midi={midi}
+                        setupGuideTarget="name-key-midi-device"
+                      />
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
+              </div>
             </header>
+
+            {statusMessage &&
+            !(
+              preferences.inputMode === "microphone" &&
+              (microphoneError || microphoneStatus === "error" || microphoneStatus === "requesting")
+            ) ? (
+              <p
+                className={`name-key-status-message${
+                  isMidiConnectionAttentionActive &&
+                  midiAttentionSource === "input-mode" &&
+                  preferences.inputMode === "midi" &&
+                  !midi.isConnected
+                    ? " is-midi-attention"
+                    : ""
+                }`}
+                role="alert"
+              >
+                {statusMessage}
+              </p>
+            ) : null}
 
             <div className="name-key-settings-grid">
               <section className="name-key-setting-block name-key-answer-block">
                 <h2>作答方式</h2>
                 <div className="name-key-setting-content">
-                  <fieldset className="name-key-input-options">
+                  <fieldset
+                    className="name-key-input-options"
+                    data-setup-guide-target="name-key-answer-mode"
+                  >
                     <legend className="visually-hidden">选择作答方式</legend>
-                    <button
-                      aria-pressed={preferences.inputMode === "virtual-keyboard"}
-                      className={preferences.inputMode === "virtual-keyboard" ? "is-selected" : ""}
-                      onClick={() => {
-                        setInputMode("virtual-keyboard");
-                        setMidiAttentionSource(null);
-                        setStatusMessage("");
-                      }}
-                      type="button"
-                    >
-                      <Play aria-hidden="true" size={17} />
-                      虚拟键盘
-                    </button>
+                    {!preferences.includeOctaveNumbers ? (
+                      <button
+                        aria-pressed={preferences.inputMode === "virtual-keyboard"}
+                        className={
+                          preferences.inputMode === "virtual-keyboard" ? "is-selected" : ""
+                        }
+                        onClick={() => {
+                          setInputMode("virtual-keyboard");
+                          setMidiAttentionSource(null);
+                          setStatusMessage("");
+                        }}
+                        type="button"
+                      >
+                        <Play aria-hidden="true" size={17} />
+                        虚拟键盘
+                      </button>
+                    ) : null}
                     <button
                       aria-pressed={preferences.inputMode === "midi"}
                       className={preferences.inputMode === "midi" ? "is-selected" : ""}
@@ -1023,12 +1066,7 @@ function NameToKeyPracticeContent({
                           setStatusMessage("");
                         } else {
                           setMidiAttentionSource("input-mode");
-                          const notice = getMidiUnavailableNotice(midi.status);
-                          setStatusMessage(
-                            notice
-                              ? `${notice.title}：${notice.description}`
-                              : "先连接并选择 MIDI 键盘，再开始练习。"
-                          );
+                          setStatusMessage("");
                           showMidiConnectionAttention();
                         }
                       }}
@@ -1052,11 +1090,13 @@ function NameToKeyPracticeContent({
                     </button>
                   </fieldset>
                   <p className="name-key-setting-hint">
-                    {preferences.inputMode === "microphone"
-                      ? "麦克风识别 F1–B6 音域；开始时会请求麦克风权限。"
-                      : preferences.inputMode === "midi"
-                        ? "连接 MIDI 键盘后，按下琴键作答。"
-                        : "点击页面下方的虚拟键盘作答。"}
+                    {requiresOctaveInputMode
+                      ? "包含八度数字时请使用 MIDI 键盘或麦克风。"
+                      : preferences.inputMode === "microphone"
+                        ? "麦克风识别 F1–B6 音域；开始时会请求麦克风权限。"
+                        : preferences.inputMode === "midi"
+                          ? "连接 MIDI 键盘后，按下琴键作答。"
+                          : "点击页面下方的虚拟键盘作答。"}
                   </p>
                   {preferences.inputMode === "microphone" &&
                   (microphoneError ||
@@ -1068,18 +1108,21 @@ function NameToKeyPracticeContent({
                       aria-live="polite"
                     >
                       <span>
-                        {microphoneStatus === "requesting"
-                          ? isPreparingSwiftF0
-                            ? "正在准备识别模型…"
-                            : "正在连接麦克风…"
-                          : statusMessage ||
-                            microphoneError ||
-                            "麦克风连接失败，请检查权限和输入设备后重试。"}
+                        {microphoneStatus === "requesting" ? (
+                          <LoadingActivityText kind="dots">
+                            {isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风"}
+                          </LoadingActivityText>
+                        ) : (
+                          statusMessage ||
+                          microphoneError ||
+                          "麦克风连接失败，请检查权限和输入设备后重试。"
+                        )}
                       </span>
                       <PracticeMicrophoneRetryButton
                         isConnecting={microphoneStatus === "requesting"}
                         isPreparingModel={isPreparingSwiftF0}
                         onRetry={retryMicrophone}
+                        setupGuideTarget="name-key-microphone-retry"
                       />
                     </div>
                   ) : null}
@@ -1214,23 +1257,27 @@ function NameToKeyPracticeContent({
                   ) : null}
                 </div>
               </section>
-              <section className="name-key-setting-block name-key-range-block">
+              <section
+                className="name-key-setting-block name-key-range-block"
+                data-setup-guide-target="name-key-range"
+              >
                 <h2>音名范围</h2>
                 <div className="name-key-setting-content name-key-range-content">
                   <label aria-label="包含八度数字" className="name-key-option">
                     <input
                       checked={preferences.includeOctaveNumbers}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        setStatusMessage("");
                         setPreferences((current) => ({
                           ...current,
                           includeOctaveNumbers: event.target.checked,
-                        }))
-                      }
+                        }));
+                      }}
                       type="checkbox"
                     />
                     <span>
                       <strong>包含八度数字</strong>
-                      <small>开启后在 F1–B6 全音域出题，键盘按八度切换。</small>
+                      <small>开启后在 F1–B6 全音域出题，请用 MIDI 键盘或麦克风作答。</small>
                     </span>
                   </label>
                   <label aria-label="包含黑键" className="name-key-option">
@@ -1273,26 +1320,6 @@ function NameToKeyPracticeContent({
                 </div>
               </section>
             </div>
-
-            {statusMessage &&
-            !(
-              preferences.inputMode === "microphone" &&
-              (microphoneError || microphoneStatus === "error" || microphoneStatus === "requesting")
-            ) ? (
-              <p
-                className={`name-key-status-message${
-                  isMidiConnectionAttentionActive &&
-                  midiAttentionSource !== null &&
-                  preferences.inputMode === "midi" &&
-                  !midi.isConnected
-                    ? " is-midi-attention"
-                    : ""
-                }`}
-                role="alert"
-              >
-                {statusMessage}
-              </p>
-            ) : null}
           </div>
           <footer
             aria-label="开始音名找键练习"
@@ -1310,6 +1337,28 @@ function NameToKeyPracticeContent({
               ) : null}
             </div>
             <div className="practice-free-action-buttons name-key-action-buttons">
+              {startError ? (
+                <p
+                  className={`practice-midi-start-warning${
+                    isMidiConnectionAttentionActive &&
+                    midiAttentionSource === "start" &&
+                    preferences.inputMode === "midi" &&
+                    !midi.isConnected
+                      ? " is-midi-attention"
+                      : ""
+                  }`}
+                  data-midi-guidance-warning=""
+                  data-setup-guide-warning=""
+                  role="alert"
+                >
+                  <AlertCircle
+                    aria-hidden="true"
+                    className="name-key-start-warning-icon"
+                    size={15}
+                  />
+                  <span>{startError}</span>
+                </p>
+              ) : null}
               <span className="practice-start-action">
                 <button
                   aria-keyshortcuts="Enter"
@@ -1319,11 +1368,11 @@ function NameToKeyPracticeContent({
                   type="button"
                 >
                   {isStarting ? (
-                    "正在准备"
+                    <LoadingActivityText kind="dots">正在准备</LoadingActivityText>
                   ) : (
                     <>
                       <Music2 aria-hidden="true" size={19} />
-                      开始练习
+                      开始
                       <kbd>Enter</kbd>
                     </>
                   )}
@@ -1365,11 +1414,13 @@ function NameToKeyPracticeContent({
                     </>
                   ) : (
                     <span role="status">
-                      {microphoneStatus === "requesting"
-                        ? isPreparingSwiftF0
-                          ? "正在准备识别模型…"
-                          : "正在连接麦克风…"
-                        : (microphoneError ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))}
+                      {microphoneStatus === "requesting" ? (
+                        <LoadingActivityText kind="dots">
+                          {isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风"}
+                        </LoadingActivityText>
+                      ) : (
+                        (microphoneError ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))
+                      )}
                     </span>
                   )}
                   {microphoneError ||
@@ -1404,26 +1455,33 @@ function NameToKeyPracticeContent({
                   {roundEvents.length}/{preferences.fixedCount}
                 </strong>
               ) : null}
-              <button onClick={() => void togglePause()} type="button">
-                {isPaused ? <Play size={17} /> : <Pause size={17} />}
-                {isPaused ? "继续" : "暂停"}
-              </button>
-              {showRestartControl ? (
+              <div className="practice-run-core-actions">
                 <button
-                  aria-label="重新开始当前练习"
-                  disabled={isRestarting}
-                  onClick={() => void restartRound()}
-                  title="重新开始当前练习"
+                  aria-label="结束练习并返回配置"
+                  onClick={endRound}
+                  title="结束练习并返回配置"
                   type="button"
                 >
-                  <RotateCcw aria-hidden="true" size={17} />
-                  重新开始
+                  <ArrowLeft aria-hidden="true" size={17} />
+                  结束返回
                 </button>
-              ) : null}
-              <button onClick={endRound} type="button">
-                <Square size={16} />
-                结束
-              </button>
+                <button onClick={() => void togglePause()} type="button">
+                  {isPaused ? <Play size={17} /> : <Pause size={17} />}
+                  {isPaused ? "继续" : "暂停"}
+                </button>
+                {showRestartControl ? (
+                  <button
+                    aria-label="重新开始当前练习"
+                    disabled={isRestarting}
+                    onClick={() => void restartRound()}
+                    title="重新开始当前练习"
+                    type="button"
+                  >
+                    <RotateCcw aria-hidden="true" size={17} />
+                    重新开始
+                  </button>
+                ) : null}
+              </div>
               {preferences.inputMode === "virtual-keyboard" ? (
                 <button
                   aria-label="查看音名键位"
@@ -1484,32 +1542,14 @@ function NameToKeyPracticeContent({
             </div>
           ) : (
             <div className="name-key-prompt name-key-prompt-pending" role="status">
-              下一题马上来…
+              <LoadingActivityText kind="dots">下一题马上来</LoadingActivityText>
             </div>
           )}
 
-          {preferences.inputMode === "virtual-keyboard" && preferences.includeOctaveNumbers ? (
-            <div aria-label="选择键盘八度" className="name-key-octave-switcher" role="group">
-              {[1, 2, 3, 4, 5, 6].map((octave) => (
-                <button
-                  aria-pressed={selectedOctave === octave}
-                  className={selectedOctave === octave ? "is-selected" : ""}
-                  key={octave}
-                  onClick={() => setSelectedOctave(octave)}
-                  type="button"
-                >
-                  Oct {octave}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          {preferences.inputMode === "virtual-keyboard" ? (
+          {preferences.inputMode === "virtual-keyboard" && !preferences.includeOctaveNumbers ? (
             <NameToKeyKeyboard
               feedback={feedback ?? undefined}
-              includeOctaveNumbers={preferences.includeOctaveNumbers || visibleOctaves.length > 1}
-              octaves={visibleOctaves}
-              showOctaveLabels={preferences.includeOctaveNumbers || visibleOctaves.length > 1}
+              octaves={[4]}
               onKeyPress={(midiNoteNumber) => {
                 const keyName = midiToKeyName(midiNoteNumber) as PianoKeyName;
                 const octave = midiToOctave(midiNoteNumber) as Octave;
@@ -1532,12 +1572,21 @@ function NameToKeyPracticeContent({
               <span>
                 {preferences.mode === "fixed-duration" ? "倒计时也暂停了" : "练习进度已暂停"}
               </span>
-              <button className="primary" onClick={() => void togglePause()} type="button">
+              <button
+                className="primary practice-pause-resume-button"
+                onClick={() => void togglePause()}
+                type="button"
+              >
                 <Play size={17} />
                 继续
               </button>
               {showRestartControl ? (
-                <button disabled={isRestarting} onClick={() => void restartRound()} type="button">
+                <button
+                  className="practice-pause-restart-button"
+                  disabled={isRestarting}
+                  onClick={() => void restartRound()}
+                  type="button"
+                >
                   <RotateCcw aria-hidden="true" size={17} />
                   重新开始
                 </button>
@@ -1684,16 +1733,12 @@ export function NameToKeyPracticeView({
 
   return (
     <div className="name-key-module-content">
-      <div
-        aria-label="音名练习类型"
-        className="name-key-mode-tabs"
-        hidden={isStageActive}
-        role="tablist"
-      >
+      <div aria-label="音名练习类型" className="name-key-mode-tabs" role="tablist">
         <button
           aria-controls="staff-to-name-practice-panel"
           aria-selected={activeTab === "staff-to-name"}
           className={activeTab === "staff-to-name" ? "is-active" : ""}
+          disabled={isStageActive}
           id="staff-to-name-practice-tab"
           onKeyDown={(event) => handlePracticeTabKeyDown(event, "staff-to-name")}
           onClick={() => setActiveTab("staff-to-name")}
@@ -1710,6 +1755,7 @@ export function NameToKeyPracticeView({
           aria-controls="name-to-key-practice-panel"
           aria-selected={activeTab === "name-to-key"}
           className={activeTab === "name-to-key" ? "is-active" : ""}
+          disabled={isStageActive}
           id="name-to-key-practice-tab"
           onKeyDown={(event) => handlePracticeTabKeyDown(event, "name-to-key")}
           onClick={() => setActiveTab("name-to-key")}

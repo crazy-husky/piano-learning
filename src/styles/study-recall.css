@@ -139,7 +139,7 @@
 }
 
 .study-shell > .global-range-controls-base .global-range-groups {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--global-range-group-columns, 6), minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -445,7 +445,7 @@
   }
 
   .study-shell > .global-range-controls-base .global-range-groups {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--global-range-group-columns-medium, 3), minmax(0, 1fr));
   }
 
   .study-live-controls .study-controls {
@@ -1327,7 +1327,7 @@ main.has-backup-reminder .setup-grid::after {
 }
 
 .study-shell--study > .global-range-controls-base .global-range-groups {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--global-range-group-columns, 6), minmax(0, 1fr));
 }
 
 .study-shell--study .study-mode-options {
@@ -1429,7 +1429,7 @@ main.has-backup-reminder .setup-grid::after {
   }
 
   .study-shell--study > .global-range-controls-base .global-range-groups {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--global-range-group-columns-medium, 3), minmax(0, 1fr));
   }
 
   .study-shell--study .study-learning-strategy .study-controls {

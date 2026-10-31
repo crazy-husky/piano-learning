@@ -13,6 +13,7 @@ import { filterStaffGameWrongNoteLearningChallengeArchivesWithErrors } from "../
 import type { StaffGameWrongNoteRange } from "../../../domain/staffGameWrongNoteArchives";
 import { StaffGameWrongNoteNoteDiagnosticPanel } from "../../staff-game/components/StaffGameWrongNoteNoteDiagnosticPanel";
 import { StaffGameWrongNoteTrendPanel } from "../../staff-game/components/StaffGameWrongNoteTrendPanel";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import type { PlaygroundStatsTab } from "../../../routing/appRoutes";
 
 interface ChallengeProgressSnapshot {
@@ -67,7 +68,7 @@ function ChallengeLearningWrongNoteStats(): JSX.Element {
       </header>
       {loading ? (
         <p className="module-stats-empty" role="status">
-          正在读取错题统计…
+          <LoadingActivityText kind="dots">正在读取错题统计</LoadingActivityText>
         </p>
       ) : error ? (
         <div className="module-stats-empty" role="alert">
@@ -249,7 +250,7 @@ function ChallengeStats({ dataSetId }: { dataSetId: string }): JSX.Element {
             </dl>
             {events === null ? (
               <p aria-label="正在加载闯关统计" className="module-stats-empty" role="status">
-                正在读取闯关答题记录…
+                <LoadingActivityText kind="dots">正在读取闯关答题记录</LoadingActivityText>
               </p>
             ) : challengeEvents.length === 0 ? (
               <p className="module-stats-empty" role="status">

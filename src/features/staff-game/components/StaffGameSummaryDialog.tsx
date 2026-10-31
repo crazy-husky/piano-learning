@@ -7,6 +7,7 @@ import summaryNoStarCloud from "../assets/ui/summary-no-star-cloud.gif";
 import type { StaffGameWrongAnswerRecord } from "../hooks/useStaffGameScoring";
 import type { StaffGameRoundNoteOutcome } from "../hooks/useStaffGameRoundClock";
 import type { StaffGameWrongNoteRunPerformance } from "../logic/staffGameWrongNoteArchive";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { StaffGameReviewSummaryContent } from "./StaffGameReviewSummaryContent";
 
 export type StaffGameSummaryMode = "challenge" | "song" | "review";
@@ -468,11 +469,9 @@ export function StaffGameSummaryDialog({
                     className={`staff-game-wrong-note-archive-status is-${wrongNoteArchiveStatus}`}
                   >
                     {wrongNoteArchiveStatus === "saving" ? (
-                      <span>
-                        {wrongNoteArchiveMode === "trend"
-                          ? "正在保存本局趋势…"
-                          : "正在保存到错题集…"}
-                      </span>
+                      <LoadingActivityText kind="dots">
+                        {wrongNoteArchiveMode === "trend" ? "正在保存本局趋势" : "正在保存到错题集"}
+                      </LoadingActivityText>
                     ) : wrongNoteArchiveStatus === "error" ? (
                       <>
                         <span>
@@ -629,7 +628,11 @@ export function StaffGameSummaryDialog({
                   onClick={onArchiveWrongNotes}
                   type="button"
                 >
-                  {wrongNoteArchiveStatus === "saving" ? "正在加入…" : "加入错题集"}
+                  {wrongNoteArchiveStatus === "saving" ? (
+                    <LoadingActivityText kind="dots">正在加入</LoadingActivityText>
+                  ) : (
+                    "加入错题集"
+                  )}
                 </button>
               ) : null}
               <button

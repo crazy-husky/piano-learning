@@ -589,6 +589,12 @@
   display: contents;
 }
 
+.staff-game-shell.is-ready .staff-game-ready-start-warning {
+  width: min(100%, 440px);
+  flex: 0 1 440px;
+  margin: 0 auto 10px;
+}
+
 .staff-game-shell.is-ready .staff-game-ready-actions {
   width: min(100%, 360px);
   gap: var(--staff-ready-space-3);

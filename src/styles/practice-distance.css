@@ -20,6 +20,25 @@
   margin: 0 !important;
 }
 
+.staff-distance-mode-tabs {
+  display: grid;
+  width: min(560px, 100%);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  margin: 16px 0 18px;
+}
+
+.staff-distance-mode-tabs button {
+  min-width: 0;
+  min-height: 42px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.staff-distance-mode-panel {
+  min-width: 0;
+}
+
 .staff-distance-midi-status {
   flex-shrink: 0;
 }
@@ -67,6 +86,16 @@
   grid-row: 1;
 }
 
+.staff-distance-basic-settings.is-finger-mode .staff-distance-training-block {
+  grid-column: 1 / -1;
+  grid-row: auto;
+}
+
+.staff-distance-basic-settings.is-look-mode .staff-distance-length-block {
+  grid-column: 2;
+  grid-row: 1;
+}
+
 .staff-distance-length-block {
   grid-column: 1;
   grid-row: 2;
@@ -86,18 +115,40 @@
   gap: 14px;
 }
 
-.staff-distance-training-options {
+.staff-distance-finger-setup {
   display: grid;
-  width: min(480px, 100%);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.staff-distance-finger-choice {
+  display: grid;
+  gap: 6px;
+}
+
+.staff-distance-finger-choice > .segmented {
+  display: grid;
+  width: min(420px, 100%);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 2px;
 }
 
-.staff-distance-training-options button {
-  min-width: 0;
-  min-height: 40px;
-  padding: 6px 12px;
-  white-space: nowrap;
+.staff-distance-finger-choice:first-child > .segmented {
+  width: min(260px, 100%);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.staff-distance-finger-choice button {
+  min-height: 38px;
+  padding: 5px 8px;
+}
+
+.staff-distance-finger-setup > p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .staff-distance-input-switch {
@@ -460,6 +511,7 @@
   display: flex;
   align-items: center;
   flex: 0 0 auto;
+  flex-wrap: nowrap;
   gap: 10px;
 }
 
@@ -471,6 +523,10 @@
   line-height: 1.4;
 }
 
+.staff-distance-action-controls > .practice-midi-start-warning {
+  flex: 0 1 440px;
+}
+
 .staff-distance-start-wrap {
   position: relative;
   display: inline-flex;
@@ -479,6 +535,16 @@
 .staff-distance-start-icon,
 .staff-distance-start-label {
   animation: staff-distance-action-change 160ms ease both;
+}
+
+.staff-distance-start-label {
+  white-space: nowrap;
+}
+
+.staff-distance-start-button {
+  flex: 0 0 auto;
+  padding-inline: 12px;
+  white-space: nowrap;
 }
 
 .staff-distance-start-button kbd {
@@ -565,6 +631,10 @@
   gap: 8px;
 }
 
+.staff-distance-run-actions > .practice-run-core-actions {
+  flex: 0 0 auto;
+}
+
 .staff-distance-run-actions button,
 .staff-distance-summary-actions button {
   display: inline-flex;
@@ -592,6 +662,58 @@
   color: var(--text);
   font-size: 18px;
   font-weight: 700;
+  text-align: center;
+}
+
+.staff-distance-finger-card {
+  display: grid;
+  gap: 10px;
+  width: min(900px, 100%);
+  margin-inline: auto;
+  padding: clamp(14px, 3vw, 28px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.staff-distance-finger-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.staff-distance-finger-timer {
+  display: block;
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  accent-color: var(--accent);
+}
+
+.staff-distance-finger-score {
+  min-height: clamp(190px, 30vh, 280px);
+  display: grid;
+  align-items: center;
+}
+
+.staff-distance-finger-score .staff-page-renderer {
+  width: 100%;
+}
+
+.staff-distance-finger-score .staff-page-renderer > svg {
+  width: 100%;
+  max-width: 100%;
+}
+
+.staff-distance-finger-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 650;
   text-align: center;
 }
 
@@ -716,7 +838,6 @@
   gap: 10px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(3px);
 }
 
 .staff-distance-pause-overlay strong {
@@ -732,6 +853,11 @@
   min-height: 44px;
   align-items: center;
   gap: 7px;
+}
+
+.staff-distance-pause-overlay .practice-pause-resume-button,
+.staff-distance-pause-overlay .practice-pause-restart-button {
+  width: 132px;
 }
 
 .staff-distance-summary-shell {
@@ -908,8 +1034,12 @@
     font-size: 16px;
   }
 
-  .staff-distance-training-options,
+  .staff-distance-mode-tabs,
   .staff-distance-length-options {
+    width: 100%;
+  }
+
+  .staff-distance-finger-choice > .segmented {
     width: 100%;
   }
 
@@ -940,14 +1070,12 @@
     flex-wrap: nowrap;
   }
 
-  .staff-distance-training-options {
-    width: min(400px, 100%);
+  .staff-distance-mode-tabs {
+    width: min(560px, 100%);
   }
 
-  .staff-distance-training-options button {
-    min-height: 36px;
-    padding: 4px 10px;
-    font-size: 14px;
+  .staff-distance-mode-tabs button {
+    min-height: 40px;
   }
 }
 
@@ -976,9 +1104,32 @@
     gap: 5px;
   }
 
-  .staff-distance-training-options,
+  .staff-distance-mode-tabs,
   .staff-distance-length-options {
     width: 100%;
+  }
+
+  .staff-distance-basic-settings.is-look-mode .staff-distance-length-block {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .staff-distance-finger-card-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .staff-distance-mode-tabs button {
+    min-height: 44px;
+    padding-inline: 6px;
+    font-size: 13px;
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+
+  .staff-distance-finger-score {
+    min-height: 190px;
   }
 
   .staff-distance-input-switch {
@@ -1073,7 +1224,7 @@
   }
 
   .staff-distance-range-options button,
-  .staff-distance-training-options button,
+  .staff-distance-mode-tabs button,
   .staff-distance-length-options button {
     min-height: var(--practice-free-touch-target);
   }
@@ -1088,9 +1239,16 @@
   }
 
   .staff-distance-action-controls {
+    display: flex;
     width: 100%;
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .staff-distance-action-controls > .practice-midi-start-warning {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: none;
   }
 
   .staff-distance-start-wrap,
@@ -1124,10 +1282,16 @@
 
   .staff-distance-run-actions {
     width: 100%;
-    display: grid;
-    grid-template-columns: repeat(2, max-content);
+    display: flex;
+    flex-wrap: wrap;
     justify-content: end;
     gap: 5px;
+  }
+
+  .staff-distance-run-actions > .practice-run-core-actions {
+    flex: 0 0 100%;
+    gap: 5px;
+    justify-content: flex-end;
   }
 
   .staff-distance-run-actions button {
@@ -1137,8 +1301,7 @@
   }
 
   .staff-distance-run-actions > .song-chase-settings-button {
-    grid-column: 1 / -1;
-    justify-self: end;
+    margin-left: auto;
   }
 
   .staff-distance-answer-row {

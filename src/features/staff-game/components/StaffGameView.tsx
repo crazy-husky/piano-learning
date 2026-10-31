@@ -49,6 +49,7 @@ import {
 } from "../../../data/db";
 import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
+import { guideSetupRequirement } from "../../../shared/utils/guideSetupRequirement";
 import { VirtualPianoKeyboard } from "../../../shared/components/VirtualPianoKeyboard";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import type { MidiInputController } from "../../../midi/useMidiInput";
@@ -1006,7 +1007,12 @@ export function StaffGameView({
   const [revealedSummaryStars, setRevealedSummaryStars] = useState(0);
   const [feedback, setFeedback] = useState("");
   const [gameError, setGameError] = useState("");
+  const [readyStartError, setReadyStartError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+  useEffect(() => {
+    setReadyStartError(null);
+    if (phaseRef.current === "ready") setGameError("");
+  }, [midi.isConnected, readyWrongNoteMode, settings.inputMode]);
   const isStartingRef = useRef(false);
   const isNightmareLandscapePromptPendingRef = useRef(false);
   const startAttemptRef = useRef(0);
@@ -3018,8 +3024,62 @@ export function StaffGameView({
     setPhase("ready");
   }, [resetRoundState]);
 
-  const startWrongNoteReview = useCallback((): void => {
-    if (wrongNoteReviewWeights.size === 0) return;
+  const guideReadyInputRequirement = useCallback((): void => {
+    const activeMidi = midiRef.current;
+    if (settingsRef.current.inputMode === "physical") {
+      if (microphone.isListening) return;
+      setReadyStartError(
+        microphone.status === "error"
+          ? "请检查麦克风权限或设备"
+          : microphone.status === "requesting"
+            ? "麦克风正在连接，请稍候"
+            : "麦克风未能连接，请重试"
+      );
+      guideSetupRequirement('[data-setup-guide-target="staff-game-input-status"]');
+      return;
+    }
+    if (settingsRef.current.inputMode !== "midi" || activeMidi.isConnected) return;
+    if (!supportsMidi(activeMidi.status)) {
+      setReadyStartError("当前环境不支持 MIDI，请改用麦克风或虚拟键盘");
+      guideSetupRequirement('[data-setup-guide-target="staff-game-input-mode"]');
+      return;
+    }
+
+    const hasUnselectedDevice =
+      activeMidi.status === "ready" &&
+      activeMidi.inputs.length > 0 &&
+      !activeMidi.inputs.some((input) => input.id === activeMidi.selectedInputId);
+    const message =
+      activeMidi.status === "requesting"
+        ? "MIDI 正在连接，请稍候"
+        : activeMidi.status === "denied"
+          ? "请检查 MIDI 权限"
+          : activeMidi.status === "error"
+            ? "MIDI 连接失败，请重试"
+            : hasUnselectedDevice
+              ? "请选择 MIDI 设备"
+              : "请连接 MIDI 键盘";
+    setReadyStartError(message);
+    guideSetupRequirement('[data-setup-guide-target="staff-game-midi-device"]');
+  }, [microphone.isListening, microphone.status]);
+
+  const startWrongNoteReview = useCallback(async (): Promise<void> => {
+    if (isStartingRef.current) return;
+    if (wrongNoteReviewWeights.size === 0 || wrongNoteReviewPlan.notes.length === 0) {
+      if (wrongNoteArchiveDateCount === 0) {
+        setReadyStartError("先完成学习测试并产生错音");
+        guideSetupRequirement('[data-setup-guide-target="staff-game-learning-mode"]');
+      } else {
+        setReadyStartError("当前筛选下没有可复习的错题");
+        guideSetupRequirement('[data-setup-guide-target="staff-game-review-filters"]');
+      }
+      return;
+    }
+    if (settings.inputMode === "midi" && !midi.isConnected) {
+      guideReadyInputRequirement();
+      return;
+    }
+    setReadyStartError(null);
     wrongNoteReviewDifficultyOverrideRef.current =
       selectedWrongNoteReviewCondition?.difficulty ?? null;
     settingsRef.current = wrongNoteReviewDifficultyOverrideRef.current
@@ -3027,9 +3087,18 @@ export function StaffGameView({
       : settings;
     setReadyWrongNoteMode("review");
     roundReviewRangeRef.current = wrongNoteReviewRange;
-    void beginRound("wrong-note-review", wrongNoteReviewPlan.notes);
+    const started = await beginRound("wrong-note-review", wrongNoteReviewPlan.notes);
+    if (
+      !started &&
+      phaseRef.current === "ready" &&
+      (settingsRef.current.inputMode === "physical" ||
+        (settingsRef.current.inputMode === "midi" && !midiRef.current.isConnected))
+    ) {
+      guideReadyInputRequirement();
+    }
   }, [
     beginRound,
+    midi.isConnected,
     selectedWrongNoteReviewCondition,
     settings,
     settingsRef,
@@ -3037,16 +3106,30 @@ export function StaffGameView({
     wrongNoteReviewPlan.notes,
     wrongNoteReviewRange,
     wrongNoteReviewWeights,
+    wrongNoteArchiveDateCount,
+    guideReadyInputRequirement,
   ]);
 
   const handleWrongNoteReviewRangeChange = useCallback((range: StaffGameWrongNoteRange): void => {
+    setReadyStartError(null);
     setWrongNoteReviewRange(range);
     setWrongNoteReviewConditionId("all-learning");
   }, []);
 
+  const handleReadyModeChange = useCallback((mode: "level" | "review"): void => {
+    setReadyStartError(null);
+    setReadyWrongNoteMode(mode);
+  }, []);
+
   const startLevel = useCallback(async (): Promise<void> => {
+    if (isStartingRef.current) return;
+    setReadyStartError(null);
     wrongNoteReviewDifficultyOverrideRef.current = null;
     settingsRef.current = settings;
+    if (settings.inputMode === "midi" && !midi.isConnected) {
+      guideReadyInputRequirement();
+      return;
+    }
     if (isNightmareLandscapePromptPendingRef.current) return;
     const isIPadPortrait =
       isIPadDevice() &&
@@ -3075,8 +3158,23 @@ export function StaffGameView({
       snoozeNightmareLandscapePrompt();
     }
 
-    await beginRound();
-  }, [beginRound, confirmDialog, readyWrongNoteMode, settings]);
+    const started = await beginRound();
+    if (
+      !started &&
+      phaseRef.current === "ready" &&
+      (settingsRef.current.inputMode === "physical" ||
+        (settingsRef.current.inputMode === "midi" && !midiRef.current.isConnected))
+    ) {
+      guideReadyInputRequirement();
+    }
+  }, [
+    beginRound,
+    confirmDialog,
+    guideReadyInputRequirement,
+    midi.isConnected,
+    readyWrongNoteMode,
+    settings,
+  ]);
 
   const openWrongNoteStudyDialog = useCallback((): void => {
     setWrongNoteStudyRange((current) => current ?? wrongNoteReviewRange);
@@ -3521,7 +3619,7 @@ export function StaffGameView({
     : microphone.status === "requesting"
       ? microphone.isPreparingSwiftF0
         ? "正在准备识别模型"
-        : "正在连接麦克风…"
+        : "正在连接麦克风"
       : microphone.error
         ? "麦克风权限或设备需要处理"
         : "点击开始后请求麦克风权限";
@@ -3533,7 +3631,7 @@ export function StaffGameView({
         ? midi.isConnected
           ? `MIDI 已连接${midi.selectedInput?.name ? `：${midi.selectedInput.name}` : ""}`
           : midi.status === "requesting"
-            ? "正在连接 MIDI 键盘…"
+            ? "正在连接 MIDI 键盘"
             : "连接 MIDI 键盘后即可开始"
         : inputStatusText;
   const gameInputStatusState =
@@ -4006,6 +4104,7 @@ export function StaffGameView({
               className="staff-game-midi-device-warning needs-attention"
               label="重新检测 MIDI 设备"
               midi={midi}
+              setupGuideTarget="staff-game-midi-device"
             />
           ) : null}
 
@@ -4027,25 +4126,37 @@ export function StaffGameView({
               inputStatusText={gameInputStatusText}
               isPreparingMicrophone={microphone.isPreparingSwiftF0}
               isStarting={isStarting}
+              startError={readyStartError}
               maxCombo={progress.modes[settings.challengeMode].maxCombos[level - 1]}
               onChangeReviewRange={handleWrongNoteReviewRangeChange}
               onChangeArcadeDuration={(arcadeDuration) =>
                 updateReadyChallengeSettings({ arcadeDuration })
               }
-              onChangeChallengeMode={(challengeMode) =>
-                updateReadyChallengeSettings({ challengeMode })
-              }
-              onChangeInputMode={updateReadyInputMode}
-              onChangeDifficulty={(difficulty) => updateReadyChallengeSettings({ difficulty })}
-              onChangeNotePoolScope={(notePoolScope) =>
-                updateReadyChallengeSettings({ notePoolScope })
-              }
-              onChangeReviewCondition={setWrongNoteReviewConditionId}
+              onChangeChallengeMode={(challengeMode) => {
+                setReadyStartError(null);
+                updateReadyChallengeSettings({ challengeMode });
+              }}
+              onChangeInputMode={(inputMode) => {
+                setReadyStartError(null);
+                updateReadyInputMode(inputMode);
+              }}
+              onChangeDifficulty={(difficulty) => {
+                setReadyStartError(null);
+                updateReadyChallengeSettings({ difficulty });
+              }}
+              onChangeNotePoolScope={(notePoolScope) => {
+                setReadyStartError(null);
+                updateReadyChallengeSettings({ notePoolScope });
+              }}
+              onChangeReviewCondition={(conditionId) => {
+                setReadyStartError(null);
+                setWrongNoteReviewConditionId(conditionId);
+              }}
               onOpenWrongNoteArchiveManager={openWrongNoteArchiveManager}
               onOpenWrongNoteStudy={openWrongNoteStudyDialog}
               onStartLevel={() => void startLevel()}
               onStartReview={startWrongNoteReview}
-              onSelectReadyMode={setReadyWrongNoteMode}
+              onSelectReadyMode={handleReadyModeChange}
               learningQuestionCount={learningQuestionTargetCount}
               learningPitchCount={learningPitchTargetCount}
               notePoolScope={settings.notePoolScope}
@@ -4421,7 +4532,7 @@ export function StaffGameView({
       <StaffGameStatusOverlays
         gameArtStyle={gameArtStyle}
         gameEffectsEnabled={settings.gameEffectsEnabled}
-        gameError={gameError}
+        gameError={phase === "ready" && gameMode === "levels" && readyStartError ? "" : gameError}
         isMidiAttention={settings.inputMode === "midi" && /MIDI/i.test(gameError)}
         isMidiInput={settings.inputMode === "midi"}
         wrongNoteExitLabel={roundPurposeRef.current === "wrong-note-review" ? "退出复习" : null}

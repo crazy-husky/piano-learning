@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { MidiInputController } from "./useMidiInput";
+import { LoadingActivityText } from "../shared/components/LoadingActivity";
 
 export interface MidiInputControlProps {
   ariaLabel?: string;
   className?: string;
   disabled?: boolean;
   label?: string;
+  setupGuideTarget?: string;
   midi: Pick<
     MidiInputController,
     | "connect"
@@ -25,6 +27,7 @@ export function MidiInputControl({
   disabled = false,
   label = "连接 MIDI",
   midi,
+  setupGuideTarget,
 }: MidiInputControlProps): JSX.Element {
   const [isRetryAttentionActive, setIsRetryAttentionActive] = useState(false);
   const retryAttentionTimerRef = useRef<number | null>(null);
@@ -73,10 +76,11 @@ export function MidiInputControl({
 
   if (hasInputs) {
     return (
-      <span className={classNames}>
+      <span className={classNames} data-midi-input-control="">
         <select
           aria-label={ariaLabel}
           className="midi-input-control-select"
+          data-setup-guide-target={setupGuideTarget}
           disabled={disabled}
           onChange={(event) => midi.selectInput(event.currentTarget.value)}
           title={midi.selectedInput?.name}
@@ -99,7 +103,7 @@ export function MidiInputControl({
   const unsupported = midi.status === "unsupported" || midi.status === "insecure-context";
   const buttonLabel =
     midi.status === "requesting"
-      ? "正在连接…"
+      ? "正在连接"
       : midi.status === "denied" || midi.status === "error"
         ? `重新连接${label.replace(/^连接/, "")}`
         : midi.status === "ready"
@@ -107,16 +111,21 @@ export function MidiInputControl({
           : label;
 
   return (
-    <span className={classNames}>
+    <span className={classNames} data-midi-input-control="">
       <button
         aria-label={ariaLabel === "MIDI 输入设备" ? buttonLabel : ariaLabel}
         className="midi-input-control-button"
+        data-setup-guide-target={setupGuideTarget}
         disabled={disabled || unsupported || midi.status === "requesting"}
         onClick={requestConnection}
         title={midi.errorMessage}
         type="button"
       >
-        {buttonLabel}
+        {midi.status === "requesting" ? (
+          <LoadingActivityText kind="dots">正在连接</LoadingActivityText>
+        ) : (
+          buttonLabel
+        )}
       </button>
     </span>
   );

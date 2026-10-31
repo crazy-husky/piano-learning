@@ -14,19 +14,14 @@
 }
 
 @container practice-setup-frame (max-width: 760px) {
-  .practice-setup-framed-page .practice-free-page-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
+  .practice-setup-framed-page .practice-setup-description-row .practice-setup-heading-meta,
+  .practice-setup-framed-page .practice-setup-description-row .practice-midi-heading-status {
+    width: fit-content;
+    max-width: 100%;
   }
 
-  .practice-setup-framed-page .practice-free-page-header .practice-setup-heading-meta,
-  .practice-setup-framed-page .practice-midi-heading-status {
-    width: 100%;
-  }
-
-  .practice-setup-framed-page .practice-midi-heading-status {
-    justify-content: flex-start;
+  .practice-setup-framed-page .practice-setup-description-row .practice-midi-heading-status {
+    justify-content: flex-end;
   }
 
   .practice-setup-framed-page .practice-free-basics-grid,
@@ -87,6 +82,6 @@
   .practice-setup-framed-page
     :is(.practice-free-range-section, .staff-distance-range-base)
     .global-range-groups {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--global-range-group-columns-small, 2), minmax(0, 1fr));
   }
 }

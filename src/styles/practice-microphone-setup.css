@@ -1122,11 +1122,13 @@
 }
 
 .practice-free-page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  display: block;
   min-width: 0;
+}
+
+.practice-free-heading-copy {
+  min-width: 0;
+  width: 100%;
 }
 
 .practice-free-page-header h1 {
@@ -1136,9 +1138,39 @@
   line-height: 1.2;
 }
 
+.practice-setup-description-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+
+.practice-setup-description-row > p {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.practice-setup-description-row > .practice-setup-heading-meta,
+.practice-setup-description-row > .practice-midi-heading-status {
+  flex: 0 0 auto;
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  text-align: right;
+}
+
 .practice-free-page-header .practice-setup-heading-meta {
   max-width: none;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
+  margin-left: auto;
+  justify-items: end;
+  text-align: right;
+}
+
+.practice-setup-description-row .practice-midi-heading-status {
+  width: auto;
+  justify-content: flex-end;
 }
 
 .practice-free-config-content {
@@ -1536,10 +1568,9 @@
   min-width: 0;
   border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
   border-radius: 12px;
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  background: var(--panel-surface-strong);
   box-shadow: 0 8px 24px rgb(34 51 45 / 12%);
   padding: 10px 12px;
-  backdrop-filter: blur(12px);
 }
 
 .practice-free-config-summary {
@@ -1573,6 +1604,7 @@
 .practice-free-action-buttons {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   flex: 0 0 auto;
   gap: 10px;
 }
@@ -1587,6 +1619,10 @@
   border-radius: 10px;
   font-size: 16px;
   padding-inline: 18px;
+}
+
+.practice-free-action-buttons > .practice-midi-start-warning {
+  flex: 1 1 260px;
 }
 
 .practice-free-start-button kbd {
@@ -1628,10 +1664,6 @@
 }
 
 @media (max-width: 820px) {
-  .practice-free-page-header {
-    align-items: flex-start;
-  }
-
   .practice-free-action-dock {
     align-items: stretch;
     flex-direction: column;
@@ -1649,19 +1681,19 @@
     gap: 12px;
   }
 
-  .practice-free-page-header {
-    flex-direction: column;
-    gap: 8px;
-  }
-
   .practice-free-page-header .practice-setup-heading-meta {
-    justify-items: start;
-    text-align: left;
-    width: 100%;
+    justify-items: end;
+    text-align: right;
+    width: auto;
   }
 
-  .practice-free-page-header .practice-midi-heading-status {
-    justify-content: flex-start;
+  .practice-setup-description-row {
+    align-items: flex-start;
+    column-gap: 12px;
+  }
+
+  .practice-setup-description-row .practice-midi-heading-status {
+    justify-content: flex-end;
   }
 
   .practice-free-range-section {
@@ -1737,6 +1769,12 @@
     min-width: 0;
     min-height: 42px;
     font-size: 15px;
+  }
+
+  .practice-free-action-buttons > .practice-midi-start-warning {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: none;
   }
 
   .practice-free-stats-button {
@@ -1855,7 +1893,7 @@
 }
 
 .practice-free-range-section .global-range-groups {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--global-range-group-columns, 5), minmax(0, 1fr));
   gap: 5px;
 }
 
@@ -2236,7 +2274,7 @@
 
 @media (max-width: 1030px) {
   .practice-free-range-section .global-range-groups {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--global-range-group-columns-medium, 3), minmax(0, 1fr));
   }
 
   .practice-free-action-dock {
@@ -2292,7 +2330,7 @@
   }
 
   .practice-free-range-section .global-range-groups {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--global-range-group-columns-medium, 3), minmax(0, 1fr));
   }
 
   .practice-free-basics-grid {
@@ -2574,25 +2612,40 @@
   }
 }
 
-/* Keep the tablet setup dock in the same summary-left, action-right layout as songs. */
-@media (min-width: 700px) and (max-width: 820px) {
-  .practice-free-action-dock {
-    align-items: center;
-    flex-direction: row;
-    gap: 10px;
+/* Keep the setup summary readable when the MIDI warning shares the tablet action dock. */
+@media (min-width: 700px) and (max-width: 1140px) {
+  .practice-setup-shell.is-free-practice-setup .practice-free-action-dock {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
   }
 
-  .practice-free-config-summary {
-    flex: 1 1 0;
+  .practice-setup-shell.is-free-practice-setup .practice-free-config-summary {
+    width: 100%;
+    min-width: 0;
   }
 
-  .practice-free-action-buttons {
+  .practice-setup-shell.is-free-practice-setup .practice-free-action-buttons {
     display: flex;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    width: 100%;
+    min-width: 0;
     justify-content: flex-end;
   }
 
-  .practice-free-action-buttons .practice-start-action > .practice-free-start-button {
+  .practice-setup-shell.is-free-practice-setup
+    .practice-free-action-buttons
+    > .practice-midi-start-warning {
+    flex: 1 1 260px;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .practice-setup-shell.is-free-practice-setup
+    .practice-free-action-buttons
+    .practice-start-action
+    > .practice-free-start-button {
     width: auto;
     min-width: 156px;
   }

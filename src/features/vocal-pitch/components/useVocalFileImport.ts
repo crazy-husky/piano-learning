@@ -89,7 +89,7 @@ export function useVocalFileImport({
       cancelAnalysis();
       const generation = analysisRequestGenerationRef.current;
       try {
-        setInlineMessage("正在读取音频…");
+        setInlineMessage("正在读取音频");
         const decoded = await decodeAudioBlob(file);
         if (analysisRequestGenerationRef.current !== generation) return;
         if (decoded.durationSeconds > MAX_AUDIO_SECONDS + 0.1) {

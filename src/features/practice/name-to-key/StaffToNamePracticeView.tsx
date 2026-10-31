@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pause, Play, RotateCcw, Square } from "lucide-react";
+import { ArrowLeft, Pause, Play, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { answerDeviceInfo } from "../../../data/answerEvents";
 import { deletePracticeSessionWithReviews, saveAnswerEvents } from "../../../data/db";
@@ -15,7 +15,9 @@ import type {
 } from "../../../domain/types";
 import { MAX_PRACTICE_QUESTIONS } from "../../../domain/practiceLimits";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
+import { guideSetupRequirement } from "../../../shared/utils/guideSetupRequirement";
 import { StaffPrompt } from "../components/StaffPrompt";
 import { PRACTICE_FIXED_COUNT_PRESETS } from "../logic/practiceLengthOptions";
 import staffReadingTipsOverview from "./assets/staff-reading-tips/staff-reading-tips-overview.png";
@@ -433,14 +435,15 @@ export function StaffToNamePracticeView({
 
   const startRound = async (): Promise<void> => {
     if (!isActiveRef.current || isStarting) return;
+    setStatusMessage("");
+    if (targetPool.length === 0) {
+      setStatusMessage("请选择音域");
+      guideSetupRequirement('[data-setup-guide-target="staff-to-name-range"]');
+      return;
+    }
     const requestGeneration = ++startRequestGenerationRef.current;
     setIsStarting(true);
-    setStatusMessage("");
     try {
-      if (targetPool.length === 0) {
-        setStatusMessage("请至少选择一个音域，再开始练习。");
-        return;
-      }
       const preflight = await onBeforePracticeStart();
       if (
         !preflight.proceed ||
@@ -583,6 +586,7 @@ export function StaffToNamePracticeView({
   );
 
   const toggleGroup = (groupId: CurrentPracticeGroupId): void => {
+    setStatusMessage("");
     setPreferences((current) => ({
       ...current,
       enabledGroupIds: current.enabledGroupIds.includes(groupId)
@@ -622,7 +626,10 @@ export function StaffToNamePracticeView({
               </div>
               <span>已选 {availableGroupCount} 组</span>
             </div>
-            <div className="staff-to-name-range-options">
+            <div
+              className="staff-to-name-range-options"
+              data-setup-guide-target="staff-to-name-range"
+            >
               {PRACTICE_GROUPS.map((group) => {
                 const checked = preferences.enabledGroupIds.includes(group.id);
                 return (
@@ -762,7 +769,7 @@ export function StaffToNamePracticeView({
             ) : null}
           </section>
 
-          {statusMessage ? (
+          {statusMessage && stage !== "setup" ? (
             <p className="staff-to-name-status" role="alert">
               {statusMessage}
             </p>
@@ -773,14 +780,19 @@ export function StaffToNamePracticeView({
               <span>{modeLabel}</span>
               <span>音名按键</span>
             </div>
+            {statusMessage && stage === "setup" ? (
+              <p className="practice-midi-start-warning" data-setup-guide-warning="" role="alert">
+                {statusMessage}
+              </p>
+            ) : null}
             <button
               className="primary"
-              disabled={!isActive || targetPool.length === 0 || isStarting}
+              disabled={!isActive || isStarting}
               onClick={() => void startRound()}
               type="button"
             >
               <Play aria-hidden="true" size={18} />
-              {isStarting ? "准备中…" : "开始看谱认音"}
+              {isStarting ? <LoadingActivityText kind="dots">准备中</LoadingActivityText> : "开始"}
             </button>
           </footer>
         </div>
@@ -802,35 +814,42 @@ export function StaffToNamePracticeView({
               </strong>
             ) : null}
             <div className="staff-to-name-run-actions">
-              <button
-                aria-label={isPaused ? "继续练习" : "暂停练习"}
-                disabled={feedback?.state === "correct"}
-                onClick={pauseOrResume}
-                type="button"
-              >
-                {isPaused ? (
-                  <Play aria-hidden="true" size={18} />
-                ) : (
-                  <Pause aria-hidden="true" size={18} />
-                )}
-                {isPaused ? "继续" : "暂停"}
-              </button>
-              {showRestartControl ? (
+              <div className="practice-run-core-actions">
                 <button
-                  aria-label="重新开始当前练习"
-                  disabled={isRestarting}
-                  onClick={() => void restartRound()}
-                  title="重新开始当前练习"
+                  aria-label="结束练习并返回配置"
+                  onClick={() => finishRound(false)}
+                  title="结束练习并返回配置"
                   type="button"
                 >
-                  <RotateCcw aria-hidden="true" size={17} />
-                  重新开始
+                  <ArrowLeft aria-hidden="true" size={17} />
+                  结束返回
                 </button>
-              ) : null}
-              <button aria-label="结束练习" onClick={() => finishRound()} type="button">
-                <Square aria-hidden="true" size={17} />
-                结束
-              </button>
+                <button
+                  aria-label={isPaused ? "继续练习" : "暂停练习"}
+                  disabled={feedback?.state === "correct"}
+                  onClick={pauseOrResume}
+                  type="button"
+                >
+                  {isPaused ? (
+                    <Play aria-hidden="true" size={18} />
+                  ) : (
+                    <Pause aria-hidden="true" size={18} />
+                  )}
+                  {isPaused ? "继续" : "暂停"}
+                </button>
+                {showRestartControl ? (
+                  <button
+                    aria-label="重新开始当前练习"
+                    disabled={isRestarting}
+                    onClick={() => void restartRound()}
+                    title="重新开始当前练习"
+                    type="button"
+                  >
+                    <RotateCcw aria-hidden="true" size={17} />
+                    重新开始
+                  </button>
+                ) : null}
+              </div>
             </div>
           </header>
           <StaffReadingTips />

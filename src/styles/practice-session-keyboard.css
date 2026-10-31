@@ -12,6 +12,32 @@
   gap: 8px;
 }
 
+.practice-run-core-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.practice-run-core-actions > button {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.practice-pause-resume-button,
+.practice-pause-restart-button {
+  box-sizing: border-box;
+  width: 132px;
+  min-width: 132px;
+  max-width: 132px;
+  flex: 0 0 132px;
+  justify-content: center;
+}
+
 .topline-actions > .midi-input-control {
   flex: 0 1 190px;
 }
@@ -79,6 +105,12 @@
     width: 100%;
     max-width: 560px;
     gap: 8px;
+  }
+
+  .practice-topline .topline-actions > .practice-run-core-actions {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    width: 100%;
   }
 
   .practice-topline .topline-actions > button,
@@ -152,6 +184,16 @@
   .practice-running-shell .topline-actions > .song-chase-settings-button {
     grid-column: auto;
     justify-self: stretch;
+  }
+
+  .practice-running-shell .practice-run-core-actions {
+    gap: 5px;
+  }
+
+  .practice-running-shell .practice-run-core-actions > button {
+    min-height: 40px;
+    padding-inline: 8px;
+    font-size: 13px;
   }
 }
 

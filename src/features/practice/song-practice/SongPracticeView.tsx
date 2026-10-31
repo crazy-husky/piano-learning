@@ -20,6 +20,7 @@ import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { PracticeFullscreenToggle } from "../components/PracticeFullscreenFrame";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { PracticeQuestionLimitDialog } from "../../../shared/components/PracticeQuestionLimitDialog";
 import type { MidiNoteInputEvent } from "../../../midi/midiInput";
 import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
@@ -1328,7 +1329,7 @@ export function SongPracticeView({
           : `答对 ${songPreferences.chaseStartCount} 个目标后开始追赶`;
 
   const feedbackText = isInputSwitching
-    ? "正在切换输入方式…"
+    ? "正在切换输入方式"
     : isFinished
       ? "整首练习完成了，可以重新开始。"
       : !hasStarted || !isCurrentTargetVisible
@@ -1457,9 +1458,13 @@ export function SongPracticeView({
               ) : microphone.status === "requesting" ? (
                 <span className="song-practice-current-input" role="status">
                   <AudioLines aria-hidden="true" size={15} />
-                  {microphone.isPreparingSwiftF0
-                    ? "当前输入方式：正在准备识别模型"
-                    : "当前输入方式：麦克风（连接中）"}
+                  {microphone.isPreparingSwiftF0 ? (
+                    <LoadingActivityText kind="dots">
+                      当前输入方式：正在准备识别模型
+                    </LoadingActivityText>
+                  ) : (
+                    "当前输入方式：麦克风（连接中）"
+                  )}
                   <PracticeMicrophoneRetryButton
                     isConnecting
                     isPreparingModel={microphone.isPreparingSwiftF0}
@@ -1494,7 +1499,11 @@ export function SongPracticeView({
 
           <div className="song-practice-status" aria-live="polite" role="status">
             <span className={`song-practice-feedback${feedback ? ` is-${feedback.type}` : ""}`}>
-              {feedbackText}
+              {isInputSwitching ? (
+                <LoadingActivityText kind="dots">正在切换输入方式</LoadingActivityText>
+              ) : (
+                feedbackText
+              )}
             </span>
             {chaseStatusText ? <span className="song-chase-status">{chaseStatusText}</span> : null}
           </div>

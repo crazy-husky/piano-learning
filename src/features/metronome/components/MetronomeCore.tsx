@@ -1,5 +1,6 @@
 import { Maximize2, Minimize2, Minus, Pause, Play, Plus, Volume2 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -10,6 +11,7 @@ import {
 } from "react";
 import type { MetronomeController } from "../useMetronomeController";
 import type { MetronomeBeatSound } from "../metronomePreferences";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { WoodfishIllustration } from "./WoodfishIllustration";
 
 type MetronomeCoreVariant = "page" | "panel" | "compact";
@@ -38,6 +40,8 @@ interface MetronomeCoreProps {
 const TEMPO_MIN = 30;
 const TEMPO_MAX = 240;
 const TEMPO_PRESETS = [40, 50, 60, 90, 120, 150] as const;
+const MERIT_POP_MAX_RATE_INTERVAL_MS = 500;
+const MERIT_POP_MAX_RATE_INTERVAL_SECONDS = MERIT_POP_MAX_RATE_INTERVAL_MS / 1000;
 const BEAT_SOUND_LABELS: Record<MetronomeBeatSound, string> = {
   woodfish1: "木鱼原声",
   woodfish2: "木鱼音色 A",
@@ -175,13 +179,19 @@ function TempoPresets({ controller }: { controller: MetronomeController }): JSX.
   );
 }
 
-function BeatSoundPattern({ controller }: { controller: MetronomeController }): JSX.Element {
+function BeatSoundPattern({
+  activeBeatIndex,
+  controller,
+}: {
+  activeBeatIndex: number;
+  controller: MetronomeController;
+}): JSX.Element {
   return (
     <div className="metronome-beat-pattern-wrap">
       <span className="metronome-beat-pattern-label">点击下方圆点切换木鱼声</span>
       <div aria-label="每拍音效模式" className="metronome-beat-pattern" role="group">
         {controller.preferences.beatSounds.map((sound, index) => {
-          const isActive = controller.isPlaying && index === Math.max(0, controller.beatIndex - 1);
+          const isActive = controller.isPlaying && index === activeBeatIndex;
           return (
             <button
               aria-current={isActive ? "step" : undefined}
@@ -203,6 +213,8 @@ function BeatSoundPattern({ controller }: { controller: MetronomeController }): 
 }
 
 function MeterAndVolume({ controller }: { controller: MetronomeController }): JSX.Element {
+  const volumePercent = Math.round(controller.preferences.volume * 100);
+
   return (
     <div className="metronome-settings-row">
       <label className="metronome-meter-control">
@@ -225,15 +237,19 @@ function MeterAndVolume({ controller }: { controller: MetronomeController }): JS
         <Volume2 aria-hidden="true" size={18} />
         <span className="visually-hidden">音量</span>
         <input
-          aria-label="音量"
-          max={1}
+          aria-label="木鱼音量"
+          aria-valuetext={`${volumePercent}%`}
+          max={100}
           min={0}
-          onChange={(event) => controller.setVolume(Number(event.currentTarget.value))}
-          step={0.01}
-          style={getSliderStyle(Math.round(controller.preferences.volume * 210) + TEMPO_MIN)}
+          onChange={(event) => controller.setVolume(Number(event.currentTarget.value) / 100)}
+          step={1}
+          style={{ "--volume-progress": `${volumePercent}%` } as CSSProperties}
           type="range"
-          value={controller.preferences.volume}
+          value={volumePercent}
         />
+        <output aria-hidden="true" className="metronome-volume-value">
+          {volumePercent}%
+        </output>
       </label>
     </div>
   );
@@ -259,13 +275,79 @@ export function MetronomeCore({
   menu,
   variant,
 }: MetronomeCoreProps): JSX.Element {
-  const [struckSide, setStruckSide] = useState<"left" | "right">("left");
+  const [visualBeat, setVisualBeat] = useState<{
+    activeBeatIndex: number;
+    struckSide: "left" | "right";
+  }>({ activeBeatIndex: -1, struckSide: "left" });
+  const [meritPopIds, setMeritPopIds] = useState<number[]>([]);
+  const meritPopIdRef = useRef(0);
+  const meritPopTimerRef = useRef<number | null>(null);
+  const isDockedMini = mini && miniDockEdge !== null;
+  const isPlayingRef = useRef(controller.isPlaying);
+  const visualPlaybackSessionRef = useRef(0);
+  const isDockedMiniRef = useRef(isDockedMini);
+  isPlayingRef.current = controller.isPlaying;
+  isDockedMiniRef.current = isDockedMini;
+  const scheduleAtAudioTime = controller.scheduleAtAudioTime;
+  const subscribeBeat = controller.subscribeBeat;
+  const showMeritPop = useCallback((): void => {
+    const id = ++meritPopIdRef.current;
+    setMeritPopIds((current) => [...current.slice(-2), id]);
+  }, []);
 
   useEffect(() => {
-    if (controller.beatSequence > 0) {
-      setStruckSide((current) => (current === "left" ? "right" : "left"));
-    }
-  }, [controller.beatSequence]);
+    const playbackSession = ++visualPlaybackSessionRef.current;
+    let isSubscribed = true;
+    const clearMeritPopTimer = (): void => {
+      if (meritPopTimerRef.current === null) return;
+      window.clearInterval(meritPopTimerRef.current);
+      meritPopTimerRef.current = null;
+    };
+    const unsubscribe = subscribeBeat((beat) => {
+      scheduleAtAudioTime(() => {
+        if (
+          !isSubscribed ||
+          !isPlayingRef.current ||
+          playbackSession !== visualPlaybackSessionRef.current
+        ) {
+          return;
+        }
+        setVisualBeat((current) => ({
+          activeBeatIndex: beat.beatIndex,
+          struckSide: current.struckSide === "left" ? "right" : "left",
+        }));
+
+        if (!isDockedMiniRef.current) return;
+        if (60 / beat.bpm >= MERIT_POP_MAX_RATE_INTERVAL_SECONDS) {
+          clearMeritPopTimer();
+          showMeritPop();
+          return;
+        }
+        if (meritPopTimerRef.current !== null) return;
+
+        showMeritPop();
+        meritPopTimerRef.current = window.setInterval(() => {
+          if (!isSubscribed || !isPlayingRef.current || !isDockedMiniRef.current) {
+            clearMeritPopTimer();
+            return;
+          }
+          showMeritPop();
+        }, MERIT_POP_MAX_RATE_INTERVAL_MS);
+      }, beat.audioTime);
+    });
+    return () => {
+      isSubscribed = false;
+      visualPlaybackSessionRef.current += 1;
+      unsubscribe();
+      clearMeritPopTimer();
+    };
+  }, [controller.isPlaying, isDockedMini, scheduleAtAudioTime, showMeritPop, subscribeBeat]);
+
+  useEffect(() => {
+    if (!isDockedMini) setMeritPopIds([]);
+  }, [isDockedMini]);
+
+  const { activeBeatIndex, struckSide } = visualBeat;
 
   const startOrStop = async (): Promise<void> => {
     if (controller.isSyncLocked) {
@@ -333,6 +415,20 @@ export function MetronomeCore({
           >
             <WoodfishIllustration />
             {mini ? <span className="metronome-mini-label">节拍</span> : null}
+            {isDockedMini
+              ? meritPopIds.map((id) => (
+                  <span
+                    aria-hidden="true"
+                    className="metronome-merit-pop"
+                    key={id}
+                    onAnimationEnd={() =>
+                      setMeritPopIds((current) => current.filter((popId) => popId !== id))
+                    }
+                  >
+                    功德+1
+                  </span>
+                ))
+              : null}
           </button>
           {menu}
         </div>
@@ -484,7 +580,7 @@ export function MetronomeCore({
 
         <TempoPresets controller={controller} />
 
-        <BeatSoundPattern controller={controller} />
+        <BeatSoundPattern activeBeatIndex={activeBeatIndex} controller={controller} />
 
         <TempoSlider controller={controller} />
 
@@ -519,15 +615,19 @@ export function MetronomeCore({
           ) : (
             <Play aria-hidden="true" size={20} />
           )}
-          {controller.isLoading
-            ? "正在加载音效"
-            : controller.isSyncLocked
-              ? controller.isPlaying
-                ? "暂停练习"
-                : "继续练习"
-              : controller.isPlaying
-                ? "暂停节拍"
-                : "开始节拍"}
+          {controller.isLoading ? (
+            <LoadingActivityText kind="dots">正在加载音效</LoadingActivityText>
+          ) : controller.isSyncLocked ? (
+            controller.isPlaying ? (
+              "暂停练习"
+            ) : (
+              "继续练习"
+            )
+          ) : controller.isPlaying ? (
+            "暂停节拍"
+          ) : (
+            "开始节拍"
+          )}
         </button>
         {controller.audioError ? (
           <p className="metronome-audio-error" role="alert">

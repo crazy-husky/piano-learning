@@ -19,6 +19,7 @@ import {
   restoreStaffGameWrongNoteArchiveResponseTimes,
 } from "../../../data/db";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import type { StatsRange } from "./statsRange";
 import { getStatsRangeCutoff } from "./statsRange";
 import { StaffGameWrongNoteNoteDiagnosticPanel } from "../../staff-game/components/StaffGameWrongNoteNoteDiagnosticPanel";
@@ -201,7 +202,7 @@ export function WrongNoteStatsPanel({
 
       {loading ? (
         <div className="stats-inline-empty" role="status">
-          正在读取错题归档…
+          <LoadingActivityText kind="dots">正在读取错题归档</LoadingActivityText>
         </div>
       ) : null}
       {!loading && loadError ? (

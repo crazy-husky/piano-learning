@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MidiInputController } from "../../midi/useMidiInput";
+import { clearMidiDeviceGuide } from "../../midi/MidiDeviceGuideArrow";
 
 type MidiConnectionState = Pick<MidiInputController, "isConnected" | "status">;
 
@@ -27,6 +28,7 @@ export function useMidiConnectionAttention(midi: MidiConnectionState): {
   useEffect(() => {
     if (midi.isConnected) {
       setIsActive(false);
+      clearMidiDeviceGuide();
       if (timeoutRef.current !== null) {
         window.clearTimeout(timeoutRef.current);
         timeoutRef.current = null;

@@ -38,6 +38,7 @@ import { backupText, formatBackupConflictDetail } from "../domain/backupText";
 import type { AppSettings } from "../domain/types";
 import { MidiLatencyDiagnosticsPanel } from "../diagnostics/MidiLatencyDiagnosticsPanel";
 import { MIDI_LATENCY_DIAGNOSTICS_ENABLED } from "../diagnostics/midiLatencyDiagnostics";
+import { clearMidiDeviceGuide, MidiDeviceGuideArrow } from "../midi/MidiDeviceGuideArrow";
 import { BackupConflictResolver } from "../shared/components/BackupConflictResolver";
 import { AppStartupSkeleton, RouteLoadingSkeleton } from "../shared/components/LoadingSkeletons";
 import { HomeView } from "../features/home/components/HomeView";
@@ -439,6 +440,10 @@ export function App({
         : route.page === "metronome"
           ? "home"
           : route.page;
+  useLayoutEffect(() => {
+    clearMidiDeviceGuide();
+  }, [moduleTab, route.path, route.practiceDistanceMode, route.practiceTab]);
+
   const isPracticePageRoute =
     (route.levelId !== undefined && route.levelId > 1 && moduleTab === "practice") ||
     route.path === "/playground/songs/score";
@@ -1346,6 +1351,7 @@ export function App({
         richColors
         theme={isNightMode ? "dark" : "light"}
       />
+      <MidiDeviceGuideArrow />
       <div className={shellClassName}>
         <nav aria-label="主导航" className="app-nav">
           <button

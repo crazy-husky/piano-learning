@@ -1,8 +1,11 @@
+import { LoadingActivityText } from "./LoadingActivity";
+
 interface PracticeMicrophoneRetryButtonProps {
   isConnecting: boolean;
   isPreparingModel?: boolean;
   onRetry: () => unknown | Promise<unknown>;
   className?: string;
+  setupGuideTarget?: string;
 }
 
 export function PracticeMicrophoneRetryButton({
@@ -10,6 +13,7 @@ export function PracticeMicrophoneRetryButton({
   isPreparingModel = false,
   onRetry,
   className,
+  setupGuideTarget,
 }: PracticeMicrophoneRetryButtonProps): JSX.Element {
   const classes = ["practice-microphone-retry-button", className].filter(Boolean).join(" ");
 
@@ -17,6 +21,7 @@ export function PracticeMicrophoneRetryButton({
     <button
       aria-busy={isConnecting || isPreparingModel || undefined}
       className={classes}
+      data-setup-guide-target={setupGuideTarget}
       disabled={isConnecting || isPreparingModel}
       onClick={() => {
         void (async () => {
@@ -29,7 +34,13 @@ export function PracticeMicrophoneRetryButton({
       }}
       type="button"
     >
-      {isPreparingModel ? "准备识别模型…" : isConnecting ? "正在连接…" : "重试连接"}
+      {isPreparingModel ? (
+        <LoadingActivityText kind="dots">准备识别模型</LoadingActivityText>
+      ) : isConnecting ? (
+        <LoadingActivityText kind="dots">正在连接</LoadingActivityText>
+      ) : (
+        "重试连接"
+      )}
     </button>
   );
 }

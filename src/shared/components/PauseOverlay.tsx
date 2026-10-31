@@ -1,5 +1,6 @@
 import { RotateCcw } from "lucide-react";
 import { PracticeMicrophoneRetryButton } from "./PracticeMicrophoneRetryButton";
+import { LoadingActivityText } from "./LoadingActivity";
 
 interface PauseOverlayProps {
   onExit?: () => void;
@@ -50,9 +51,13 @@ export function PauseOverlay({
         {(microphoneError || microphoneConnecting) && onRetryMicrophone ? (
           <div aria-live="polite" className="practice-microphone-error-actions">
             <span>
-              {microphoneIsPreparingModel
-                ? "正在准备识别模型…"
-                : (microphoneError ?? "正在连接麦克风…")}
+              {microphoneIsPreparingModel ? (
+                <LoadingActivityText kind="dots">正在准备识别模型</LoadingActivityText>
+              ) : microphoneConnecting ? (
+                <LoadingActivityText kind="dots">正在连接麦克风</LoadingActivityText>
+              ) : (
+                microphoneError
+              )}
             </span>
             <PracticeMicrophoneRetryButton
               isConnecting={microphoneConnecting}
@@ -62,10 +67,23 @@ export function PauseOverlay({
           </div>
         ) : null}
         {showKeyboardShortcuts ? (
-          <small>{resumeBlockedMessage ?? resumeMessage ?? "按空格或点击空白处继续练习"}</small>
+          <small>
+            {resumeBlockedMessage ??
+              (resumeMessage?.includes("正在") ? (
+                <LoadingActivityText kind="dots">
+                  {resumeMessage.replace(/…$/, "")}
+                </LoadingActivityText>
+              ) : (
+                (resumeMessage ?? "按空格或点击空白处继续练习")
+              ))}
+          </small>
         ) : null}
         {showKeyboardShortcuts && onRestart ? (
-          <button className="pause-overlay-restart" onClick={onRestart} type="button">
+          <button
+            className="pause-overlay-restart practice-pause-restart-button"
+            onClick={onRestart}
+            type="button"
+          >
             <RotateCcw aria-hidden="true" size={17} />
             重新开始
           </button>
@@ -78,13 +96,17 @@ export function PauseOverlay({
               </button>
             ) : null}
             {onRestart ? (
-              <button className="pause-overlay-restart" onClick={onRestart} type="button">
+              <button
+                className="pause-overlay-restart practice-pause-restart-button"
+                onClick={onRestart}
+                type="button"
+              >
                 <RotateCcw aria-hidden="true" size={17} />
                 重新开始
               </button>
             ) : null}
             <button
-              className="pause-overlay-resume"
+              className="pause-overlay-resume practice-pause-resume-button"
               disabled={Boolean(resumeBlockedMessage)}
               onClick={onResume}
               type="button"

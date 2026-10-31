@@ -21,8 +21,11 @@ export type EffectiveQueueAlgorithm =
   "adaptive-v1" | "adaptive-v2" | "focused-v1" | "melody-v1" | "melody-v2";
 export type QueueComparisonFamily = "adaptive" | "melody-v1" | "melody-v2";
 export type StaffDistanceDirection = "up" | "down" | "same";
-export type StaffDistanceTrainingMode = "look" | "play";
+export type StaffDistanceTrainingMode = "look" | "play" | "finger";
 export type StaffDistanceInputMethod = "midi" | "microphone";
+export type StaffDistanceFingerHand = "left" | "right";
+export type StaffDistanceFingerNumber = 1 | 2 | 3 | 4 | 5;
+export type StaffDistanceFingerBatch = "line" | "space";
 export interface StaffDistancePracticeSettings {
   includeUnison: boolean;
   maxDistance: number;
@@ -188,6 +191,10 @@ export interface AnswerEvent {
     maxDistance?: number;
     trainingMode?: StaffDistanceTrainingMode;
     usedHint?: boolean;
+    fingerRole?: "reference" | "target";
+    fingerBatch?: StaffDistanceFingerBatch;
+    fingerHand?: StaffDistanceFingerHand;
+    fingerNumber?: StaffDistanceFingerNumber;
   };
 }
 
@@ -235,6 +242,13 @@ export interface StaffDistanceQuestionResult {
   wrongAttempts: number;
   usedHint: boolean;
   targetPitchId?: PitchId;
+  fingerBatch?: StaffDistanceFingerBatch;
+  referencePitchId?: PitchId;
+  referenceFirstTryCorrect?: boolean;
+  targetFirstTryCorrect?: boolean;
+  referenceCompleted?: boolean;
+  targetCompleted?: boolean;
+  timedOut?: boolean;
 }
 
 export interface StaffDistancePracticeSessionDetails {
@@ -250,6 +264,8 @@ export interface StaffDistancePracticeSessionDetails {
   questionResults: StaffDistanceQuestionResult[];
   staffNotationMode: StaffNotationMode;
   trainingMode?: StaffDistanceTrainingMode;
+  fingerHand?: StaffDistanceFingerHand;
+  fingerNumber?: StaffDistanceFingerNumber;
 }
 
 export interface PracticeSessionRecordV1 extends PracticeSessionRecordBase {

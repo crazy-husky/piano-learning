@@ -1438,7 +1438,7 @@ main {
 
 .global-range-groups {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--global-range-group-columns, 3), minmax(0, 1fr));
   justify-content: center;
   gap: 8px;
 }

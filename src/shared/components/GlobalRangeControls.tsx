@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { useRef, type CSSProperties, type ReactNode } from "react";
 
 import {
   AVAILABLE_PITCH_IDS,
@@ -88,6 +88,16 @@ export function GlobalRangeControls({
   );
   const selectedPitchSet = new Set(selectedPitchIds);
   const extensionOptions = getStaffRangeExtensionOptions(basePitchIds);
+  const visiblePitchGroups = PITCH_OCTAVE_GROUPS.flatMap((group) => {
+    const selectablePitchIds = getStaffCorePitchIds(group.pitchIds, staffMode);
+    return selectablePitchIds.length > 0 ? [{ group, selectablePitchIds }] : [];
+  });
+  const visiblePitchGroupCount = visiblePitchGroups.length;
+  const pitchGroupGridStyle = {
+    "--global-range-group-columns": visiblePitchGroupCount,
+    "--global-range-group-columns-medium": Math.min(visiblePitchGroupCount, 3),
+    "--global-range-group-columns-small": Math.min(visiblePitchGroupCount, 2),
+  } as CSSProperties;
   const selectedOctaveGroupLabels = PITCH_OCTAVE_GROUPS.filter((group) =>
     group.pitchIds.some((pitchId) => selectedPitchSet.has(pitchId))
   ).map((group) => group.label);
@@ -309,9 +319,8 @@ export function GlobalRangeControls({
 
   const pitchContent = (
     <>
-      <div className="global-range-groups">
-        {PITCH_OCTAVE_GROUPS.map((group) => {
-          const selectablePitchIds = getStaffCorePitchIds(group.pitchIds, staffMode);
+      <div className="global-range-groups" style={pitchGroupGridStyle}>
+        {visiblePitchGroups.map(({ group, selectablePitchIds }) => {
           const selectedCount = selectablePitchIds.filter((pitchId) =>
             selectedPitchSet.has(pitchId)
           ).length;

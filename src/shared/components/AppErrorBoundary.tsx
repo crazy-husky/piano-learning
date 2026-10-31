@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Bug } from "lucide-react";
 import { formatDateTime } from "../formatDateTime";
+import { LoadingActivityText } from "./LoadingActivity";
 import { APP_DIAGNOSTIC_EVENT, type AppDiagnosticSource } from "../diagnostics/appDiagnostics";
 import {
   clearGlobalDebugEvents,
@@ -844,8 +845,8 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     const status = statuses.find((item) => item.phase === "retrying") ?? statuses[0];
     const message = isRetrying
       ? status.kind === "page-reload"
-        ? "运行资源加载失败，正在尝试重新打开页面…"
-        : `运行资源加载失败，正在重试（${status.retry}/${status.maxRetries}）…`
+        ? "运行资源加载失败，正在尝试重新打开页面"
+        : `运行资源加载失败，正在重试（${status.retry}/${status.maxRetries}）`
       : isOffline
         ? "当前似乎处于离线状态，联网后将自动重新尝试加载运行资源。"
         : "运行资源仍未能加载，请刷新页面重试。";
@@ -1303,7 +1304,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
                 <p>
                   {isWaitingForNetwork
                     ? "当前似乎处于离线状态，联网后将自动重试运行资源。"
-                    : "菜单运行资源加载失败，正在自动重试…"}
+                    : "菜单运行资源加载失败，正在自动重试"}
                 </p>
               </div>
             </main>
@@ -1340,11 +1341,13 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
                       onClick={() => void this.refreshPage()}
                       type="button"
                     >
-                      {isWaitingForNetwork
-                        ? "等待联网"
-                        : isAutoReloading
-                          ? "正在重试…"
-                          : "刷新页面"}
+                      {isWaitingForNetwork ? (
+                        "等待联网"
+                      ) : isAutoReloading ? (
+                        <LoadingActivityText kind="dots">正在重试</LoadingActivityText>
+                      ) : (
+                        "刷新页面"
+                      )}
                     </button>
                   </div>
                   <p aria-live="polite" className="app-error-debug-copy-status">

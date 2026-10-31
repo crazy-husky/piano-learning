@@ -838,7 +838,7 @@ export function MicrophoneParameterBenchmarkDialog({
                     <Mic aria-hidden="true" size={17} />
                   )}
                   {isPreparingThisTake
-                    ? "正在连接麦克风…"
+                    ? "正在连接麦克风"
                     : isRecordingThisTake
                       ? `结束录音 ${recordingIndex} · ${formatElapsed(recording.elapsedMs)}`
                       : isComplete
@@ -1143,7 +1143,7 @@ export function MicrophoneParameterBenchmarkDialog({
               {isPreparingAlgorithm ? (
                 <LoadingActivityText kind="dots">正在准备识别模型</LoadingActivityText>
               ) : isScanning ? (
-                "正在扫描…"
+                <LoadingActivityText kind="dots">正在扫描</LoadingActivityText>
               ) : (
                 "🚀 开始离线扫描"
               )}

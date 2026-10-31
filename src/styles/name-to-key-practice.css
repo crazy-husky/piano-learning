@@ -56,7 +56,12 @@
 }
 
 .name-key-header {
-  align-items: center;
+  display: block;
+}
+
+.name-key-heading-copy {
+  min-width: 0;
+  width: 100%;
 }
 
 .name-key-header h1 {
@@ -138,7 +143,6 @@
 
 .name-key-input-options button,
 .name-key-run-actions button,
-.name-key-octave-switcher button,
 .name-key-summary-actions button {
   display: inline-flex;
   min-width: 0;
@@ -156,8 +160,7 @@
   padding: 8px 12px;
 }
 
-.name-key-input-options button.is-selected,
-.name-key-octave-switcher button.is-selected {
+.name-key-input-options button.is-selected {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent-strong);
@@ -313,6 +316,43 @@
   white-space: nowrap;
 }
 
+.name-key-action-buttons > .practice-midi-start-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  width: fit-content;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.name-key-action-buttons > .practice-midi-start-warning.is-midi-attention {
+  animation: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.name-key-start-warning-icon {
+  flex: 0 0 auto;
+}
+
+.name-key-action-buttons {
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
 @media (max-width: 720px) {
   .practice-setup-shell.is-name-key-practice-setup {
     padding-bottom: 172px;
@@ -345,6 +385,12 @@
   .name-key-action-buttons .name-key-start-button {
     width: 100%;
   }
+
+  .name-key-action-buttons > .practice-midi-start-warning {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+  }
 }
 
 .name-key-run-card {
@@ -374,6 +420,10 @@
 .name-key-run-actions button {
   min-height: 38px;
   font-size: 14px;
+}
+
+.name-key-run-actions > .practice-run-core-actions {
+  gap: 6px;
 }
 
 .name-key-countdown {
@@ -433,21 +483,6 @@
   color: var(--danger);
 }
 
-.name-key-octave-switcher {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 2px 0 4px;
-}
-
-.name-key-octave-switcher button {
-  min-width: 72px;
-  min-height: 36px;
-  padding-inline: 10px;
-  white-space: nowrap;
-}
-
 .name-key-keyboards {
   display: grid;
   gap: 14px;
@@ -461,18 +496,6 @@
   grid-template-columns: minmax(0, 1fr);
   align-items: end;
   gap: 10px;
-}
-
-.name-key-octave-row.has-label {
-  grid-template-columns: auto minmax(0, 1fr);
-}
-
-.name-key-octave-label {
-  align-self: center;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
 }
 
 .name-key-keyboards .staff-game-black-key.is-correct {
@@ -606,8 +629,12 @@
   justify-items: center;
   gap: 14px;
   background: color-mix(in srgb, var(--surface) 80%, transparent);
-  backdrop-filter: blur(7px);
   color: var(--text);
+}
+
+.name-key-paused-overlay .practice-pause-resume-button,
+.name-key-paused-overlay .practice-pause-restart-button {
+  width: 132px;
 }
 
 .name-key-paused-overlay strong {
@@ -699,12 +726,6 @@
     padding: 16px;
   }
 
-  .name-key-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-  }
-
   .name-key-setup-card {
     gap: 10px;
   }
@@ -741,6 +762,11 @@
     justify-content: flex-end;
   }
 
+  .name-key-run-actions > .practice-run-core-actions {
+    flex: 0 0 100%;
+    justify-content: flex-end;
+  }
+
   .name-key-run-actions button {
     min-height: 36px;
     padding: 6px 8px;
@@ -762,14 +788,6 @@
   .name-key-octave-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 3px;
-  }
-
-  .name-key-octave-row.has-label {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .name-key-octave-label {
-    padding-left: 3px;
   }
 
   .name-key-run-footer {
@@ -1162,9 +1180,9 @@
 
 .staff-to-name-setup-footer > button.primary,
 .staff-to-name-summary-actions button.primary {
-  border-color: transparent;
-  background: var(--accent-strong);
-  color: var(--accent-contrast, white);
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: white;
 }
 
 .staff-to-name-setup-footer > button:disabled {
@@ -1397,6 +1415,11 @@
 
   .staff-to-name-run-actions {
     margin-left: auto;
+  }
+
+  .staff-to-name-run-actions > .practice-run-core-actions {
+    flex: 0 0 100%;
+    justify-content: flex-end;
   }
 
   .staff-to-name-run-card {

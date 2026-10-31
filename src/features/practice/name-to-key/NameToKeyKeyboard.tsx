@@ -27,17 +27,13 @@ const OCTAVE_KEYS: readonly PianoKeyName[] = [
 
 export interface NameToKeyKeyboardProps {
   feedback?: { correctMidi: number; wrongMidi?: number };
-  includeOctaveNumbers: boolean;
   octaves: readonly number[];
-  showOctaveLabels?: boolean;
   onKeyPress: (midi: number) => void;
 }
 
 export function NameToKeyKeyboard({
   feedback,
-  includeOctaveNumbers,
   octaves,
-  showOctaveLabels = includeOctaveNumbers,
   onKeyPress,
 }: NameToKeyKeyboardProps): JSX.Element {
   return (
@@ -64,19 +60,13 @@ export function NameToKeyKeyboard({
         });
 
         return (
-          <div
-            className={`name-key-octave-row${showOctaveLabels ? " has-label" : ""}`}
-            key={octave}
-          >
-            {showOctaveLabels ? <span className="name-key-octave-label">Oct {octave}</span> : null}
+          <div className="name-key-octave-row" key={octave}>
             <VirtualPianoKeyboard
               ariaLabel={`第 ${octave} 组虚拟钢琴键`}
               className="name-key-virtual-keyboard"
               enabledKeys={enabledKeys}
               feedbackKeys={octaveFeedback}
-              getKeyLabel={(keyName) =>
-                `${keyName.replace("#", "♯")}${includeOctaveNumbers ? octave : ""}`
-              }
+              getKeyLabel={() => ""}
               getKeyAriaLabel={(keyName) =>
                 `${keyName.replace("#", "♯")}${octave} 音键${octaveFeedback.has(keyName) ? (octaveFeedback.get(keyName) === "correct" ? "，正确答案" : "，刚才弹奏的音") : ""}`
               }

@@ -514,19 +514,23 @@ export function SettingsView({
               <div>
                 <strong>MIDI 键盘</strong>
                 <span>
-                  {midi.status === "insecure-context"
-                    ? "当前页面不是安全连接，请改用 HTTPS 或本机 localhost"
-                    : midi.status === "unsupported"
-                      ? "当前浏览器不支持 Web MIDI"
-                      : midi.status === "requesting"
-                        ? "正在请求 MIDI 权限…"
-                        : midi.isConnected
-                          ? `已连接：${midi.selectedInput?.name}`
-                          : midi.status === "ready"
-                            ? midi.inputs.length > 0
-                              ? "请选择 MIDI 输入设备"
-                              : "未检测到可用的 MIDI 输入"
-                            : (midi.errorMessage ?? "连接后可选择设备并测试按键")}
+                  {midi.status === "insecure-context" ? (
+                    "当前页面不是安全连接，请改用 HTTPS 或本机 localhost"
+                  ) : midi.status === "unsupported" ? (
+                    "当前浏览器不支持 Web MIDI"
+                  ) : midi.status === "requesting" ? (
+                    <LoadingActivityText kind="dots">正在请求 MIDI 权限</LoadingActivityText>
+                  ) : midi.isConnected ? (
+                    `已连接：${midi.selectedInput?.name}`
+                  ) : midi.status === "ready" ? (
+                    midi.inputs.length > 0 ? (
+                      "请选择 MIDI 输入设备"
+                    ) : (
+                      "未检测到可用的 MIDI 输入"
+                    )
+                  ) : (
+                    (midi.errorMessage ?? "连接后可选择设备并测试按键")
+                  )}
                 </span>
               </div>
               <MidiInputControl midi={midi} />
@@ -699,11 +703,11 @@ export function SettingsView({
             </div>
             <button disabled={isAppUpdateBusy} onClick={onCheckForUpdates} type="button">
               {appUpdateStatus === "checking" ? (
-                <LoadingActivityText kind="spinner">正在检查…</LoadingActivityText>
+                <LoadingActivityText kind="spinner">正在检查</LoadingActivityText>
               ) : appUpdateStatus === "preparing" ? (
                 <LoadingActivityText kind="dots">正在准备</LoadingActivityText>
               ) : appUpdateStatus === "reloading" ? (
-                <LoadingActivityText kind="spinner">正在刷新…</LoadingActivityText>
+                <LoadingActivityText kind="spinner">正在刷新</LoadingActivityText>
               ) : appUpdateStatus === "up-to-date" || hasUpdateAvailable ? (
                 "重新检查"
               ) : (
@@ -734,7 +738,7 @@ export function SettingsView({
                 type="button"
               >
                 {appUpdateStatus === "reloading" ? (
-                  <LoadingActivityText kind="spinner">正在刷新页面…</LoadingActivityText>
+                  <LoadingActivityText kind="spinner">正在刷新页面</LoadingActivityText>
                 ) : hasPreparedUpdate ? (
                   "立即使用新版"
                 ) : (
@@ -755,7 +759,11 @@ export function SettingsView({
               type="button"
             >
               <RotateCcw size={15} />
-              {isRestoringConfiguration ? "正在恢复…" : "恢复默认配置"}
+              {isRestoringConfiguration ? (
+                <LoadingActivityText kind="dots">正在恢复</LoadingActivityText>
+              ) : (
+                "恢复默认配置"
+              )}
             </button>
           </div>
         </section>
@@ -798,7 +806,13 @@ export function SettingsView({
                 className={`settings-data-clear-feedback is-${dataClearFeedback.kind}`}
                 role={dataClearFeedback.kind === "error" ? "alert" : "status"}
               >
-                {dataClearFeedback.message}
+                {dataClearFeedback.kind === "success" ? (
+                  <LoadingActivityText kind="dots">
+                    {dataClearFeedback.message.replace(/…$/, "")}
+                  </LoadingActivityText>
+                ) : (
+                  dataClearFeedback.message
+                )}
               </p>
             )}
             <div className="ui-confirm-actions settings-data-clear-actions">

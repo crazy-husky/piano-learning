@@ -23,11 +23,10 @@ const BEAT_SOUND_CYCLE: readonly MetronomeBeatSound[] = [
   "woodfish3",
   "mute",
 ];
+const LATE_BEAT_TOLERANCE_SECONDS = 0.05;
 
 export interface MetronomeController {
   audioError: string | null;
-  beatIndex: number;
-  beatSequence: number;
   isLoading: boolean;
   isPlaying: boolean;
   isSyncLocked: boolean;
@@ -69,8 +68,6 @@ export function useMetronomeController(): MetronomeController {
   const [isSyncLocked, setIsSyncLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [beatSequence, setBeatSequence] = useState(0);
-  const [beatIndex, setBeatIndex] = useState(0);
   const preferencesRef = useRef(preferences);
   const playersRef = useRef<Partial<Record<SampledBeatSound, Tone.Player>>>({});
   const sampleLoadPromiseRef = useRef<Promise<void> | null>(null);
@@ -107,7 +104,6 @@ export function useMetronomeController(): MetronomeController {
     (value: MetronomePreferences["beatsPerBar"]): void => {
       if (isSyncLockedRef.current) return;
       beatIndexRef.current = 0;
-      setBeatIndex(0);
       setPreferences((current) => ({
         ...current,
         beatsPerBar: value,
@@ -224,6 +220,16 @@ export function useMetronomeController(): MetronomeController {
         const currentIndex = beatIndexRef.current % currentPreferences.beatsPerBar;
         const sound = currentPreferences.beatSounds[currentIndex] ?? "woodfish2";
         const currentPlayer = sound === "mute" ? undefined : playersRef.current[sound];
+        // Clock catches up ticks after a blocked main thread. Starting a sample
+        // at a past audio time plays it immediately and can bunch beats together.
+        const isTooLate = time < Tone.getContext().immediate() - LATE_BEAT_TOLERANCE_SECONDS;
+        const nextIndex = (currentIndex + 1) % currentPreferences.beatsPerBar;
+        if (isTooLate) {
+          // Keep the bar position in sync with Tone.Clock, but don't let stale
+          // ticks trigger visuals, merit pops, or synchronized-practice input.
+          beatIndexRef.current = nextIndex;
+          return;
+        }
         if (currentPlayer && currentPreferences.volume > 0) {
           currentPlayer.start(time);
         }
@@ -237,13 +243,7 @@ export function useMetronomeController(): MetronomeController {
           sequence,
         };
         beatListenersRef.current.forEach((listener) => listener(beatEvent));
-        const playbackToken = startTokenRef.current;
-        Tone.Draw.schedule(() => {
-          if (!isPlayingRef.current || playbackToken !== startTokenRef.current) return;
-          setBeatSequence(sequence);
-          setBeatIndex(currentIndex + 1);
-        }, time);
-        beatIndexRef.current = (currentIndex + 1) % currentPreferences.beatsPerBar;
+        beatIndexRef.current = nextIndex;
       }, preferencesRef.current.bpm / 60);
 
       clockRef.current = clock;
@@ -314,8 +314,6 @@ export function useMetronomeController(): MetronomeController {
 
   return {
     audioError,
-    beatIndex,
-    beatSequence,
     isLoading,
     isPlaying,
     isSyncLocked,

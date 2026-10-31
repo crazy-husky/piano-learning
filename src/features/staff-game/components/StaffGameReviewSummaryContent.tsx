@@ -2,6 +2,7 @@ import { AlertTriangle, CircleHelp, RotateCcw, X } from "lucide-react";
 import type { RefObject } from "react";
 import type { StaffGameWrongNoteComparison } from "../../../domain/staffGameWrongNoteArchives";
 import type { StaffGameWrongNoteRunPerformance } from "../logic/staffGameWrongNoteArchive";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 
 interface StaffGameReviewSummaryContentProps {
   timedOut: boolean;
@@ -207,7 +208,9 @@ export function StaffGameReviewSummaryContent({
           className={`staff-game-wrong-note-archive-status is-${archiveStatus}`}
         >
           {archiveStatus === "saving" ? (
-            <span>{archiveMode === "trend" ? "正在保存本局趋势…" : "正在保存到错题集…"}</span>
+            <LoadingActivityText kind="dots">
+              {archiveMode === "trend" ? "正在保存本局趋势" : "正在保存到错题集"}
+            </LoadingActivityText>
           ) : archiveStatus === "error" ? (
             <>
               <span>

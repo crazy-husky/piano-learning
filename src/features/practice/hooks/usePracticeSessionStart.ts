@@ -90,6 +90,7 @@ interface PracticeSessionStartServices {
     reviews?: ReviewRecord[];
     settings?: AppSettings;
   }>;
+  onMicrophoneStartFailure?: () => void;
   onSettingsSaved: (
     settings: AppSettings,
     options?: { feedback?: boolean }
@@ -167,6 +168,7 @@ export function usePracticeSessionStart({
   } = runtime;
   const {
     onBeforePracticeStart,
+    onMicrophoneStartFailure,
     onSettingsSaved,
     persistConfig,
     practiceMicrophone,
@@ -319,6 +321,7 @@ export function usePracticeSessionStart({
           } else {
             microphoneStarted = await startPracticeMicrophone();
             if (!microphoneStarted) {
+              onMicrophoneStartFailure?.();
               return;
             }
           }
@@ -428,6 +431,7 @@ export function usePracticeSessionStart({
     startPracticeMicrophone,
     stopPracticeMicrophone,
     onBeforePracticeStart,
+    onMicrophoneStartFailure,
     onSettingsSaved,
     persistConfig,
     queueNotes.length,

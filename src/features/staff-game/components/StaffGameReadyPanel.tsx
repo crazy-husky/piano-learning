@@ -87,6 +87,7 @@ type StaffGameReadyPanelProps = SharedArtwork &
         arcadeDefaultDurationMs: number;
         isPreparingMicrophone: boolean;
         isStarting: boolean;
+        startError?: string | null;
         onSelectReadyMode: (mode: "level" | "review") => void;
         onChangeReviewRange: (range: StaffGameWrongNoteRange) => void;
         onChangeReviewCondition: (value: string) => void;
@@ -325,6 +326,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
       <span>输入方式</span>
       <select
         aria-label="输入方式"
+        data-setup-guide-target="staff-game-input-mode"
         onChange={(event) =>
           props.onChangeInputMode(event.currentTarget.value as StaffGameReadyInputMode)
         }
@@ -345,6 +347,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
   const inputStatusContent = (
     <div
       className={`staff-game-mic-status${props.inputStatusState === "error" ? " has-error" : props.inputStatusState === "ready" ? " is-ready" : " is-pending"}${props.inputMode === "midi" && props.inputStatusState === "pending" && !props.inputStatusActivity ? " is-idle-midi-hint" : ""}`}
+      data-setup-guide-target="staff-game-input-status"
     >
       <span aria-hidden="true" className="staff-game-mic-indicator">
         {inputModeIcon}
@@ -369,6 +372,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
         <button
           aria-pressed={activeReadyTab === "learning"}
           className={activeReadyTab === "learning" ? "is-active" : ""}
+          data-setup-guide-target="staff-game-learning-mode"
           onClick={() => selectReadyTab("learning")}
           type="button"
         >
@@ -401,6 +405,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             ariaLabel="闯关 MIDI 输入设备"
             className="staff-game-ready-midi-picker"
             midi={props.midi}
+            setupGuideTarget="staff-game-midi-device"
           />
         ) : null}
       </div>
@@ -532,6 +537,17 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
         </div>
       ) : null}
       {props.readyMode === "level" ? (
+        props.startError ? (
+          <p
+            className="practice-midi-start-warning staff-game-ready-start-warning"
+            data-setup-guide-warning=""
+            role="alert"
+          >
+            {props.startError}
+          </p>
+        ) : null
+      ) : null}
+      {props.readyMode === "level" ? (
         <button
           className={`staff-game-primary staff-game-ready-start${props.isStarting ? " is-loading" : ""}`}
           disabled={props.isStarting}
@@ -553,7 +569,10 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
       {props.readyMode === "level" && props.inputMode !== "virtual" ? inputStatusContent : null}
       {props.readyMode === "review" ? (
         <div className="staff-game-review-picker">
-          <div className="staff-game-review-filters">
+          <div
+            className="staff-game-review-filters"
+            data-setup-guide-target="staff-game-review-filters"
+          >
             <label className="staff-game-review-range">
               <span>日期范围</span>
               <select
@@ -685,6 +704,15 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
       )}
       {props.readyMode === "review" ? (
         <div className="staff-game-ready-footer">
+          {props.startError ? (
+            <p
+              className="practice-midi-start-warning staff-game-ready-start-warning"
+              data-setup-guide-warning=""
+              role="alert"
+            >
+              {props.startError}
+            </p>
+          ) : null}
           <div className="staff-game-ready-actions">
             <button
               className="staff-game-secondary"
@@ -697,7 +725,7 @@ export function StaffGameReadyPanel(props: StaffGameReadyPanelProps) {
             </button>
             <button
               className={`staff-game-primary${props.isStarting ? " is-loading" : ""}`}
-              disabled={props.isStarting || props.reviewNotes.length === 0}
+              disabled={props.isStarting}
               onClick={props.onStartReview}
               type="button"
             >

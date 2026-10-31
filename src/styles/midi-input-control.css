@@ -33,6 +33,121 @@
   white-space: nowrap;
 }
 
+.practice-midi-start-warning {
+  box-sizing: border-box;
+  flex: 0 1 440px;
+  min-width: 0;
+  max-width: 440px;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--danger) 62%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger-surface) 38%, var(--surface));
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+[data-setup-guide-target].is-setup-guiding {
+  animation: setup-requirement-pulse 650ms ease-in-out 3;
+}
+
+@keyframes setup-requirement-pulse {
+  0%,
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  50% {
+    outline: 2px solid var(--danger);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 18%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-setup-guide-target].is-setup-guiding {
+    animation: none;
+    outline: 2px solid var(--danger);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 18%, transparent);
+  }
+}
+
+.midi-device-guide-arrow {
+  position: fixed;
+  z-index: 1900;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: visible;
+  color: var(--danger);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+
+.midi-device-guide-arrow.is-fading-out {
+  opacity: 0;
+}
+
+.midi-device-guide-arrow-line {
+  fill: none;
+  stroke: var(--danger);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 7px 5px;
+  filter: drop-shadow(0 0.5px 1px color-mix(in srgb, var(--panel-surface-strong) 55%, transparent));
+}
+
+.midi-device-guide-arrow-reveal {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: var(--midi-guide-line-length);
+  stroke-dashoffset: var(--midi-guide-line-length);
+  animation: midi-device-guide-shoot 320ms cubic-bezier(0.16, 0.8, 0.24, 1) forwards;
+}
+
+.midi-device-guide-arrow-head {
+  fill: var(--danger);
+  opacity: 0;
+  animation: midi-device-guide-head-reveal 80ms ease-out 260ms forwards;
+}
+
+@keyframes midi-device-guide-shoot {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes midi-device-guide-head-reveal {
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .midi-device-guide-arrow {
+    transition: none;
+  }
+
+  .midi-device-guide-arrow-reveal {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+
+  .midi-device-guide-arrow-head {
+    opacity: 1;
+    animation: none;
+  }
+}
+
 .midi-input-control-select:disabled,
 .midi-input-control-button:disabled {
   cursor: not-allowed;
@@ -82,6 +197,7 @@
 
 .practice-free-answer-option-copy > small.is-midi-attention,
 .practice-free-warning.is-midi-attention,
+.practice-midi-start-warning.is-midi-attention,
 .practice-start-tooltip.is-midi-attention,
 .staff-distance-start-error.is-midi-attention,
 .name-key-status-message.is-midi-attention,
@@ -96,6 +212,7 @@
 
 .practice-free-answer-option-copy > small.is-midi-attention,
 .practice-free-warning.is-midi-attention,
+.practice-midi-start-warning.is-midi-attention,
 .practice-start-tooltip.is-midi-attention,
 .staff-distance-start-error.is-midi-attention,
 .name-key-status-message.is-midi-attention,
@@ -121,6 +238,7 @@
 @media (prefers-reduced-motion: reduce) {
   .practice-free-answer-option-copy > small.is-midi-attention,
   .practice-free-warning.is-midi-attention,
+  .practice-midi-start-warning.is-midi-attention,
   .practice-start-tooltip.is-midi-attention,
   .staff-distance-start-error.is-midi-attention,
   .name-key-status-message.is-midi-attention,

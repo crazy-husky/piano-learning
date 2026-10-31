@@ -83,7 +83,7 @@ export function StaffGameStatusOverlays({
                     type="button"
                   >
                     {isStarting ? (
-                      <LoadingActivityText kind="spinner">正在连接…</LoadingActivityText>
+                      <LoadingActivityText kind="spinner">正在连接</LoadingActivityText>
                     ) : (
                       "重新检测"
                     )}

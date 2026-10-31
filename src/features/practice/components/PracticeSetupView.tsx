@@ -30,10 +30,11 @@ import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { getMidiUnavailableNotice } from "../../../midi/midiUnavailableNotice";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
+import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
-import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
 import { useMidiConnectionAttention } from "../../../shared/hooks/useMidiConnectionAttention";
+import { guideSetupRequirement } from "../../../shared/utils/guideSetupRequirement";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import {
   resolveSongPracticeArrangement,
@@ -129,7 +130,7 @@ interface PracticeSetupViewProps {
   midi: MidiInputController;
   overlay?: ReactNode;
   preferences: PracticeSetupUiPreferences;
-  setupDisabledReason?: string;
+  setupStartError?: string | null;
   metronomeError?: string | null;
   metronomeBeatsPerBar?: number;
   startPausedReading: boolean;
@@ -275,13 +276,12 @@ export function PracticeSetupView({
   midi,
   overlay,
   preferences,
-  setupDisabledReason,
+  setupStartError,
   metronomeError,
   metronomeBeatsPerBar = 4,
   startPausedReading,
   settings,
 }: PracticeSetupViewProps): JSX.Element {
-  const confirmDialog = useConfirmDialog();
   const {
     canRequestConnection: canShowMidiAttention,
     isActive: isMidiConnectAttentionActive,
@@ -353,28 +353,12 @@ export function PracticeSetupView({
     onSetupTabChange,
     onToggleDrillNoteName: toggleDrillNoteName,
   } = actions;
-  const setupDisabled = setupDisabledReason !== undefined;
   const [midiAttentionSource, setMidiAttentionSource] = useState<
-    "answer-mode" | "start" | "song-hand" | "song-start" | null
+    "answer-mode" | "song-hand" | null
   >(null);
-  const freePracticeNeedsMidi =
-    activeTab === "free" && activeAnswerPitchMode === "exact-pitch" && !midi.isConnected;
-  const showMidiAttention = (
-    source: "answer-mode" | "start" | "song-hand" | "song-start"
-  ): void => {
+  const showMidiAttention = (source: "answer-mode" | "song-hand"): void => {
     setMidiAttentionSource(source);
     triggerMidiAttention();
-  };
-  const showMidiUnavailableNotice = (): boolean => {
-    const notice = getMidiUnavailableNotice(midi.status);
-    if (!notice) return false;
-    void confirmDialog({
-      ...notice,
-      className: "is-midi-attention",
-      confirmLabel: "确认",
-      confirmOnly: true,
-    });
-    return true;
   };
   const handleMidiAnswerModeClick = (): void => {
     if (!isDuetPractice) {
@@ -396,9 +380,13 @@ export function PracticeSetupView({
   ): void => setSongPreferences((current) => ({ ...current, ...update }));
   const [isStartingSongPractice, setIsStartingSongPractice] = useState(false);
   const [songStartError, setSongStartError] = useState<string | null>(null);
+  const hasSongSetupWarning = Boolean(
+    activeTab === "songs" &&
+    (songStartError || microphoneStatus === "requesting" || microphoneError)
+  );
   useEffect(() => {
-    if (!midi.isConnected || !midiAttentionSource?.startsWith("song-")) return;
-    setMidiAttentionSource(null);
+    if (!midi.isConnected) return;
+    if (midiAttentionSource?.startsWith("song-")) setMidiAttentionSource(null);
     setSongStartError(null);
   }, [midi.isConnected, midiAttentionSource]);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
@@ -439,8 +427,7 @@ export function PracticeSetupView({
   const preferredInputMode = midi.isConnected ? "midi" : "microphone";
   const activeInputMode = preferredInputMode;
   const showSongArrangementWarning =
-    (requiresMidi && !midi.isConnected) ||
-    (activeInputMode === "microphone" && simultaneousTargetCount > 0);
+    activeInputMode === "microphone" && simultaneousTargetCount > 0;
   const completedSongSessions = new Map<string, number>();
   getSongPracticeProgressEntries().forEach(({ key, progress }) => {
     const separatorIndex = key.lastIndexOf(":");
@@ -498,12 +485,25 @@ export function PracticeSetupView({
 
   const startSongPractice = async (): Promise<void> => {
     if (requiresMidi && !midi.isConnected) {
-      const notice = getMidiUnavailableNotice(midi.status);
-      showMidiAttention("song-start");
+      const midiUnavailable = midi.status === "unsupported" || midi.status === "insecure-context";
+      const hasUnselectedDevice = midi.status === "ready" && midi.inputs.length > 0;
       setSongStartError(
-        notice
-          ? `${notice.title}：${notice.description}`
-          : "混弹需要连接 MIDI 键盘，请连接后再进入练习。"
+        midiUnavailable
+          ? "当前环境不支持 MIDI，请选择单手练习"
+          : midi.status === "requesting"
+            ? "MIDI 正在连接，请稍候"
+            : midi.status === "denied"
+              ? "请检查 MIDI 权限"
+              : midi.status === "error"
+                ? "MIDI 连接失败，请重试"
+                : hasUnselectedDevice
+                  ? "请选择 MIDI 设备"
+                  : "请连接 MIDI 键盘"
+      );
+      guideSetupRequirement(
+        midiUnavailable
+          ? '[data-setup-guide-target="song-hand-mode"]'
+          : '[data-setup-guide-target="song-midi-device"]'
       );
       return;
     }
@@ -512,7 +512,8 @@ export function PracticeSetupView({
       return;
     }
     if (resolvedArrangement.targets.length === 0) {
-      setSongStartError("这首曲目暂无可练习音符。");
+      setSongStartError("请选择其他曲目");
+      guideSetupRequirement('[data-setup-guide-target="song-list"]');
       return;
     }
     setSongStartError(null);
@@ -526,10 +527,22 @@ export function PracticeSetupView({
         score: selectedScore,
         songId: isMidiSong ? selectedSongId : selectedScore.id,
       });
-      if (!entered) setSongStartError("麦克风未能启动，请检查权限和输入设备后重试。");
+      if (!entered) {
+        setSongStartError(
+          activeInputMode === "microphone" ? "请检查麦克风权限或设备" : "请检查 MIDI 设备"
+        );
+        guideSetupRequirement(
+          activeInputMode === "microphone"
+            ? '[data-setup-guide-target="song-microphone-retry"]'
+            : '[data-setup-guide-target="song-midi-device"]'
+        );
+      }
     } catch (error) {
-      setSongStartError(
-        error instanceof Error ? error.message : "麦克风未能启动，请检查权限和输入设备后重试。"
+      setSongStartError(error instanceof Error ? error.message : "歌曲练习未能开始，请重试。");
+      guideSetupRequirement(
+        activeInputMode === "microphone"
+          ? '[data-setup-guide-target="song-microphone-retry"]'
+          : '[data-setup-guide-target="song-midi-device"]'
       );
     } finally {
       setIsStartingSongPractice(false);
@@ -538,7 +551,7 @@ export function PracticeSetupView({
 
   return (
     <section
-      className={`practice-shell practice-setup-shell${activeTab === "free" ? " is-free-practice-setup" : ""}${activeTab === "distance" ? " is-distance-practice-setup" : ""}${activeTab === "name-key" ? " is-name-key-practice-setup" : ""}${activeTab === "name-key" && distanceStageActive ? " is-name-key-practice-running" : ""}${activeTab === "songs" ? " is-song-practice-setup" : ""}`}
+      className={`practice-shell practice-setup-shell${activeTab === "free" ? " is-free-practice-setup" : ""}${activeTab === "distance" ? " is-distance-practice-setup" : ""}${activeTab === "name-key" ? " is-name-key-practice-setup" : ""}${activeTab === "name-key" && distanceStageActive ? " is-name-key-practice-running" : ""}${activeTab === "songs" ? " is-song-practice-setup" : ""}${hasSongSetupWarning ? " has-midi-start-warning" : ""}`}
     >
       {showPracticeKindTabs ? (
         <div aria-label="练习类型" className="practice-kind-tabs" role="tablist">
@@ -610,27 +623,31 @@ export function PracticeSetupView({
       >
         <div className="practice-free-page practice-setup-framed-page">
           <div className="practice-free-page-header">
-            <div>
+            <div className="practice-free-heading-copy">
               <h1>{freePracticeTitle}</h1>
-              <p className="practice-panel-description">{freePracticeDescription}</p>
-            </div>
-            {activeAnswerPitchMode === "exact-pitch" ? (
-              <div className="practice-setup-heading-meta">
-                <div className="practice-midi-heading-status">
-                  <MidiInputControl
-                    ariaLabel={`${freePracticeTitle} MIDI 输入设备`}
-                    className={isMidiConnectAttentionActive ? "needs-attention" : undefined}
-                    midi={midi}
-                  />
-                </div>
+              <div className="practice-setup-description-row">
+                <p className="practice-panel-description">{freePracticeDescription}</p>
+                {activeAnswerPitchMode === "exact-pitch" ? (
+                  <div className="practice-setup-heading-meta">
+                    <div className="practice-midi-heading-status">
+                      <MidiInputControl
+                        ariaLabel={`${freePracticeTitle} MIDI 输入设备`}
+                        className={isMidiConnectAttentionActive ? "needs-attention" : undefined}
+                        midi={midi}
+                        setupGuideTarget="practice-midi-device"
+                      />
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            </div>
           </div>
           <div className="practice-free-config-content">
             {showPracticeModeTabs || isDuetPractice ? (
               <section
                 aria-label="练习方式"
                 className="practice-free-section practice-free-hand-mode"
+                data-setup-guide-target="practice-hand-mode"
               >
                 <div className="practice-free-field">
                   <span className="control-label">练习方式</span>
@@ -735,7 +752,10 @@ export function PracticeSetupView({
             ) : null}
 
             {!isDuetPractice ? (
-              <section className="practice-free-section practice-free-range-section">
+              <section
+                className="practice-free-section practice-free-range-section"
+                data-setup-guide-target="practice-note-groups"
+              >
                 <GlobalRangeControls
                   allowInterStaffLedgerChoice={false}
                   compactSummary
@@ -881,6 +901,7 @@ export function PracticeSetupView({
                   <div
                     aria-label="答题方式"
                     className={`practice-free-answer-options${isDuetPractice ? " is-duet" : ""}`}
+                    data-setup-guide-target="practice-answer-mode"
                   >
                     {!isDuetPractice ? (
                       <button
@@ -913,20 +934,12 @@ export function PracticeSetupView({
                             <small className="practice-free-recommended">推荐</small>
                           ) : null}
                         </span>
-                        <small
-                          className={
-                            isMidiConnectAttentionActive &&
-                            midiAttentionSource === "answer-mode" &&
-                            !midi.isConnected
-                              ? "is-midi-attention"
-                              : undefined
-                          }
-                        >
+                        <small>
                           {midi.isConnected
                             ? "音高与八度精准识别，练习中可切换设备"
                             : getMidiUnavailableNotice(midi.status)
-                              ? "当前环境暂不支持 MIDI，点击“开始”查看解决方式"
-                              : "请先连接并选择 MIDI 设备，再开始练习"}
+                              ? "需要支持 MIDI 输入的浏览器和设备"
+                              : "连接后可精准识别音高与八度"}
                         </small>
                       </span>
                     </button>
@@ -947,21 +960,6 @@ export function PracticeSetupView({
                       </button>
                     ) : null}
                   </div>
-                  {isDuetPractice && !midi.isConnected ? (
-                    <p
-                      className={`practice-free-warning${
-                        isMidiConnectAttentionActive &&
-                        (midiAttentionSource === "answer-mode" || midiAttentionSource === "start")
-                          ? " is-midi-attention"
-                          : ""
-                      }`}
-                      role="status"
-                    >
-                      {getMidiUnavailableNotice(midi.status)
-                        ? "当前环境暂不支持 MIDI，点击“开始”查看解决方式。"
-                        : "请连接 MIDI 键盘后开始左右手合弹。"}
-                    </p>
-                  ) : null}
                   {activeAnswerPitchMode === "microphone" &&
                   (microphoneError ||
                     microphoneStatus === "error" ||
@@ -972,16 +970,19 @@ export function PracticeSetupView({
                       aria-live="polite"
                     >
                       <span>
-                        {microphoneStatus === "requesting"
-                          ? microphoneIsPreparingModel
-                            ? "正在准备识别模型…"
-                            : "正在连接麦克风…"
-                          : (microphoneError ?? "麦克风连接失败，请检查权限和输入设备后重试。")}
+                        {microphoneStatus === "requesting" ? (
+                          <LoadingActivityText kind="dots">
+                            {microphoneIsPreparingModel ? "正在准备识别模型" : "正在连接麦克风"}
+                          </LoadingActivityText>
+                        ) : (
+                          (microphoneError ?? "麦克风连接失败，请检查权限和输入设备后重试。")
+                        )}
                       </span>
                       <PracticeMicrophoneRetryButton
                         isConnecting={microphoneStatus === "requesting"}
                         isPreparingModel={microphoneIsPreparingModel}
                         onRetry={onRetryMicrophone}
+                        setupGuideTarget="practice-microphone-retry"
                       />
                     </div>
                   ) : null}
@@ -993,7 +994,11 @@ export function PracticeSetupView({
             (isDuetPractice ||
               supportsMetronomeSyncNoteDurations ||
               preReadingBufferSize !== undefined) ? (
-              <section aria-label="节拍同步" className="practice-free-section">
+              <section
+                aria-label="节拍同步"
+                className="practice-free-section"
+                data-setup-guide-target="practice-metronome-sync"
+              >
                 <div className="practice-free-field">
                   <span className="control-label">节拍同步</span>
                   {!isDuetPractice ? (
@@ -1143,7 +1148,10 @@ export function PracticeSetupView({
                     className="practice-free-note-drill-reveal"
                     visible={queueStrategy === "note-drill"}
                   >
-                    <div className="practice-free-drill-options">
+                    <div
+                      className="practice-free-drill-options"
+                      data-setup-guide-target="practice-drill-notes"
+                    >
                       <span className="practice-free-sub-label">强化音名</span>
                       <div className="note-name-options">
                         {ANSWER_BUTTONS.map((button) => {
@@ -1351,32 +1359,27 @@ export function PracticeSetupView({
               ))}
             </div>
             <div className="practice-free-action-buttons">
-              <span className="practice-start-action" title={setupDisabledReason ?? undefined}>
+              {setupStartError ? (
+                <p className="practice-midi-start-warning" data-setup-guide-warning="" role="alert">
+                  {setupStartError}
+                </p>
+              ) : null}
+              <span className="practice-start-action">
                 <button
                   aria-keyshortcuts="Enter"
-                  aria-describedby={
-                    setupDisabledReason ? "practice-start-disabled-reason" : undefined
-                  }
                   className="primary practice-free-start-button"
-                  disabled={(setupDisabled && !freePracticeNeedsMidi) || showStartingSessionStatus}
+                  disabled={showStartingSessionStatus}
                   onClick={() => {
-                    if (freePracticeNeedsMidi) {
-                      showMidiAttention("start");
-                      showMidiUnavailableNotice();
-                      return;
-                    }
-                    void startSession();
+                    startSession();
                   }}
                 >
                   {showStartingSessionStatus ? (
                     microphoneStatus === "requesting" ? (
-                      microphoneIsPreparingModel ? (
-                        "准备识别模型…"
-                      ) : (
-                        "连接麦克风…"
-                      )
+                      <LoadingActivityText kind="dots">
+                        {microphoneIsPreparingModel ? "准备识别模型" : "连接麦克风"}
+                      </LoadingActivityText>
                     ) : (
-                      "检查中"
+                      <LoadingActivityText kind="dots">检查中</LoadingActivityText>
                     )
                   ) : (
                     <>
@@ -1386,15 +1389,6 @@ export function PracticeSetupView({
                     </>
                   )}
                 </button>
-                {setupDisabledReason ? (
-                  <span
-                    className={`practice-start-tooltip${freePracticeNeedsMidi && isMidiConnectAttentionActive ? " is-midi-attention" : ""}`}
-                    id="practice-start-disabled-reason"
-                    role="tooltip"
-                  >
-                    {setupDisabledReason}
-                  </span>
-                ) : null}
               </span>
               <button className="practice-free-stats-button" onClick={onOpenStats} type="button">
                 <BarChart3 size={17} />
@@ -1422,30 +1416,33 @@ export function PracticeSetupView({
       >
         <div className="practice-free-page practice-setup-framed-page song-selection-panel">
           <header className="practice-free-page-header">
-            <div>
+            <div className="practice-free-heading-copy">
               <h1>歌曲练习</h1>
-              <p className="practice-panel-description song-practice-description">
-                选择熟悉的旋律，跟随谱面练习读谱与弹奏。
-              </p>
-            </div>
-            {activeInputMode === "midi" || requiresMidi || !midi.isConnected ? (
-              <div className="practice-midi-heading-status">
-                <MidiInputControl
-                  ariaLabel="歌曲练习 MIDI 输入设备"
-                  className={
-                    isMidiConnectAttentionActive && midiAttentionSource?.startsWith("song-")
-                      ? "needs-attention"
-                      : undefined
-                  }
-                  midi={midi}
-                />
+              <div className="practice-setup-description-row">
+                <p className="practice-panel-description song-practice-description">
+                  选择熟悉的旋律，跟随谱面练习读谱与弹奏。
+                </p>
+                {activeInputMode === "midi" || requiresMidi || !midi.isConnected ? (
+                  <div className="practice-midi-heading-status">
+                    <MidiInputControl
+                      ariaLabel="歌曲练习 MIDI 输入设备"
+                      className={
+                        isMidiConnectAttentionActive && midiAttentionSource?.startsWith("song-")
+                          ? "needs-attention"
+                          : undefined
+                      }
+                      midi={midi}
+                      setupGuideTarget="song-midi-device"
+                    />
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            </div>
           </header>
 
           <div className="song-selection-section song-selection-song-section">
             <h2>选择歌曲</h2>
-            <div className="song-choice-list">
+            <div className="song-choice-list" data-setup-guide-target="song-list">
               {BUILT_IN_SONG_PRACTICE_SCORES.map((score) => {
                 const isSelected = selectedSongId === score.id;
                 const completedCount = completedSongSessions.get(score.id) ?? 0;
@@ -1508,6 +1505,7 @@ export function PracticeSetupView({
               </div>
               <div
                 className="song-segment-control song-hand-segment-control"
+                data-setup-guide-target="song-hand-mode"
                 role="group"
                 aria-label="歌曲演奏手型"
               >
@@ -1540,50 +1538,24 @@ export function PracticeSetupView({
                 })}
               </div>
               {showSongArrangementWarning ? (
-                <p
-                  className={`song-arrangement-note${
-                    isMidiConnectAttentionActive &&
-                    (midiAttentionSource === "song-hand" || midiAttentionSource === "song-start")
-                      ? " is-midi-attention"
-                      : ""
-                  }`}
-                  role="note"
-                >
-                  {requiresMidi && !midi.isConnected
-                    ? "混弹需要 MIDI 键盘，连接后即可使用。"
-                    : "这首曲目含同拍多音，麦克风会简化为单音：右手保留最高音，左手保留最低音。"}
+                <p className="song-arrangement-note" role="note">
+                  这首曲目含同拍多音，麦克风会简化为单音：右手保留最高音，左手保留最低音。
                 </p>
               ) : null}
             </div>
           </div>
 
-          {songStartError ||
-          (!midi.isConnected && microphoneError) ||
-          microphoneIsPreparingModel ||
+          {(!midi.isConnected && microphoneError) ||
+          microphoneStatus === "error" ||
           microphoneStatus === "requesting" ? (
-            <div
-              aria-live="polite"
-              className={`song-selection-error${
-                isMidiConnectAttentionActive &&
-                midiAttentionSource === "song-start" &&
-                !midi.isConnected
-                  ? " is-midi-attention"
-                  : ""
-              }`}
-            >
-              <p>
-                {microphoneStatus === "requesting"
-                  ? microphoneIsPreparingModel
-                    ? "正在准备识别模型…"
-                    : "正在连接麦克风…"
-                  : (songStartError ?? microphoneError)}
-              </p>
+            <div aria-live="polite" className="song-selection-error">
               {microphoneError ||
               microphoneStatus === "error" ||
               microphoneStatus === "requesting" ? (
                 <PracticeMicrophoneRetryButton
                   isConnecting={microphoneStatus === "requesting"}
                   isPreparingModel={microphoneIsPreparingModel}
+                  setupGuideTarget="song-microphone-retry"
                   onRetry={async () => {
                     const connected = await onRetryMicrophone();
                     if (connected) setSongStartError(null);
@@ -1594,7 +1566,11 @@ export function PracticeSetupView({
             </div>
           ) : null}
 
-          <div className="song-selection-footer" role="group" aria-label="当前练习设置">
+          <div
+            className={`song-selection-footer${hasSongSetupWarning ? " has-midi-start-warning" : ""}`}
+            role="group"
+            aria-label="当前练习设置"
+          >
             <div className="song-selection-summary">
               <span className="song-selection-chip">{selectedScore.title}</span>
               <span className="song-selection-chip">
@@ -1615,17 +1591,37 @@ export function PracticeSetupView({
                 {activeInputMode === "microphone" ? "麦克风" : "MIDI"}
               </span>
             </div>
-            <button
-              className="primary song-selection-start"
-              type="button"
-              onClick={() => void startSongPractice()}
-            >
-              {isStartingSongPractice
-                ? activeInputMode === "microphone"
-                  ? "正在申请麦克风…"
-                  : "正在进入练习…"
-                : "确认并进入练习"}
-            </button>
+            <div className="song-selection-action-row">
+              {songStartError ? (
+                <p className="practice-midi-start-warning" data-setup-guide-warning="" role="alert">
+                  {songStartError}
+                </p>
+              ) : microphoneStatus === "requesting" ? (
+                <p className="practice-midi-start-warning" role="status">
+                  <LoadingActivityText kind="dots">
+                    {microphoneIsPreparingModel ? "正在准备识别模型" : "正在连接麦克风"}
+                  </LoadingActivityText>
+                </p>
+              ) : microphoneError ? (
+                <p className="practice-midi-start-warning" role="alert">
+                  {microphoneError}
+                </p>
+              ) : null}
+              <button
+                className="primary song-selection-start"
+                disabled={isStartingSongPractice}
+                type="button"
+                onClick={() => void startSongPractice()}
+              >
+                {isStartingSongPractice ? (
+                  <LoadingActivityText kind="dots">
+                    {activeInputMode === "microphone" ? "正在申请麦克风" : "正在进入练习"}
+                  </LoadingActivityText>
+                ) : (
+                  "开始"
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

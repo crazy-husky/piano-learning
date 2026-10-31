@@ -1,4 +1,4 @@
-import { Pause, Play, RotateCcw, Settings2, Square } from "lucide-react";
+import { ArrowLeft, Pause, Play, RotateCcw, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getPianoAudioTime } from "../../../audio/piano";
 import type {
@@ -53,6 +53,7 @@ import {
   type PracticeChaseSettings,
 } from "./PracticeChaseSettingsDialog";
 import { PracticeQuestionLimitDialog } from "../../../shared/components/PracticeQuestionLimitDialog";
+import { StaffDistanceFingerRun } from "./StaffDistanceFingerRun";
 
 interface PracticeNavigationExitRequest {
   id: number;
@@ -60,7 +61,7 @@ interface PracticeNavigationExitRequest {
   targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal" | "metronome";
 }
 
-interface StaffDistanceRunProps {
+export interface StaffDistanceRunProps {
   chaseSettings: PracticeChaseSettings;
   fixedCount: number;
   fixedDurationSeconds: number;
@@ -288,7 +289,7 @@ function createStaffDistanceScorePages(
   return pages;
 }
 
-export function StaffDistanceRun({
+function StaffDistanceIntervalRun({
   chaseSettings,
   fixedCount,
   fixedDurationSeconds,
@@ -1158,30 +1159,34 @@ export function StaffDistanceRun({
           <p>{progressLabel}</p>
         </div>
         <div className="staff-distance-run-actions">
-          <button disabled={isPaused} onClick={togglePause} type="button">
-            {isPaused ? <Play size={16} /> : <Pause size={16} />}
-            {isPaused ? "继续" : "暂停"}
-          </button>
-          {onRestart ? (
+          <div className="practice-run-core-actions">
             <button
-              aria-label="重新开始当前练习"
-              disabled={isRestarting}
-              onClick={() => void restartCurrentRun()}
-              title="重新开始当前练习"
+              aria-label="结束练习并返回配置"
+              disabled={isPaused}
+              onClick={() => void finish("manual-stop", false)}
+              title="结束练习并返回配置"
               type="button"
             >
-              <RotateCcw aria-hidden="true" size={16} />
-              重新开始
+              <ArrowLeft aria-hidden="true" size={16} />
+              结束返回
             </button>
-          ) : null}
-          <button
-            disabled={isPaused}
-            onClick={() => void finish("manual-stop", true)}
-            type="button"
-          >
-            <Square size={15} />
-            结束
-          </button>
+            <button disabled={isPaused} onClick={togglePause} type="button">
+              {isPaused ? <Play size={16} /> : <Pause size={16} />}
+              {isPaused ? "继续" : "暂停"}
+            </button>
+            {onRestart ? (
+              <button
+                aria-label="重新开始当前练习"
+                disabled={isRestarting}
+                onClick={() => void restartCurrentRun()}
+                title="重新开始当前练习"
+                type="button"
+              >
+                <RotateCcw aria-hidden="true" size={16} />
+                重新开始
+              </button>
+            ) : null}
+          </div>
           {trainingMode === "play" ? (
             <button
               aria-label="追逐游戏设置"
@@ -1309,7 +1314,7 @@ export function StaffDistanceRun({
             `麦克风已连接，请弹奏${hasPlayedStartingNote ? "下一个音" : "谱面上的第一个音"}`
           ) : microphone.status === "requesting" ? (
             <LoadingActivityText kind={microphone.isPreparingSwiftF0 ? "dots" : "spinner"}>
-              {microphone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风…"}
+              {microphone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风"}
             </LoadingActivityText>
           ) : (
             (microphone.error ?? "麦克风未连接")
@@ -1390,18 +1395,29 @@ export function StaffDistanceRun({
         <div className="staff-distance-pause-overlay" role="status">
           <strong>已暂停</strong>
           <span>
-            {inputMethod === "microphone" && microphone.status === "requesting"
-              ? microphone.isPreparingSwiftF0
-                ? "正在准备识别模型…"
-                : "正在连接麦克风…"
-              : (inputError ?? "练习计时已停止")}
+            {inputMethod === "microphone" && microphone.status === "requesting" ? (
+              <LoadingActivityText kind="dots">
+                {microphone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风"}
+              </LoadingActivityText>
+            ) : (
+              (inputError ?? "练习计时已停止")
+            )}
           </span>
-          <button className="primary" onClick={togglePause} type="button">
+          <button
+            className="primary practice-pause-resume-button"
+            onClick={togglePause}
+            type="button"
+          >
             <Play size={16} />
             继续
           </button>
           {onRestart ? (
-            <button disabled={isRestarting} onClick={() => void restartCurrentRun()} type="button">
+            <button
+              className="practice-pause-restart-button"
+              disabled={isRestarting}
+              onClick={() => void restartCurrentRun()}
+              type="button"
+            >
               <RotateCcw aria-hidden="true" size={16} />
               重新开始
             </button>
@@ -1449,4 +1465,29 @@ export function StaffDistanceRun({
       ) : null}
     </section>
   );
+}
+
+export function StaffDistanceRun(props: StaffDistanceRunProps): JSX.Element {
+  if (props.trainingMode === "finger") {
+    return (
+      <StaffDistanceFingerRun
+        fingerHand={props.session.staffDistance?.fingerHand ?? "right"}
+        fingerNumber={props.session.staffDistance?.fingerNumber ?? 1}
+        inputMethod={props.inputMethod}
+        midi={props.midi}
+        microphone={props.microphone}
+        navigationExitRequest={props.navigationExitRequest}
+        notes={props.notes}
+        onFinish={props.onFinish}
+        onMicrophoneAnswerHandlerChange={props.onMicrophoneAnswerHandlerChange}
+        onNavigationExit={props.onNavigationExit}
+        onRestart={props.onRestart}
+        onRunningChange={props.onRunningChange}
+        session={props.session}
+        staffNotationMode={props.staffNotationMode}
+        useLedgerGap={props.useLedgerGap}
+      />
+    );
+  }
+  return <StaffDistanceIntervalRun {...props} />;
 }

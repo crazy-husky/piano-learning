@@ -13,7 +13,7 @@
   }
 
   .global-range-groups {
-    grid-template-columns: repeat(6, max-content);
+    grid-template-columns: repeat(var(--global-range-group-columns, 6), max-content);
     justify-content: start;
   }
 
@@ -37,7 +37,7 @@
 
   .global-range-groups {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--global-range-group-columns-medium, 3), minmax(0, 1fr));
   }
 
   .global-range-group-choice {
@@ -145,6 +145,12 @@
     cursor: grab;
     touch-action: none;
     user-select: none;
+  }
+
+  .app-shell-practice-page .mobile-route-back {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .mobile-route-back:active {

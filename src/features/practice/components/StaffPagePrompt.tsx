@@ -72,6 +72,7 @@ interface StaffPagePromptProps {
   noteMeasures?: readonly number[];
   noteOnsets?: readonly number[];
   noteBeamGroups?: readonly number[];
+  noteLabelsAbove?: readonly (string | undefined)[];
   beatsPerMeasure?: number;
   timeSignature?: string;
   completedCount: number;
@@ -98,6 +99,7 @@ interface StaffPagePromptProps {
   staffNotationMode: StaffNotationMode;
   useLedgerGap: boolean;
   distributeNotesEvenly?: boolean;
+  noteCenterGapPx?: number;
   notesPerRow?: number;
   maxRowCount?: number;
   scrollRowCount?: number;
@@ -1459,6 +1461,27 @@ function addStaffPageLyric(
   parent.appendChild(lyric);
 }
 
+function addStaffPageNoteLabel(
+  parent: SVGElement,
+  text: string,
+  x: number,
+  y: number,
+  fontSize: number,
+  color: string
+): void {
+  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  label.setAttribute("class", "staff-page-note-label");
+  label.setAttribute("x", x.toFixed(2));
+  label.setAttribute("y", y.toFixed(2));
+  label.setAttribute("font-size", fontSize.toFixed(2));
+  label.setAttribute("font-weight", "700");
+  label.setAttribute("fill", color);
+  label.setAttribute("text-anchor", "middle");
+  label.setAttribute("dominant-baseline", "middle");
+  label.textContent = text;
+  parent.appendChild(label);
+}
+
 function getBarlineX(
   nextTickable: StaffPageTickable | undefined,
   previousNote: StaveNote | undefined,
@@ -1485,6 +1508,31 @@ function alignRowNotesEvenly(
   alignStaveNotesToCenters(
     notesToAlign,
     getEvenlySpacedCenters(notesToAlign.length, noteArea.left, noteArea.right)
+  );
+}
+
+function alignRowNotesWithGap(
+  tickables: readonly StaffPageTickable[],
+  noteCount: number,
+  noteArea: { left: number; right: number },
+  centerGap: number
+): void {
+  const notesToAlign = tickables
+    .slice(0, noteCount)
+    .filter((tickable): tickable is StaveNote => tickable instanceof StaveNote);
+  if (notesToAlign.length === 0) return;
+  if (notesToAlign.length === 1) {
+    alignStaveNotesToCenters(notesToAlign, [(noteArea.left + noteArea.right) / 2]);
+    return;
+  }
+
+  const maxGap = (noteArea.right - noteArea.left) / (notesToAlign.length - 1);
+  const fittedGap = Math.min(Math.max(1, centerGap), maxGap);
+  const groupWidth = fittedGap * (notesToAlign.length - 1);
+  const firstCenter = (noteArea.left + noteArea.right - groupWidth) / 2;
+  alignStaveNotesToCenters(
+    notesToAlign,
+    notesToAlign.map((_, index) => firstCenter + fittedGap * index)
   );
 }
 
@@ -1617,6 +1665,7 @@ export function StaffPagePrompt({
   noteMeasures,
   noteOnsets,
   noteBeamGroups,
+  noteLabelsAbove,
   beatsPerMeasure,
   timeSignature,
   completedCount,
@@ -1632,6 +1681,7 @@ export function StaffPagePrompt({
   staffNotationMode,
   useLedgerGap,
   distributeNotesEvenly = false,
+  noteCenterGapPx,
   notesPerRow = layout.multirow.notesPerRow,
   maxRowCount = layout.multirow.rows + 1,
   scrollRowCount = 1,
@@ -1757,8 +1807,16 @@ export function StaffPagePrompt({
         layout,
         staffNotationMode,
         useLedgerGap
-      ),
-    [layout, noteGroups, notes, staffNotationMode, useLedgerGap, verticalRangeNotes]
+      ) + (noteLabelsAbove?.some(Boolean) ? STAFF_PAGE_NOTE_TOP_CLEARANCE_PX : 0),
+    [
+      layout,
+      noteGroups,
+      noteLabelsAbove,
+      notes,
+      staffNotationMode,
+      useLedgerGap,
+      verticalRangeNotes,
+    ]
   );
   const rowViewHeightPx = layout.vertical.viewHeightPx + rowTopPaddingPx;
   const { rows, rowStartIndices } = useMemo(() => {
@@ -2582,6 +2640,21 @@ export function StaffPagePrompt({
                   ),
               }
             : noteArea;
+          const alignConfiguredRowNotes = (
+            tickables: readonly StaffPageTickable[],
+            noteCount: number
+          ): void => {
+            if (noteCenterGapPx !== undefined) {
+              alignRowNotesWithGap(
+                tickables,
+                noteCount,
+                noteArea,
+                logicalPx(noteCenterGapPx, surface.scale)
+              );
+            } else if (distributeNotesEvenly) {
+              alignRowNotesEvenly(tickables, noteCount, distributionArea);
+            }
+          };
           if (system.mode === "grand") {
             const { bass, treble } = system;
             const getColor = (slotIndex: number, staff?: Staff, midi?: number): string =>
@@ -2795,9 +2868,7 @@ export function StaffPagePrompt({
                 surface.scale * renderedScale
               );
             }
-            if (distributeNotesEvenly) {
-              alignRowNotesEvenly(tickables, rowGroups.length, distributionArea);
-            }
+            alignConfiguredRowNotes(tickables, rowGroups.length);
             voices.forEach((voice) => voice.draw(context, voice.getStave()!));
             timedStaveNotes = getTimedStaveNotes(
               alignedTickableGroups,
@@ -2912,9 +2983,7 @@ export function StaffPagePrompt({
             stave.setWidth(Math.max(1, noteArea.right - frameMetrics.x));
             const formatter = new Formatter().joinVoices([voice]);
             formatter.formatToStave([voice], stave, { context, stave });
-            if (distributeNotesEvenly) {
-              alignRowNotesEvenly(tickables, rowGroups.length, distributionArea);
-            }
+            alignConfiguredRowNotes(tickables, rowGroups.length);
             voice.draw(context, stave);
             layoutTickables = tickables;
             visibleTickables = tickables.map((tickable, index) =>
@@ -3022,9 +3091,27 @@ export function StaffPagePrompt({
             if (!note) return;
             const noteLyrics = lyrics?.[rowStartIndex + slotIndex];
             const staveNote = visibleTickables[slotIndex];
-            if (!noteLyrics?.length || !staveNote) return;
+            if (!staveNote) return;
             const noteBounds = staveNote.getBoundingBox();
             const lyricX = noteBounds.getX() + noteBounds.getW() / 2;
+            const noteLabel = noteLabelsAbove?.[rowStartIndex + slotIndex];
+            if (noteLabel) {
+              const noteHeadYs = staveNote.getYs().filter(Number.isFinite);
+              const stemTop = staveNote.getStemExtents().topY;
+              const noteOrStemTop = Math.min(
+                ...noteHeadYs,
+                Number.isFinite(stemTop) ? stemTop : Number.POSITIVE_INFINITY
+              );
+              addStaffPageNoteLabel(
+                rowGroup,
+                noteLabel,
+                lyricX,
+                noteOrStemTop - logicalPx(8, surface.scale),
+                logicalPx(13, surface.scale),
+                palette.active
+              );
+            }
+            if (!noteLyrics?.length) return;
             noteLyrics.forEach((text, lineIndex) => {
               if (!text) return;
               addStaffPageLyric(
@@ -3410,6 +3497,7 @@ export function StaffPagePrompt({
     barlineAfterNoteIndices,
     isNightMode,
     lyrics,
+    noteLabelsAbove,
     noteMeasures,
     noteOnsets,
     noteBeamGroups,
@@ -3419,6 +3507,7 @@ export function StaffPagePrompt({
     timeSignature,
     minDisplayWidthPx,
     distributeNotesEvenly,
+    noteCenterGapPx,
     noteDuration,
     noteDurations,
     staffNoteDurations,

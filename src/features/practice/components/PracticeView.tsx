@@ -108,6 +108,7 @@ import {
 } from "../../../shared/preferences/staffPageUiPreferences";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { useDelayedBusy } from "../../../shared/hooks/useDelayedBusy";
+import { guideSetupRequirement } from "../../../shared/utils/guideSetupRequirement";
 import { usePracticeTimers } from "../hooks/usePracticeTimers";
 import {
   usePracticeSessionLifecycle,
@@ -559,6 +560,7 @@ export function PracticeView({
   const [isSongPracticeFullscreenActive, setIsSongPracticeFullscreenActive] = useState(false);
   const [isChaseSettingsOpen, setIsChaseSettingsOpen] = useState(false);
   const [isRestartingPractice, setIsRestartingPractice] = useState(false);
+  const [setupStartError, setSetupStartError] = useState<string | null>(null);
   const handleStaffDistanceStageChange = useCallback(
     (active: boolean): void => {
       setIsStaffDistanceStageActive(active);
@@ -2185,6 +2187,10 @@ export function PracticeView({
     },
     services: {
       onBeforePracticeStart,
+      onMicrophoneStartFailure: () => {
+        setSetupStartError("请检查麦克风权限或设备");
+        guideSetupRequirement('[data-setup-guide-target="practice-microphone-retry"]');
+      },
       onSettingsSaved,
       persistConfig,
       practiceMicrophone,
@@ -2935,24 +2941,95 @@ export function PracticeView({
     settings.inactivityThresholdSeconds,
   ]);
 
-  const setupDisabledReason =
-    shouldSynchronizeMetronome && metronomePreferences.beatsPerBar !== 4
-      ? "谱面同步目前使用 4/4 拍，请先将节拍器拍号设为 4/4"
-      : (isDuetPractice || (practiceTab === "free" && answerPitchMode === "exact-pitch")) &&
-          !midi.isConnected
-        ? isDuetPractice
-          ? "请连接并选择 MIDI 键盘后开始左右手合弹"
-          : "请先连接并选择 MIDI 输入设备，再开始练习"
-        : isDuetPractice && queueStrategy === "note-drill" && drillNoteNames.length === 0
-          ? "请至少选择一个强化音名"
-          : isDuetPractice
-            ? undefined
-            : enabledNotes.length === 0
-              ? "请至少选择一个上方的练习音组"
-              : queueStrategy === "note-drill" && drillNoteNames.length === 0
-                ? "请至少选择一个强化音名"
-                : undefined;
-  const setupDisabled = setupDisabledReason !== undefined;
+  const setupStartIssue = useMemo(() => {
+    if (shouldSynchronizeMetronome && metronomePreferences.beatsPerBar !== 4) {
+      return {
+        message: "节拍同步需要 4/4 拍",
+        target: '[data-setup-guide-target="practice-metronome-sync"]',
+      };
+    }
+    if (
+      (isDuetPractice || (practiceTab === "free" && answerPitchMode === "exact-pitch")) &&
+      !midi.isConnected
+    ) {
+      const midiUnavailable = midi.status === "unsupported" || midi.status === "insecure-context";
+      const midiConnecting = midi.status === "requesting";
+      const hasDetectedInputs = midi.status === "ready" && midi.inputs.length > 0;
+      return {
+        message: midiUnavailable
+          ? isDuetPractice
+            ? "当前环境不支持 MIDI，请切换为单手练习"
+            : "当前环境不支持 MIDI，请切换作答方式"
+          : midiConnecting
+            ? "MIDI 正在连接，请稍候"
+            : midi.status === "denied"
+              ? "请检查 MIDI 权限"
+              : midi.status === "error"
+                ? "MIDI 连接失败，请重试"
+                : hasDetectedInputs
+                  ? "请选择 MIDI 设备"
+                  : "请连接 MIDI 键盘",
+        target: midiUnavailable
+          ? isDuetPractice
+            ? '[data-setup-guide-target="practice-hand-mode"]'
+            : '[data-setup-guide-target="practice-answer-mode"]'
+          : '[data-setup-guide-target="practice-midi-device"]',
+      };
+    }
+    if (isDuetPractice && queueStrategy === "note-drill" && drillNoteNames.length === 0) {
+      return {
+        message: "请选择强化音名",
+        target: '[data-setup-guide-target="practice-drill-notes"]',
+      };
+    }
+    if (isDuetPractice) return null;
+    if (enabledNotes.length === 0) {
+      return {
+        message: "请选择练习音组",
+        target: '[data-setup-guide-target="practice-note-groups"]',
+      };
+    }
+    if (queueStrategy === "note-drill" && drillNoteNames.length === 0) {
+      return {
+        message: "请选择强化音名",
+        target: '[data-setup-guide-target="practice-drill-notes"]',
+      };
+    }
+    if (queueNotes.length === 0) {
+      return {
+        message: "当前设置没有可练习音符",
+        target: '[data-setup-guide-target="practice-note-groups"]',
+      };
+    }
+    return null;
+  }, [
+    answerPitchMode,
+    drillNoteNames.length,
+    enabledNotes.length,
+    isDuetPractice,
+    metronomePreferences.beatsPerBar,
+    midi.isConnected,
+    midi.inputs.length,
+    midi.status,
+    practiceTab,
+    queueNotes.length,
+    queueStrategy,
+    shouldSynchronizeMetronome,
+  ]);
+  const setupDisabledReason = setupStartIssue?.message;
+  const attemptStartSession = useCallback((): void => {
+    if (setupStartIssue) {
+      setSetupStartError(setupStartIssue.message);
+      guideSetupRequirement(setupStartIssue.target);
+      return;
+    }
+    setSetupStartError(null);
+    void startSession();
+  }, [setupStartIssue, startSession]);
+
+  useEffect(() => {
+    setSetupStartError(null);
+  }, [practiceTab, setupDisabledReason]);
 
   useEffect(() => {
     if (phase === "running") {
@@ -2963,18 +3040,17 @@ export function PracticeView({
       if (
         !shouldHandleGlobalEnter(event, isInteractiveShortcutTarget(event.target)) ||
         (phase === "setup" && practiceTab !== "free") ||
-        (phase === "setup" && setupDisabled) ||
         songPracticeSelection !== null
       ) {
         return;
       }
       event.preventDefault();
-      void startSession();
+      attemptStartSession();
     }
 
     window.addEventListener("keydown", handleEnter);
     return () => window.removeEventListener("keydown", handleEnter);
-  }, [phase, practiceTab, setupDisabled, songPracticeSelection, startSession]);
+  }, [attemptStartSession, phase, practiceTab, songPracticeSelection]);
 
   const remainingMs =
     mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
@@ -3319,7 +3395,7 @@ export function PracticeView({
           },
           onStartPausedReadingChange: (enabled) =>
             setStaffPageUiPreferences((current) => ({ ...current, startPausedReading: enabled })),
-          onStartSession: () => void startSession(),
+          onStartSession: attemptStartSession,
           onSetupTabChange: onPracticeTabChange,
           onToggleDrillNoteName: toggleDrillNoteName,
         }}
@@ -3340,7 +3416,7 @@ export function PracticeView({
           practiceMode: practiceModeLock ?? practiceSetupPreferences.practiceMode,
           ...(isPreReadingPractice ? { promptDisplayMode: "staff-page" as const } : {}),
         }}
-        setupDisabledReason={setupDisabledReason}
+        setupStartError={setupStartError}
         metronomeBeatsPerBar={metronomePreferences.beatsPerBar}
         startPausedReading={startPausedReading}
         settings={setupSettings}
@@ -3419,51 +3495,54 @@ export function PracticeView({
           )}
         </div>
         <div className="topline-actions">
-          <button
-            aria-label="退出练习并返回配置"
-            className="practice-return-home"
-            title="退出练习并返回配置"
-            onClick={() =>
-              void completeSession("manual-stop", "manual-stop", { showSummary: false })
-            }
-            type="button"
-          >
-            <ArrowLeft aria-hidden="true" size={18} />
-            退出
-          </button>
+          <div className="practice-run-core-actions">
+            <button
+              aria-label="结束练习并返回配置"
+              className="practice-return-home"
+              title="结束练习并返回配置"
+              onClick={() =>
+                void completeSession("manual-stop", "manual-stop", { showSummary: false })
+              }
+              type="button"
+            >
+              <ArrowLeft aria-hidden="true" size={18} />
+              结束返回
+            </button>
+            <button
+              title={
+                answerPitchMode === "microphone"
+                  ? isPaused
+                    ? "重新连接麦克风并继续"
+                    : "暂停"
+                  : isPaused
+                    ? "继续"
+                    : "暂停"
+              }
+              onClick={togglePause}
+              type="button"
+            >
+              {isPaused ? <Play size={18} /> : <Pause size={18} />}
+              {isPaused ? "继续" : "暂停"}
+            </button>
+            {isLearningRoutePractice ? (
+              <button
+                aria-label="重新开始当前练习"
+                disabled={isRestartingPractice}
+                onClick={() => void restartCurrentPractice()}
+                title="重新开始当前练习"
+                type="button"
+              >
+                <RotateCcw aria-hidden="true" size={18} />
+                重新开始
+              </button>
+            ) : null}
+          </div>
           {practiceTab !== "free" &&
           answerPitchMode !== "microphone" &&
           answerPitchMode !== "note-name" ? (
             <button title="重播目标音" onClick={() => void replayTarget()}>
               <Volume2 size={18} />
               重播
-            </button>
-          ) : null}
-          <button
-            title={
-              answerPitchMode === "microphone"
-                ? isPaused
-                  ? "重新连接麦克风并继续"
-                  : "暂停"
-                : isPaused
-                  ? "继续"
-                  : "暂停"
-            }
-            onClick={togglePause}
-          >
-            {isPaused ? <Play size={18} /> : <Pause size={18} />}
-            {isPaused ? "继续" : "暂停"}
-          </button>
-          {isLearningRoutePractice ? (
-            <button
-              aria-label="重新开始当前练习"
-              disabled={isRestartingPractice}
-              onClick={() => void restartCurrentPractice()}
-              title="重新开始当前练习"
-              type="button"
-            >
-              <RotateCcw aria-hidden="true" size={18} />
-              重新开始
             </button>
           ) : null}
           {practiceTab === "free" && promptDisplayMode === "staff-page" ? (
@@ -3522,7 +3601,7 @@ export function PracticeView({
                 <LoadingActivityText
                   kind={practiceMicrophone.isPreparingSwiftF0 ? "dots" : "spinner"}
                 >
-                  {practiceMicrophone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风…"}
+                  {practiceMicrophone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风"}
                 </LoadingActivityText>
               ) : (
                 (practiceMicrophone.error ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))
@@ -3569,7 +3648,7 @@ export function PracticeView({
                   秒后开始
                 </>
               ) : (
-                "预读完成，等待节拍器首拍…"
+                <LoadingActivityText kind="dots">预读完成，等待节拍器首拍</LoadingActivityText>
               )
             ) : (
               `全谱预读 · ${preReadingScoreWindow.openingSecondsRemaining} 秒后开始训练`

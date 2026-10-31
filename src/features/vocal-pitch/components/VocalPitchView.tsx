@@ -266,7 +266,7 @@ export function VocalPitchView({
           analysis = await runPitchAnalysis(prepared, target.config, mode);
         } catch (error) {
           if (mode !== "enhanced" || isAbortError(error) || fallbackSamples === null) throw error;
-          setAnalysisMessage("增强分析失败，正在回退 YIN…");
+          setAnalysisMessage("增强分析失败，正在回退 YIN");
           analysis = await runPitchAnalysis(
             { ...decoded, samples: fallbackSamples },
             target.config,
@@ -301,7 +301,7 @@ export function VocalPitchView({
       try {
         const mode = await selectAnalysisMode(target, forceEnhanced);
         if (analysisRequestGenerationRef.current !== generation) return;
-        setAnalysisMessage("正在解码音频…");
+        setAnalysisMessage("正在解码音频");
         const decoded = await decodeAudioBlob(target.audioBlob);
         if (analysisRequestGenerationRef.current !== generation) return;
         await analyzeDecoded(target, decoded, mode);
@@ -437,7 +437,7 @@ export function VocalPitchView({
     async (result: VocalRecordingResult, unexpected: boolean): Promise<VocalAudioMaterial> => {
       const next = await buildRecordingMaterial(result, unexpected);
       try {
-        setAnalysisMessage("正在解码录音…");
+        setAnalysisMessage("正在解码录音");
         const decoded = await decodeAudioBlob(next.audioBlob);
         const analysis = await runPitchAnalysis(decoded, next.config, "yin");
         setAnalysisMessage("分析完成");
@@ -829,7 +829,7 @@ export function VocalPitchView({
   const controlStatusMessage =
     modelDownloadProgress !== null
       ? `正在下载增强模型 ${Math.round(modelDownloadProgress * 100)}%`
-      : ((backupPreflightPending ? "正在检查备份状态…" : inlineMessage) ??
+      : ((backupPreflightPending ? "正在检查备份状态" : inlineMessage) ??
         analysisMessage ??
         recorder.captureNotice ??
         (playback.isPreparing ? "正在准备回放音量" : null) ??
@@ -839,13 +839,15 @@ export function VocalPitchView({
       ? "spinner"
       : backupPreflightPending && inlineMessage == null
         ? "spinner"
-        : playback.isPreparing &&
-            !backupPreflightPending &&
-            inlineMessage == null &&
-            analysisMessage == null &&
-            recorder.captureNotice == null
+        : analysisRunning || inlineMessage?.includes("正在") || analysisMessage?.includes("正在")
           ? "dots"
-          : null;
+          : playback.isPreparing &&
+              !backupPreflightPending &&
+              inlineMessage == null &&
+              analysisMessage == null &&
+              recorder.captureNotice == null
+            ? "dots"
+            : null;
   return (
     <div ref={workspaceRef} className="vocal-workspace">
       <VocalPitchWorkspace
