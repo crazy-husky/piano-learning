@@ -60,6 +60,15 @@ import { StaffDistanceRun, type StaffDistanceMicrophoneInput } from "./StaffDist
 import type { PracticeDistanceMode } from "../../../routing/appRoutes";
 import { PRACTICE_FIXED_COUNT_PRESETS } from "../logic/practiceLengthOptions";
 import {
+  PRACTICE_PIANO_CALIBRATION_CARD_WIDTH_MM,
+  PRACTICE_PIANO_SCALE_MAX,
+  PRACTICE_PIANO_SCALE_MIN,
+  PRACTICE_PIANO_SCALE_STEP,
+  canFitPracticePianoKeyboard,
+  canFitPracticePianoKeyboardInEitherOrientation,
+} from "./staffDistanceFingerKeyboardLayout";
+import { usePracticeViewportSize } from "./usePracticeViewportSize";
+import {
   DEFAULT_SCORE_CHASE_PREFERENCES,
   SCORE_CHASE_SPEED_OPTIONS,
   type ChaseHandMode,
@@ -81,6 +90,7 @@ interface StaffDistancePreferences extends StaffDistancePracticeSettings {
   fingerHand: StaffDistanceFingerHand;
   fingerNumber: StaffDistanceFingerNumber;
   inputMethod: StaffDistanceInputMethod;
+  keyboardScale: number;
   mode: PracticeMode;
   noteDurations: PromptNoteDuration[];
   trainingMode: StaffDistanceTrainingMode;
@@ -99,7 +109,7 @@ interface StaffDistancePracticeViewProps {
   onMicrophoneAnswerHandlerChange: (
     handler: ((answer: PracticeAnswerInput) => void) | null
   ) => void;
-  onInputModeChange: (mode: "midi" | "microphone") => void;
+  onInputModeChange: (mode: "midi" | "microphone" | "virtual-keyboard") => void;
   onNavigationExit?: (targetView: PracticeNavigationExitRequest["targetView"]) => void;
   onPracticeFinished: () => void;
   onFullscreenAvailabilityChange: (active: boolean) => void;
@@ -117,6 +127,7 @@ const DEFAULT_PREFERENCES: StaffDistancePreferences = {
   chaseStartCount: DEFAULT_SCORE_CHASE_PREFERENCES.startCount,
   includeUnison: false,
   inputMethod: "midi",
+  keyboardScale: 1,
   maxDistance: 2,
   fixedCount: 30,
   fixedDurationSeconds: 60,
@@ -164,6 +175,10 @@ function normalizePreferences(value: unknown): StaffDistancePreferences {
     const parsed = Number(candidate);
     return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.floor(parsed))) : fallback;
   };
+  const scaleInRange = (candidate: unknown, fallback: number, min: number, max: number): number => {
+    const parsed = Number(candidate);
+    return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
+  };
   const savedDurations = Array.isArray(record.noteDurations)
     ? record.noteDurations.filter(isPromptNoteDuration)
     : isPromptNoteDuration(record.noteDuration)
@@ -202,7 +217,16 @@ function normalizePreferences(value: unknown): StaffDistancePreferences {
     fingerNumber: ([1, 2, 3, 4, 5] as number[]).includes(Number(record.fingerNumber))
       ? (Number(record.fingerNumber) as StaffDistanceFingerNumber)
       : 1,
-    inputMethod: record.inputMethod === "microphone" ? "microphone" : "midi",
+    keyboardScale: scaleInRange(
+      record.keyboardScale,
+      DEFAULT_PREFERENCES.keyboardScale,
+      PRACTICE_PIANO_SCALE_MIN,
+      PRACTICE_PIANO_SCALE_MAX
+    ),
+    inputMethod:
+      record.inputMethod === "microphone" || record.inputMethod === "virtual-keyboard"
+        ? record.inputMethod
+        : "midi",
     mode:
       record.mode === "open-ended" ||
       record.mode === "fixed-count" ||
@@ -357,7 +381,26 @@ export function StaffDistancePracticeView({
     DEFAULT_PREFERENCES,
     { parse: normalizePreferences }
   );
+  const trainingMode = distanceMode ?? preferences.trainingMode;
+  const viewportSize = usePracticeViewportSize();
+  const keyboardFitsEitherOrientation = canFitPracticePianoKeyboardInEitherOrientation(
+    viewportSize,
+    preferences.keyboardScale
+  );
+  const canOfferVirtualKeyboard = canFitPracticePianoKeyboardInEitherOrientation(
+    viewportSize,
+    PRACTICE_PIANO_SCALE_MIN
+  );
+  const keyboardFitsCurrentOrientation = canFitPracticePianoKeyboard(
+    viewportSize,
+    preferences.keyboardScale
+  );
+  const activeInputMethod: StaffDistanceInputMethod =
+    trainingMode !== "finger" && preferences.inputMethod === "virtual-keyboard"
+      ? "midi"
+      : preferences.inputMethod;
   const previousMidiConnectionRef = useRef(midi.isConnected);
+  const keyboardCalibrationRef = useRef<HTMLDetailsElement | null>(null);
   const inputMethodSelectionRevisionRef = useRef(0);
   const setInputMethod = useCallback(
     (inputMethod: StaffDistanceInputMethod): void => {
@@ -367,8 +410,8 @@ export function StaffDistancePracticeView({
     [setPreferences]
   );
   useLayoutEffect(() => {
-    if (isActive) onInputModeChange(preferences.inputMethod);
-  }, [isActive, onInputModeChange, preferences.inputMethod]);
+    if (isActive) onInputModeChange(activeInputMethod);
+  }, [activeInputMethod, isActive, onInputModeChange]);
   const [isCustomCountSelected, setIsCustomCountSelected] = useState(
     () =>
       !PRACTICE_FIXED_COUNT_PRESETS.includes(
@@ -383,7 +426,6 @@ export function StaffDistancePracticeView({
       : preferences.fixedCount
   );
   const customFixedCountInputRef = useRef<HTMLInputElement | null>(null);
-  const trainingMode = distanceMode ?? preferences.trainingMode;
   const [runSession, setRunSession] = useState<PracticeSessionRecord | null>(null);
   const [summarySession, setSummarySession] = useState<PracticeSessionRecord | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
@@ -615,7 +657,13 @@ export function StaffDistancePracticeView({
       );
       return;
     }
-    if (trainingMode !== "look" && preferences.inputMethod === "midi" && !midi.isConnected) {
+    if (activeInputMethod === "virtual-keyboard" && !keyboardFitsEitherOrientation) {
+      setStartError("钢琴键盘超出屏幕，请调小键盘尺寸");
+      if (keyboardCalibrationRef.current) keyboardCalibrationRef.current.open = true;
+      guideSetupRequirement('[data-setup-guide-target="distance-keyboard-calibration"]');
+      return;
+    }
+    if (trainingMode !== "look" && activeInputMethod === "midi" && !midi.isConnected) {
       const midiUnavailable = midi.status === "unsupported" || midi.status === "insecure-context";
       setStartError(
         midiUnavailable
@@ -676,7 +724,7 @@ export function StaffDistancePracticeView({
         );
         return;
       }
-      if (trainingMode !== "look" && preferences.inputMethod === "microphone") {
+      if (trainingMode !== "look" && activeInputMethod === "microphone") {
         const microphoneReady = await microphone.start({ includeAccidentals: false });
         if (!microphoneReady) {
           setStartError("请检查麦克风权限或设备");
@@ -687,6 +735,7 @@ export function StaffDistancePracticeView({
       }
       const nextSession = createDistanceSession(currentSettings, {
         ...preferences,
+        inputMethod: activeInputMethod,
         trainingMode,
       });
       await db.practiceSessions.put(nextSession);
@@ -695,9 +744,9 @@ export function StaffDistancePracticeView({
       if (microphoneStarted) microphone.stop();
       setStartError(error instanceof Error ? error.message : "练习未能开始，请重试。");
       guideSetupRequirement(
-        trainingMode !== "look" && preferences.inputMethod === "microphone"
+        trainingMode !== "look" && activeInputMethod === "microphone"
           ? '[data-setup-guide-target="distance-microphone-retry"]'
-          : trainingMode !== "look" && preferences.inputMethod === "midi"
+          : trainingMode !== "look" && activeInputMethod === "midi"
             ? '[data-setup-guide-target="distance-midi-device"]'
             : '[data-setup-guide-target="distance-input-mode"]'
       );
@@ -706,6 +755,8 @@ export function StaffDistancePracticeView({
     }
   }, [
     intervalSettings,
+    activeInputMethod,
+    keyboardFitsEitherOrientation,
     fingerNotes,
     isStarting,
     microphone,
@@ -817,6 +868,12 @@ export function StaffDistancePracticeView({
     setPreferences((current) => ({ ...current, includeUnison }));
 
   if (runSession?.staffDistance) {
+    const runTrainingMode = runSession.staffDistance.trainingMode ?? "look";
+    const savedRunInputMethod = runSession.staffDistance.inputMethod ?? activeInputMethod;
+    const runInputMethod =
+      runTrainingMode !== "finger" && savedRunInputMethod === "virtual-keyboard"
+        ? "midi"
+        : savedRunInputMethod;
     const sessionSettings = {
       includeUnison: runSession.staffDistance.includeUnison,
       maxDistance: runSession.staffDistance.maxDistance,
@@ -843,8 +900,9 @@ export function StaffDistancePracticeView({
         fixedCount={runSession.fixedCount ?? preferences.fixedCount}
         fixedDurationSeconds={runSession.fixedDurationSeconds ?? preferences.fixedDurationSeconds}
         mode={runSession.mode}
-        trainingMode={runSession.staffDistance.trainingMode ?? "look"}
-        inputMethod={runSession.staffDistance.inputMethod ?? preferences.inputMethod}
+        trainingMode={runTrainingMode}
+        inputMethod={runInputMethod}
+        keyboardScale={preferences.keyboardScale}
         midi={midi}
         microphone={microphone}
         onMicrophoneAnswerHandlerChange={onMicrophoneAnswerHandlerChange}
@@ -1063,7 +1121,7 @@ export function StaffDistancePracticeView({
                   ? "根据谱面依次弹奏音符，练习从读谱到找到琴键。"
                   : "看清当前音与下一个音的音距，练习快速判断并找到下一个琴键。"}
             </p>
-            {trainingMode !== "look" && preferences.inputMethod === "midi" ? (
+            {trainingMode !== "look" && activeInputMethod === "midi" ? (
               <div className="practice-setup-heading-meta">
                 <div className="practice-midi-heading-status staff-distance-midi-status">
                   <MidiInputControl
@@ -1141,13 +1199,13 @@ export function StaffDistancePracticeView({
                   <span>输入</span>
                   <div
                     aria-label="弹奏输入方式"
-                    className="segmented staff-distance-input-methods"
+                    className={`segmented staff-distance-input-methods${trainingMode === "finger" && canOfferVirtualKeyboard ? " has-virtual-keyboard" : ""}`}
                     data-setup-guide-target="distance-input-mode"
                     role="group"
                   >
                     <button
-                      aria-pressed={preferences.inputMethod === "microphone"}
-                      className={preferences.inputMethod === "microphone" ? "active" : ""}
+                      aria-pressed={activeInputMethod === "microphone"}
+                      className={activeInputMethod === "microphone" ? "active" : ""}
                       onClick={() => {
                         setStartError(null);
                         setInputMethod("microphone");
@@ -1157,8 +1215,8 @@ export function StaffDistancePracticeView({
                       <Mic aria-hidden="true" size={14} /> 麦克风
                     </button>
                     <button
-                      aria-pressed={preferences.inputMethod === "midi"}
-                      className={preferences.inputMethod === "midi" ? "active" : ""}
+                      aria-pressed={activeInputMethod === "midi"}
+                      className={activeInputMethod === "midi" ? "active" : ""}
                       disabled={
                         !midi.isConnected &&
                         (midi.status === "unsupported" || midi.status === "insecure-context")
@@ -1173,8 +1231,81 @@ export function StaffDistancePracticeView({
                     >
                       <Cable aria-hidden="true" size={14} /> MIDI
                     </button>
+                    {trainingMode === "finger" && canOfferVirtualKeyboard ? (
+                      <button
+                        aria-pressed={preferences.inputMethod === "virtual-keyboard"}
+                        className={preferences.inputMethod === "virtual-keyboard" ? "active" : ""}
+                        onClick={() => {
+                          setStartError(null);
+                          setInputMethod("virtual-keyboard");
+                        }}
+                        type="button"
+                      >
+                        <Music2 aria-hidden="true" size={14} /> 钢琴键盘
+                      </button>
+                    ) : null}
                   </div>
+                  {trainingMode === "finger" &&
+                  preferences.inputMethod === "virtual-keyboard" &&
+                  !keyboardFitsCurrentOrientation ? (
+                    <span className="staff-distance-keyboard-orientation-hint">
+                      {keyboardFitsEitherOrientation
+                        ? "进入练习后请横屏使用"
+                        : "键盘超出屏幕，请调小尺寸后开始"}
+                    </span>
+                  ) : null}
                 </div>
+                {trainingMode === "finger" && preferences.inputMethod === "virtual-keyboard" ? (
+                  <details
+                    className="staff-distance-keyboard-calibration"
+                    ref={keyboardCalibrationRef}
+                  >
+                    <summary>校准钢琴键宽</summary>
+                    <p>
+                      将标准银行卡或身份证的长边贴在参考框旁，拖动滑块让两端对齐。校准保存在本浏览器；显示缩放改变后需重新校准。
+                    </p>
+                    <div
+                      aria-hidden="true"
+                      className="staff-distance-keyboard-calibration-guide"
+                      style={{
+                        width: `${PRACTICE_PIANO_CALIBRATION_CARD_WIDTH_MM * preferences.keyboardScale}mm`,
+                      }}
+                    >
+                      标准卡宽 85.6 mm
+                    </div>
+                    <label
+                      className="staff-distance-keyboard-calibration-control"
+                      data-setup-guide-target="distance-keyboard-calibration"
+                    >
+                      <span>键盘尺寸 · {Math.round(preferences.keyboardScale * 100)}%</span>
+                      <input
+                        aria-label="校准钢琴键盘实际宽度"
+                        max={PRACTICE_PIANO_SCALE_MAX}
+                        min={PRACTICE_PIANO_SCALE_MIN}
+                        onChange={(event) => {
+                          setStartError(null);
+                          setPreferences((current) => ({
+                            ...current,
+                            keyboardScale: Number(event.currentTarget.value),
+                          }));
+                        }}
+                        step={PRACTICE_PIANO_SCALE_STEP}
+                        type="range"
+                        value={preferences.keyboardScale}
+                      />
+                    </label>
+                    <button
+                      className="staff-distance-keyboard-calibration-reset"
+                      onClick={() => {
+                        setStartError(null);
+                        setPreferences((current) => ({ ...current, keyboardScale: 1 }));
+                      }}
+                      type="button"
+                    >
+                      恢复默认尺寸
+                    </button>
+                  </details>
+                ) : null}
                 {trainingMode === "finger" ? (
                   <div className="staff-distance-finger-setup">
                     <div className="staff-distance-finger-choice">
@@ -1221,12 +1352,11 @@ export function StaffDistancePracticeView({
                       个谱位；线上参考音
                       {fingerProfile.lineAnchorPitchId}，间上参考音{" "}
                       {fingerProfile.spaceAnchorPitchId}
-                      。每轮 28 张卡片，每张限时 5 秒；先弹参考音，再弹目标音。MIDI
-                      与麦克风只识别音高，不会检测实际使用的手指。
+                      。每轮 28 张卡片，每张限时 5 秒；先弹参考音，再弹目标音。
                     </p>
                   </div>
                 ) : null}
-                {preferences.inputMethod === "microphone" &&
+                {activeInputMethod === "microphone" &&
                 (microphone.error ||
                   microphone.status === "error" ||
                   microphone.status === "requesting" ||
@@ -1532,7 +1662,11 @@ export function StaffDistancePracticeView({
             )}
             {trainingMode !== "look" ? (
               <span className="practice-free-summary-chip">
-                {preferences.inputMethod === "microphone" ? "麦克风" : "MIDI"}
+                {activeInputMethod === "microphone"
+                  ? "麦克风"
+                  : activeInputMethod === "virtual-keyboard"
+                    ? "钢琴键盘"
+                    : "MIDI"}
               </span>
             ) : null}
           </div>

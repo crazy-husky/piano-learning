@@ -1,9 +1,11 @@
 import { ArrowLeft, Pause, Play, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type {
   AnswerAttempt,
   AnswerEvent,
   PracticeSessionRecord,
+  StaffDistanceInputMethod,
   StaffDistanceFingerBatch,
   StaffDistanceFingerHand,
   StaffDistanceFingerNumber,
@@ -19,7 +21,10 @@ import {
   currentMicrophoneContext,
 } from "../../../data/answerEvents";
 import { saveAnswerEvents } from "../../../data/db";
-import { createStaffDistanceFingerCards } from "../../../domain/staffDistanceFinger";
+import {
+  createStaffDistanceFingerCards,
+  getStaffDistanceFingerProfile,
+} from "../../../domain/staffDistanceFinger";
 import { summarizeStaffDistancePair } from "../../../domain/staffDistancePractice";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
@@ -30,14 +35,42 @@ import { PracticeMicrophoneRetryButton } from "../../../shared/components/Practi
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import type { StaffDistanceMicrophoneInput } from "./StaffDistanceRun";
 import { StaffPagePrompt } from "./StaffPagePrompt";
+import { StaffDistanceFingerKeyboard } from "./StaffDistanceFingerKeyboard";
+import { PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
+import {
+  canFitPracticePianoKeyboard,
+  getPracticePianoKeyboardMinWidthPx,
+  PRACTICE_PIANO_WHITE_KEY_MAX_HEIGHT_PX,
+  PRACTICE_PIANO_WHITE_KEY_MIN_HEIGHT_PX,
+} from "./staffDistanceFingerKeyboardLayout";
+import { usePracticeViewportSize } from "./usePracticeViewportSize";
 
 const FINGER_CARD_COUNT = 28;
 const FINGER_CARD_TIME_LIMIT_MS = 5_000;
-const WRONG_FEEDBACK_DURATION_MS = 450;
+const WRONG_FEEDBACK_DURATION_MS = 1_000;
 const FINGER_NOTE_DURATIONS = ["quarter", "quarter"] as const;
 const FINGER_NOTE_MEASURES = [0, 0] as const;
 const FINGER_NOTE_ONSETS = [0, 1] as const;
 const FINGER_NOTE_BEAM_GROUPS = [0, 1] as const;
+const FINGER_PRACTICE_STAFF_LAYOUT = {
+  ...PRACTICE_PAGE_STAFF_LAYOUT,
+  notationScale: 1.18,
+  vertical: {
+    ...PRACTICE_PAGE_STAFF_LAYOUT.vertical,
+    trebleOnlyYPx: 0,
+    bassOnlyYPx: 0,
+    viewHeightPx: 132,
+  },
+};
+const FINGER_PRACTICE_COMPACT_STAFF_LAYOUT = {
+  ...PRACTICE_PAGE_STAFF_LAYOUT,
+  vertical: {
+    ...PRACTICE_PAGE_STAFF_LAYOUT.vertical,
+    trebleOnlyYPx: 30,
+    bassOnlyYPx: 30,
+    viewHeightPx: 170,
+  },
+};
 
 type FingerStep = "reference" | "target";
 
@@ -53,7 +86,8 @@ interface FingerStepAttempts {
 export interface StaffDistanceFingerRunProps {
   fingerHand: StaffDistanceFingerHand;
   fingerNumber: StaffDistanceFingerNumber;
-  inputMethod: "midi" | "microphone";
+  inputMethod: StaffDistanceInputMethod;
+  keyboardScale: number;
   midi: MidiInputController;
   microphone: StaffDistanceMicrophoneInput;
   navigationExitRequest?: {
@@ -91,7 +125,7 @@ function makeFingerAnswerEvent(args: {
   elapsedMs: number;
   fingerHand: StaffDistanceFingerHand;
   fingerNumber: StaffDistanceFingerNumber;
-  inputMethod: "midi" | "microphone";
+  inputMethod: StaffDistanceInputMethod;
   isMissed: boolean;
   promptEndedAt: string;
   promptStartedAt: string;
@@ -169,6 +203,7 @@ export function StaffDistanceFingerRun({
   fingerHand,
   fingerNumber,
   inputMethod,
+  keyboardScale,
   midi,
   microphone,
   navigationExitRequest,
@@ -183,11 +218,102 @@ export function StaffDistanceFingerRun({
   useLedgerGap,
 }: StaffDistanceFingerRunProps): JSX.Element {
   const [deck] = useState(() => createStaffDistanceFingerCards(notes, fingerHand, fingerNumber));
+  const viewportSize = usePracticeViewportSize();
+  const runShellRef = useRef<HTMLElement | null>(null);
+  const keyboardRef = useRef<HTMLDivElement | null>(null);
+  const activeKeyboardTouchPointerIdsRef = useRef(new Set<number>());
+  const pendingKeyboardAdvanceRef = useRef<StaffDistanceQuestionResult[] | null>(null);
+  const [availableRunWidth, setAvailableRunWidth] = useState(0);
+  const [keyboardHeightPx, setKeyboardHeightPx] = useState(PRACTICE_PIANO_WHITE_KEY_MAX_HEIGHT_PX);
+  useLayoutEffect(() => {
+    const runShell = runShellRef.current;
+    if (!runShell) return undefined;
+
+    const updateAvailableWidth = (): void => {
+      setAvailableRunWidth(runShell.clientWidth);
+    };
+    updateAvailableWidth();
+    const observer = new ResizeObserver(updateAvailableWidth);
+    observer.observe(runShell);
+    return () => observer.disconnect();
+  }, []);
+
+  const keyboardFitsCurrentOrientation =
+    canFitPracticePianoKeyboard(viewportSize, keyboardScale) &&
+    availableRunWidth >= getPracticePianoKeyboardMinWidthPx(keyboardScale);
+  const isViewportBlocked = inputMethod === "virtual-keyboard" && !keyboardFitsCurrentOrientation;
+
+  useLayoutEffect(() => {
+    if (inputMethod !== "virtual-keyboard" || isViewportBlocked) return undefined;
+    const runShell = runShellRef.current;
+    const keyboard = keyboardRef.current;
+    if (!runShell || !keyboard) return undefined;
+    let animationFrameId = 0;
+
+    const updateAvailableKeyboardHeight = (): void => {
+      const visualViewport = window.visualViewport;
+      const viewportBottom = visualViewport
+        ? visualViewport.offsetTop + visualViewport.height
+        : window.innerHeight;
+      const keyboardTop = Math.max(
+        keyboard.getBoundingClientRect().top,
+        visualViewport?.offsetTop ?? 0
+      );
+      const keyboardStyle = window.getComputedStyle(keyboard);
+      const keyboardFrameHeight =
+        Number.parseFloat(keyboardStyle.paddingTop) +
+        Number.parseFloat(keyboardStyle.paddingBottom) +
+        Number.parseFloat(keyboardStyle.borderTopWidth) +
+        Number.parseFloat(keyboardStyle.borderBottomWidth);
+      const shellBottomPadding = Number.parseFloat(window.getComputedStyle(runShell).paddingBottom);
+      const remainingHeight = Math.floor(
+        viewportBottom - keyboardTop - keyboardFrameHeight - shellBottomPadding
+      );
+      const nextHeight = Math.max(
+        PRACTICE_PIANO_WHITE_KEY_MIN_HEIGHT_PX,
+        Math.min(PRACTICE_PIANO_WHITE_KEY_MAX_HEIGHT_PX, remainingHeight)
+      );
+      setKeyboardHeightPx((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight
+      );
+    };
+
+    const scheduleHeightUpdate = (): void => {
+      if (animationFrameId !== 0) window.cancelAnimationFrame(animationFrameId);
+      animationFrameId = window.requestAnimationFrame(() => {
+        animationFrameId = 0;
+        updateAvailableKeyboardHeight();
+      });
+    };
+
+    scheduleHeightUpdate();
+    const observer = new ResizeObserver(scheduleHeightUpdate);
+    observer.observe(runShell);
+    runShell
+      .querySelectorAll<HTMLElement>(
+        ".staff-distance-finger-card, .staff-distance-finger-score, .staff-distance-question-copy"
+      )
+      .forEach((element) => observer.observe(element));
+    window.addEventListener("resize", scheduleHeightUpdate);
+    window.addEventListener("scroll", scheduleHeightUpdate, { capture: true, passive: true });
+    window.visualViewport?.addEventListener("resize", scheduleHeightUpdate);
+    window.visualViewport?.addEventListener("scroll", scheduleHeightUpdate);
+    return () => {
+      if (animationFrameId !== 0) window.cancelAnimationFrame(animationFrameId);
+      observer.disconnect();
+      window.removeEventListener("resize", scheduleHeightUpdate);
+      window.removeEventListener("scroll", scheduleHeightUpdate, true);
+      window.visualViewport?.removeEventListener("resize", scheduleHeightUpdate);
+      window.visualViewport?.removeEventListener("scroll", scheduleHeightUpdate);
+    };
+  }, [inputMethod, isViewportBlocked]);
+
   const [cardIndex, setCardIndex] = useState(0);
   const [step, setStep] = useState<FingerStep>("reference");
   const [completedNoteIndices, setCompletedNoteIndices] = useState<number[]>([]);
   const [wrongIndex, setWrongIndex] = useState<number | undefined>();
   const [wrongFeedback, setWrongFeedback] = useState(false);
+  const [wrongEdgePulse, setWrongEdgePulse] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [inputError, setInputError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
@@ -213,6 +339,8 @@ export function StaffDistanceFingerRun({
   const wrongFeedbackTimerRef = useRef<number | undefined>();
   const answerEventSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const handledExitRequestRef = useRef<number | null>(null);
+  const viewportBlockedRef = useRef(false);
+  const resumeAfterViewportBlockRef = useRef(false);
   const stopMicrophoneRef = useRef(microphone.stop);
   stopMicrophoneRef.current = microphone.stop;
   const currentCard = deck.cards[cardIndex];
@@ -222,6 +350,7 @@ export function StaffDistanceFingerRun({
   );
   const scoreNoteLabels = useMemo(() => [`${fingerNumber}指`, "目标"], [fingerNumber]);
   const details = session.staffDistance!;
+  const fingerProfile = getStaffDistanceFingerProfile(fingerHand, fingerNumber);
   const fingerClefLabel = fingerHand === "right" ? "高音谱" : "低音谱";
   const midiSubscribe = midi.subscribe;
   const enqueueAnswerEvent = useCallback((event: AnswerEvent): void => {
@@ -232,10 +361,43 @@ export function StaffDistanceFingerRun({
       });
   }, []);
 
+  useEffect(() => {
+    if (isViewportBlocked) {
+      if (viewportBlockedRef.current) return;
+      viewportBlockedRef.current = true;
+      resumeAfterViewportBlockRef.current = !isPausedRef.current;
+      if (!isPausedRef.current) {
+        const now = performance.now();
+        if (activeStartedAtRef.current !== 0) {
+          activeElapsedMsRef.current += Math.max(0, now - activeStartedAtRef.current);
+        }
+        activeStartedAtRef.current = 0;
+        pausedRemainingMsRef.current = Math.max(0, deadlineRef.current - now);
+        deadlineRef.current = 0;
+        setRemainingMs(pausedRemainingMsRef.current);
+      }
+      return;
+    }
+
+    if (!viewportBlockedRef.current) return;
+    viewportBlockedRef.current = false;
+    if (resumeAfterViewportBlockRef.current && !isPausedRef.current && !endingRef.current) {
+      const now = performance.now();
+      activeStartedAtRef.current = now;
+      deadlineRef.current = now + pausedRemainingMsRef.current;
+    }
+    resumeAfterViewportBlockRef.current = false;
+  }, [isViewportBlocked]);
+
   const finish = useCallback(
     async (endReason: PracticeSessionRecord["endReason"], showSummary: boolean): Promise<void> => {
       if (endingRef.current) return;
       endingRef.current = true;
+      if (pendingKeyboardAdvanceRef.current) {
+        resultsRef.current = pendingKeyboardAdvanceRef.current;
+      }
+      pendingKeyboardAdvanceRef.current = null;
+      activeKeyboardTouchPointerIdsRef.current.clear();
       deadlineRef.current = 0;
       if (wrongFeedbackTimerRef.current !== undefined) {
         window.clearTimeout(wrongFeedbackTimerRef.current);
@@ -273,6 +435,7 @@ export function StaffDistanceFingerRun({
   const advanceCard = useCallback(
     (nextResults?: StaffDistanceQuestionResult[]): void => {
       if (nextResults) resultsRef.current = nextResults;
+      pendingKeyboardAdvanceRef.current = null;
       const nextIndex = cardIndexRef.current + 1;
       if (nextIndex >= deck.cards.length) {
         void finishRef.current("completed-count", true);
@@ -294,13 +457,60 @@ export function StaffDistanceFingerRun({
       setInputError(null);
       pausedRemainingMsRef.current = FINGER_CARD_TIME_LIMIT_MS;
       setRemainingMs(FINGER_CARD_TIME_LIMIT_MS);
-      deadlineRef.current = isPausedRef.current ? 0 : performance.now() + FINGER_CARD_TIME_LIMIT_MS;
+      deadlineRef.current =
+        isPausedRef.current || viewportBlockedRef.current
+          ? 0
+          : performance.now() + FINGER_CARD_TIME_LIMIT_MS;
       stepStartedRemainingMsRef.current = FINGER_CARD_TIME_LIMIT_MS;
       referencePromptStartedAtRef.current = new Date().toISOString();
       stepPromptStartedAtRef.current = referencePromptStartedAtRef.current;
       referencePromptEndedAtRef.current = undefined;
     },
     [deck.cards.length]
+  );
+
+  const advanceAfterKeyboardRelease = useCallback(
+    (nextResults: StaffDistanceQuestionResult[], prompt: string): void => {
+      if (
+        inputMethod !== "virtual-keyboard" ||
+        activeKeyboardTouchPointerIdsRef.current.size === 0
+      ) {
+        advanceCard(nextResults);
+        return;
+      }
+
+      pendingKeyboardAdvanceRef.current = nextResults;
+      const now = performance.now();
+      const remaining = Math.max(0, deadlineRef.current - now);
+      deadlineRef.current = 0;
+      pausedRemainingMsRef.current = remaining;
+      setRemainingMs(remaining);
+      setFeedback(prompt);
+      if (activeStartedAtRef.current !== 0) {
+        activeElapsedMsRef.current += Math.max(0, now - activeStartedAtRef.current);
+        activeStartedAtRef.current = 0;
+      }
+    },
+    [advanceCard, inputMethod]
+  );
+
+  const handleKeyboardTouchStart = useCallback((pointerId: number): void => {
+    activeKeyboardTouchPointerIdsRef.current.add(pointerId);
+  }, []);
+
+  const handleKeyboardTouchEnd = useCallback(
+    (pointerId: number): void => {
+      activeKeyboardTouchPointerIdsRef.current.delete(pointerId);
+      const pendingResults = pendingKeyboardAdvanceRef.current;
+      if (pendingResults && activeKeyboardTouchPointerIdsRef.current.size === 0) {
+        pendingKeyboardAdvanceRef.current = null;
+        advanceCard(pendingResults);
+        if (!endingRef.current && !isPausedRef.current && !viewportBlockedRef.current) {
+          activeStartedAtRef.current = performance.now();
+        }
+      }
+    },
+    [advanceCard]
   );
 
   const timeoutCard = useCallback((): void => {
@@ -377,8 +587,16 @@ export function StaffDistanceFingerRun({
         timedOut: true,
       },
     ];
-    advanceCard(nextResults);
-  }, [advanceCard, deck.cards, enqueueAnswerEvent, fingerHand, fingerNumber, inputMethod, session]);
+    advanceAfterKeyboardRelease(nextResults, "本卡时间到，请松开所有手指进入下一张。");
+  }, [
+    advanceAfterKeyboardRelease,
+    deck.cards,
+    enqueueAnswerEvent,
+    fingerHand,
+    fingerNumber,
+    inputMethod,
+    session,
+  ]);
   const timeoutCardRef = useRef(timeoutCard);
   timeoutCardRef.current = timeoutCard;
 
@@ -386,7 +604,16 @@ export function StaffDistanceFingerRun({
     (answer: PracticeAnswerInput): void => {
       const activeCardIndex = cardIndexRef.current;
       const card = deck.cards[activeCardIndex];
-      if (!card || isPausedRef.current || endingRef.current || deck.error) return;
+      if (
+        !card ||
+        isPausedRef.current ||
+        viewportBlockedRef.current ||
+        endingRef.current ||
+        deck.error ||
+        pendingKeyboardAdvanceRef.current !== null
+      ) {
+        return;
+      }
       if (deadlineRef.current === 0 || performance.now() >= deadlineRef.current) {
         timeoutCardRef.current();
         return;
@@ -404,8 +631,12 @@ export function StaffDistanceFingerRun({
       const promptEndedAt = new Date().toISOString();
       const currentStep = stepRef.current;
       const expected = currentStep === "reference" ? card.reference : card.target;
-      const answerMode = inputMethod === "midi" ? "exact-pitch" : "microphone";
-      const isCorrect = isPracticeAnswerCorrect(answer, expected, answerMode);
+      const answerMode = inputMethod === "microphone" ? "microphone" : "exact-pitch";
+      const isCorrect =
+        inputMethod === "virtual-keyboard"
+          ? answer.source === "screen-keyboard" &&
+            answer.midiNoteNumber === getTargetMidiNoteNumber(expected)
+          : isPracticeAnswerCorrect(answer, expected, answerMode);
       const attempt: AnswerAttempt = {
         ...(answer.midiNoteNumber === undefined ? {} : { midi: answer.midiNoteNumber }),
         noteName: answer.noteName,
@@ -421,6 +652,7 @@ export function StaffDistanceFingerRun({
 
       if (!isCorrect) {
         setWrongFeedback(true);
+        setWrongEdgePulse((pulse) => pulse + 1);
         setWrongIndex(currentStep === "reference" ? 0 : 1);
         setFeedback(null);
         if (wrongFeedbackTimerRef.current !== undefined) {
@@ -442,7 +674,11 @@ export function StaffDistanceFingerRun({
         setCompletedNoteIndices([0]);
         setWrongIndex(undefined);
         setWrongFeedback(false);
-        setFeedback("参考音正确，请继续弹奏目标音。");
+        setFeedback(
+          inputMethod === "virtual-keyboard"
+            ? "参考音正确；可保持按住，也可先抬起，再按目标音。"
+            : "参考音正确，请继续弹奏目标音。"
+        );
         referencePromptEndedAtRef.current = promptEndedAt;
         stepStartedRemainingMsRef.current = remainingMs;
         stepPromptStartedAtRef.current = promptEndedAt;
@@ -514,10 +750,10 @@ export function StaffDistanceFingerRun({
       setCompletedNoteIndices([0, 1]);
       setWrongIndex(undefined);
       setWrongFeedback(false);
-      advanceCard(nextResults);
+      advanceAfterKeyboardRelease(nextResults, "本卡完成，请松开所有手指进入下一张。");
     },
     [
-      advanceCard,
+      advanceAfterKeyboardRelease,
       deck.cards,
       deck.error,
       enqueueAnswerEvent,
@@ -529,7 +765,14 @@ export function StaffDistanceFingerRun({
   );
 
   const togglePause = useCallback(async (): Promise<void> => {
-    if (endingRef.current || deck.error || resumeInProgressRef.current) return;
+    if (
+      endingRef.current ||
+      deck.error ||
+      resumeInProgressRef.current ||
+      viewportBlockedRef.current
+    ) {
+      return;
+    }
     if (!isPausedRef.current) {
       const now = performance.now();
       if (activeStartedAtRef.current !== 0) {
@@ -581,14 +824,15 @@ export function StaffDistanceFingerRun({
   togglePauseRef.current = togglePause;
 
   useEffect(() => {
-    if (deck.error || isPaused) return undefined;
+    if (deck.error || isPaused || isViewportBlocked) return undefined;
     const timer = window.setInterval(() => {
+      if (pendingKeyboardAdvanceRef.current) return;
       const remaining = Math.max(0, deadlineRef.current - performance.now());
       setRemainingMs(remaining);
       if (remaining <= 0) timeoutCardRef.current();
     }, 100);
     return () => window.clearInterval(timer);
-  }, [cardIndex, deck.error, isPaused]);
+  }, [cardIndex, deck.error, isPaused, isViewportBlocked]);
 
   useEffect(() => {
     if (inputMethod !== "midi") return undefined;
@@ -688,6 +932,8 @@ export function StaffDistanceFingerRun({
   const restart = async (): Promise<void> => {
     if (!onRestart || endingRef.current || isRestarting) return;
     endingRef.current = true;
+    pendingKeyboardAdvanceRef.current = null;
+    activeKeyboardTouchPointerIdsRef.current.clear();
     setIsRestarting(true);
     deadlineRef.current = 0;
     isPausedRef.current = true;
@@ -723,11 +969,14 @@ export function StaffDistanceFingerRun({
   const handLabel = fingerHand === "right" ? "右手" : "左手";
   const batchLabel = currentCard.batch === "line" ? "线上参考音" : "间上参考音";
   const inputPrompt = step === "reference" ? "参考音" : "目标音";
+  const lineReferenceNote =
+    deck.cards.find((card) => card.batch === "line")?.reference ?? currentCard.reference;
 
   return (
     <section
       aria-label="音距速推单指专项"
-      className="staff-distance-run-shell staff-distance-finger-run"
+      className={`staff-distance-run-shell staff-distance-finger-run${inputMethod === "virtual-keyboard" ? " is-virtual-keyboard" : ""}`}
+      ref={runShellRef}
     >
       <header className="staff-distance-run-header">
         <div>
@@ -799,7 +1048,14 @@ export function StaffDistanceFingerRun({
             completedCount={activeNoteIndex}
             completedNoteIndices={completedNoteIndices}
             notes={scoreNotes}
+            layout={
+              inputMethod === "virtual-keyboard"
+                ? FINGER_PRACTICE_STAFF_LAYOUT
+                : FINGER_PRACTICE_COMPACT_STAFF_LAYOUT
+            }
             noteLabelsAbove={scoreNoteLabels}
+            noteLabelsAboveStaffTopLinePx={50}
+            currentNoteIndicatorIndex={activeNoteIndex}
             noteDuration="quarter"
             noteDurations={FINGER_NOTE_DURATIONS}
             noteMeasures={FINGER_NOTE_MEASURES}
@@ -820,22 +1076,51 @@ export function StaffDistanceFingerRun({
         </div>
       </div>
 
-      <p aria-live="polite" className="staff-distance-question-copy">
-        {feedback ??
-          (step === "reference"
-            ? `请先弹奏标注 ${fingerNumber} 指的参考音，再弹目标音。`
-            : "参考音已弹对，请弹奏第二个目标音。")}
+      <p
+        aria-live={wrongFeedback ? "assertive" : "polite"}
+        className={`staff-distance-question-copy${inputMethod === "virtual-keyboard" ? " is-virtual-keyboard" : ""}${wrongFeedback ? " is-error" : ""}`}
+      >
+        {wrongFeedback
+          ? "音高不对，请再试一次；计时继续。"
+          : (feedback ??
+            (step === "reference"
+              ? `请先弹奏标注 ${fingerNumber} 指的参考音，再弹目标音。`
+              : inputMethod === "virtual-keyboard"
+                ? "参考音已弹对；可保持按住或先抬起，再按目标音。"
+                : "参考音已弹对，请弹奏第二个目标音。"))}
       </p>
-      {wrongFeedback ? (
-        <p aria-live="assertive" className="staff-distance-finger-error">
-          音高不对，请再试一次；计时继续。
-        </p>
+      {inputMethod === "virtual-keyboard" && currentCard && !isViewportBlocked ? (
+        <StaffDistanceFingerKeyboard
+          containerRef={keyboardRef}
+          disabled={isPaused || isViewportBlocked}
+          fingerNumber={fingerNumber}
+          highlightedMidi={getTargetMidiNoteNumber(currentCard.reference)}
+          keyboardHeightPx={keyboardHeightPx}
+          keyboardScale={keyboardScale}
+          lowerKeyCount={fingerProfile.lower}
+          onKeyPress={({ midi, noteName, octave }) =>
+            answerPitch({
+              midiNoteNumber: midi,
+              noteName,
+              octave,
+              source: "screen-keyboard",
+            })
+          }
+          onTouchPointerEnd={handleKeyboardTouchEnd}
+          onTouchPointerStart={handleKeyboardTouchStart}
+          rangeReferenceMidi={getTargetMidiNoteNumber(lineReferenceNote)}
+        />
       ) : null}
-      <div aria-live="polite" className="staff-distance-play-input-status">
+      <div
+        aria-live="polite"
+        className={`staff-distance-play-input-status${inputMethod === "virtual-keyboard" && !inputError ? " is-virtual-keyboard-redundant" : ""}`}
+      >
         {inputError ? (
           inputError
         ) : inputMethod === "midi" ? (
           `请弹奏 MIDI 键盘上的${inputPrompt}${midi.selectedInput?.name ? ` · ${midi.selectedInput.name}` : ""}`
+        ) : inputMethod === "virtual-keyboard" ? (
+          `按下钢琴键盘上的${inputPrompt}作答`
         ) : microphone.status === "listening" ? (
           `麦克风已连接，请弹奏${inputPrompt}`
         ) : microphone.status === "requesting" && !isPaused ? (
@@ -905,6 +1190,30 @@ export function StaffDistanceFingerRun({
           ) : null}
         </div>
       ) : null}
+      {isViewportBlocked ? (
+        <div className="staff-distance-orientation-overlay" role="status">
+          <div className="staff-distance-orientation-card">
+            <strong>请横屏继续</strong>
+            <span>当前竖屏宽度不足以展示钢琴键盘，请切换到横屏。</span>
+            <button onClick={() => void finish("manual-stop", false)} type="button">
+              返回设置
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {wrongEdgePulse > 0
+        ? createPortal(
+            <div
+              key={wrongEdgePulse}
+              aria-hidden="true"
+              className="staff-distance-wrong-edge"
+              onAnimationEnd={() => {
+                setWrongEdgePulse((pulse) => (pulse === wrongEdgePulse ? 0 : pulse));
+              }}
+            />,
+            document.body
+          )
+        : null}
     </section>
   );
 }

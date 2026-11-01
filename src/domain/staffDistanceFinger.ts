@@ -106,26 +106,42 @@ function shuffledWithoutAdjacentDuplicates(
   random: () => number,
   previousPitchId?: TargetNote["pitchId"]
 ): TargetNote[] {
-  const remaining = targets.flatMap((target) => [target, target]);
-  const result: TargetNote[] = [];
-  let previous = previousPitchId;
+  const remainingCounts = targets.map(() => 2);
+  const failedStates = new Set<string>();
 
-  while (remaining.length > 0) {
-    const eligibleIndexes = remaining.flatMap((target, index) =>
-      target.pitchId === previous ? [] : [index]
+  const arrange = (previous?: TargetNote["pitchId"]): TargetNote[] | undefined => {
+    if (remainingCounts.every((count) => count === 0)) return [];
+    const stateKey = `${previous ?? ""}:${remainingCounts.join("")}`;
+    if (failedStates.has(stateKey)) return undefined;
+
+    const candidates = remainingCounts.flatMap((count, index) =>
+      count > 0 && targets[index]?.pitchId !== previous ? [index] : []
     );
-    const choices =
-      eligibleIndexes.length > 0 ? eligibleIndexes : remaining.map((_, index) => index);
-    const sampled = random();
-    const randomIndex = Number.isFinite(sampled) ? Math.max(0, Math.min(0.999999, sampled)) : 0;
-    const pickedIndex = choices[Math.floor(randomIndex * choices.length)]!;
-    const [picked] = remaining.splice(pickedIndex, 1);
-    if (picked) {
-      result.push(picked);
-      previous = picked.pitchId;
+    for (let index = candidates.length - 1; index > 0; index -= 1) {
+      const sampled = random();
+      const randomIndex = Number.isFinite(sampled) ? Math.max(0, Math.min(0.999999, sampled)) : 0;
+      const swapIndex = Math.floor(randomIndex * (index + 1));
+      [candidates[index], candidates[swapIndex]] = [candidates[swapIndex]!, candidates[index]!];
     }
-  }
 
+    for (const candidateIndex of candidates) {
+      remainingCounts[candidateIndex] = remainingCounts[candidateIndex]! - 1;
+      const target = targets[candidateIndex]!;
+      const suffix = arrange(target.pitchId);
+      if (suffix) return [target, ...suffix];
+      remainingCounts[candidateIndex] = remainingCounts[candidateIndex]! + 1;
+    }
+
+    failedStates.add(stateKey);
+    return undefined;
+  };
+
+  const result = arrange(previousPitchId);
+  if (!result) {
+    throw new Error(
+      "Unable to arrange single-finger practice targets without adjacent duplicates."
+    );
+  }
   return result;
 }
 

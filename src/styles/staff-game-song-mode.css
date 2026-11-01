@@ -649,11 +649,17 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .app-shell-game-immersive::before {
+  .app-shell-practice-immersive {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell-game-immersive::before,
+  .app-shell-practice-immersive::before {
     display: none;
   }
 
-  .app-shell-game-immersive .app-nav {
+  .app-shell-game-immersive .app-nav,
+  .app-shell-practice-immersive .app-nav {
     display: none;
   }
 

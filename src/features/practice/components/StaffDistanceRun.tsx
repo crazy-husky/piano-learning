@@ -66,6 +66,7 @@ export interface StaffDistanceRunProps {
   fixedCount: number;
   fixedDurationSeconds: number;
   inputMethod: StaffDistanceInputMethod;
+  keyboardScale: number;
   mode: PracticeMode;
   noteDurations: readonly PromptNoteDuration[];
   navigationExitRequest?: PracticeNavigationExitRequest | null;
@@ -86,6 +87,10 @@ export interface StaffDistanceRunProps {
   trainingMode: StaffDistanceTrainingMode;
   useLedgerGap: boolean;
 }
+
+type StaffDistanceIntervalRunProps = Omit<StaffDistanceRunProps, "inputMethod"> & {
+  inputMethod: Exclude<StaffDistanceInputMethod, "virtual-keyboard">;
+};
 
 const WRONG_FEEDBACK_DURATION_MS = 450;
 
@@ -311,7 +316,7 @@ function StaffDistanceIntervalRun({
   staffNotationMode,
   trainingMode,
   useLedgerGap,
-}: StaffDistanceRunProps): JSX.Element {
+}: StaffDistanceIntervalRunProps): JSX.Element {
   const [isChaseSettingsOpen, setIsChaseSettingsOpen] = useState(false);
   const subscribeMidi = midi.subscribe;
   const extraPitchIds = session.staffDistance?.crossGroupPitchIds ?? EMPTY_EXTRA_PITCH_IDS;
@@ -1474,6 +1479,7 @@ export function StaffDistanceRun(props: StaffDistanceRunProps): JSX.Element {
         fingerHand={props.session.staffDistance?.fingerHand ?? "right"}
         fingerNumber={props.session.staffDistance?.fingerNumber ?? 1}
         inputMethod={props.inputMethod}
+        keyboardScale={props.keyboardScale}
         midi={props.midi}
         microphone={props.microphone}
         navigationExitRequest={props.navigationExitRequest}
@@ -1489,5 +1495,6 @@ export function StaffDistanceRun(props: StaffDistanceRunProps): JSX.Element {
       />
     );
   }
-  return <StaffDistanceIntervalRun {...props} />;
+  const intervalInputMethod = props.inputMethod === "microphone" ? "microphone" : "midi";
+  return <StaffDistanceIntervalRun {...props} inputMethod={intervalInputMethod} />;
 }

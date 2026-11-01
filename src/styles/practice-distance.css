@@ -167,6 +167,10 @@
   gap: 2px;
 }
 
+.staff-distance-input-methods.has-virtual-keyboard {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .staff-distance-input-methods button {
   display: inline-flex;
   min-width: 0;
@@ -595,6 +599,7 @@
   position: relative;
   display: grid;
   width: min(980px, 100%);
+  min-width: 0;
   gap: 12px;
   margin: 0 auto;
   padding: 12px 0 20px;
@@ -657,12 +662,35 @@
 }
 
 .staff-distance-question-copy {
+  display: flex;
   min-height: 26px;
+  align-items: center;
+  justify-content: center;
   margin: 2px 0 0;
   color: var(--text);
   font-size: 18px;
   font-weight: 700;
+  line-height: 1.2;
   text-align: center;
+}
+
+.staff-distance-question-copy.is-virtual-keyboard {
+  height: 26px;
+  white-space: nowrap;
+}
+
+.staff-distance-question-copy.is-error {
+  color: var(--danger);
+}
+
+.staff-distance-finger-run .staff-page-current-note-indicator {
+  fill: #ec655f;
+  stroke: color-mix(in srgb, #fff 78%, #ec655f);
+  stroke-width: 1px;
+  paint-order: stroke;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 48%));
+  pointer-events: none;
+  transition: opacity 100ms ease-out;
 }
 
 .staff-distance-finger-card {
@@ -674,6 +702,352 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface-soft);
+}
+
+.staff-distance-finger-keyboard {
+  width: calc(
+    var(--staff-distance-white-key-width) * var(--staff-distance-white-key-count, 9) + 14px
+  );
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 6px;
+  border: 1px solid #526f69;
+  border-radius: 0 0 12px 12px;
+  background: linear-gradient(180deg, #39534e 0%, #20322e 100%);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 22%);
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.staff-distance-finger-keyboard-bed {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: min(var(--staff-distance-finger-keyboard-height, 132px), 150mm);
+  isolation: isolate;
+  overscroll-behavior: contain;
+}
+
+.staff-distance-finger-white-key {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 0 0 var(--staff-distance-white-key-width);
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0 7px;
+  border: 1px solid #a7aaa1;
+  border-right-color: #858b84;
+  border-radius: 0 0 5px 5px;
+  background: linear-gradient(90deg, #f0f0e6 0%, #dedfd4 100%);
+  box-shadow:
+    inset 0 -5px 0 #c3c6bb,
+    0 2px 0 #89938b;
+  color: #59615c;
+  cursor: pointer;
+  transition:
+    background-color 90ms ease,
+    box-shadow 90ms ease,
+    transform 90ms ease;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.staff-distance-finger-white-key:not(:disabled):active {
+  transform: translateY(2px);
+  background: linear-gradient(90deg, #d9e8dc 0%, #c7dbcf 100%);
+  box-shadow:
+    inset 0 -2px 0 #a8b9ac,
+    0 0 0 transparent;
+}
+
+.staff-distance-finger-white-key.is-touch-pressed {
+  transform: translateY(2px);
+  filter: brightness(0.96);
+}
+
+.staff-distance-finger-white-key.is-finger-anchor {
+  border-color: #4b9c8a;
+  background: linear-gradient(180deg, #e4f4e9 0%, #c8e5d6 100%);
+  box-shadow:
+    inset 0 -5px 0 #a4caba,
+    inset 0 0 0 2px rgb(61 151 131 / 28%),
+    0 2px 0 #6f9f8e,
+    0 0 12px rgb(68 171 146 / 40%);
+  color: #235c51;
+}
+
+:root[data-app-theme="dark"] .staff-distance-finger-white-key {
+  border-color: #707a71;
+  border-right-color: #59645b;
+  background: linear-gradient(90deg, #afb6ac 0%, #969f96 100%);
+  box-shadow:
+    inset 0 -5px 0 #7c877e,
+    0 2px 0 #515c53;
+  color: #303a33;
+}
+
+:root[data-app-theme="dark"] .staff-distance-finger-white-key:not(:disabled):active {
+  background: linear-gradient(90deg, #929f95 0%, #7d8d82 100%);
+  box-shadow:
+    inset 0 -2px 0 #66776c,
+    0 0 0 transparent;
+}
+
+:root[data-app-theme="dark"] .staff-distance-finger-white-key.is-finger-anchor {
+  border-color: #73b7a1;
+  background: linear-gradient(180deg, #477362 0%, #355a4a 100%);
+  box-shadow:
+    inset 0 -5px 0 #294a3d,
+    inset 0 0 0 2px rgb(133 201 179 / 20%),
+    0 2px 0 #263f35,
+    0 0 9px rgb(90 171 145 / 22%);
+  color: #e0eee6;
+}
+
+.staff-distance-finger-white-key:focus-visible {
+  z-index: 3;
+  outline: 3px solid var(--accent);
+  outline-offset: -4px;
+}
+
+.staff-distance-finger-white-key:disabled {
+  cursor: default;
+}
+
+.staff-distance-finger-key-marker {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 1;
+  border: 1px solid #245d52;
+  border-radius: 999px;
+  background: #2d7568;
+  box-shadow: 0 2px 5px rgb(27 87 74 / 26%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 6px 8px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.staff-distance-finger-black-key {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  width: 12.7mm;
+  height: 15.5%;
+  border: 1px solid #101714;
+  border-radius: 0 0 5px 5px;
+  background: linear-gradient(90deg, #111816 0%, #202926 60%, #0e1311 100%);
+  box-shadow:
+    inset 0 -5px 0 #090d0b,
+    0 4px 5px rgb(0 0 0 / 35%);
+}
+
+.staff-distance-keyboard-calibration {
+  display: grid;
+  max-width: 480px;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.staff-distance-keyboard-calibration > summary {
+  width: fit-content;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.staff-distance-keyboard-calibration > p {
+  max-width: 420px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.staff-distance-keyboard-calibration-guide {
+  display: grid;
+  max-width: 100%;
+  min-height: 36px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px dashed var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.staff-distance-keyboard-calibration-control {
+  display: grid;
+  gap: 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.staff-distance-keyboard-calibration-control input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.staff-distance-keyboard-calibration-reset {
+  justify-self: start;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.staff-distance-keyboard-orientation-hint {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.staff-distance-orientation-overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(12 18 16 / 88%);
+  backdrop-filter: blur(8px);
+}
+
+.staff-distance-orientation-card {
+  display: grid;
+  width: min(400px, 100%);
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: center;
+}
+
+.staff-distance-orientation-card strong {
+  font-size: 22px;
+}
+
+.staff-distance-orientation-card span {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.staff-distance-orientation-card button {
+  min-height: 42px;
+}
+
+.staff-distance-finger-run.is-virtual-keyboard {
+  gap: 8px;
+  overflow-x: clip;
+}
+
+.staff-distance-wrong-edge {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 0 60%,
+    rgb(251 74 78 / 4%) 80%,
+    rgb(230 49 58 / 12%) 100%
+  );
+  box-shadow: inset 0 0 56px rgb(226 50 63 / 14%);
+  opacity: 0;
+  pointer-events: none;
+  animation: staff-distance-error-edge-flash 1500ms linear both;
+}
+
+@keyframes staff-distance-error-edge-flash {
+  8% {
+    opacity: 0.72;
+  }
+  62% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staff-distance-wrong-edge {
+    animation-duration: 1ms;
+  }
+}
+
+.staff-distance-finger-run.is-virtual-keyboard .staff-distance-finger-card {
+  gap: 6px;
+  padding: 10px 14px;
+}
+
+.staff-distance-finger-run.is-virtual-keyboard .staff-distance-finger-score {
+  min-height: 0;
+  max-height: 160px;
+  overflow: hidden;
+}
+
+.staff-distance-finger-run.is-virtual-keyboard
+  .staff-distance-finger-score
+  .staff-page-renderer
+  > svg {
+  max-height: 160px;
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .staff-distance-finger-run.is-virtual-keyboard {
+    gap: 6px;
+    padding-top: 4px;
+  }
+
+  .staff-distance-finger-run.is-virtual-keyboard .staff-distance-finger-card {
+    gap: 4px;
+    padding: 6px 10px;
+  }
+
+  .staff-distance-finger-run.is-virtual-keyboard .staff-distance-finger-score {
+    max-height: 160px;
+  }
+
+  .staff-distance-finger-run.is-virtual-keyboard
+    .staff-distance-finger-score
+    .staff-page-renderer
+    > svg {
+    max-height: 160px;
+  }
+
+  .staff-distance-finger-run.is-virtual-keyboard .staff-distance-question-copy {
+    height: 22px;
+    min-height: 22px;
+    font-size: 15px;
+  }
+}
+
+.staff-distance-play-input-status.is-virtual-keyboard-redundant {
+  display: none;
 }
 
 .staff-distance-finger-card-meta {
@@ -707,14 +1081,6 @@
 .staff-distance-finger-score .staff-page-renderer > svg {
   width: 100%;
   max-width: 100%;
-}
-
-.staff-distance-finger-error {
-  margin: 0;
-  color: var(--danger);
-  font-size: 14px;
-  font-weight: 650;
-  text-align: center;
 }
 
 .staff-distance-question-hints {

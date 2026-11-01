@@ -177,6 +177,7 @@ const FREE_STAFF_ROW_PREVIEW_TEMPO_BPM = 60;
 interface PracticeViewProps {
   midi: MidiInputController;
   metronomeController: MetronomeController;
+  metronomeFloatingVisible: boolean;
   practiceMicrophonePreferences: PracticeMicrophonePreferences;
   practicePagePreferences: PracticePagePreferences;
   settings: AppSettings;
@@ -435,6 +436,7 @@ function parsePracticeSetupUiPreferences(
 export function PracticeView({
   midi,
   metronomeController,
+  metronomeFloatingVisible,
   practiceMicrophonePreferences,
   practicePagePreferences,
   settings,
@@ -2942,10 +2944,16 @@ export function PracticeView({
   ]);
 
   const setupStartIssue = useMemo(() => {
+    if (shouldSynchronizeMetronome && !metronomeFloatingVisible) {
+      return {
+        message: "请先开启木鱼节拍器",
+        target: undefined,
+      };
+    }
     if (shouldSynchronizeMetronome && metronomePreferences.beatsPerBar !== 4) {
       return {
-        message: "节拍同步需要 4/4 拍",
-        target: '[data-setup-guide-target="practice-metronome-sync"]',
+        message: "木鱼与谱面同步已开启，木鱼节拍器需要设为4/4拍",
+        target: '[data-setup-guide-target="practice-metronome-woodfish"]',
       };
     }
     if (
@@ -3007,6 +3015,7 @@ export function PracticeView({
     drillNoteNames.length,
     enabledNotes.length,
     isDuetPractice,
+    metronomeFloatingVisible,
     metronomePreferences.beatsPerBar,
     midi.isConnected,
     midi.inputs.length,
@@ -3020,7 +3029,7 @@ export function PracticeView({
   const attemptStartSession = useCallback((): void => {
     if (setupStartIssue) {
       setSetupStartError(setupStartIssue.message);
-      guideSetupRequirement(setupStartIssue.target);
+      if (setupStartIssue.target) guideSetupRequirement(setupStartIssue.target);
       return;
     }
     setSetupStartError(null);
@@ -3057,7 +3066,8 @@ export function PracticeView({
   const mobileStaffPageRowCount = 1;
   const mobileStaffPageNoteCount = MOBILE_STAFF_PAGE_NOTE_COUNT * mobileStaffPageRowCount;
   const staffPageRowCount = 1;
-  const showPracticeKeyboard = activePracticeInputMode === "virtual-keyboard";
+  const showPracticeKeyboard =
+    practiceTab !== "distance" && activePracticeInputMode === "virtual-keyboard";
   const mobileStaffPageStartIndex = isContinuousStaffPage
     ? 0
     : Math.floor(Math.max(0, staffPageIndex) / mobileStaffPageNoteCount) * mobileStaffPageNoteCount;

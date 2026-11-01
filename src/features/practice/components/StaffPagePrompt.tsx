@@ -73,6 +73,10 @@ interface StaffPagePromptProps {
   noteOnsets?: readonly number[];
   noteBeamGroups?: readonly number[];
   noteLabelsAbove?: readonly (string | undefined)[];
+  /** Fixed distance above the staff's top line, shared by every label above a note. */
+  noteLabelsAboveStaffTopLinePx?: number;
+  /** Shows a fixed-height triangle above the note currently being answered. */
+  currentNoteIndicatorIndex?: number;
   beatsPerMeasure?: number;
   timeSignature?: string;
   completedCount: number;
@@ -271,6 +275,10 @@ interface RenderedPreReadingMask {
   index: number;
 }
 interface RenderedPreReadingIndicator {
+  element: SVGPolygonElement;
+  index: number;
+}
+interface RenderedCurrentNoteIndicator {
   element: SVGPolygonElement;
   index: number;
 }
@@ -1482,6 +1490,32 @@ function addStaffPageNoteLabel(
   parent.appendChild(label);
 }
 
+function addStaffPageCurrentNoteIndicator(
+  parent: SVGElement,
+  noteIndex: number,
+  x: number,
+  staffTopLineY: number,
+  scale: number,
+  isActive: boolean
+): SVGPolygonElement {
+  const indicator = document.createElementNS(SVG_NAMESPACE, "polygon");
+  const baseY = staffTopLineY - logicalPx(28, scale);
+  const tipY = staffTopLineY - logicalPx(20, scale);
+  const halfWidth = logicalPx(5, scale);
+  indicator.setAttribute("class", "staff-page-current-note-indicator");
+  indicator.setAttribute("data-note-index", String(noteIndex));
+  indicator.setAttribute(
+    "points",
+    `${(x - halfWidth).toFixed(2)},${baseY.toFixed(2)} ` +
+      `${(x + halfWidth).toFixed(2)},${baseY.toFixed(2)} ` +
+      `${x.toFixed(2)},${tipY.toFixed(2)}`
+  );
+  indicator.setAttribute("aria-hidden", "true");
+  indicator.style.opacity = isActive ? "1" : "0";
+  parent.appendChild(indicator);
+  return indicator;
+}
+
 function getBarlineX(
   nextTickable: StaffPageTickable | undefined,
   previousNote: StaveNote | undefined,
@@ -1666,6 +1700,8 @@ export function StaffPagePrompt({
   noteOnsets,
   noteBeamGroups,
   noteLabelsAbove,
+  noteLabelsAboveStaffTopLinePx,
+  currentNoteIndicatorIndex,
   beatsPerMeasure,
   timeSignature,
   completedCount,
@@ -1741,6 +1777,7 @@ export function StaffPagePrompt({
   const completedStaffNoteIndicesRef = useRef(completedStaffNoteIndices);
   const syncNoteStatusesRef = useRef(syncNoteStatuses);
   const activePairStartIndexRef = useRef(activePairStartIndex);
+  const currentNoteIndicatorIndexRef = useRef(currentNoteIndicatorIndex);
   const playbackProgressIndexRef = useRef(playbackProgressIndex);
   const practiceProgressMarkerEnabledRef = useRef(practiceProgressMarkerEnabled);
   const getPracticeProgressBeatRef = useRef(getPracticeProgressBeat);
@@ -1751,6 +1788,7 @@ export function StaffPagePrompt({
   const renderedStemsRef = useRef<RenderedStaffPageStem[]>([]);
   const renderedPreReadingMasksRef = useRef<RenderedPreReadingMask[]>([]);
   const renderedPreReadingIndicatorsRef = useRef<RenderedPreReadingIndicator[]>([]);
+  const renderedCurrentNoteIndicatorsRef = useRef<RenderedCurrentNoteIndicator[]>([]);
   const cursorLayersRef = useRef(new Map<string, PlaybackCursorLayer>());
   const cursorTargetsRef = useRef(new Map<number, PlaybackCursorTargets>());
   const cursorRowsRef = useRef(new Map<number, number>());
@@ -1783,6 +1821,7 @@ export function StaffPagePrompt({
   completedStaffNoteIndicesRef.current = completedStaffNoteIndices;
   syncNoteStatusesRef.current = syncNoteStatuses;
   activePairStartIndexRef.current = activePairStartIndex;
+  currentNoteIndicatorIndexRef.current = currentNoteIndicatorIndex;
   playbackProgressIndexRef.current = playbackProgressIndex;
   practiceProgressMarkerEnabledRef.current = practiceProgressMarkerEnabled;
   getPracticeProgressBeatRef.current = getPracticeProgressBeat;
@@ -2418,6 +2457,7 @@ export function StaffPagePrompt({
       renderedStemsRef.current = [];
       renderedPreReadingMasksRef.current = [];
       renderedPreReadingIndicatorsRef.current = [];
+      renderedCurrentNoteIndicatorsRef.current = [];
       cursorLayersRef.current = new Map();
       cursorTargetsRef.current = new Map();
       cursorRowsRef.current = new Map();
@@ -3102,14 +3142,36 @@ export function StaffPagePrompt({
                 ...noteHeadYs,
                 Number.isFinite(stemTop) ? stemTop : Number.POSITIVE_INFINITY
               );
+              const labelY =
+                noteLabelsAboveStaffTopLinePx === undefined
+                  ? noteOrStemTop - logicalPx(8, surface.scale)
+                  : trebleTopLineY - logicalPx(noteLabelsAboveStaffTopLinePx, surface.scale);
               addStaffPageNoteLabel(
                 rowGroup,
                 noteLabel,
                 lyricX,
-                noteOrStemTop - logicalPx(8, surface.scale),
+                labelY,
                 logicalPx(13, surface.scale),
                 palette.active
               );
+              const currentNoteIndex = rowStartIndex + slotIndex;
+              if (
+                currentNoteIndicatorIndexRef.current !== undefined &&
+                noteLabelsAboveStaffTopLinePx !== undefined
+              ) {
+                const indicator = addStaffPageCurrentNoteIndicator(
+                  rowGroup,
+                  currentNoteIndex,
+                  lyricX,
+                  trebleTopLineY,
+                  surface.scale,
+                  currentNoteIndex === currentNoteIndicatorIndexRef.current
+                );
+                renderedCurrentNoteIndicatorsRef.current.push({
+                  element: indicator,
+                  index: currentNoteIndex,
+                });
+              }
             }
             if (!noteLyrics?.length) return;
             noteLyrics.forEach((text, lineIndex) => {
@@ -3501,6 +3563,7 @@ export function StaffPagePrompt({
     noteMeasures,
     noteOnsets,
     noteBeamGroups,
+    noteLabelsAboveStaffTopLinePx,
     rowStartIndices,
     completedStaffNoteIndices,
     beatsPerMeasure,
@@ -4131,6 +4194,12 @@ export function StaffPagePrompt({
     trackedNoteIndex,
     virtualRowWindow,
   ]);
+
+  useLayoutEffect(() => {
+    renderedCurrentNoteIndicatorsRef.current.forEach(({ element, index }) => {
+      element.style.opacity = index === currentNoteIndicatorIndex ? "1" : "0";
+    });
+  }, [currentNoteIndicatorIndex, virtualRowWindow]);
 
   return (
     <div

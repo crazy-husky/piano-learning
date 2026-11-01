@@ -404,6 +404,7 @@ export function App({
   const settingsMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const configurationRestoreInProgressRef = useRef(false);
   const [practiceRunning, setPracticeRunning] = useState(false);
+  const [practiceMetronomeFloatingVisible, setPracticeMetronomeFloatingVisible] = useState(false);
   const [practiceFullscreenAvailable, setPracticeFullscreenAvailable] = useState(false);
   const [practiceVirtualKeyboardActive, setPracticeVirtualKeyboardActive] = useState(false);
   const practiceRunningRef = useRef(false);
@@ -1338,6 +1339,9 @@ export function App({
     "app-shell",
     practiceRunning ? "app-shell-practice-running" : "",
     view === "practice" ? "app-shell-practice-page" : "",
+    view === "practice" && (practiceRunning || practiceStageActive)
+      ? "app-shell-practice-immersive"
+      : "",
     view === "home" ? "app-shell-home" : "",
     isStaffGamePage && (practiceRunning || practiceStageActive) ? "app-shell-game-immersive" : "",
   ]
@@ -1564,6 +1568,7 @@ export function App({
                       <PracticeView
                         midi={midi}
                         metronomeController={metronomeController}
+                        metronomeFloatingVisible={practiceMetronomeFloatingVisible}
                         practiceMicrophonePreferences={practiceMicrophonePreferences}
                         practicePagePreferences={practicePagePreferences}
                         settings={data.settings}
@@ -1610,6 +1615,7 @@ export function App({
                         <MetronomeFloating
                           controller={metronomeController}
                           hiddenForVisit={practiceMetronomeHiddenForVisit}
+                          onVisibilityChange={setPracticeMetronomeFloatingVisible}
                           activePractice={practiceRunning}
                           onHideForVisit={() => setPracticeMetronomeHiddenForVisit(true)}
                           onSyncPauseToggle={toggleSynchronizedPractice}
@@ -1662,6 +1668,7 @@ export function App({
                     <PracticeView
                       midi={midi}
                       metronomeController={metronomeController}
+                      metronomeFloatingVisible={practiceMetronomeFloatingVisible}
                       practiceMicrophonePreferences={practiceMicrophonePreferences}
                       practicePagePreferences={practicePagePreferences}
                       settings={data.settings}
@@ -1695,6 +1702,7 @@ export function App({
                       <MetronomeFloating
                         controller={metronomeController}
                         hiddenForVisit={practiceMetronomeHiddenForVisit}
+                        onVisibilityChange={setPracticeMetronomeFloatingVisible}
                         activePractice={practiceRunning}
                         onHideForVisit={() => setPracticeMetronomeHiddenForVisit(true)}
                         onSyncPauseToggle={toggleSynchronizedPractice}

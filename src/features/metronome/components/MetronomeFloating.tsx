@@ -54,12 +54,14 @@ export function MetronomeFloating({
   controller,
   hiddenForVisit,
   onHideForVisit,
+  onVisibilityChange,
   activePractice,
   onSyncPauseToggle,
 }: {
   controller: MetronomeController;
   hiddenForVisit: boolean;
   onHideForVisit: () => void;
+  onVisibilityChange?: (visible: boolean) => void;
   activePractice: boolean;
   onSyncPauseToggle: () => void;
 }): JSX.Element | null {
@@ -125,6 +127,11 @@ export function MetronomeFloating({
   const isMiniRef = useRef(isMini);
   miniDockEdgeRef.current = miniDockEdge;
   isMiniRef.current = isMini;
+
+  useLayoutEffect(() => {
+    onVisibilityChange?.(isVisible);
+    return () => onVisibilityChange?.(false);
+  }, [isVisible, onVisibilityChange]);
 
   useLayoutEffect(() => {
     const updateMiniDockOffset = (): void => {
@@ -438,6 +445,7 @@ export function MetronomeFloating({
           <button
             aria-label="打开木鱼节拍器；长按或右键选择退出方式"
             className="metronome-floating-trigger"
+            data-setup-guide-target="practice-metronome-woodfish"
             onClick={() => {
               setIsMenuOpen(false);
               setIsExpanded(true);

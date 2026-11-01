@@ -400,6 +400,7 @@ export function MetronomeCore({
           <button
             aria-label={mini ? "展开节拍器状态栏" : "打开节拍器设置"}
             className="metronome-compact-woodfish"
+            data-setup-guide-target="practice-metronome-woodfish"
             onClick={mini ? onRevealMini : onExpand}
             onPointerEnter={(event) => {
               if (mini && event.pointerType !== "touch") onMiniPointerEnter?.();
@@ -546,7 +547,10 @@ export function MetronomeCore({
       )}
 
       <div className={`metronome-stage${controller.isPlaying ? " is-playing" : ""}`}>
-        <div className={`metronome-woodfish-stage strike-${struckSide}`}>
+        <div
+          className={`metronome-woodfish-stage strike-${struckSide}`}
+          data-setup-guide-target={variant === "panel" ? "practice-metronome-woodfish" : undefined}
+        >
           <WoodfishIllustration />
         </div>
 
