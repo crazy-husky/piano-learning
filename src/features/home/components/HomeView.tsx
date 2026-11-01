@@ -5,47 +5,56 @@ import { ensureSwiftF0PracticeRuntimeReady } from "../../vocal-pitch/logic/swift
 import type { PracticeMicrophoneAlgorithm } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
 import type { AppRoutePath } from "../../../routing/appRoutes";
 import { LEARNING_MODULES } from "../../learning/learningModules";
+import {
+  evaluateLearningProgress,
+  type LearningProgressSummary,
+} from "../../learning/learningProgress";
 
 interface HomeViewProps {
   microphoneAlgorithm: PracticeMicrophoneAlgorithm;
+  dataSetId: string;
   onNavigate: (path: AppRoutePath) => void;
 }
 
-type ModuleProgressCounts = Record<1 | 2 | 3 | 4 | 5 | 6, number>;
+type ModuleProgress = Record<1 | 2 | 3 | 4 | 5 | 6, LearningProgressSummary>;
 
-const EMPTY_PROGRESS_COUNTS: ModuleProgressCounts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+const STATUS_COPY = {
+  "not-started": "未开始",
+  "in-progress": "练习中",
+  mastered: "🏆 已掌握",
+} as const;
 
-export function HomeView({ microphoneAlgorithm, onNavigate }: HomeViewProps): JSX.Element {
-  const [progressCounts, setProgressCounts] = useState<ModuleProgressCounts | null>(null);
+export function HomeView({
+  microphoneAlgorithm,
+  dataSetId,
+  onNavigate,
+}: HomeViewProps): JSX.Element {
+  const [moduleProgress, setModuleProgress] = useState<ModuleProgress | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([db.answerEvents.toArray(), db.staffRecallRuns.count()])
-      .then(([events, recallRunCount]) => {
+    void Promise.all([
+      db.answerEvents.toArray(),
+      db.staffRecallRuns.toArray(),
+      db.practiceSessions.toArray(),
+    ])
+      .then(([events, staffRecallRuns, practiceSessions]) => {
         if (cancelled) return;
-        const counts = { ...EMPTY_PROGRESS_COUNTS, 1: recallRunCount };
-        for (const event of events) {
-          if (event.mode === "name-to-key" || event.mode === "staff-to-name") counts[3] += 1;
-          if (event.mode === "staff-distance") counts[4] += 1;
-          if (event.mode === "pre-reading") counts[5] += 1;
-          if (event.mode !== "free-practice") continue;
-          const isDuet =
-            Boolean(event.duetTargetNoteIds?.length) ||
-            event.duetDifficulty !== undefined ||
-            event.duetLevel !== undefined ||
-            event.targetMidiHigh !== undefined ||
-            event.targetMidiLow !== undefined;
-          counts[isDuet ? 6 : 2] += 1;
-        }
-        setProgressCounts(counts);
+        setModuleProgress(
+          evaluateLearningProgress({
+            answerEvents: events.filter((event) => event.dataSetId === dataSetId),
+            staffRecallRuns,
+            practiceSessions,
+          })
+        );
       })
       .catch(() => {
-        if (!cancelled) setProgressCounts(EMPTY_PROGRESS_COUNTS);
+        if (!cancelled) setModuleProgress(null);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dataSetId]);
 
   useEffect(() => {
     if (microphoneAlgorithm !== "swiftf0") return;
@@ -134,10 +143,10 @@ export function HomeView({ microphoneAlgorithm, onNavigate }: HomeViewProps): JS
           </button>
         </div>
       </nav>
-      <ol aria-label="五个学习阶段" className="learning-path-list">
+      <ol aria-label="六个学习阶段" className="learning-path-list">
         {LEARNING_MODULES.map((module) => {
           const Icon = module.icon;
-          const progress = progressCounts?.[module.id];
+          const progress = moduleProgress?.[module.id];
           return (
             <li className="learning-path-step" key={module.id}>
               <button
@@ -157,11 +166,8 @@ export function HomeView({ microphoneAlgorithm, onNavigate }: HomeViewProps): JS
                   <small>{module.summary}</small>
                 </span>
                 <span className="learning-path-progress">
-                  {progressCounts === null
-                    ? "读取进度中"
-                    : progress
-                      ? `已完成 ${progress} ${module.id === 1 ? "次学习" : "道练习"}`
-                      : "尚未开始 · 随时可练"}
+                  {progress === undefined ? "读取进度中" : STATUS_COPY[progress.status]}
+                  {progress ? <small>{progress.detail}</small> : null}
                 </span>
                 <ArrowRight aria-hidden="true" className="learning-path-arrow" size={20} />
               </button>

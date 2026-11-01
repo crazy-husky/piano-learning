@@ -66,7 +66,11 @@ function getEdges(
     if (note.staff !== from.staff) return [];
     const delta = staffPosition(note) - staffPosition(from);
     const distance = Math.abs(delta);
-    if (distance > settings.maxDistance || (distance === 0 && !settings.includeUnison)) {
+    if (
+      distance > settings.maxDistance ||
+      (distance === 0 && !settings.includeUnison) ||
+      (settings.focusDistance !== undefined && distance !== settings.focusDistance)
+    ) {
       return [];
     }
     return [

@@ -78,6 +78,21 @@ describe("staff distance practice", () => {
     }
   });
 
+  it("repeats only the selected distance in a targeted remedial sequence", () => {
+    const notes = makeNotes().slice(0, 8);
+    const sequence = createStaffDistanceSequence(
+      notes,
+      { includeUnison: true, maxDistance: 7, focusDistance: 2 },
+      20,
+      () => 0
+    );
+
+    expect(sequence).toHaveLength(21);
+    for (let index = 1; index < sequence.length; index += 1) {
+      expect(staffDistance(sequence[index - 1]!, sequence[index]!)).toBe(2);
+    }
+  });
+
   it("avoids runs of three identical intervals when alternatives are available", () => {
     const notes = makeNotes();
     let seed = 987654321;

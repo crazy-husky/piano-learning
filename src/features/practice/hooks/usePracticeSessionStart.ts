@@ -2,6 +2,7 @@ import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction 
 import { setPianoVolume, unlockAudio } from "../../../audio/piano";
 import { db, resolveQueueStrategy } from "../../../data/db";
 import { createUuid } from "../../../domain/id";
+import { getNoteById } from "../../../domain/notes";
 import { createMelodyGenerationState, type MelodyGenerationState } from "../../../domain/melody";
 import { resolveAvailableAnswerPitchMode } from "../../../domain/answerInput";
 import {
@@ -124,6 +125,10 @@ interface UsePracticeSessionStartOptions {
   values: PracticeSessionStartValues;
 }
 
+interface StartOptions {
+  focusTargetNoteIds?: TargetNote["id"][];
+}
+
 function newSessionId(): string {
   return createUuid();
 }
@@ -193,7 +198,7 @@ export function usePracticeSessionStart({
     syncStaffPage,
   } = ui;
 
-  const startSession = useCallback(async (): Promise<void> => {
+  const startSessionAction = async (options?: StartOptions): Promise<void> => {
     if (
       (!isDuetPractice && queueNotes.length === 0) ||
       (answerPitchMode === "exact-pitch" && !midi.isConnected)
@@ -260,10 +265,22 @@ export function usePracticeSessionStart({
               : nextSettings.staffNotationMode === "grand"
                 ? { ...nextSettings, includeInterStaffLedgerSpellings: false }
                 : nextSettings;
+        const focusedNotes = options?.focusTargetNoteIds?.length
+          ? options.focusTargetNoteIds.map(getNoteById)
+          : [];
+        const focusedPracticeSettings =
+          focusedNotes.length > 0
+            ? {
+                ...practiceSettings,
+                enabledGroupIds: [...new Set(focusedNotes.map((note) => note.groupId))],
+                enabledPitchIds: [...new Set(focusedNotes.map((note) => note.pitchId))],
+                crossGroupPitchIds: [],
+              }
+            : practiceSettings;
         const microphoneSettings =
           availablePreflightAnswerPitchMode === "microphone"
-            ? { ...practiceSettings, playAnswerNote: false }
-            : practiceSettings;
+            ? { ...focusedPracticeSettings, playAnswerNote: false }
+            : focusedPracticeSettings;
         const inputModeSettings =
           availablePreflightAnswerPitchMode === "exact-pitch"
             ? {
@@ -400,7 +417,8 @@ export function usePracticeSessionStart({
         stopSynchronizedMetronome();
       }
     }
-  }, [
+  };
+  const startSession = useCallback(startSessionAction, [
     answerPitchMode,
     isDuetPractice,
     shouldSynchronizeMetronome,

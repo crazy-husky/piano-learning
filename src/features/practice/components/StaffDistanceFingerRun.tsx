@@ -220,7 +220,13 @@ export function StaffDistanceFingerRun({
   staffNotationMode,
   useLedgerGap,
 }: StaffDistanceFingerRunProps): JSX.Element {
-  const [deck] = useState(() => createStaffDistanceFingerCards(notes, fingerHand, fingerNumber));
+  const [deck] = useState(() => {
+    const fullDeck = createStaffDistanceFingerCards(notes, fingerHand, fingerNumber);
+    const focusFingerBatch = session.staffDistance?.focusFingerBatch;
+    if (!focusFingerBatch || fullDeck.error) return fullDeck;
+    const focusedCards = fullDeck.cards.filter((card) => card.batch === focusFingerBatch);
+    return focusedCards.length > 0 ? { ...fullDeck, cards: focusedCards } : fullDeck;
+  });
   const isNoAnswerMode = session.staffDistance?.fingerInteractionMode === "no-answer";
   const showsFingerKeyboard = inputMethod === "virtual-keyboard" || isNoAnswerMode;
   const [isAnswerRevealed, setIsAnswerRevealed] = useState(false);

@@ -1,12 +1,50 @@
 import type { LucideIcon } from "lucide-react";
 import { BookOpen, Eye, Keyboard, Ruler, Users, Zap } from "lucide-react";
 import type { LearningLevelId } from "../../routing/appRoutes";
+import type { DuetPracticeLevel, PreReadingBufferSize } from "../../domain/types";
+
+export type GraduationCriteria =
+  | { kind: "staff-recall"; completedRuns: number; description: string }
+  | {
+      kind: "single-note";
+      sampleCount: number;
+      minFirstTryAccuracy: number;
+      maxAverageResponseMs: number;
+      description: string;
+    }
+  | {
+      kind: "name-mapping";
+      sampleCountPerDirection: number;
+      minFirstTryAccuracy: number;
+      description: string;
+    }
+  | {
+      kind: "distance";
+      sampleCount: number;
+      minFirstTryAccuracy: number;
+      description: string;
+    }
+  | {
+      kind: "pre-reading";
+      buffers: readonly PreReadingBufferSize[];
+      sampleCountPerBuffer: number;
+      minFirstTryAccuracy: number;
+      description: string;
+    }
+  | {
+      kind: "duet";
+      levels: readonly DuetPracticeLevel[];
+      sampleCountPerLevel: number;
+      minFirstTryAccuracy: number;
+      description: string;
+    };
 
 export interface LearningModuleDefinition {
   id: LearningLevelId;
   name: string;
   summary: string;
   icon: LucideIcon;
+  graduationCriteria: GraduationCriteria;
   guide: {
     title: string;
     goal: string;
@@ -22,6 +60,11 @@ export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
     name: "基础识谱",
     summary: "先看懂五线谱上的位置，再把谱面和琴键连起来。",
     icon: BookOpen,
+    graduationCriteria: {
+      kind: "staff-recall",
+      completedRuns: 2,
+      description: "在同一音域完成 2 轮基础识谱默写。",
+    },
     guide: {
       title: "告别“数格子”",
       goal: "让眼睛熟悉五线谱，建立音符与琴键的初步映射。",
@@ -36,6 +79,13 @@ export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
     name: "单音极速反应",
     summary: "把读谱和找键练成连续、轻松的单手反应。",
     icon: Zap,
+    graduationCriteria: {
+      kind: "single-note",
+      sampleCount: 20,
+      minFirstTryAccuracy: 0.9,
+      maxAverageResponseMs: 1200,
+      description: "至少完成 20 题，首次答对率达到 90%，平均反应时间不超过 1.2 秒。",
+    },
     guide: {
       title: "建立“绝对直觉”",
       goal: "逐步把识谱到按键的反应压缩到 1 秒内，实现看谱直弹。",
@@ -50,6 +100,12 @@ export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
     name: "音名识别与定位",
     summary: "从五线谱认出音名，再把音名映射到键盘位置。",
     icon: Keyboard,
+    graduationCriteria: {
+      kind: "name-mapping",
+      sampleCountPerDirection: 20,
+      minFirstTryAccuracy: 0.9,
+      description: "看谱认音和音名找键各完成至少 20 题，两个方向首次答对率都达到 90%。",
+    },
     guide: {
       title: "让谱面、音名和琴键连起来",
       goal: "看谱能说出音名，看到音名也能迅速找到对应的琴键。",
@@ -68,6 +124,12 @@ export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
     name: "音距速推",
     summary: "从相邻音的距离推断走向，形成读谱中的预判能力。",
     icon: Ruler,
+    graduationCriteria: {
+      kind: "distance",
+      sampleCount: 20,
+      minFirstTryAccuracy: 0.9,
+      description: "看谱或弹奏音距至少完成 20 题，首次判断正确率达到 90%。",
+    },
     guide: {
       title: "看懂音程，提前预判",
       goal: "快速判断相邻音之间的级进、跳进和方向变化。",
@@ -82,6 +144,13 @@ export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
     name: "提前识谱",
     summary: "打破逐音视奏，训练眼睛走在手的前面。",
     icon: Eye,
+    graduationCriteria: {
+      kind: "pre-reading",
+      buffers: [1, 2],
+      sampleCountPerBuffer: 20,
+      minFirstTryAccuracy: 0.85,
+      description: "提前 1 个音和提前 2 个音各完成至少 20 题，首次答对率都达到 85%。",
+    },
     guide: {
       title: "让视线走在手前面",
       goal: "弹奏当前音时，提前读懂后一个或后两个音，建立连续视奏。",
@@ -100,6 +169,13 @@ export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
     name: "双手协同",
     summary: "同时跟踪高低声部，让左右手在同一节奏中协作。",
     icon: Users,
+    graduationCriteria: {
+      kind: "duet",
+      levels: ["level-1", "level-2", "level-3", "level-4", "level-5", "level-6"],
+      sampleCountPerLevel: 10,
+      minFirstTryAccuracy: 0.8,
+      description: "6 个难度各完成至少 10 题，每个难度的首次答对率达到 80%。",
+    },
     guide: {
       title: "让双手成为一个节奏单元",
       goal: "同时读懂左右手声部，并在稳定节拍中完成协同弹奏。",

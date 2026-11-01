@@ -175,6 +175,7 @@ export function StaffToNamePracticeView({
   const [stage, setStage] = useState<StaffToNameStage>("setup");
   const [target, setTarget] = useState<TargetNote | null>(null);
   const [roundEvents, setRoundEvents] = useState<AnswerEvent[]>([]);
+  const [focusTargetNoteIds, setFocusTargetNoteIds] = useState<TargetNote["id"][] | null>(null);
   const [feedback, setFeedback] = useState<StaffToNameFeedback | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
@@ -210,9 +211,16 @@ export function StaffToNamePracticeView({
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
 
-  const targetPool = useMemo(
+  const configuredTargetPool = useMemo(
     () => getNotesForGroups(preferences.enabledGroupIds, false),
     [preferences.enabledGroupIds]
+  );
+  const targetPool = useMemo(
+    () =>
+      focusTargetNoteIds
+        ? configuredTargetPool.filter((note) => focusTargetNoteIds.includes(note.id))
+        : configuredTargetPool,
+    [configuredTargetPool, focusTargetNoteIds]
   );
   const availableGroupCount = preferences.enabledGroupIds.length;
   const rangeSummary = preferences.enabledGroupIds
@@ -230,6 +238,28 @@ export function StaffToNamePracticeView({
   const accuracy = answeredEvents.length
     ? Math.round((correctCount / answeredEvents.length) * 100)
     : null;
+  const weakTargets = useMemo(() => {
+    const counts = new Map<TargetNote["id"], { count: number; label: string }>();
+    for (const event of roundEvents) {
+      if (!(event.wrongAttempts > 0 || event.isMissed || event.isCorrectFinal === false)) continue;
+      const note = configuredTargetPool.find(
+        (candidate) =>
+          candidate.id === event.targetNoteId ||
+          (candidate.noteName === event.targetNoteName && candidate.octave === event.targetOctave)
+      );
+      if (!note) continue;
+      const current = counts.get(note.id) ?? {
+        count: 0,
+        label: `${note.noteName}${note.octave}`,
+      };
+      current.count += 1;
+      counts.set(note.id, current);
+    }
+    return [...counts.entries()]
+      .map(([noteId, value]) => ({ noteId, ...value }))
+      .sort((left, right) => right.count - left.count)
+      .slice(0, 8);
+  }, [configuredTargetPool, roundEvents]);
 
   useEffect(() => {
     if (!isActive) startRequestGenerationRef.current += 1;
@@ -243,23 +273,26 @@ export function StaffToNamePracticeView({
     };
   }, []);
 
-  const setNextTarget = useCallback((): void => {
-    if (targetPool.length === 0) return;
-    const candidates = targetPool.filter((note) => note.id !== lastTargetIdRef.current);
-    const next = (candidates.length > 0 ? candidates : targetPool)[
-      Math.floor(Math.random() * (candidates.length > 0 ? candidates : targetPool).length)
-    ];
-    if (!next) return;
-    lastTargetIdRef.current = next.id;
-    attemptsRef.current = [];
-    pausedPromptMsRef.current = 0;
-    promptStartedAtRef.current = performance.now();
-    promptStartedAtIsoRef.current = new Date().toISOString();
-    targetResolvedRef.current = false;
-    targetRef.current = next;
-    setTarget(next);
-    setFeedback(null);
-  }, [targetPool]);
+  const setNextTarget = useCallback(
+    (pool: TargetNote[] = targetPool): void => {
+      if (pool.length === 0) return;
+      const candidates = pool.filter((note) => note.id !== lastTargetIdRef.current);
+      const next = (candidates.length > 0 ? candidates : pool)[
+        Math.floor(Math.random() * (candidates.length > 0 ? candidates : pool).length)
+      ];
+      if (!next) return;
+      lastTargetIdRef.current = next.id;
+      attemptsRef.current = [];
+      pausedPromptMsRef.current = 0;
+      promptStartedAtRef.current = performance.now();
+      promptStartedAtIsoRef.current = new Date().toISOString();
+      targetResolvedRef.current = false;
+      targetRef.current = next;
+      setTarget(next);
+      setFeedback(null);
+    },
+    [targetPool]
+  );
 
   const persistEvent = useCallback((event: AnswerEvent): void => {
     eventsRef.current = [...eventsRef.current, event];
@@ -300,10 +333,16 @@ export function StaffToNamePracticeView({
           mode: "staff-to-name",
           inputMode: attempts[0]?.inputMode ?? "virtual-keyboard",
           deviceInfo: answerDeviceInfo(),
+          targetNoteId: currentTarget.id,
           targetNoteName: currentTarget.noteName,
           targetOctave: currentTarget.octave,
           targetDisplayName: `${currentTarget.noteName}${currentTarget.octave}`,
-          staffToNameConfig: { enabledGroupIds: [...preferences.enabledGroupIds] },
+          staffToNameConfig: {
+            enabledGroupIds: [...preferences.enabledGroupIds],
+            lengthMode: preferences.mode,
+            fixedCount: preferences.fixedCount,
+            fixedDurationSeconds: preferences.fixedDurationSeconds,
+          },
           attempts,
           isCorrectFirstTry: attempts[0]?.isCorrect ?? null,
           isCorrectFinal: missed ? null : false,
@@ -325,6 +364,7 @@ export function StaffToNamePracticeView({
       setRemainingMs(0);
       remainingMsRef.current = 0;
       setStage(showSummary ? "summary" : "setup");
+      setFocusTargetNoteIds(null);
       onRunningChange(false);
       onStageChange(false);
       onPracticeFinished();
@@ -337,7 +377,10 @@ export function StaffToNamePracticeView({
       onStageChange,
       persistEvent,
       preferences.enabledGroupIds,
+      preferences.fixedCount,
+      preferences.fixedDurationSeconds,
       isPaused,
+      preferences.mode,
       stage,
     ]
   );
@@ -365,10 +408,16 @@ export function StaffToNamePracticeView({
         mode: "staff-to-name",
         inputMode: attempts[0]?.inputMode ?? "virtual-keyboard",
         deviceInfo: answerDeviceInfo(),
+        targetNoteId: currentTarget.id,
         targetNoteName: currentTarget.noteName,
         targetOctave: currentTarget.octave,
         targetDisplayName: `${currentTarget.noteName}${currentTarget.octave}`,
-        staffToNameConfig: { enabledGroupIds: [...preferences.enabledGroupIds] },
+        staffToNameConfig: {
+          enabledGroupIds: [...preferences.enabledGroupIds],
+          lengthMode: preferences.mode,
+          fixedCount: preferences.fixedCount,
+          fixedDurationSeconds: preferences.fixedDurationSeconds,
+        },
         attempts,
         isCorrectFirstTry: attempts[0]?.isCorrect ?? null,
         isCorrectFinal,
@@ -405,6 +454,7 @@ export function StaffToNamePracticeView({
       persistEvent,
       preferences.enabledGroupIds,
       preferences.fixedCount,
+      preferences.fixedDurationSeconds,
       preferences.mode,
       setNextTarget,
     ]
@@ -433,10 +483,13 @@ export function StaffToNamePracticeView({
     [finishPrompt, isPaused, stage]
   );
 
-  const startRound = async (): Promise<void> => {
+  const startRound = async (focusNoteIds?: TargetNote["id"][]): Promise<void> => {
     if (!isActiveRef.current || isStarting) return;
     setStatusMessage("");
-    if (targetPool.length === 0) {
+    const nextTargetPool = focusNoteIds?.length
+      ? configuredTargetPool.filter((note) => focusNoteIds.includes(note.id))
+      : configuredTargetPool;
+    if (nextTargetPool.length === 0) {
       setStatusMessage("请选择音域");
       guideSetupRequirement('[data-setup-guide-target="staff-to-name-range"]');
       return;
@@ -453,6 +506,7 @@ export function StaffToNamePracticeView({
         return;
       }
       sessionIdRef.current = createUuid();
+      setFocusTargetNoteIds(focusNoteIds?.length ? focusNoteIds : null);
       eventIndexRef.current = 0;
       eventsRef.current = [];
       attemptsRef.current = [];
@@ -465,7 +519,7 @@ export function StaffToNamePracticeView({
       setIsPaused(false);
       setStage("running");
       onStageChange(true);
-      setNextTarget();
+      setNextTarget(nextTargetPool);
     } catch (error) {
       if (requestGeneration === startRequestGenerationRef.current && isActiveRef.current) {
         setStatusMessage(error instanceof Error ? error.message : "准备练习时发生错误，请重试。");
@@ -937,19 +991,15 @@ export function StaffToNamePracticeView({
               <dd>{formatDuration(averageResponseMs)}</dd>
             </div>
           </dl>
-          {roundEvents.some((event) => event.wrongAttempts > 0 || event.isMissed) ? (
+          {weakTargets.length > 0 ? (
             <section className="staff-to-name-summary-misses">
-              <h2>再熟悉一下这些音</h2>
+              <h2>本次薄弱点</h2>
               <ul>
-                {roundEvents
-                  .filter((event) => event.wrongAttempts > 0 || event.isMissed)
-                  .slice(0, 8)
-                  .map((event) => (
-                    <li key={event.id}>
-                      {event.targetDisplayName} ·
-                      {event.isMissed ? " 未作答" : event.isCorrectFinal ? " 首次答错" : " 答错"}
-                    </li>
-                  ))}
+                {weakTargets.map((target) => (
+                  <li key={target.noteId}>
+                    {target.label} · {target.count} 次
+                  </li>
+                ))}
               </ul>
             </section>
           ) : (
@@ -959,10 +1009,20 @@ export function StaffToNamePracticeView({
             <button onClick={() => setStage("setup")} type="button">
               返回配置
             </button>
-            <button className="primary" onClick={() => void startRound()} type="button">
-              <RotateCcw aria-hidden="true" size={17} />
-              再来一次
-            </button>
+            {weakTargets.length > 0 ? (
+              <button
+                className="primary"
+                onClick={() => void startRound(weakTargets.map(({ noteId }) => noteId))}
+                type="button"
+              >
+                针对薄弱项再练一局
+              </button>
+            ) : (
+              <button className="primary" onClick={() => void startRound()} type="button">
+                <RotateCcw aria-hidden="true" size={17} />
+                再来一次
+              </button>
+            )}
           </div>
         </div>
       ) : null}

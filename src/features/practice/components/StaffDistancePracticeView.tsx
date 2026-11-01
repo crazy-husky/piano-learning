@@ -36,6 +36,7 @@ import type {
   PromptNoteDuration,
   StaffDistanceInputMethod,
   StaffDistanceFingerHand,
+  StaffDistanceFingerBatch,
   StaffDistanceFingerInteractionMode,
   StaffDistanceFingerNumber,
   StaffDistancePracticeSettings,
@@ -101,6 +102,11 @@ interface StaffDistancePreferences extends StaffDistancePracticeSettings {
   mode: PracticeMode;
   noteDurations: PromptNoteDuration[];
   trainingMode: StaffDistanceTrainingMode;
+}
+
+interface DistanceFocus {
+  distance?: number;
+  fingerBatch?: StaffDistanceFingerBatch;
 }
 
 interface StaffDistancePracticeViewProps {
@@ -281,7 +287,8 @@ function describeValidation(
 
 function createDistanceSession(
   settings: AppSettings,
-  preferences: StaffDistancePreferences
+  preferences: StaffDistancePreferences,
+  focus?: { distance?: number; fingerBatch?: StaffDistanceFingerBatch }
 ): PracticeSessionRecord {
   const isFingerMode = preferences.trainingMode === "finger";
   const staffNotationMode = isFingerMode
@@ -331,8 +338,10 @@ function createDistanceSession(
             fingerHand: preferences.fingerHand,
             fingerNumber: preferences.fingerNumber,
             fingerInteractionMode: preferences.fingerInteractionMode,
+            ...(focus?.fingerBatch ? { focusFingerBatch: focus.fingerBatch } : {}),
           }
         : {}),
+      ...(!isFingerMode && focus?.distance !== undefined ? { focusDistance: focus.distance } : {}),
     },
   };
 }
@@ -646,7 +655,7 @@ export function StaffDistancePracticeView({
     onNavigationExit?.(navigationExitRequest.targetView);
   }, [navigationExitRequest, onNavigationExit, summarySession]);
 
-  const startSession = useCallback(async (): Promise<void> => {
+  const startSessionAction = async (focus?: DistanceFocus): Promise<void> => {
     if (isStarting) return;
     if (setupDisabledReason) {
       const fingerSetupInvalid = trainingMode === "finger";
@@ -772,11 +781,15 @@ export function StaffDistancePracticeView({
         }
         microphoneStarted = true;
       }
-      const nextSession = createDistanceSession(currentSettings, {
-        ...preferences,
-        inputMethod: activeInputMethod,
-        trainingMode,
-      });
+      const nextSession = createDistanceSession(
+        currentSettings,
+        {
+          ...preferences,
+          inputMethod: activeInputMethod,
+          trainingMode,
+        },
+        focus
+      );
       await db.practiceSessions.put(nextSession);
       if (isFingerNoAnswerSelected) markStaffDistanceFingerNoAnswerIntroSeen();
       setRunSession(nextSession);
@@ -795,7 +808,8 @@ export function StaffDistancePracticeView({
     } finally {
       setIsStarting(false);
     }
-  }, [
+  };
+  const startSession = useCallback(startSessionAction, [
     intervalSettings,
     activeInputMethod,
     confirm,
@@ -949,6 +963,9 @@ export function StaffDistancePracticeView({
     const sessionSettings = {
       includeUnison: runSession.staffDistance.includeUnison,
       maxDistance: runSession.staffDistance.maxDistance,
+      ...(runSession.staffDistance.focusDistance !== undefined
+        ? { focusDistance: runSession.staffDistance.focusDistance }
+        : {}),
     };
     const sessionNotes =
       runSession.staffDistance.trainingMode === "finger"
@@ -1015,6 +1032,42 @@ export function StaffDistancePracticeView({
     const results = details.questionResults;
     const correctCount = results.filter((result) => result.firstTryCorrect).length;
     const isFingerMode = details.trainingMode === "finger";
+    const weakPoints = isFingerMode
+      ? details.fingerInteractionMode === "no-answer"
+        ? []
+        : (["line", "space"] as const)
+            .map((batch) => {
+              const batchResults = results.filter((result) => result.fingerBatch === batch);
+              const errors = batchResults.filter(
+                (result) =>
+                  !result.firstTryCorrect ||
+                  result.referenceFirstTryCorrect === false ||
+                  result.targetFirstTryCorrect === false ||
+                  result.timedOut === true
+              ).length;
+              return {
+                label: batch === "line" ? "线上目标" : "间上目标",
+                batch,
+                errors,
+                total: batchResults.length,
+              };
+            })
+            .filter((point) => point.errors > 0)
+            .sort((left, right) => right.errors - left.errors)
+      : [...new Set(results.map((result) => result.distance))]
+          .map((distance) => {
+            const distanceResults = results.filter((result) => result.distance === distance);
+            return {
+              label: `${distance} 步音距`,
+              distance,
+              errors: distanceResults.filter((result) => !result.firstTryCorrect).length,
+              total: distanceResults.length,
+            };
+          })
+          .filter((point) => point.errors > 0)
+          .sort((left, right) => right.errors - left.errors)
+          .slice(0, 3);
+    const primaryWeakPoint = weakPoints[0];
     const referenceCorrectCount = results.filter(
       (result) => result.referenceFirstTryCorrect === true
     ).length;
@@ -1158,6 +1211,21 @@ export function StaffDistancePracticeView({
               </div>
             </>
           )}
+          {weakPoints.length > 0 ? (
+            <section aria-label="本次薄弱点" className="learning-weakness-panel">
+              <h2>本次薄弱点</h2>
+              <ul>
+                {weakPoints.map((point) => (
+                  <li key={point.label}>
+                    <span>{point.label}</span>
+                    <strong>
+                      {point.errors}/{point.total} 题首次未答对
+                    </strong>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <div className="staff-distance-summary-actions">
             <button onClick={() => setSummarySession(null)} type="button">
               <Settings2 size={16} />
@@ -1167,12 +1235,18 @@ export function StaffDistancePracticeView({
               className="primary"
               onClick={() => {
                 setSummarySession(null);
-                void startSession();
+                void startSession(
+                  primaryWeakPoint && "batch" in primaryWeakPoint
+                    ? { fingerBatch: primaryWeakPoint.batch }
+                    : primaryWeakPoint && "distance" in primaryWeakPoint
+                      ? { distance: primaryWeakPoint.distance }
+                      : undefined
+                );
               }}
               type="button"
             >
               <RotateCcw size={16} />
-              再来一次
+              {primaryWeakPoint ? "针对薄弱项再练一局" : "再来一次"}
             </button>
           </div>
         </div>

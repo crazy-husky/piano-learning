@@ -62,7 +62,7 @@ import { PracticeMicrophoneRetryButton } from "../../../shared/components/Practi
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { B6SwiftF0ReminderDialog } from "../../vocal-pitch/components/B6SwiftF0ReminderDialog";
 import type { PracticePagePreferences } from "../../../shared/preferences/practicePagePreferences";
-import type { PracticeDistanceMode } from "../../../routing/appRoutes";
+import type { LearningLevelId, PracticeDistanceMode } from "../../../routing/appRoutes";
 import { VirtualPianoKeyboard } from "../../../shared/components/VirtualPianoKeyboard";
 import { isNaturalPianoKey, NATURAL_PIANO_KEYS } from "../../../shared/components/pianoKeyNames";
 import { StaffPagePrompt } from "./StaffPagePrompt";
@@ -202,6 +202,7 @@ interface PracticeViewProps {
   practiceTab: PracticeSetupTab;
   practiceDistanceMode?: PracticeDistanceMode;
   isLearningRoutePractice?: boolean;
+  learningLevelId?: LearningLevelId;
   onRunningChange: (running: boolean) => void;
   onMetronomeSyncToggleChange?: (toggle: (() => void) | undefined) => void;
   onMetronomeSyncPauseChange?: (pause: (() => void) | undefined) => void;
@@ -461,6 +462,7 @@ export function PracticeView({
   onMetronomeSyncPauseChange,
   practiceDistanceMode,
   isLearningRoutePractice = false,
+  learningLevelId,
   showPracticeKindTabs = true,
   practiceModeLock,
   practiceProfile,
@@ -3273,6 +3275,7 @@ export function PracticeView({
     summaryProgressBenchmark,
     summaryProgressSeries,
     weakestNotes,
+    weakRepracticeNotes,
   } = usePracticeSummaryData({
     historyLimit: summaryEffectiveHistoryLimit,
     mode: summaryProgressMode,
@@ -3280,6 +3283,19 @@ export function PracticeView({
     sessions,
     summary,
   });
+  const canOfferWeakRepractice =
+    learningLevelId === 2 || learningLevelId === 5 || learningLevelId === 6;
+  const actionableWeakNotes = weakRepracticeNotes;
+  const weaknessNoteIds = [...new Set(actionableWeakNotes.map((note) => note.targetNoteId))];
+  if (isDuetPractice && weaknessNoteIds.length > 0 && summary) {
+    const weakNoteSet = new Set(weaknessNoteIds);
+    for (const review of summary.reviews) {
+      if (!review.duetTargetNoteIds?.some((noteId) => weakNoteSet.has(noteId))) continue;
+      for (const noteId of review.duetTargetNoteIds) {
+        if (!weaknessNoteIds.includes(noteId)) weaknessNoteIds.push(noteId);
+      }
+    }
+  }
 
   if (songPracticeSelection) {
     return (
@@ -3461,10 +3477,17 @@ export function PracticeView({
         onModeChange={setSummaryProgressMode}
         onReturnToSetup={() => setPhase("setup")}
         onStartAgain={() => void startSession()}
+        onWeakRepractice={
+          canOfferWeakRepractice && weaknessNoteIds.length > 0
+            ? () => void startSession({ focusTargetNoteIds: weaknessNoteIds })
+            : undefined
+        }
         series={summaryProgressSeries}
         summary={summary}
         summaryHasTooManyErrors={summaryHasTooManyErrors}
         weakestNotes={weakestNotes}
+        weakRepracticeNotes={weakRepracticeNotes}
+        weaknessNoteIds={weaknessNoteIds}
       />
     );
   }

@@ -1532,6 +1532,7 @@ export function App({
             {view === "home" ? (
               <HomeView
                 microphoneAlgorithm={practiceMicrophonePreferences.algorithm}
+                dataSetId={data.settings.dataSetId}
                 onNavigate={navigateFromHome}
               />
             ) : null}
@@ -1574,6 +1575,7 @@ export function App({
                         settings={data.settings}
                         sessions={data.sessions}
                         reviews={data.reviews}
+                        learningLevelId={route.levelId}
                         navigationExitRequest={practiceExitRequest}
                         practiceTab={route.practiceTab ?? "free"}
                         practiceDistanceMode={route.practiceDistanceMode}

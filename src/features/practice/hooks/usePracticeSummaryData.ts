@@ -38,15 +38,20 @@ export function usePracticeSummaryData({
   const summaryHasTooManyErrors =
     summaryStatsEligibility?.reason === "too-many-heavy-error-reviews" ||
     summaryStatsEligibility?.reason === "too-many-error-reviews";
-  const weakestNotes = useMemo(
+  const noteStats = useMemo(
     () =>
       summary
         ? buildNoteStats(summary.reviews)
             .filter((stat) => stat.reviewCount > 0)
             .sort((a, b) => b.weaknessScore - a.weaknessScore)
-            .slice(0, 4)
         : [],
     [summary]
+  );
+  const weakestNotes = useMemo(() => noteStats.slice(0, 4), [noteStats]);
+  const weakRepracticeNotes = useMemo(
+    () =>
+      noteStats.filter((stat) => stat.errorCount > 0 || (stat.medianMs ?? 0) >= 1500).slice(0, 4),
+    [noteStats]
   );
   const summaryProgressSeries = useMemo(
     () =>
@@ -83,5 +88,6 @@ export function usePracticeSummaryData({
     summaryProgressBenchmark,
     summaryProgressSeries,
     weakestNotes,
+    weakRepracticeNotes,
   };
 }

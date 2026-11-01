@@ -30,6 +30,8 @@ export type StaffDistanceFingerInteractionMode = "play" | "no-answer";
 export interface StaffDistancePracticeSettings {
   includeUnison: boolean;
   maxDistance: number;
+  /** One-shot focus used by a targeted remedial round; omitted in saved preferences. */
+  focusDistance?: number;
 }
 
 export interface StaffRangeSelection {
@@ -147,6 +149,7 @@ export interface AnswerEvent {
   difficulty?: string;
   duetDifficulty?: DuetPracticeDifficulty;
   duetLevel?: DuetPracticeLevel;
+  preReadingBufferSize?: PreReadingBufferSize;
   targetMidi?: number;
   targetMidiHigh?: number;
   targetMidiLow?: number;
@@ -165,9 +168,15 @@ export interface AnswerEvent {
     randomEnharmonics: boolean;
     inputMode: AnswerInputMode;
     range: "C4-B4" | "F1-B6";
+    lengthMode: PracticeMode;
+    fixedCount: number;
+    fixedDurationSeconds: number;
   };
   staffToNameConfig?: {
     enabledGroupIds: CurrentPracticeGroupId[];
+    lengthMode: PracticeMode;
+    fixedCount: number;
+    fixedDurationSeconds: number;
   };
   recognizedMidi?: number;
   confidence?: number;
@@ -268,6 +277,8 @@ export interface StaffDistancePracticeSessionDetails {
   fingerHand?: StaffDistanceFingerHand;
   fingerNumber?: StaffDistanceFingerNumber;
   fingerInteractionMode?: StaffDistanceFingerInteractionMode;
+  focusFingerBatch?: StaffDistanceFingerBatch;
+  focusDistance?: number;
 }
 
 export interface PracticeSessionRecordV1 extends PracticeSessionRecordBase {

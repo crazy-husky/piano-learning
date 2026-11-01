@@ -8,6 +8,7 @@ import type {
   SessionProgressMode,
   SessionProgressSeries,
 } from "../../../domain/sessionProgress";
+import type { TargetNoteId } from "../../../domain/types";
 import type { PracticeSessionSummary } from "../hooks/usePracticeSessionState";
 import {
   SessionProgressChart,
@@ -30,10 +31,13 @@ interface PracticeSummaryViewProps {
   onModeChange: (mode: SessionProgressMode) => void;
   onReturnToSetup: () => void;
   onStartAgain: () => void;
+  onWeakRepractice?: () => void;
   series: SessionProgressSeries[];
   summary: PracticeSessionSummary;
   summaryHasTooManyErrors: boolean;
   weakestNotes: NoteStat[];
+  weakRepracticeNotes?: NoteStat[];
+  weaknessNoteIds?: TargetNoteId[];
 }
 
 export function PracticeSummaryView({
@@ -51,12 +55,16 @@ export function PracticeSummaryView({
   onModeChange,
   onReturnToSetup,
   onStartAgain,
+  onWeakRepractice,
   series,
   summary,
   summaryHasTooManyErrors,
   weakestNotes,
+  weakRepracticeNotes = [],
+  weaknessNoteIds = [],
 }: PracticeSummaryViewProps): JSX.Element {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const displayedWeakestNotes = onWeakRepractice ? weakRepracticeNotes : weakestNotes;
 
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
@@ -114,7 +122,7 @@ export function PracticeSummaryView({
         </div>
         <section className="summary-section">
           <div className="summary-section-heading">
-            <h2>薄弱音</h2>
+            <h2>{onWeakRepractice ? "本次薄弱点" : "薄弱音"}</h2>
           </div>
           <div className="note-list">
             <div className="note-row note-row-header">
@@ -123,7 +131,7 @@ export function PracticeSummaryView({
               <span>错音率</span>
               <span>常错音</span>
             </div>
-            {weakestNotes.map((note) => (
+            {displayedWeakestNotes.map((note) => (
               <div className="note-row" key={note.targetNoteId}>
                 <span>{formatTargetNoteLabel(getNoteById(note.targetNoteId))}</span>
                 <span>{formatMs(note.medianMs)}</span>
@@ -132,6 +140,11 @@ export function PracticeSummaryView({
               </div>
             ))}
           </div>
+          {onWeakRepractice && weaknessNoteIds.length > 0 ? (
+            <button className="primary learning-weakness-action" onClick={onWeakRepractice}>
+              针对薄弱项再练一局
+            </button>
+          ) : null}
         </section>
         {!summaryHasTooManyErrors && series.length > 0 ? (
           <section className="summary-section">

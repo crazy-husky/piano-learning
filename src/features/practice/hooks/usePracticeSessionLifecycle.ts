@@ -189,6 +189,9 @@ export function usePracticeSessionLifecycle({
             : 0;
         const attempts: AnswerAttempt[] = prompt.answerAttempts;
         const finalAttempt = attempts.at(-1);
+        const sessionPracticeConfig =
+          "startSnapshot" in session ? session.startSnapshot.practiceConfig : undefined;
+        const preReadingBufferSize = sessionPracticeConfig?.preReadingBufferSize;
         const event: AnswerEvent = {
           id: review.id,
           dataSetId: "",
@@ -197,25 +200,16 @@ export function usePracticeSessionLifecycle({
           occurredAt: review.endedAt,
           promptStartedAt: review.startedAt,
           promptEndedAt: review.endedAt,
-          mode:
-            "startSnapshot" in session &&
-            session.startSnapshot.practiceConfig.preReadingBufferSize !== undefined
-              ? "pre-reading"
-              : "free-practice",
+          mode: preReadingBufferSize !== undefined ? "pre-reading" : "free-practice",
           inputMode,
           deviceInfo: answerDeviceInfo(),
+          ...(preReadingBufferSize !== undefined ? { preReadingBufferSize } : {}),
           ...(inputMode === "microphone" ? { ...microphoneContext, microphoneAlgorithm } : {}),
           targetMidi: getTargetMidiNoteNumber(prompt.note),
           ...(prompt.duetTargets
             ? {
-                duetDifficulty:
-                  "startSnapshot" in session
-                    ? session.startSnapshot.practiceConfig.duetDifficulty
-                    : undefined,
-                duetLevel:
-                  "startSnapshot" in session
-                    ? session.startSnapshot.practiceConfig.duetLevel
-                    : undefined,
+                duetDifficulty: sessionPracticeConfig?.duetDifficulty,
+                duetLevel: sessionPracticeConfig?.duetLevel,
                 targetMidiHigh:
                   prompt.duetTargets.high[0] === undefined
                     ? undefined

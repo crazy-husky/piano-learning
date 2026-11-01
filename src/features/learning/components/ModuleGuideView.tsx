@@ -9,6 +9,11 @@ export function ModuleGuideView({ module }: { module: LearningModuleDefinition }
         <p>{module.summary}</p>
       </header>
 
+      <aside aria-label="本阶段达标表现" className="module-guide-graduation">
+        <strong>达标表现</strong>
+        <p>{module.graduationCriteria.description}</p>
+      </aside>
+
       <div className="module-guide-grid">
         <section className="module-guide-card">
           <span>本阶段目标</span>

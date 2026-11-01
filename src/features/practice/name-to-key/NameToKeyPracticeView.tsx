@@ -163,21 +163,6 @@ function eventInputMode(mode: NameToKeyInputMode): AnswerInputMode {
   return mode === "virtual-keyboard" ? "virtual-keyboard" : mode;
 }
 
-function summarizeMostMissed(
-  events: readonly AnswerEvent[]
-): Array<{ count: number; name: string }> {
-  const counts = new Map<string, number>();
-  for (const event of events) {
-    if (event.wrongAttempts <= 0 && !event.isMissed) continue;
-    const name = event.targetDisplayName ?? formatMidiName(event.targetMidi ?? -1);
-    counts.set(name, (counts.get(name) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([name, count]) => ({ count, name }))
-    .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))
-    .slice(0, 3);
-}
-
 interface NameKeyReferenceDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -357,7 +342,8 @@ function NameToKeyPracticeContent({
   const intervalRef = useRef<number | undefined>();
   const advanceTimerRef = useRef<number | undefined>();
   const microphoneStartedRef = useRef(false);
-  const startRoundRef = useRef<() => Promise<void>>(async () => undefined);
+  const startRoundRef = useRef<(focusMidis?: number[]) => Promise<void>>(async () => undefined);
+  const [focusTargetMidis, setFocusTargetMidis] = useState<number[] | null>(null);
   const customCountInputRef = useRef<HTMLInputElement>(null);
   const [isCustomCountSelected, setIsCustomCountSelected] = useState(
     !PRACTICE_FIXED_COUNT_PRESETS.includes(
@@ -371,7 +357,14 @@ function NameToKeyPracticeContent({
   const handlePracticeAnswerRef = useRef<(answer: PracticeAnswerInput) => void>(() => undefined);
   const handledNavigationExitRequestRef = useRef<number | null>(null);
 
-  const targetPool = useMemo(() => createNameToKeyTargetPool(preferences), [preferences]);
+  const configuredTargetPool = useMemo(() => createNameToKeyTargetPool(preferences), [preferences]);
+  const targetPool = useMemo(
+    () =>
+      focusTargetMidis
+        ? configuredTargetPool.filter((midi) => focusTargetMidis.includes(midi))
+        : configuredTargetPool,
+    [configuredTargetPool, focusTargetMidis]
+  );
 
   useEffect(() => {
     setStartError(null);
@@ -398,23 +391,26 @@ function NameToKeyPracticeContent({
       });
   }, []);
 
-  const setNextTarget = useCallback((): void => {
-    const nextMidi = chooseNameToKeyTarget(targetPool, lastTargetMidiRef.current);
-    if (nextMidi === null) return;
-    const nextTarget = getNameToKeyTarget(
-      nextMidi,
-      preferences.randomEnharmonics,
-      preferences.includeOctaveNumbers
-    );
-    lastTargetMidiRef.current = nextMidi;
-    targetMidiRef.current = nextMidi;
-    targetRef.current = nextTarget;
-    promptStartedAtRef.current = performance.now();
-    promptStartedAtIsoRef.current = new Date().toISOString();
-    targetResolvedRef.current = false;
-    setTarget(nextTarget);
-    setFeedback(null);
-  }, [preferences.includeOctaveNumbers, preferences.randomEnharmonics, targetPool]);
+  const setNextTarget = useCallback(
+    (pool: readonly number[] = targetPool): void => {
+      const nextMidi = chooseNameToKeyTarget(pool, lastTargetMidiRef.current);
+      if (nextMidi === null) return;
+      const nextTarget = getNameToKeyTarget(
+        nextMidi,
+        preferences.randomEnharmonics,
+        preferences.includeOctaveNumbers
+      );
+      lastTargetMidiRef.current = nextMidi;
+      targetMidiRef.current = nextMidi;
+      targetRef.current = nextTarget;
+      promptStartedAtRef.current = performance.now();
+      promptStartedAtIsoRef.current = new Date().toISOString();
+      targetResolvedRef.current = false;
+      setTarget(nextTarget);
+      setFeedback(null);
+    },
+    [preferences.includeOctaveNumbers, preferences.randomEnharmonics, targetPool]
+  );
 
   const makeAnswerEvent = useCallback(
     (args: {
@@ -474,6 +470,9 @@ function NameToKeyPracticeContent({
           randomEnharmonics: preferences.randomEnharmonics,
           inputMode,
           range: preferences.includeOctaveNumbers ? "F1-B6" : "C4-B4",
+          lengthMode: preferences.mode,
+          fixedCount: preferences.fixedCount,
+          fixedDurationSeconds: preferences.fixedDurationSeconds,
         },
         ...(answer?.midiNoteNumber === undefined ? {} : { recognizedMidi: answer.midiNoteNumber }),
         confidence: answer?.confidence,
@@ -528,6 +527,7 @@ function NameToKeyPracticeContent({
       remainingMsRef.current = 0;
       setIsPaused(false);
       setStage(showSummary ? "summary" : "setup");
+      setFocusTargetMidis(null);
       setIsQuestionLimitReached(false);
       questionLimitReachedRef.current = false;
       onRegisterMicrophoneAnswer(null);
@@ -765,7 +765,7 @@ function NameToKeyPracticeContent({
     [onRegisterMicrophoneAnswer, onRunningChange, onStageChange, stopMicrophone]
   );
 
-  const startRound = async (): Promise<void> => {
+  const startRound = async (focusMidis?: number[]): Promise<void> => {
     if (!isActive || isStarting) return;
     if (requiresOctaveInputMode) {
       setStartError("请选择作答方式");
@@ -795,7 +795,10 @@ function NameToKeyPracticeContent({
       );
       return;
     }
-    if (targetPool.length === 0) {
+    const nextTargetPool = focusMidis?.length
+      ? configuredTargetPool.filter((midi) => focusMidis.includes(midi))
+      : configuredTargetPool;
+    if (nextTargetPool.length === 0) {
       setStartError("请选择音名范围");
       guideSetupRequirement('[data-setup-guide-target="name-key-range"]');
       return;
@@ -819,6 +822,7 @@ function NameToKeyPracticeContent({
       }
 
       sessionIdRef.current = createUuid();
+      setFocusTargetMidis(focusMidis?.length ? focusMidis : null);
       eventIndexRef.current = 0;
       roundEventsRef.current = [];
       questionLimitReachedRef.current = false;
@@ -835,7 +839,7 @@ function NameToKeyPracticeContent({
       setStage("running");
       setIsPaused(false);
       onStageChange(true);
-      setNextTarget();
+      setNextTarget(nextTargetPool);
     } catch (error) {
       setStartError(error instanceof Error ? error.message : "准备练习时发生错误，请重试。");
       guideSetupRequirement(
@@ -984,7 +988,26 @@ function NameToKeyPracticeContent({
       : preferences.inputMode === "midi"
         ? "MIDI"
         : "麦克风";
-  const mostMissed = summarizeMostMissed(roundEvents);
+  const weakMidiTargets = [
+    ...roundEvents
+      .reduce((counts, event) => {
+        if (
+          (event.wrongAttempts > 0 || event.isMissed || event.isCorrectFinal === false) &&
+          typeof event.targetMidi === "number"
+        ) {
+          counts.set(event.targetMidi, (counts.get(event.targetMidi) ?? 0) + 1);
+        }
+        return counts;
+      }, new Map<number, number>())
+      .entries(),
+  ]
+    .map(([midi, count]) => ({
+      midi,
+      count,
+      name: formatMidiName(midi, preferences.includeOctaveNumbers),
+    }))
+    .sort((left, right) => right.count - left.count || left.midi - right.midi)
+    .slice(0, 3);
 
   return (
     <section className="name-key-practice" aria-label="音名找键专项训练">
@@ -1629,12 +1652,12 @@ function NameToKeyPracticeContent({
             </strong>
             <span>需要再认认</span>
           </div>
-          {mostMissed.length > 0 ? (
+          {weakMidiTargets.length > 0 ? (
             <section className="name-key-most-missed" aria-label="最容易按错的音名">
-              <h2>下次可以多留意</h2>
+              <h2>本次薄弱点</h2>
               <ol>
-                {mostMissed.map(({ count, name }) => (
-                  <li key={name}>
+                {weakMidiTargets.map(({ count, midi, name }) => (
+                  <li key={midi}>
                     <strong>{name}</strong>
                     <span>{count} 次</span>
                   </li>
@@ -1654,10 +1677,20 @@ function NameToKeyPracticeContent({
             >
               返回配置
             </button>
-            <button className="primary" onClick={() => void startRound()} type="button">
-              <RotateCcw size={17} />
-              再来一次
-            </button>
+            {weakMidiTargets.length > 0 ? (
+              <button
+                className="primary"
+                onClick={() => void startRound(weakMidiTargets.map(({ midi }) => midi))}
+                type="button"
+              >
+                针对薄弱项再练一局
+              </button>
+            ) : (
+              <button className="primary" onClick={() => void startRound()} type="button">
+                <RotateCcw size={17} />
+                再来一次
+              </button>
+            )}
           </div>
         </div>
       ) : null}
