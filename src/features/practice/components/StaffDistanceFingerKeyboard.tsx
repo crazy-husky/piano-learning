@@ -6,8 +6,11 @@ import type {
   Ref,
 } from "react";
 import type { NoteName, StaffDistanceFingerNumber } from "../../../domain/types";
+import type { StaffDistanceTargetFinger as StaffDistanceTargetFingerAssignment } from "../../../domain/staffDistanceFinger";
 import {
   PRACTICE_PIANO_BLACK_KEY_WIDTH_MM,
+  PRACTICE_PIANO_WHITE_KEY_MAX_HEIGHT_PX,
+  PRACTICE_PIANO_WHITE_KEY_MIN_HEIGHT_PX,
   PRACTICE_PIANO_WHITE_KEY_COUNT,
   PRACTICE_PIANO_WHITE_KEY_WIDTH_MM,
 } from "./staffDistanceFingerKeyboardLayout";
@@ -30,8 +33,12 @@ interface BlackKey {
 interface StaffDistanceFingerKeyboardProps {
   containerRef: Ref<HTMLDivElement>;
   disabled?: boolean;
+  readOnlyResponsive?: boolean;
+  answerHighlightedMidi?: number;
+  answerFinger?: StaffDistanceTargetFingerAssignment;
   fingerNumber: StaffDistanceFingerNumber;
   highlightedMidi: number;
+  keyboardHeightCapPx?: number;
   keyboardHeightPx: number;
   keyboardScale: number;
   lowerKeyCount: number;
@@ -72,8 +79,12 @@ function getWhiteKeys(referenceMidi: number, lowerKeyCount: number): WhiteKey[] 
 export function StaffDistanceFingerKeyboard({
   containerRef,
   disabled = false,
+  readOnlyResponsive = false,
+  answerHighlightedMidi,
+  answerFinger,
   fingerNumber,
   highlightedMidi,
+  keyboardHeightCapPx,
   keyboardHeightPx,
   keyboardScale,
   lowerKeyCount,
@@ -88,6 +99,19 @@ export function StaffDistanceFingerKeyboard({
     new Map<number, { midi: number; timerId: number | null }>()
   );
   const [pressedTouchMidis, setPressedTouchMidis] = useState<number[]>([]);
+  const effectiveKeyboardHeightPx =
+    readOnlyResponsive && keyboardHeightCapPx !== undefined
+      ? Math.min(keyboardHeightPx, keyboardHeightCapPx)
+      : keyboardHeightPx;
+  const keyboardHeightProgress = Math.max(
+    0,
+    Math.min(
+      1,
+      (effectiveKeyboardHeightPx - PRACTICE_PIANO_WHITE_KEY_MIN_HEIGHT_PX) /
+        (PRACTICE_PIANO_WHITE_KEY_MAX_HEIGHT_PX - PRACTICE_PIANO_WHITE_KEY_MIN_HEIGHT_PX)
+    )
+  );
+  const blackKeyHeightPercent = 15.5 + keyboardHeightProgress * 15.5;
 
   useEffect(
     () => () => {
@@ -190,49 +214,85 @@ export function StaffDistanceFingerKeyboard({
 
   return (
     <div
-      aria-label="单指专项仿真钢琴键盘"
-      className="staff-distance-finger-keyboard"
+      aria-label={
+        readOnlyResponsive
+          ? `只读钢琴键位示意图。绿色键标记${fingerNumber}指参考音；${answerHighlightedMidi === undefined ? "点击查看答案后会标记目标音和建议指法。" : "金色键标记目标音和建议指法。"}`
+          : "单指专项仿真钢琴键盘"
+      }
+      className={`staff-distance-finger-keyboard${readOnlyResponsive ? " is-read-only-responsive" : ""}`}
       ref={containerRef}
-      role="group"
+      role={readOnlyResponsive ? "img" : "group"}
       style={
         {
           "--staff-distance-white-key-width": `${PRACTICE_PIANO_WHITE_KEY_WIDTH_MM * keyboardScale}mm`,
           "--staff-distance-white-key-count": PRACTICE_PIANO_WHITE_KEY_COUNT,
-          "--staff-distance-finger-keyboard-height": `${keyboardHeightPx}px`,
+          "--staff-distance-finger-keyboard-height": `${effectiveKeyboardHeightPx}px`,
+          "--staff-distance-black-key-height": `${blackKeyHeightPercent}%`,
+          ...(keyboardHeightCapPx === undefined
+            ? {}
+            : { "--staff-distance-read-only-keyboard-height-cap": `${keyboardHeightCapPx}px` }),
         } as CSSProperties
       }
     >
       <div
         className="staff-distance-finger-keyboard-bed"
-        onPointerCancelCapture={finishTouchPointer}
-        onPointerUpCapture={finishTouchPointer}
+        onPointerCancelCapture={readOnlyResponsive ? undefined : finishTouchPointer}
+        onPointerUpCapture={readOnlyResponsive ? undefined : finishTouchPointer}
       >
-        {whiteKeys.map((key) => (
-          <button
-            aria-label={`${key.noteName}${key.octave} 白键${key.midi === highlightedMidi ? `，${fingerNumber} 指定位` : ""}`}
-            className={`staff-distance-finger-white-key${key.midi === highlightedMidi ? " is-finger-anchor" : ""}${pressedTouchMidis.includes(key.midi) ? " is-touch-pressed" : ""}`}
-            disabled={disabled}
-            key={key.midi}
-            onClick={(event) => handleKeyClick(event, key)}
-            onPointerCancel={finishTouchPointer}
-            onPointerDown={(event) => handleTouchPointerDown(event, key)}
-            onLostPointerCapture={finishTouchPointer}
-            onPointerUp={finishTouchPointer}
-            type="button"
-          >
-            {key.midi === highlightedMidi ? (
-              <span className="staff-distance-finger-key-marker">{fingerNumber}指</span>
-            ) : null}
-          </button>
-        ))}
+        {whiteKeys.map((key) => {
+          const className = `staff-distance-finger-white-key${key.midi === highlightedMidi ? " is-finger-anchor" : ""}${key.midi === answerHighlightedMidi ? " is-answer-highlight" : ""}${pressedTouchMidis.includes(key.midi) ? " is-touch-pressed" : ""}`;
+          const markers = (
+            <>
+              {key.midi === highlightedMidi ? (
+                <span className="staff-distance-finger-key-marker">{fingerNumber}指</span>
+              ) : null}
+              {key.midi === answerHighlightedMidi && answerFinger ? (
+                <span aria-hidden="true" className="staff-distance-finger-answer-marker">
+                  <span>{answerFinger.finger}指</span>
+                  {answerFinger.extensionDirection && answerFinger.extensionCount ? (
+                    <small>
+                      {answerFinger.extensionDirection === "left" ? "左" : "右"}扩
+                      {answerFinger.extensionCount}
+                    </small>
+                  ) : null}
+                </span>
+              ) : null}
+            </>
+          );
+
+          if (readOnlyResponsive) {
+            return (
+              <div aria-hidden="true" className={className} key={key.midi}>
+                {markers}
+              </div>
+            );
+          }
+
+          return (
+            <button
+              aria-label={`${key.noteName}${key.octave} 白键${key.midi === highlightedMidi ? `，${fingerNumber} 指定位` : ""}${key.midi === answerHighlightedMidi ? `，目标答案${answerFinger ? `，建议${answerFinger.finger}指${answerFinger.extensionDirection ? `${answerFinger.extensionDirection === "left" ? "左" : "右"}扩${answerFinger.extensionCount}` : ""}` : ""}` : ""}`}
+              className={className}
+              disabled={disabled}
+              key={key.midi}
+              onClick={(event) => handleKeyClick(event, key)}
+              onPointerCancel={finishTouchPointer}
+              onPointerDown={(event) => handleTouchPointerDown(event, key)}
+              onLostPointerCapture={finishTouchPointer}
+              onPointerUp={finishTouchPointer}
+              type="button"
+            >
+              {markers}
+            </button>
+          );
+        })}
         {blackKeys.map((key) => (
           <span
             aria-hidden="true"
             className="staff-distance-finger-black-key"
             key={key.midi}
             style={{
-              left: `calc(var(--staff-distance-white-key-width) * ${key.afterWhiteKeyIndex + 1} - ${(PRACTICE_PIANO_BLACK_KEY_WIDTH_MM * keyboardScale) / 2}mm)`,
-              width: `${PRACTICE_PIANO_BLACK_KEY_WIDTH_MM * keyboardScale}mm`,
+              left: `${((key.afterWhiteKeyIndex + 1) / PRACTICE_PIANO_WHITE_KEY_COUNT - PRACTICE_PIANO_BLACK_KEY_WIDTH_MM / PRACTICE_PIANO_WHITE_KEY_WIDTH_MM / PRACTICE_PIANO_WHITE_KEY_COUNT / 2) * 100}%`,
+              width: `${(PRACTICE_PIANO_BLACK_KEY_WIDTH_MM / PRACTICE_PIANO_WHITE_KEY_WIDTH_MM / PRACTICE_PIANO_WHITE_KEY_COUNT) * 100}%`,
             }}
           />
         ))}

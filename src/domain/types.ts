@@ -26,6 +26,7 @@ export type StaffDistanceInputMethod = "midi" | "microphone" | "virtual-keyboard
 export type StaffDistanceFingerHand = "left" | "right";
 export type StaffDistanceFingerNumber = 1 | 2 | 3 | 4 | 5;
 export type StaffDistanceFingerBatch = "line" | "space";
+export type StaffDistanceFingerInteractionMode = "play" | "no-answer";
 export interface StaffDistancePracticeSettings {
   includeUnison: boolean;
   maxDistance: number;
@@ -266,6 +267,7 @@ export interface StaffDistancePracticeSessionDetails {
   trainingMode?: StaffDistanceTrainingMode;
   fingerHand?: StaffDistanceFingerHand;
   fingerNumber?: StaffDistanceFingerNumber;
+  fingerInteractionMode?: StaffDistanceFingerInteractionMode;
 }
 
 export interface PracticeSessionRecordV1 extends PracticeSessionRecordBase {

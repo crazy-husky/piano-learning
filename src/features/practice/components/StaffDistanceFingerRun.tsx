@@ -1,4 +1,4 @@
-import { ArrowLeft, Pause, Play, RotateCcw } from "lucide-react";
+import { ArrowLeft, CircleHelp, Pause, Play, RotateCcw, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
@@ -8,6 +8,7 @@ import type {
   StaffDistanceInputMethod,
   StaffDistanceFingerBatch,
   StaffDistanceFingerHand,
+  StaffDistanceFingerInteractionMode,
   StaffDistanceFingerNumber,
   StaffDistanceQuestionResult,
   StaffNotationMode,
@@ -23,6 +24,8 @@ import {
 import { saveAnswerEvents } from "../../../data/db";
 import {
   createStaffDistanceFingerCards,
+  formatStaffDistanceTargetFinger,
+  getStaffDistanceTargetFinger,
   getStaffDistanceFingerProfile,
 } from "../../../domain/staffDistanceFinger";
 import { summarizeStaffDistancePair } from "../../../domain/staffDistancePractice";
@@ -39,7 +42,7 @@ import { StaffDistanceFingerKeyboard } from "./StaffDistanceFingerKeyboard";
 import { PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
 import {
   canFitPracticePianoKeyboard,
-  getPracticePianoKeyboardMinWidthPx,
+  canFitPracticePianoKeyboardInEitherOrientation,
   PRACTICE_PIANO_WHITE_KEY_MAX_HEIGHT_PX,
   PRACTICE_PIANO_WHITE_KEY_MIN_HEIGHT_PX,
 } from "./staffDistanceFingerKeyboardLayout";
@@ -102,7 +105,7 @@ export interface StaffDistanceFingerRunProps {
   onNavigationExit?: (
     targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal" | "metronome"
   ) => void;
-  onRestart?: () => Promise<void>;
+  onRestart?: (fingerInteractionMode?: StaffDistanceFingerInteractionMode) => Promise<void>;
   onRunningChange: (running: boolean) => void;
   session: PracticeSessionRecord;
   staffNotationMode: StaffNotationMode;
@@ -218,33 +221,37 @@ export function StaffDistanceFingerRun({
   useLedgerGap,
 }: StaffDistanceFingerRunProps): JSX.Element {
   const [deck] = useState(() => createStaffDistanceFingerCards(notes, fingerHand, fingerNumber));
+  const isNoAnswerMode = session.staffDistance?.fingerInteractionMode === "no-answer";
+  const showsFingerKeyboard = inputMethod === "virtual-keyboard" || isNoAnswerMode;
+  const [isAnswerRevealed, setIsAnswerRevealed] = useState(false);
+  const [isNoAnswerComplete, setIsNoAnswerComplete] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const instructionsDialogRef = useRef<HTMLDialogElement | null>(null);
+  useEffect(() => {
+    const dialog = instructionsDialogRef.current;
+    if (!showInstructions || !dialog || dialog.open) return undefined;
+    dialog.showModal();
+    return () => {
+      if (dialog.open) dialog.close();
+    };
+  }, [showInstructions]);
   const viewportSize = usePracticeViewportSize();
+  const readOnlyKeyboardHeightCapPx = Math.max(180, Math.min(300, viewportSize.width * 0.3));
   const runShellRef = useRef<HTMLElement | null>(null);
   const keyboardRef = useRef<HTMLDivElement | null>(null);
   const activeKeyboardTouchPointerIdsRef = useRef(new Set<number>());
   const pendingKeyboardAdvanceRef = useRef<StaffDistanceQuestionResult[] | null>(null);
-  const [availableRunWidth, setAvailableRunWidth] = useState(0);
   const [keyboardHeightPx, setKeyboardHeightPx] = useState(PRACTICE_PIANO_WHITE_KEY_MAX_HEIGHT_PX);
-  useLayoutEffect(() => {
-    const runShell = runShellRef.current;
-    if (!runShell) return undefined;
-
-    const updateAvailableWidth = (): void => {
-      setAvailableRunWidth(runShell.clientWidth);
-    };
-    updateAvailableWidth();
-    const observer = new ResizeObserver(updateAvailableWidth);
-    observer.observe(runShell);
-    return () => observer.disconnect();
-  }, []);
-
-  const keyboardFitsCurrentOrientation =
-    canFitPracticePianoKeyboard(viewportSize, keyboardScale) &&
-    availableRunWidth >= getPracticePianoKeyboardMinWidthPx(keyboardScale);
-  const isViewportBlocked = inputMethod === "virtual-keyboard" && !keyboardFitsCurrentOrientation;
+  const keyboardFitsCurrentOrientation = canFitPracticePianoKeyboard(viewportSize, keyboardScale);
+  const keyboardFitsEitherOrientation = canFitPracticePianoKeyboardInEitherOrientation(
+    viewportSize,
+    keyboardScale
+  );
+  const isViewportBlocked =
+    !isNoAnswerMode && inputMethod === "virtual-keyboard" && !keyboardFitsCurrentOrientation;
 
   useLayoutEffect(() => {
-    if (inputMethod !== "virtual-keyboard" || isViewportBlocked) return undefined;
+    if (!showsFingerKeyboard || isViewportBlocked) return undefined;
     const runShell = runShellRef.current;
     const keyboard = keyboardRef.current;
     if (!runShell || !keyboard) return undefined;
@@ -306,7 +313,7 @@ export function StaffDistanceFingerRun({
       window.visualViewport?.removeEventListener("resize", scheduleHeightUpdate);
       window.visualViewport?.removeEventListener("scroll", scheduleHeightUpdate);
     };
-  }, [inputMethod, isViewportBlocked]);
+  }, [showsFingerKeyboard, isViewportBlocked]);
 
   const [cardIndex, setCardIndex] = useState(0);
   const [step, setStep] = useState<FingerStep>("reference");
@@ -341,6 +348,8 @@ export function StaffDistanceFingerRun({
   const handledExitRequestRef = useRef<number | null>(null);
   const viewportBlockedRef = useRef(false);
   const resumeAfterViewportBlockRef = useRef(false);
+  const noAnswerModeRef = useRef(isNoAnswerMode);
+  noAnswerModeRef.current = isNoAnswerMode;
   const stopMicrophoneRef = useRef(microphone.stop);
   stopMicrophoneRef.current = microphone.stop;
   const currentCard = deck.cards[cardIndex];
@@ -348,7 +357,27 @@ export function StaffDistanceFingerRun({
     () => (currentCard ? [currentCard.reference, currentCard.target] : []),
     [currentCard]
   );
-  const scoreNoteLabels = useMemo(() => [`${fingerNumber}指`, "目标"], [fingerNumber]);
+  const targetFinger = useMemo(
+    () =>
+      currentCard
+        ? getStaffDistanceTargetFinger(
+            fingerHand,
+            fingerNumber,
+            currentCard.reference,
+            currentCard.target
+          )
+        : undefined,
+    [currentCard, fingerHand, fingerNumber]
+  );
+  const scoreNoteLabels = useMemo(
+    () => [
+      `${fingerNumber}指`,
+      isNoAnswerMode && isAnswerRevealed && targetFinger
+        ? formatStaffDistanceTargetFinger(targetFinger)
+        : "目标",
+    ],
+    [fingerNumber, isAnswerRevealed, isNoAnswerMode, targetFinger]
+  );
   const details = session.staffDistance!;
   const fingerProfile = getStaffDistanceFingerProfile(fingerHand, fingerNumber);
   const fingerClefLabel = fingerHand === "right" ? "高音谱" : "低音谱";
@@ -469,6 +498,22 @@ export function StaffDistanceFingerRun({
     [deck.cards.length]
   );
 
+  const advanceNoAnswerCard = useCallback((): void => {
+    const nextIndex = cardIndexRef.current + 1;
+    setIsAnswerRevealed(false);
+    if (nextIndex >= deck.cards.length) {
+      setIsNoAnswerComplete(true);
+      return;
+    }
+    cardIndexRef.current = nextIndex;
+    setCardIndex(nextIndex);
+    setCompletedNoteIndices([]);
+    setWrongIndex(undefined);
+    setWrongFeedback(false);
+    setFeedback(null);
+    setInputError(null);
+  }, [deck.cards.length]);
+
   const advanceAfterKeyboardRelease = useCallback(
     (nextResults: StaffDistanceQuestionResult[], prompt: string): void => {
       if (
@@ -514,6 +559,7 @@ export function StaffDistanceFingerRun({
   );
 
   const timeoutCard = useCallback((): void => {
+    if (isNoAnswerMode) return;
     const activeCardIndex = cardIndexRef.current;
     const card = deck.cards[activeCardIndex];
     if (!card || deadlineRef.current === 0 || isPausedRef.current || endingRef.current) return;
@@ -595,6 +641,7 @@ export function StaffDistanceFingerRun({
     fingerHand,
     fingerNumber,
     inputMethod,
+    isNoAnswerMode,
     session,
   ]);
   const timeoutCardRef = useRef(timeoutCard);
@@ -609,6 +656,7 @@ export function StaffDistanceFingerRun({
         isPausedRef.current ||
         viewportBlockedRef.current ||
         endingRef.current ||
+        isNoAnswerMode ||
         deck.error ||
         pendingKeyboardAdvanceRef.current !== null
       ) {
@@ -760,6 +808,7 @@ export function StaffDistanceFingerRun({
       fingerHand,
       fingerNumber,
       inputMethod,
+      isNoAnswerMode,
       session,
     ]
   );
@@ -824,7 +873,7 @@ export function StaffDistanceFingerRun({
   togglePauseRef.current = togglePause;
 
   useEffect(() => {
-    if (deck.error || isPaused || isViewportBlocked) return undefined;
+    if (deck.error || isPaused || isViewportBlocked || isNoAnswerMode) return undefined;
     const timer = window.setInterval(() => {
       if (pendingKeyboardAdvanceRef.current) return;
       const remaining = Math.max(0, deadlineRef.current - performance.now());
@@ -832,10 +881,10 @@ export function StaffDistanceFingerRun({
       if (remaining <= 0) timeoutCardRef.current();
     }, 100);
     return () => window.clearInterval(timer);
-  }, [cardIndex, deck.error, isPaused, isViewportBlocked]);
+  }, [cardIndex, deck.error, isNoAnswerMode, isPaused, isViewportBlocked]);
 
   useEffect(() => {
-    if (inputMethod !== "midi") return undefined;
+    if (isNoAnswerMode || inputMethod !== "midi") return undefined;
     return midiSubscribe((event) => {
       if (event.type !== "press" || !isNaturalPianoKey(event.note.keyName)) return;
       answerPitch({
@@ -846,16 +895,16 @@ export function StaffDistanceFingerRun({
         source: "midi",
       });
     });
-  }, [answerPitch, inputMethod, midiSubscribe]);
+  }, [answerPitch, inputMethod, isNoAnswerMode, midiSubscribe]);
 
   useEffect(() => {
-    if (inputMethod !== "microphone") {
+    if (isNoAnswerMode || inputMethod !== "microphone") {
       onMicrophoneAnswerHandlerChange(null);
       return undefined;
     }
     onMicrophoneAnswerHandlerChange(answerPitch);
     return () => onMicrophoneAnswerHandlerChange(null);
-  }, [answerPitch, inputMethod, onMicrophoneAnswerHandlerChange]);
+  }, [answerPitch, inputMethod, isNoAnswerMode, onMicrophoneAnswerHandlerChange]);
 
   useEffect(() => {
     onRunningChange(true);
@@ -870,12 +919,16 @@ export function StaffDistanceFingerRun({
 
   useEffect(() => {
     const pauseWhenInactive = (): void => {
-      if (document.visibilityState === "hidden" && !isPausedRef.current) {
+      if (
+        !noAnswerModeRef.current &&
+        document.visibilityState === "hidden" &&
+        !isPausedRef.current
+      ) {
         void togglePauseRef.current();
       }
     };
     const pauseOnWindowBlur = (): void => {
-      if (!isPausedRef.current) void togglePauseRef.current();
+      if (!noAnswerModeRef.current && !isPausedRef.current) void togglePauseRef.current();
     };
     document.addEventListener("visibilitychange", pauseWhenInactive);
     window.addEventListener("blur", pauseOnWindowBlur);
@@ -897,6 +950,7 @@ export function StaffDistanceFingerRun({
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
+      if (noAnswerModeRef.current) return;
       if (
         event.code === "Space" &&
         !event.altKey &&
@@ -919,7 +973,7 @@ export function StaffDistanceFingerRun({
   }, []);
 
   useEffect(() => {
-    if (isPausedRef.current) return;
+    if (isNoAnswerMode || isPausedRef.current) return;
     if (inputMethod === "midi" && !midi.isConnected) {
       setInputError("MIDI 连接已断开；练习已暂停，请重新连接后继续。");
       void togglePauseRef.current();
@@ -927,9 +981,12 @@ export function StaffDistanceFingerRun({
       setInputError(microphone.error ?? "麦克风连接已中断；练习已暂停。");
       void togglePauseRef.current();
     }
-  }, [inputMethod, microphone.error, microphone.status, midi.isConnected]);
+  }, [inputMethod, isNoAnswerMode, microphone.error, microphone.status, midi.isConnected]);
 
-  const restart = async (): Promise<void> => {
+  const restart = async (
+    fingerInteractionMode: StaffDistanceFingerInteractionMode = session.staffDistance
+      ?.fingerInteractionMode ?? "play"
+  ): Promise<void> => {
     if (!onRestart || endingRef.current || isRestarting) return;
     endingRef.current = true;
     pendingKeyboardAdvanceRef.current = null;
@@ -941,13 +998,17 @@ export function StaffDistanceFingerRun({
     if (inputMethod === "microphone") microphone.stop();
     try {
       await answerEventSaveQueueRef.current;
-      await onRestart();
+      await onRestart(fingerInteractionMode);
     } catch (error) {
       endingRef.current = false;
       setInputError(error instanceof Error ? error.message : "重置练习失败，请重试。");
     } finally {
       setIsRestarting(false);
     }
+  };
+
+  const showNoAnswerAnswer = (): void => {
+    setIsAnswerRevealed(true);
   };
 
   if (deck.error || !currentCard) {
@@ -963,7 +1024,7 @@ export function StaffDistanceFingerRun({
   }
 
   const cardNumber = cardIndex + 1;
-  const activeNoteIndex = step === "reference" ? 0 : 1;
+  const activeNoteIndex = isNoAnswerMode ? 1 : step === "reference" ? 0 : 1;
   const progressValue = Math.max(0, Math.min(FINGER_CARD_TIME_LIMIT_MS, remainingMs));
   const progressText = `${(progressValue / 1000).toFixed(1)} 秒`;
   const handLabel = fingerHand === "right" ? "右手" : "左手";
@@ -975,7 +1036,7 @@ export function StaffDistanceFingerRun({
   return (
     <section
       aria-label="音距速推单指专项"
-      className={`staff-distance-run-shell staff-distance-finger-run${inputMethod === "virtual-keyboard" ? " is-virtual-keyboard" : ""}`}
+      className={`staff-distance-run-shell staff-distance-finger-run${inputMethod === "virtual-keyboard" ? " is-virtual-keyboard" : ""}${isNoAnswerMode ? " is-no-answer-mode" : ""}`}
       ref={runShellRef}
     >
       <header className="staff-distance-run-header">
@@ -998,10 +1059,12 @@ export function StaffDistanceFingerRun({
               <ArrowLeft aria-hidden="true" size={16} />
               结束返回
             </button>
-            <button disabled={isPaused} onClick={() => void togglePause()} type="button">
-              {isPaused ? <Play size={16} /> : <Pause size={16} />}
-              {isPaused ? "继续" : "暂停"}
-            </button>
+            {!isNoAnswerMode ? (
+              <button disabled={isPaused} onClick={() => void togglePause()} type="button">
+                {isPaused ? <Play size={16} /> : <Pause size={16} />}
+                {isPaused ? "继续" : "暂停"}
+              </button>
+            ) : null}
             {onRestart ? (
               <button
                 aria-label="重新开始当前练习"
@@ -1014,8 +1077,12 @@ export function StaffDistanceFingerRun({
                 重新开始
               </button>
             ) : null}
+            <button aria-haspopup="dialog" onClick={() => setShowInstructions(true)} type="button">
+              <CircleHelp aria-hidden="true" size={16} />
+              操作说明
+            </button>
           </div>
-          {inputMethod === "midi" ? (
+          {!isNoAnswerMode && inputMethod === "midi" ? (
             <MidiInputControl
               ariaLabel="单指专项 MIDI 输入设备"
               className={`${!midi.isConnected ? "needs-attention " : ""}staff-distance-run-midi-control`}
@@ -1031,25 +1098,31 @@ export function StaffDistanceFingerRun({
           <span>
             {fingerClefLabel} · {batchLabel}
           </span>
-          <span aria-live="polite">本卡剩余 {progressText}</span>
+          {isNoAnswerMode ? (
+            <span>免答模式 · 不限时</span>
+          ) : (
+            <span aria-live="polite">本卡剩余 {progressText}</span>
+          )}
         </div>
-        <progress
-          aria-label="本卡剩余时间"
-          className="staff-distance-finger-timer"
-          max={FINGER_CARD_TIME_LIMIT_MS}
-          value={progressValue}
-        />
+        {!isNoAnswerMode ? (
+          <progress
+            aria-label="本卡剩余时间"
+            className="staff-distance-finger-timer"
+            max={FINGER_CARD_TIME_LIMIT_MS}
+            value={progressValue}
+          />
+        ) : null}
         <div
           aria-label={`${handLabel}${fingerNumber}指专项卡片 ${cardNumber}/${FINGER_CARD_COUNT}`}
           className="staff-distance-score-wrap staff-distance-finger-score"
           role="group"
         >
           <StaffPagePrompt
-            completedCount={activeNoteIndex}
+            completedCount={isNoAnswerMode ? 0 : activeNoteIndex}
             completedNoteIndices={completedNoteIndices}
             notes={scoreNotes}
             layout={
-              inputMethod === "virtual-keyboard"
+              showsFingerKeyboard
                 ? FINGER_PRACTICE_STAFF_LAYOUT
                 : FINGER_PRACTICE_COMPACT_STAFF_LAYOUT
             }
@@ -1076,27 +1149,56 @@ export function StaffDistanceFingerRun({
         </div>
       </div>
 
-      <p
-        aria-live={wrongFeedback ? "assertive" : "polite"}
-        className={`staff-distance-question-copy${inputMethod === "virtual-keyboard" ? " is-virtual-keyboard" : ""}${wrongFeedback ? " is-error" : ""}`}
-      >
-        {wrongFeedback
-          ? "音高不对，请再试一次；计时继续。"
-          : (feedback ??
-            (step === "reference"
-              ? `请先弹奏标注 ${fingerNumber} 指的参考音，再弹目标音。`
-              : inputMethod === "virtual-keyboard"
-                ? "参考音已弹对；可保持按住或先抬起，再按目标音。"
-                : "参考音已弹对，请弹奏第二个目标音。"))}
-      </p>
-      {inputMethod === "virtual-keyboard" && currentCard && !isViewportBlocked ? (
+      {isNoAnswerMode ? (
+        <div aria-label="免答模式操作" className="staff-distance-question-actions">
+          {inputError ? <p role="alert">{inputError}</p> : null}
+          <button
+            disabled={isAnswerRevealed || isNoAnswerComplete}
+            onClick={showNoAnswerAnswer}
+            type="button"
+          >
+            {isAnswerRevealed ? "答案已显示" : "查看答案"}
+          </button>
+          <button
+            className="primary"
+            disabled={isNoAnswerComplete}
+            onClick={advanceNoAnswerCard}
+            type="button"
+          >
+            下一个
+          </button>
+        </div>
+      ) : (
+        <p
+          aria-live={wrongFeedback ? "assertive" : "polite"}
+          className={`staff-distance-question-copy${inputMethod === "virtual-keyboard" ? " is-virtual-keyboard" : ""}${wrongFeedback ? " is-error" : ""}`}
+        >
+          {wrongFeedback
+            ? "音高不对，请再试一次；计时继续。"
+            : (feedback ??
+              (step === "reference"
+                ? `请先弹奏标注 ${fingerNumber} 指的参考音，再弹目标音。`
+                : inputMethod === "virtual-keyboard"
+                  ? "参考音已弹对；可保持按住或先抬起，再按目标音。"
+                  : "参考音已弹对，请弹奏第二个目标音。"))}
+        </p>
+      )}
+      {showsFingerKeyboard && currentCard && !isViewportBlocked && !isNoAnswerComplete ? (
         <StaffDistanceFingerKeyboard
           containerRef={keyboardRef}
           disabled={isPaused || isViewportBlocked}
           fingerNumber={fingerNumber}
           highlightedMidi={getTargetMidiNoteNumber(currentCard.reference)}
+          answerHighlightedMidi={
+            isNoAnswerMode && isAnswerRevealed
+              ? getTargetMidiNoteNumber(currentCard.target)
+              : undefined
+          }
+          answerFinger={isNoAnswerMode ? targetFinger : undefined}
+          keyboardHeightCapPx={isNoAnswerMode ? readOnlyKeyboardHeightCapPx : undefined}
           keyboardHeightPx={keyboardHeightPx}
           keyboardScale={keyboardScale}
+          readOnlyResponsive={isNoAnswerMode}
           lowerKeyCount={fingerProfile.lower}
           onKeyPress={({ midi, noteName, octave }) =>
             answerPitch({
@@ -1111,39 +1213,66 @@ export function StaffDistanceFingerRun({
           rangeReferenceMidi={getTargetMidiNoteNumber(lineReferenceNote)}
         />
       ) : null}
-      <div
-        aria-live="polite"
-        className={`staff-distance-play-input-status${inputMethod === "virtual-keyboard" && !inputError ? " is-virtual-keyboard-redundant" : ""}`}
-      >
-        {inputError ? (
-          inputError
-        ) : inputMethod === "midi" ? (
-          `请弹奏 MIDI 键盘上的${inputPrompt}${midi.selectedInput?.name ? ` · ${midi.selectedInput.name}` : ""}`
-        ) : inputMethod === "virtual-keyboard" ? (
-          `按下钢琴键盘上的${inputPrompt}作答`
-        ) : microphone.status === "listening" ? (
-          `麦克风已连接，请弹奏${inputPrompt}`
-        ) : microphone.status === "requesting" && !isPaused ? (
-          <LoadingActivityText kind={microphone.isPreparingSwiftF0 ? "dots" : "spinner"}>
-            {microphone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风"}
-          </LoadingActivityText>
-        ) : isPaused ? (
-          "麦克风已暂停"
-        ) : (
-          (microphone.error ?? "麦克风未连接")
-        )}
-        {inputMethod === "microphone" && (microphone.error || microphone.status === "error") ? (
-          <PracticeMicrophoneRetryButton
-            isConnecting={false}
-            onRetry={async () => {
-              const ready = await microphone.start({ includeAccidentals: false });
-              if (ready) setInputError(null);
-              return ready;
-            }}
-          />
-        ) : null}
-      </div>
-      {isPaused ? (
+      {isNoAnswerComplete ? (
+        <section
+          aria-label="免答练习已完成"
+          aria-live="polite"
+          aria-labelledby="staff-distance-no-answer-complete-title"
+          className="staff-distance-no-answer-complete"
+        >
+          <h2 id="staff-distance-no-answer-complete-title">本轮浏览完成</h2>
+          <p>已浏览全部 {FINGER_CARD_COUNT} 张卡片。免答练习不统计正确率。</p>
+          <div>
+            {onRestart ? (
+              <button onClick={() => void restart("no-answer")} type="button">
+                再看一轮
+              </button>
+            ) : null}
+            <button
+              className="primary"
+              onClick={() => void finish("completed-count", false)}
+              type="button"
+            >
+              返回设置
+            </button>
+          </div>
+        </section>
+      ) : null}
+      {!isNoAnswerMode ? (
+        <div
+          aria-live="polite"
+          className={`staff-distance-play-input-status${inputMethod === "virtual-keyboard" && !inputError ? " is-virtual-keyboard-redundant" : ""}`}
+        >
+          {inputError ? (
+            inputError
+          ) : inputMethod === "midi" ? (
+            `请弹奏 MIDI 键盘上的${inputPrompt}${midi.selectedInput?.name ? ` · ${midi.selectedInput.name}` : ""}`
+          ) : inputMethod === "virtual-keyboard" ? (
+            `按下钢琴键盘上的${inputPrompt}作答`
+          ) : microphone.status === "listening" ? (
+            `麦克风已连接，请弹奏${inputPrompt}`
+          ) : microphone.status === "requesting" && !isPaused ? (
+            <LoadingActivityText kind={microphone.isPreparingSwiftF0 ? "dots" : "spinner"}>
+              {microphone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风"}
+            </LoadingActivityText>
+          ) : isPaused ? (
+            "麦克风已暂停"
+          ) : (
+            (microphone.error ?? "麦克风未连接")
+          )}
+          {inputMethod === "microphone" && (microphone.error || microphone.status === "error") ? (
+            <PracticeMicrophoneRetryButton
+              isConnecting={false}
+              onRetry={async () => {
+                const ready = await microphone.start({ includeAccidentals: false });
+                if (ready) setInputError(null);
+                return ready;
+              }}
+            />
+          ) : null}
+        </div>
+      ) : null}
+      {isPaused && !isNoAnswerMode ? (
         <div className="staff-distance-pause-overlay" role="status">
           <strong>已暂停</strong>
           <span>
@@ -1193,8 +1322,20 @@ export function StaffDistanceFingerRun({
       {isViewportBlocked ? (
         <div className="staff-distance-orientation-overlay" role="status">
           <div className="staff-distance-orientation-card">
-            <strong>请横屏继续</strong>
-            <span>当前竖屏宽度不足以展示钢琴键盘，请切换到横屏。</span>
+            <strong>
+              {keyboardFitsEitherOrientation
+                ? viewportSize.height > viewportSize.width
+                  ? "请旋转设备"
+                  : "请调整屏幕方向"
+                : "钢琴键盘宽度不足"}
+            </strong>
+            <span>
+              {keyboardFitsEitherOrientation
+                ? viewportSize.height > viewportSize.width
+                  ? "当前竖屏宽度不足以展示所选尺寸的钢琴键盘，请旋转设备后继续。"
+                  : "当前屏幕宽度不足以展示所选尺寸的钢琴键盘，旋转设备后可使用当前尺寸。"
+                : `当前${viewportSize.width >= viewportSize.height ? "横屏" : "屏幕"}可用宽度仍不足以展示所选尺寸的钢琴键盘，请返回设置调小尺寸。`}
+            </span>
             <button onClick={() => void finish("manual-stop", false)} type="button">
               返回设置
             </button>
@@ -1214,6 +1355,52 @@ export function StaffDistanceFingerRun({
             document.body
           )
         : null}
+      {showInstructions ? (
+        <dialog
+          aria-labelledby="staff-distance-finger-help-title"
+          className="staff-distance-finger-help-dialog"
+          onCancel={(event) => {
+            event.preventDefault();
+            setShowInstructions(false);
+          }}
+          onClose={() => setShowInstructions(false)}
+          ref={instructionsDialogRef}
+        >
+          <div className="staff-distance-finger-help-heading">
+            <h2 id="staff-distance-finger-help-title">单指专项操作说明</h2>
+            <button
+              aria-label="关闭操作说明"
+              onClick={() => setShowInstructions(false)}
+              type="button"
+            >
+              <X aria-hidden="true" size={18} />
+            </button>
+          </div>
+          {isNoAnswerMode ? (
+            <section>
+              <h3>免答模式</h3>
+              <p>
+                先看谱面，在心里判断目标音和建议手指；点击“查看答案”后，只读琴键图会高亮目标音并标出建议指法。琴键图只供看位置，不能触键作答；再点“下一个”继续。免答模式不检测弹奏、不计时、不统计正确率，手机竖屏也可使用。
+              </p>
+            </section>
+          ) : (
+            <section>
+              <h3>普通作答</h3>
+              <p>
+                先弹奏标注手指的参考音，再弹目标音；答错可重试。每张卡片限时 5
+                秒，超时后自动进入下一张。练习方式在配置页选择；如需切换，请结束本轮并返回配置页。
+              </p>
+            </section>
+          )}
+          <button
+            className="primary staff-distance-finger-help-done"
+            onClick={() => setShowInstructions(false)}
+            type="button"
+          >
+            知道了
+          </button>
+        </dialog>
+      ) : null}
     </section>
   );
 }

@@ -26,6 +26,12 @@ export interface StaffDistanceFingerProfile extends FingerRange {
   staff: Staff;
 }
 
+export interface StaffDistanceTargetFinger {
+  finger: StaffDistanceFingerNumber;
+  extensionDirection?: "left" | "right";
+  extensionCount?: number;
+}
+
 const FINGER_RANGES: Record<
   StaffDistanceFingerHand,
   Record<StaffDistanceFingerNumber, FingerRange>
@@ -99,6 +105,39 @@ export function getStaffDistanceFingerProfile(
     spaceAnchorPitchId: SPACE_ANCHORS[hand][finger],
     staff: hand === "right" ? "treble" : "bass",
   };
+}
+
+export function getStaffDistanceTargetFinger(
+  hand: StaffDistanceFingerHand,
+  referenceFinger: StaffDistanceFingerNumber,
+  reference: TargetNote,
+  target: TargetNote
+): StaffDistanceTargetFinger {
+  const staffSteps = staffPosition(target) - staffPosition(reference);
+  const unextendedFinger =
+    hand === "right" ? referenceFinger + staffSteps : referenceFinger - staffSteps;
+  if (unextendedFinger >= 1 && unextendedFinger <= 5) {
+    return { finger: unextendedFinger as StaffDistanceFingerNumber };
+  }
+
+  if (unextendedFinger < 1) {
+    return {
+      finger: 1,
+      extensionDirection: hand === "right" ? "left" : "right",
+      extensionCount: 1 - unextendedFinger,
+    };
+  }
+
+  return {
+    finger: 5,
+    extensionDirection: hand === "right" ? "right" : "left",
+    extensionCount: unextendedFinger - 5,
+  };
+}
+
+export function formatStaffDistanceTargetFinger(fingering: StaffDistanceTargetFinger): string {
+  if (!fingering.extensionDirection || !fingering.extensionCount) return `${fingering.finger}指`;
+  return `${fingering.finger}指${fingering.extensionDirection === "left" ? "左" : "右"}扩${fingering.extensionCount}`;
 }
 
 function shuffledWithoutAdjacentDuplicates(

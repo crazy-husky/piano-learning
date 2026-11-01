@@ -9,6 +9,7 @@ import type {
   PracticeSessionRecord,
   PromptNoteDuration,
   Staff,
+  StaffDistanceFingerInteractionMode,
   StaffDistanceTrainingMode,
   StaffDistancePracticeSettings,
   StaffNotationMode,
@@ -71,7 +72,7 @@ export interface StaffDistanceRunProps {
   noteDurations: readonly PromptNoteDuration[];
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   notes: TargetNote[];
-  onRestart?: () => Promise<void>;
+  onRestart?: (fingerInteractionMode?: StaffDistanceFingerInteractionMode) => Promise<void>;
   onFinish: (session: PracticeSessionRecord, showSummary: boolean) => Promise<void>;
   onSaveChaseSettings: (settings: PracticeChaseSettings) => void;
   onNavigationExit?: (targetView: PracticeNavigationExitRequest["targetView"]) => void;
