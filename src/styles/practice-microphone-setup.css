@@ -1622,7 +1622,9 @@
 }
 
 .practice-free-action-buttons > .practice-midi-start-warning {
-  flex: 1 1 260px;
+  flex: 0 1 auto;
+  width: fit-content;
+  max-width: min(440px, 100%);
 }
 
 .practice-free-start-button kbd {
@@ -1773,8 +1775,9 @@
 
   .practice-free-action-buttons > .practice-midi-start-warning {
     grid-column: 1 / -1;
-    width: 100%;
-    max-width: none;
+    justify-self: start;
+    width: fit-content;
+    max-width: 100%;
   }
 
   .practice-free-stats-button {
@@ -2637,9 +2640,10 @@
   .practice-setup-shell.is-free-practice-setup
     .practice-free-action-buttons
     > .practice-midi-start-warning {
-    flex: 1 1 260px;
+    flex: 0 1 auto;
     min-width: 0;
-    max-width: none;
+    width: fit-content;
+    max-width: min(440px, 100%);
   }
 
   .practice-setup-shell.is-free-practice-setup

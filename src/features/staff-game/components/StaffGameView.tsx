@@ -3857,6 +3857,7 @@ export function StaffGameView({
           isLearningChallenge={isLearningChallenge}
           isQuestionCountProgress={isWrongNoteReview}
           isReady={phase === "ready" && gameMode === "levels"}
+          hasMissingMidiWarning={showMissingMidiWarning}
           learningProgressValue={`${learningQuestionProgressResolvedCount}/${questionTargetCount}`}
           currentRoundStars={currentRoundStars}
           displayedScore={displayedScore}
@@ -4100,9 +4101,10 @@ export function StaffGameView({
 
           {showMissingMidiWarning ? (
             <MidiInputControl
-              ariaLabel="未检测到 MIDI 设备，重试连接"
+              ariaLabel="未检测到 MIDI 设备，点击重试"
               className="staff-game-midi-device-warning needs-attention"
               label="重新检测 MIDI 设备"
+              missingDeviceLabel="未检测到 MIDI 设备 · 点击重试"
               midi={midi}
               setupGuideTarget="staff-game-midi-device"
             />

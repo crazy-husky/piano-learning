@@ -118,6 +118,7 @@ interface StaffPagePromptProps {
   followRowIndex?: number;
   trackedNoteIndex?: number;
   preReadingNoteStates?: readonly PreReadingNoteVisibility[];
+  preReadingAnswerOutcomes?: readonly (boolean | null)[];
   preReadingCurrentNoteIndex?: number;
   isPreReadingPaused?: boolean;
   onTrackedNoteVisibilityChange?: (isVisible: boolean) => void;
@@ -1055,7 +1056,8 @@ function colorForIndex(
     staff: Staff;
     midi?: number;
     result: "matched" | "missed" | "offbeat";
-  }[]
+  }[],
+  preReadingAnswerOutcomes?: readonly (boolean | null)[]
 ): string {
   const matchingStatuses = syncNoteStatuses?.filter(
     (entry) => entry.index === index && (!staff || entry.staff === staff)
@@ -1066,6 +1068,9 @@ function colorForIndex(
   if (syncStatus?.result === "missed") return palette.error;
   if (syncStatus?.result === "offbeat") return palette.warning;
   if (syncStatus?.result === "matched") return palette.complete;
+  const preReadingAnswerOutcome = preReadingAnswerOutcomes?.[index];
+  if (preReadingAnswerOutcome === false) return palette.error;
+  if (preReadingAnswerOutcome === true) return palette.complete;
   if (staff && completedStaffNoteIndices) {
     if (index === wrongStaffIndex && (!wrongStaff || wrongStaff === staff)) {
       return palette.error;
@@ -1731,6 +1736,7 @@ export function StaffPagePrompt({
   followRowIndex,
   trackedNoteIndex,
   preReadingNoteStates,
+  preReadingAnswerOutcomes,
   preReadingCurrentNoteIndex,
   isPreReadingPaused = false,
   onTrackedNoteVisibilityChange,
@@ -1769,6 +1775,7 @@ export function StaffPagePrompt({
   const autoScrollAnimationFrameRef = useRef(0);
   const trackedNoteIndexRef = useRef(trackedNoteIndex);
   const preReadingNoteStatesRef = useRef(preReadingNoteStates);
+  const preReadingAnswerOutcomesRef = useRef(preReadingAnswerOutcomes);
   const preReadingCurrentNoteIndexRef = useRef(preReadingCurrentNoteIndex);
   const onTrackedNoteVisibilityChangeRef = useRef(onTrackedNoteVisibilityChange);
   const diagnosticSampleIdRef = useRef(diagnosticSampleId);
@@ -1830,6 +1837,7 @@ export function StaffPagePrompt({
   getAudioTimeRef.current = getAudioTime;
   trackedNoteIndexRef.current = trackedNoteIndex;
   preReadingNoteStatesRef.current = preReadingNoteStates;
+  preReadingAnswerOutcomesRef.current = preReadingAnswerOutcomes;
   preReadingCurrentNoteIndexRef.current = preReadingCurrentNoteIndex;
   onTrackedNoteVisibilityChangeRef.current = onTrackedNoteVisibilityChange;
   wrongIndexRef.current = wrongIndex;
@@ -2710,7 +2718,8 @@ export function StaffPagePrompt({
                 wrongStaffIndexRef.current,
                 wrongStaffRef.current,
                 midi,
-                syncNoteStatusesRef.current
+                syncNoteStatusesRef.current,
+                preReadingAnswerOutcomesRef.current
               );
             const trebleGroups = visibleRowGroups.map((group) =>
               group.filter((note) => note.staff === "treble")
@@ -2956,7 +2965,8 @@ export function StaffPagePrompt({
                       undefined,
                       undefined,
                       undefined,
-                      syncNoteStatusesRef.current
+                      syncNoteStatusesRef.current,
+                      preReadingAnswerOutcomesRef.current
                     ),
                     rowDurations[slotIndex],
                     (target) =>
@@ -2972,7 +2982,8 @@ export function StaffPagePrompt({
                         wrongStaffIndexRef.current,
                         wrongStaffRef.current,
                         getTargetMidiNoteNumber(target),
-                        syncNoteStatusesRef.current
+                        syncNoteStatusesRef.current,
+                        preReadingAnswerOutcomesRef.current
                       )
                   ).setStave(stave)
                 : new GhostNote(vexDuration).setStave(stave)
@@ -2994,7 +3005,8 @@ export function StaffPagePrompt({
                   undefined,
                   undefined,
                   undefined,
-                  syncNoteStatusesRef.current
+                  syncNoteStatusesRef.current,
+                  preReadingAnswerOutcomesRef.current
                 ),
               rowOnsets,
               beatsPerMeasure,
@@ -3091,7 +3103,8 @@ export function StaffPagePrompt({
                     wrongStaffIndexRef.current,
                     wrongStaffRef.current,
                     midi,
-                    syncNoteStatusesRef.current
+                    syncNoteStatusesRef.current,
+                    preReadingAnswerOutcomesRef.current
                   ),
                   element,
                   index,
@@ -4138,7 +4151,8 @@ export function StaffPagePrompt({
           wrongStaffIndex,
           wrongStaff,
           renderedNote.midi,
-          syncNoteStatuses
+          syncNoteStatuses,
+          preReadingAnswerOutcomes
         )
       );
     });
@@ -4158,7 +4172,8 @@ export function StaffPagePrompt({
           wrongStaffIndex,
           wrongStaff,
           midi,
-          syncNoteStatuses
+          syncNoteStatuses,
+          preReadingAnswerOutcomes
         )
       );
       const stemColor =
@@ -4176,6 +4191,7 @@ export function StaffPagePrompt({
     completedCount,
     completedNoteIndices,
     completedStaffNoteIndices,
+    preReadingAnswerOutcomes,
     syncNoteStatuses,
     isNightMode,
     palette,

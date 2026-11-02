@@ -546,6 +546,15 @@ export function PracticeView({
     noteName?: NoteName;
     staff?: Staff;
   } | null>(null);
+  const preReadingAnswerOutcomesRef = useRef(new Map<number, boolean>());
+  const preReadingOutcomesSessionIdRef = useRef(session?.id);
+  const [, setPreReadingAnswerOutcomeRevision] = useState(0);
+  useLayoutEffect(() => {
+    if (preReadingOutcomesSessionIdRef.current === session?.id) return;
+    preReadingOutcomesSessionIdRef.current = session?.id;
+    preReadingAnswerOutcomesRef.current = new Map();
+    setPreReadingAnswerOutcomeRevision((revision) => revision + 1);
+  }, [session?.id]);
   const [songPracticeSelection, setSongPracticeSelection] = useState<SongPracticeSelection | null>(
     null
   );
@@ -2121,6 +2130,7 @@ export function PracticeView({
     timers: sessionLifecycleTimers,
     services: sessionLifecycleServices,
     ui: sessionLifecycleUi,
+    learningLevelId,
   });
   prepareMicrophoneRecoveryReloadRef.current = async (): Promise<void> => {
     if (!sessionRef.current) return;
@@ -2507,6 +2517,11 @@ export function PracticeView({
         ? {
             advanceAfterWrong: !isDuetPractice,
             onResolvedAnswer: ({ answeredCorrectly, answerMidi, targetNote }) => {
+              preReadingAnswerOutcomesRef.current.set(
+                preReadingCurrentNoteIndex,
+                answeredCorrectly
+              );
+              setPreReadingAnswerOutcomeRevision((revision) => revision + 1);
               if (answeredCorrectly) {
                 void playTargetNote(targetNote).catch(() => undefined);
               } else {
@@ -2519,7 +2534,7 @@ export function PracticeView({
             wrongAnswerDelayMs: 180,
           }
         : undefined,
-    [isDuetPractice, isPreReadingPractice]
+    [isDuetPractice, isPreReadingPractice, preReadingCurrentNoteIndex]
   );
   const { handleDuetTimeout, handleSynchronizedTimeout, submitAnswer } = usePracticeAnswerFlow({
     values: {
@@ -2978,7 +2993,7 @@ export function PracticeView({
                 ? "MIDI 连接失败，请重试"
                 : hasDetectedInputs
                   ? "请选择 MIDI 设备"
-                  : "请连接 MIDI 键盘",
+                  : "请连接 MIDI 键盘，或切换到其他作答方式。",
         target: midiUnavailable
           ? isDuetPractice
             ? '[data-setup-guide-target="practice-hand-mode"]'
@@ -3173,6 +3188,11 @@ export function PracticeView({
         preReadingScoreWindow.getNoteVisibility(freeCursorIndexOffset + index)
       )
     : undefined;
+  const visiblePreReadingAnswerOutcomes = isPreReadingPractice
+    ? mobileStaffPageNotes.map(
+        (_, index) => preReadingAnswerOutcomesRef.current.get(freeCursorIndexOffset + index) ?? null
+      )
+    : undefined;
   const visibleSyncNoteStatuses = useMemo(
     () =>
       syncTimingFeedback
@@ -3330,6 +3350,7 @@ export function PracticeView({
           <StaffDistancePracticeView
             isActive={practiceTab === "distance"}
             showRestartControl={isLearningRoutePractice}
+            learningLevelId={learningLevelId}
             midi={midi}
             microphone={{
               error: practiceMicrophone.error,
@@ -3361,6 +3382,7 @@ export function PracticeView({
           <NameToKeyPracticeView
             isActive={practiceTab === "name-key"}
             showRestartControl={isLearningRoutePractice}
+            learningLevelId={learningLevelId}
             midi={midi}
             navigationExitRequest={navigationExitRequest}
             microphone={{
@@ -3748,6 +3770,7 @@ export function PracticeView({
               followRowIndex={freePracticeFollowRowIndex}
               trackedNoteIndex={trackedFreeScoreNoteIndex}
               preReadingNoteStates={visiblePreReadingNoteStates}
+              preReadingAnswerOutcomes={visiblePreReadingAnswerOutcomes}
               preReadingCurrentNoteIndex={
                 isPreReadingPractice
                   ? preReadingCurrentNoteIndex - freeCursorIndexOffset

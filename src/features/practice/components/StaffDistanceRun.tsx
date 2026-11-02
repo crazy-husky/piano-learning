@@ -63,6 +63,7 @@ interface PracticeNavigationExitRequest {
 }
 
 export interface StaffDistanceRunProps {
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
   chaseSettings: PracticeChaseSettings;
   fixedCount: number;
   fixedDurationSeconds: number;
@@ -296,6 +297,7 @@ function createStaffDistanceScorePages(
 }
 
 function StaffDistanceIntervalRun({
+  learningLevelId,
   chaseSettings,
   fixedCount,
   fixedDurationSeconds,
@@ -816,6 +818,7 @@ function StaffDistanceIntervalRun({
         promptStartedAt: new Date(Date.now() - responseMs).toISOString(),
         promptEndedAt: new Date().toISOString(),
         mode: "staff-distance",
+        ...(learningLevelId ? { learningLevelId } : {}),
         inputMode: effectiveInputMode,
         deviceInfo: answerDeviceInfo(),
         ...(effectiveInputMode === "microphone"
@@ -880,6 +883,7 @@ function StaffDistanceIntervalRun({
       feedback?.type,
       fixedCount,
       inputMethod,
+      learningLevelId,
       mode,
       pauseAtQuestionLimit,
       questionIndex,
@@ -1477,6 +1481,7 @@ export function StaffDistanceRun(props: StaffDistanceRunProps): JSX.Element {
   if (props.trainingMode === "finger") {
     return (
       <StaffDistanceFingerRun
+        learningLevelId={props.learningLevelId}
         fingerHand={props.session.staffDistance?.fingerHand ?? "right"}
         fingerNumber={props.session.staffDistance?.fingerNumber ?? 1}
         inputMethod={props.inputMethod}

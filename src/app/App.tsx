@@ -1642,7 +1642,9 @@ export function App({
                       reviews={data.reviews}
                       sessions={data.sessions}
                       staffRecallRuns={data.staffRecallRuns}
-                      onSettingsSaved={(settings) => saveSettings(settings, { feedback: false })}
+                      onDataChanged={
+                        route.levelId === 1 ? refreshStaffRecallHistory : refreshPracticeHistory
+                      }
                     />
                   ) : (
                     <HistoryLoadingState

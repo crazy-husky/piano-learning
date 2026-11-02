@@ -546,7 +546,9 @@
 }
 
 .staff-distance-action-controls > .practice-midi-start-warning {
-  flex: 0 1 440px;
+  flex: 0 1 auto;
+  width: fit-content;
+  max-width: min(440px, 100%);
 }
 
 .staff-distance-start-wrap {
@@ -970,6 +972,14 @@
   justify-content: center;
   gap: 10px;
   margin: 2px 0 0;
+}
+
+.staff-distance-question-actions.is-left-hand {
+  justify-content: flex-end;
+}
+
+.staff-distance-question-actions.is-right-hand {
+  justify-content: flex-start;
 }
 
 .staff-distance-question-actions button,
@@ -1885,8 +1895,8 @@
 
   .staff-distance-action-controls > .practice-midi-start-warning {
     flex: 0 0 auto;
-    width: 100%;
-    max-width: none;
+    width: fit-content;
+    max-width: 100%;
   }
 
   .staff-distance-start-wrap,

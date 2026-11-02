@@ -902,19 +902,27 @@
 }
 
 .staff-game-shell.is-ready .staff-game-playfield.is-ready.has-midi-device-warning {
-  --staff-game-midi-device-warning-offset: 60px;
+  overflow: visible;
 }
 
 .staff-game-shell.is-ready
   .staff-game-playfield.is-ready.has-midi-device-warning
   > .staff-game-ready-card {
-  max-height: calc(100% - var(--staff-game-midi-device-warning-offset) - 12px);
-  margin-block-start: var(--staff-game-midi-device-warning-offset);
+  max-height: calc(100% - 12px);
+  margin-block-start: 0;
   margin-block-end: 12px;
 }
 
-@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
-  .staff-game-shell.is-ready .staff-game-playfield.is-ready.has-midi-device-warning {
-    --staff-game-midi-device-warning-offset: clamp(56px, 7dvh, 64px);
-  }
+.staff-game-shell.is-ready .staff-game-midi-device-warning {
+  top: calc(0px - var(--staff-ready-control-height, 40px) - 8px);
+}
+
+.staff-game-shell.is-ready .staff-game-hud.is-ready.has-midi-device-warning {
+  pointer-events: none;
+}
+
+.staff-game-shell.is-ready
+  .staff-game-hud.is-ready.has-midi-device-warning
+  :is(.staff-game-level-medal.is-jump-trigger, .staff-game-jump-button) {
+  pointer-events: auto;
 }

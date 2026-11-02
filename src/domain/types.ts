@@ -138,6 +138,8 @@ export interface AnswerEvent {
   promptStartedAt?: string;
   promptEndedAt?: string;
   mode: AnswerEventMode;
+  /** Learning route that produced this prompt; used to scope level statistics and deletion. */
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
   /** Challenge subtype; absent for songs, review rounds, and legacy events. */
   gameMode?: StaffGameChallengeMode | null;
   staffGameSource?: "challenge" | "review";

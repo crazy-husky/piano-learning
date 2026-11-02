@@ -51,6 +51,7 @@ interface StaffToNamePreferences {
 interface StaffToNamePracticeViewProps {
   isActive: boolean;
   showRestartControl?: boolean;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
   navigationExitRequest?: {
     id: number;
     targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal" | "metronome";
@@ -159,6 +160,7 @@ function formatDuration(milliseconds: number | null): string {
 export function StaffToNamePracticeView({
   isActive,
   showRestartControl = false,
+  learningLevelId,
   navigationExitRequest,
   onBeforePracticeStart,
   onDataChanged,
@@ -331,6 +333,7 @@ export function StaffToNamePracticeView({
           promptStartedAt: promptStartedAtIsoRef.current,
           promptEndedAt: now.toISOString(),
           mode: "staff-to-name",
+          ...(learningLevelId ? { learningLevelId } : {}),
           inputMode: attempts[0]?.inputMode ?? "virtual-keyboard",
           deviceInfo: answerDeviceInfo(),
           targetNoteId: currentTarget.id,
@@ -376,6 +379,7 @@ export function StaffToNamePracticeView({
       onRunningChange,
       onStageChange,
       persistEvent,
+      learningLevelId,
       preferences.enabledGroupIds,
       preferences.fixedCount,
       preferences.fixedDurationSeconds,
@@ -406,6 +410,7 @@ export function StaffToNamePracticeView({
         promptStartedAt: promptStartedAtIsoRef.current,
         promptEndedAt: now.toISOString(),
         mode: "staff-to-name",
+        ...(learningLevelId ? { learningLevelId } : {}),
         inputMode: attempts[0]?.inputMode ?? "virtual-keyboard",
         deviceInfo: answerDeviceInfo(),
         targetNoteId: currentTarget.id,
@@ -452,6 +457,7 @@ export function StaffToNamePracticeView({
     },
     [
       persistEvent,
+      learningLevelId,
       preferences.enabledGroupIds,
       preferences.fixedCount,
       preferences.fixedDurationSeconds,

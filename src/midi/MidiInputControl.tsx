@@ -7,6 +7,7 @@ export interface MidiInputControlProps {
   className?: string;
   disabled?: boolean;
   label?: string;
+  missingDeviceLabel?: string;
   setupGuideTarget?: string;
   midi: Pick<
     MidiInputController,
@@ -26,6 +27,7 @@ export function MidiInputControl({
   className = "",
   disabled = false,
   label = "连接 MIDI",
+  missingDeviceLabel = "未检测到设备 · 重试",
   midi,
   setupGuideTarget,
 }: MidiInputControlProps): JSX.Element {
@@ -107,7 +109,7 @@ export function MidiInputControl({
       : midi.status === "denied" || midi.status === "error"
         ? `重新连接${label.replace(/^连接/, "")}`
         : midi.status === "ready"
-          ? "未检测到设备 · 重试"
+          ? missingDeviceLabel
           : label;
 
   return (

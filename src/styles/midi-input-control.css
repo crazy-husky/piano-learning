@@ -34,10 +34,14 @@
 }
 
 .practice-midi-start-warning {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 7px;
   box-sizing: border-box;
-  flex: 0 1 440px;
+  flex: 0 1 auto;
+  width: fit-content;
   min-width: 0;
-  max-width: 440px;
+  max-width: min(440px, 100%);
   margin: 0;
   padding: 7px 9px;
   border: 1px solid color-mix(in srgb, var(--danger) 62%, var(--line));
@@ -47,6 +51,11 @@
   font-size: 12px;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+
+.practice-midi-start-warning-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
 }
 
 [data-setup-guide-target].is-setup-guiding {

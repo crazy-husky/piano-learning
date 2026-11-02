@@ -108,6 +108,7 @@ interface UsePracticeSessionLifecycleOptions {
   timers: Pick<PracticeTimers, "getPromptActiveMs" | "getSessionActiveMs" | "pauseActiveTimers">;
   services: PracticeSessionLifecycleServices;
   ui: PracticeSessionLifecycleUi;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 export function usePracticeSessionLifecycle({
@@ -115,6 +116,7 @@ export function usePracticeSessionLifecycle({
   timers,
   services,
   ui,
+  learningLevelId,
 }: UsePracticeSessionLifecycleOptions) {
   const pendingReviewPersistenceRef = useRef<Promise<void>[]>([]);
   const finishCurrentReview = useCallback(
@@ -201,6 +203,7 @@ export function usePracticeSessionLifecycle({
           promptStartedAt: review.startedAt,
           promptEndedAt: review.endedAt,
           mode: preReadingBufferSize !== undefined ? "pre-reading" : "free-practice",
+          ...(learningLevelId ? { learningLevelId } : {}),
           inputMode,
           deviceInfo: answerDeviceInfo(),
           ...(preReadingBufferSize !== undefined ? { preReadingBufferSize } : {}),
@@ -276,7 +279,7 @@ export function usePracticeSessionLifecycle({
       runtime.sessionReviewsRef.current = [...runtime.sessionReviewsRef.current, review];
       return review;
     },
-    [runtime, timers]
+    [learningLevelId, runtime, timers]
   );
 
   const completeSession = useCallback(

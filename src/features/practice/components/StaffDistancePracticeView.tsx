@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   Cable,
   ChevronDown,
   CircleHelp,
@@ -112,6 +113,7 @@ interface DistanceFocus {
 interface StaffDistancePracticeViewProps {
   isActive: boolean;
   showRestartControl?: boolean;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
   distanceMode?: PracticeDistanceMode;
   midi: MidiInputController;
   microphone: StaffDistanceMicrophoneInput;
@@ -376,6 +378,7 @@ function formatMedianResponse(session: PracticeSessionRecord): string {
 export function StaffDistancePracticeView({
   isActive,
   showRestartControl = false,
+  learningLevelId,
   distanceMode,
   midi,
   microphone,
@@ -710,7 +713,7 @@ export function StaffDistancePracticeView({
                 ? "MIDI 连接失败，请重试"
                 : midi.status === "ready" && midi.inputs.length > 0
                   ? "请选择 MIDI 设备"
-                  : "请连接 MIDI 键盘"
+                  : "请连接 MIDI 键盘，或切换到其他作答方式。"
       );
       guideSetupRequirement(
         midiUnavailable
@@ -979,6 +982,7 @@ export function StaffDistancePracticeView({
         : getDistanceNotes(runSession.staffDistance);
     return (
       <StaffDistanceRun
+        learningLevelId={learningLevelId}
         key={runSession.id}
         chaseSettings={{
           enabled: preferences.chaseEnabled,
@@ -1879,7 +1883,12 @@ export function StaffDistancePracticeView({
           <div className="practice-free-action-buttons staff-distance-action-controls">
             {startError ? (
               <p className="practice-midi-start-warning" data-setup-guide-warning="" role="alert">
-                {startError}
+                <AlertCircle
+                  aria-hidden="true"
+                  className="practice-midi-start-warning-icon"
+                  size={16}
+                />
+                <span>{startError}</span>
               </p>
             ) : null}
             <span className="practice-start-action staff-distance-start-wrap">

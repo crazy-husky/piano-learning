@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BarChart3, ChevronDown, Keyboard, Mic, Music2, Play, Settings2 } from "lucide-react";
+import {
+  AlertCircle,
+  BarChart3,
+  ChevronDown,
+  Keyboard,
+  Mic,
+  Music2,
+  Play,
+  Settings2,
+} from "lucide-react";
 import type {
   AnswerPitchMode,
   DuetPracticeLevel,
@@ -498,7 +507,7 @@ export function PracticeSetupView({
                 ? "MIDI 连接失败，请重试"
                 : hasUnselectedDevice
                   ? "请选择 MIDI 设备"
-                  : "请连接 MIDI 键盘"
+                  : "请连接 MIDI 键盘，或切换到其他作答方式。"
       );
       guideSetupRequirement(
         midiUnavailable
@@ -1361,7 +1370,12 @@ export function PracticeSetupView({
             <div className="practice-free-action-buttons">
               {setupStartError ? (
                 <p className="practice-midi-start-warning" data-setup-guide-warning="" role="alert">
-                  {setupStartError}
+                  <AlertCircle
+                    aria-hidden="true"
+                    className="practice-midi-start-warning-icon"
+                    size={16}
+                  />
+                  <span>{setupStartError}</span>
                 </p>
               ) : null}
               <span className="practice-start-action">
@@ -1594,7 +1608,12 @@ export function PracticeSetupView({
             <div className="song-selection-action-row">
               {songStartError ? (
                 <p className="practice-midi-start-warning" data-setup-guide-warning="" role="alert">
-                  {songStartError}
+                  <AlertCircle
+                    aria-hidden="true"
+                    className="practice-midi-start-warning-icon"
+                    size={16}
+                  />
+                  <span>{songStartError}</span>
                 </p>
               ) : microphoneStatus === "requesting" ? (
                 <p className="practice-midi-start-warning" role="status">

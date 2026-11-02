@@ -87,6 +87,7 @@ interface FingerStepAttempts {
 }
 
 export interface StaffDistanceFingerRunProps {
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
   fingerHand: StaffDistanceFingerHand;
   fingerNumber: StaffDistanceFingerNumber;
   inputMethod: StaffDistanceInputMethod;
@@ -122,6 +123,7 @@ function makeEmptyStepAttempts(): FingerStepAttempts {
 }
 
 function makeFingerAnswerEvent(args: {
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
   attempts: AnswerAttempt[];
   batch: StaffDistanceFingerBatch;
   cardIndex: number;
@@ -140,6 +142,7 @@ function makeFingerAnswerEvent(args: {
 }): AnswerEvent {
   const {
     attempts,
+    learningLevelId,
     batch,
     cardIndex,
     elapsedMs,
@@ -168,6 +171,7 @@ function makeFingerAnswerEvent(args: {
     promptStartedAt,
     promptEndedAt,
     mode: "staff-distance",
+    ...(learningLevelId ? { learningLevelId } : {}),
     inputMode: effectiveInputMode,
     deviceInfo: answerDeviceInfo(),
     ...(effectiveInputMode === "microphone" ? microphoneContext : {}),
@@ -203,6 +207,7 @@ function makeFingerAnswerEvent(args: {
 }
 
 export function StaffDistanceFingerRun({
+  learningLevelId,
   fingerHand,
   fingerNumber,
   inputMethod,
@@ -581,6 +586,7 @@ export function StaffDistanceFingerRun({
     if (currentStep === "target" && state.referenceCompleted) {
       enqueueAnswerEvent(
         makeFingerAnswerEvent({
+          learningLevelId,
           attempts: [...state.reference],
           batch: card.batch,
           cardIndex: activeCardIndex,
@@ -601,6 +607,7 @@ export function StaffDistanceFingerRun({
     }
     enqueueAnswerEvent(
       makeFingerAnswerEvent({
+        learningLevelId,
         attempts: [...attempts],
         batch: card.batch,
         cardIndex: activeCardIndex,
@@ -648,6 +655,7 @@ export function StaffDistanceFingerRun({
     fingerNumber,
     inputMethod,
     isNoAnswerMode,
+    learningLevelId,
     session,
   ]);
   const timeoutCardRef = useRef(timeoutCard);
@@ -743,6 +751,7 @@ export function StaffDistanceFingerRun({
       state.targetCompleted = true;
       enqueueAnswerEvent(
         makeFingerAnswerEvent({
+          learningLevelId,
           attempts: [...state.reference],
           batch: card.batch,
           cardIndex: activeCardIndex,
@@ -762,6 +771,7 @@ export function StaffDistanceFingerRun({
       );
       enqueueAnswerEvent(
         makeFingerAnswerEvent({
+          learningLevelId,
           attempts: [...state.target],
           batch: card.batch,
           cardIndex: activeCardIndex,
@@ -815,6 +825,7 @@ export function StaffDistanceFingerRun({
       fingerNumber,
       inputMethod,
       isNoAnswerMode,
+      learningLevelId,
       session,
     ]
   );
@@ -1156,7 +1167,10 @@ export function StaffDistanceFingerRun({
       </div>
 
       {isNoAnswerMode ? (
-        <div aria-label="免答模式操作" className="staff-distance-question-actions">
+        <div
+          aria-label="免答模式操作"
+          className={`staff-distance-question-actions is-${fingerHand}-hand`}
+        >
           {inputError ? <p role="alert">{inputError}</p> : null}
           <button
             disabled={isAnswerRevealed || isNoAnswerComplete}

@@ -8,6 +8,7 @@ export interface StaffGameHudProps {
   isQuestionCountProgress: boolean;
   isWrongNoteReview: boolean;
   isReady: boolean;
+  hasMissingMidiWarning?: boolean;
   rushModeActive: boolean;
   historyLabel: string;
   historyStars: number;
@@ -34,6 +35,7 @@ export function StaffGameHud({
   isQuestionCountProgress,
   isWrongNoteReview,
   isReady,
+  hasMissingMidiWarning = false,
   rushModeActive,
   historyLabel,
   historyStars,
@@ -145,7 +147,7 @@ export function StaffGameHud({
 
   return (
     <header
-      className={`staff-game-hud${isSongMode ? " is-song-mode" : ""}${isLearningChallenge ? " is-learning-test" : ""}${isArcadeMode ? " is-arcade-mode" : ""}${rushModeActive ? " is-rush-mode" : ""}${isWrongNoteReview ? " is-wrong-note-review" : ""}${isReady ? " is-ready" : ""}`}
+      className={`staff-game-hud${isSongMode ? " is-song-mode" : ""}${isLearningChallenge ? " is-learning-test" : ""}${isArcadeMode ? " is-arcade-mode" : ""}${rushModeActive ? " is-rush-mode" : ""}${isWrongNoteReview ? " is-wrong-note-review" : ""}${isReady ? " is-ready" : ""}${hasMissingMidiWarning ? " has-midi-device-warning" : ""}`}
     >
       {!rushModeActive && !isWrongNoteReview ? (
         <div

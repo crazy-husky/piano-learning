@@ -89,6 +89,7 @@ interface NameToKeyMicrophone {
 interface NameToKeyPracticeViewProps {
   isActive: boolean;
   showRestartControl?: boolean;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
   midi: MidiInputController;
   microphone: NameToKeyMicrophone;
   navigationExitRequest?: {
@@ -231,6 +232,7 @@ function NameKeyReferenceDialog({ isOpen, onClose }: NameKeyReferenceDialogProps
 function NameToKeyPracticeContent({
   isActive,
   showRestartControl = false,
+  learningLevelId,
   midi,
   microphone,
   navigationExitRequest,
@@ -455,6 +457,7 @@ function NameToKeyPracticeContent({
         promptStartedAt: promptStartedAtIsoRef.current,
         promptEndedAt: occurredAt,
         mode: "name-to-key",
+        ...(learningLevelId ? { learningLevelId } : {}),
         inputMode,
         deviceInfo: answerDeviceInfo(),
         ...(inputMode === "microphone"
@@ -488,7 +491,7 @@ function NameToKeyPracticeContent({
       };
       return event;
     },
-    [preferences]
+    [learningLevelId, preferences]
   );
 
   const finishRound = useCallback(
@@ -785,7 +788,7 @@ function NameToKeyPracticeContent({
                 ? "MIDI 连接失败，请重试"
                 : midi.status === "ready" && midi.inputs.length > 0
                   ? "请选择 MIDI 设备"
-                  : "请连接 MIDI 键盘"
+                  : "请连接 MIDI 键盘，或切换到其他作答方式。"
       );
       setMidiAttentionSource("start");
       guideSetupRequirement(
@@ -1812,6 +1815,7 @@ export function NameToKeyPracticeView({
           <StaffToNamePracticeView
             isActive={viewProps.isActive}
             showRestartControl={viewProps.showRestartControl}
+            learningLevelId={viewProps.learningLevelId}
             navigationExitRequest={viewProps.navigationExitRequest}
             onBeforePracticeStart={viewProps.onBeforePracticeStart}
             onDataChanged={viewProps.onDataChanged}
