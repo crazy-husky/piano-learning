@@ -46,6 +46,8 @@ import type {
 } from "../../../domain/types";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import { getMidiPracticeStartWarning } from "../../../midi/midiPracticeWarning";
+import { getMidiUnavailableNotice } from "../../../midi/midiUnavailableNotice";
 import type { PracticeChaseSettings } from "./PracticeChaseSettingsDialog";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
@@ -701,19 +703,13 @@ export function StaffDistancePracticeView({
       activeInputMethod === "midi" &&
       !midi.isConnected
     ) {
-      const midiUnavailable = midi.status === "unsupported" || midi.status === "insecure-context";
+      const midiUnavailable = getMidiUnavailableNotice(midi.status) !== null;
       setStartError(
-        midiUnavailable
-          ? "当前环境不支持 MIDI，请改用麦克风"
-          : midi.status === "requesting"
-            ? "MIDI 正在连接，请稍候"
-            : midi.status === "denied"
-              ? "请检查 MIDI 权限"
-              : midi.status === "error"
-                ? "MIDI 连接失败，请重试"
-                : midi.status === "ready" && midi.inputs.length > 0
-                  ? "请选择 MIDI 设备"
-                  : "请连接 MIDI 键盘，或切换到其他作答方式。"
+        getMidiPracticeStartWarning({
+          isConnected: midi.isConnected,
+          inputs: midi.inputs,
+          status: midi.status,
+        }) ?? "MIDI 正在连接，请稍候。"
       );
       guideSetupRequirement(
         midiUnavailable
@@ -821,7 +817,7 @@ export function StaffDistancePracticeView({
     isStarting,
     microphone,
     midi.isConnected,
-    midi.inputs.length,
+    midi.inputs,
     midi.status,
     onBeforePracticeStart,
     isFingerNoAnswerSelected,
@@ -1437,7 +1433,7 @@ export function StaffDistancePracticeView({
                     <div className="staff-distance-input-switch">
                       <span>输入方式</span>
                       <div
-                        aria-label="弹奏输入方式"
+                        aria-label="输入方式"
                         className={`segmented staff-distance-input-methods${trainingMode === "finger" && canOfferVirtualKeyboard ? " has-virtual-keyboard" : ""}`}
                         data-setup-guide-target="distance-input-mode"
                         role="group"

@@ -1055,6 +1055,10 @@
   margin-top: 16px;
 }
 
+.learning-stats-filter-grid > * {
+  align-self: start;
+}
+
 .learning-stats-custom-dates {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -1086,6 +1090,7 @@
 }
 .learning-stats-pitch-filter summary {
   display: flex;
+  height: 42px;
   min-height: 42px;
   align-items: center;
   overflow: hidden;
@@ -1103,9 +1108,17 @@
   display: none;
 }
 .learning-stats-pitch-filter summary::after {
+  width: 12px;
+  height: 12px;
   margin-left: auto;
-  padding-left: 8px;
-  content: "⌄";
+  margin-right: 1px;
+  content: "";
+  flex: 0 0 12px;
+  background-image: var(--app-select-chevron);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+  transition: transform 0.16s ease;
 }
 .learning-stats-pitch-filter details[open] summary::after {
   transform: rotate(180deg);
@@ -1147,6 +1160,7 @@
 .learning-stats-custom-dates input {
   width: 100%;
   min-width: 0;
+  height: 42px;
   min-height: 42px;
   padding: 8px 11px;
   border: 1px solid var(--border);

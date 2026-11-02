@@ -1,0 +1,18 @@
+:root {
+  --app-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m3 6 5 5 5-5' stroke='%232b2520' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
+:root[data-app-theme="dark"] {
+  --app-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m3 6 5 5 5-5' stroke='%23e7ebe5' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
+/* Keep native select menus while giving every standard dropdown the same inset caret. */
+:root select:not([multiple]):not(.staff-game-display-select):not(.staff-game-difficulty-select) {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background-image: var(--app-select-chevron) !important;
+  background-position: right 12px center !important;
+  background-repeat: no-repeat !important;
+  background-size: 12px 12px !important;
+  padding-inline-end: 36px !important;
+}

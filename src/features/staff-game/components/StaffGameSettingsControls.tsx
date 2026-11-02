@@ -75,6 +75,7 @@ function DisplaySetting({
     <section className="staff-game-settings-section staff-game-display-setting">
       <label htmlFor="staff-game-display-mode">虚拟钢琴显示</label>
       <select
+        className="staff-game-display-select"
         id="staff-game-display-mode"
         onChange={(event) => onChange(event.currentTarget.value as GameDisplayMode)}
         value={value}

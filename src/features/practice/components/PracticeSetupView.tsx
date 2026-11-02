@@ -38,6 +38,7 @@ import {
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { getMidiUnavailableNotice } from "../../../midi/midiUnavailableNotice";
+import { getMidiPracticeStartWarning } from "../../../midi/midiPracticeWarning";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { GlobalRangeControls } from "../../../shared/components/GlobalRangeControls";
@@ -140,8 +141,9 @@ interface PracticeSetupViewProps {
   overlay?: ReactNode;
   preferences: PracticeSetupUiPreferences;
   setupStartError?: string | null;
+  setupStartGuideTarget?: string | null;
+  setupStartGuideRequest?: number;
   metronomeError?: string | null;
-  metronomeBeatsPerBar?: number;
   startPausedReading: boolean;
   settings: AppSettings;
 }
@@ -286,8 +288,9 @@ export function PracticeSetupView({
   overlay,
   preferences,
   setupStartError,
+  setupStartGuideTarget,
+  setupStartGuideRequest,
   metronomeError,
-  metronomeBeatsPerBar = 4,
   startPausedReading,
   settings,
 }: PracticeSetupViewProps): JSX.Element {
@@ -320,21 +323,6 @@ export function PracticeSetupView({
   const promptDisplayMode =
     lockedPromptDisplayMode ??
     (activeAnswerPitchMode === "exact-pitch" ? "staff-page" : savedPromptDisplayMode);
-  const supportsMetronomeSyncNoteDurations =
-    promptNoteDurations.length > 0 &&
-    promptNoteDurations.every((duration) => duration === "whole" || duration === "quarter");
-  const supportsPreReadingMetronomeSync =
-    preReadingBufferSize === undefined || metronomeBeatsPerBar === 4;
-  const canEnableMetronomeSync =
-    supportsMetronomeSyncNoteDurations && supportsPreReadingMetronomeSync;
-  const preReadingMetronomeSyncUnavailableReason =
-    preReadingBufferSize === undefined
-      ? undefined
-      : !supportsMetronomeSyncNoteDurations
-        ? "节拍同步需要使用四分音符或全音符节奏。"
-        : metronomeBeatsPerBar !== 4
-          ? "当前节拍器不是 4/4 拍，请先调整节拍器拍号。"
-          : undefined;
   const autoPlayTarget =
     activeAnswerPitchMode === "exact-pitch" ? midiAutoPlayTarget : nonMidiAutoPlayTarget;
   const playAnswerNote =
@@ -399,6 +387,29 @@ export function PracticeSetupView({
     setSongStartError(null);
   }, [midi.isConnected, midiAttentionSource]);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const pendingStartGuideTargetRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      setupStartError &&
+      setupStartGuideTarget === '[data-setup-guide-target="practice-note-durations"]'
+    ) {
+      pendingStartGuideTargetRef.current = setupStartGuideTarget;
+      setIsAdvancedOpen(true);
+      return;
+    }
+    pendingStartGuideTargetRef.current = null;
+  }, [setupStartError, setupStartGuideRequest, setupStartGuideTarget]);
+  useEffect(() => {
+    const target = pendingStartGuideTargetRef.current;
+    if (!target || !isAdvancedOpen) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      if (pendingStartGuideTargetRef.current !== target) return;
+      guideSetupRequirement(target);
+      pendingStartGuideTargetRef.current = null;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isAdvancedOpen, setupStartError, setupStartGuideRequest, setupStartGuideTarget]);
   const [isCustomCountSelected, setIsCustomCountSelected] = useState(
     () =>
       !PRACTICE_FIXED_COUNT_PRESETS.includes(
@@ -494,20 +505,9 @@ export function PracticeSetupView({
 
   const startSongPractice = async (): Promise<void> => {
     if (requiresMidi && !midi.isConnected) {
-      const midiUnavailable = midi.status === "unsupported" || midi.status === "insecure-context";
-      const hasUnselectedDevice = midi.status === "ready" && midi.inputs.length > 0;
+      const midiUnavailable = getMidiUnavailableNotice(midi.status) !== null;
       setSongStartError(
-        midiUnavailable
-          ? "当前环境不支持 MIDI，请选择单手练习"
-          : midi.status === "requesting"
-            ? "MIDI 正在连接，请稍候"
-            : midi.status === "denied"
-              ? "请检查 MIDI 权限"
-              : midi.status === "error"
-                ? "MIDI 连接失败，请重试"
-                : hasUnselectedDevice
-                  ? "请选择 MIDI 设备"
-                  : "请连接 MIDI 键盘，或切换到其他作答方式。"
+        getMidiPracticeStartWarning(midi, "midi-required") ?? "MIDI 正在连接，请稍候。"
       );
       guideSetupRequirement(
         midiUnavailable
@@ -906,9 +906,9 @@ export function PracticeSetupView({
                 </div>
 
                 <div className="practice-free-field practice-free-answer-field">
-                  <span className="control-label">怎么作答</span>
+                  <span className="control-label">输入方式</span>
                   <div
-                    aria-label="答题方式"
+                    aria-label="输入方式"
                     className={`practice-free-answer-options${isDuetPractice ? " is-duet" : ""}`}
                     data-setup-guide-target="practice-answer-mode"
                   >
@@ -999,10 +999,7 @@ export function PracticeSetupView({
               </div>
             </section>
 
-            {activeAnswerPitchMode === "exact-pitch" &&
-            (isDuetPractice ||
-              supportsMetronomeSyncNoteDurations ||
-              preReadingBufferSize !== undefined) ? (
+            {activeAnswerPitchMode === "exact-pitch" ? (
               <section
                 aria-label="节拍同步"
                 className="practice-free-section"
@@ -1013,8 +1010,7 @@ export function PracticeSetupView({
                   {!isDuetPractice ? (
                     <label className="practice-checkbox-option">
                       <input
-                        checked={metronomeSyncEnabled && canEnableMetronomeSync}
-                        disabled={!canEnableMetronomeSync}
+                        checked={metronomeSyncEnabled}
                         type="checkbox"
                         onChange={(event) =>
                           onMetronomeSyncEnabledChange(event.currentTarget.checked)
@@ -1022,11 +1018,6 @@ export function PracticeSetupView({
                       />
                       <span>木鱼与谱面同步</span>
                     </label>
-                  ) : null}
-                  {preReadingMetronomeSyncUnavailableReason ? (
-                    <small className="practice-free-helper is-warning">
-                      {preReadingMetronomeSyncUnavailableReason}
-                    </small>
                   ) : null}
                   {metronomeError ? (
                     <small className="practice-free-warning" role="alert">
@@ -1222,7 +1213,11 @@ export function PracticeSetupView({
                         </button>
                       </div>
                     ) : null}
-                    <div aria-label="练习时值，可多选" className="practice-free-duration-tags">
+                    <div
+                      aria-label="练习时值，可多选"
+                      className="practice-free-duration-tags"
+                      data-setup-guide-target="practice-note-durations"
+                    >
                       {PROMPT_NOTE_DURATION_OPTIONS.map((option) => (
                         <button
                           aria-pressed={promptNoteDurations.includes(option.value)}

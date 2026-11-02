@@ -45,6 +45,8 @@ import type {
 } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
+import { getMidiPracticeStartWarning } from "../../../midi/midiPracticeWarning";
+import { getMidiUnavailableNotice } from "../../../midi/midiUnavailableNotice";
 import type { MetronomeController } from "../../metronome/useMetronomeController";
 import { resolveHistoryLimit } from "../../../shared/components/HistoryLimitControl";
 import {
@@ -574,6 +576,7 @@ export function PracticeView({
   const [isChaseSettingsOpen, setIsChaseSettingsOpen] = useState(false);
   const [isRestartingPractice, setIsRestartingPractice] = useState(false);
   const [setupStartError, setSetupStartError] = useState<string | null>(null);
+  const [setupStartGuideRequest, setSetupStartGuideRequest] = useState(0);
   const handleStaffDistanceStageChange = useCallback(
     (active: boolean): void => {
       setIsStaffDistanceStageActive(active);
@@ -678,7 +681,6 @@ export function PracticeView({
     practiceTab === "free" &&
     !isDuetPractice &&
     answerPitchMode === "exact-pitch" &&
-    supportsMetronomeSyncNoteDurations &&
     (isPreReadingPractice
       ? preReadingMetronomeSyncEnabled
       : practiceSetupPreferences.metronomeSyncEnabled);
@@ -2961,6 +2963,35 @@ export function PracticeView({
   ]);
 
   const setupStartIssue = useMemo(() => {
+    if (
+      (isDuetPractice || (practiceTab === "free" && answerPitchMode === "exact-pitch")) &&
+      !midi.isConnected
+    ) {
+      const midiUnavailable = getMidiUnavailableNotice(midi.status) !== null;
+      return {
+        message:
+          getMidiPracticeStartWarning(
+            { isConnected: midi.isConnected, inputs: midi.inputs, status: midi.status },
+            isDuetPractice ? "midi-required" : "practice"
+          ) ?? "MIDI 正在连接，请稍候。",
+        target: midiUnavailable
+          ? isDuetPractice
+            ? '[data-setup-guide-target="practice-hand-mode"]'
+            : '[data-setup-guide-target="practice-answer-mode"]'
+          : '[data-setup-guide-target="practice-midi-device"]',
+      };
+    }
+    if (
+      shouldSynchronizeMetronome &&
+      practiceTab === "free" &&
+      !isDuetPractice &&
+      !supportsMetronomeSyncNoteDurations
+    ) {
+      return {
+        message: "木鱼与谱面同步需要使用四分音符或全音符，请调整谱面时值。",
+        target: '[data-setup-guide-target="practice-note-durations"]',
+      };
+    }
     if (shouldSynchronizeMetronome && !metronomeFloatingVisible) {
       return {
         message: "请先开启木鱼节拍器",
@@ -2971,34 +3002,6 @@ export function PracticeView({
       return {
         message: "木鱼与谱面同步已开启，木鱼节拍器需要设为4/4拍",
         target: '[data-setup-guide-target="practice-metronome-woodfish"]',
-      };
-    }
-    if (
-      (isDuetPractice || (practiceTab === "free" && answerPitchMode === "exact-pitch")) &&
-      !midi.isConnected
-    ) {
-      const midiUnavailable = midi.status === "unsupported" || midi.status === "insecure-context";
-      const midiConnecting = midi.status === "requesting";
-      const hasDetectedInputs = midi.status === "ready" && midi.inputs.length > 0;
-      return {
-        message: midiUnavailable
-          ? isDuetPractice
-            ? "当前环境不支持 MIDI，请切换为单手练习"
-            : "当前环境不支持 MIDI，请切换作答方式"
-          : midiConnecting
-            ? "MIDI 正在连接，请稍候"
-            : midi.status === "denied"
-              ? "请检查 MIDI 权限"
-              : midi.status === "error"
-                ? "MIDI 连接失败，请重试"
-                : hasDetectedInputs
-                  ? "请选择 MIDI 设备"
-                  : "请连接 MIDI 键盘，或切换到其他作答方式。",
-        target: midiUnavailable
-          ? isDuetPractice
-            ? '[data-setup-guide-target="practice-hand-mode"]'
-            : '[data-setup-guide-target="practice-answer-mode"]'
-          : '[data-setup-guide-target="practice-midi-device"]',
       };
     }
     if (isDuetPractice && queueStrategy === "note-drill" && drillNoteNames.length === 0) {
@@ -3035,18 +3038,22 @@ export function PracticeView({
     metronomeFloatingVisible,
     metronomePreferences.beatsPerBar,
     midi.isConnected,
-    midi.inputs.length,
+    midi.inputs,
     midi.status,
     practiceTab,
     queueNotes.length,
     queueStrategy,
     shouldSynchronizeMetronome,
+    supportsMetronomeSyncNoteDurations,
   ]);
   const setupDisabledReason = setupStartIssue?.message;
   const attemptStartSession = useCallback((): void => {
     if (setupStartIssue) {
       setSetupStartError(setupStartIssue.message);
-      if (setupStartIssue.target) guideSetupRequirement(setupStartIssue.target);
+      if (setupStartIssue.target) {
+        setSetupStartGuideRequest((current) => current + 1);
+        guideSetupRequirement(setupStartIssue.target);
+      }
       return;
     }
     setSetupStartError(null);
@@ -3465,7 +3472,8 @@ export function PracticeView({
           ...(isPreReadingPractice ? { promptDisplayMode: "staff-page" as const } : {}),
         }}
         setupStartError={setupStartError}
-        metronomeBeatsPerBar={metronomePreferences.beatsPerBar}
+        setupStartGuideTarget={setupStartIssue?.target}
+        setupStartGuideRequest={setupStartGuideRequest}
         startPausedReading={startPausedReading}
         settings={setupSettings}
         overlay={

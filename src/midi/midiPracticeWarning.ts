@@ -5,20 +5,21 @@ type MidiPracticeStartWarningContext = "practice" | "midi-required";
 
 type MidiPracticeWarningState = Pick<MidiInputController, "inputs" | "isConnected" | "status">;
 
-function addMicrophoneAlternative(message: string): string {
-  return `${message.replace(/[。.!?]+$/, "")}，也可切换为麦克风输入。`;
+function addPracticeModeAlternative(message: string): string {
+  return `${message.replace(/[。.!?]+$/, "")}，也可以切换到其他作答方式。`;
 }
 
 export function getMidiPracticeStartWarning(
   midi: MidiPracticeWarningState,
   context: MidiPracticeStartWarningContext = "practice"
 ): string | null {
-  if (midi.isConnected || midi.status === "requesting") return null;
+  if (midi.isConnected) return null;
+  if (midi.status === "requesting") return "MIDI 正在连接，请稍候。";
 
   const unavailableNotice = getMidiUnavailableNotice(midi.status);
   if (unavailableNotice) {
     const message = `${unavailableNotice.title}：${unavailableNotice.description}`;
-    return context === "practice" ? addMicrophoneAlternative(message) : message;
+    return context === "practice" ? addPracticeModeAlternative(message) : message;
   }
 
   const action = context === "midi-required" ? "左右手合弹" : "练习";
@@ -40,5 +41,5 @@ export function getMidiPracticeStartWarning(
       message = `请连接并选择 MIDI 键盘后开始${action}。`;
   }
 
-  return context === "practice" ? addMicrophoneAlternative(message) : message;
+  return context === "practice" ? addPracticeModeAlternative(message) : message;
 }

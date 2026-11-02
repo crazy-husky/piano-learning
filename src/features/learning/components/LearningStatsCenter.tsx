@@ -631,7 +631,7 @@ export function LearningStatsCenter({
           >
             <header>
               <div>
-                <span>{isRecallLevel ? "识谱回忆" : "错题详情"}</span>
+                {isRecallLevel ? <span>识谱回忆</span> : null}
                 <h2>{isRecallLevel ? "待巩固音" : "本关薄弱记录"}</h2>
               </div>
               <div className="learning-stats-weak-header-actions">

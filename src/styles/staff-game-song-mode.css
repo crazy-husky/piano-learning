@@ -715,7 +715,7 @@
   .app-nav-game-chevron {
     position: absolute;
     top: 4px;
-    right: 3px;
+    right: 10px;
     opacity: 0.72;
     transition: transform 0.16s ease;
   }
