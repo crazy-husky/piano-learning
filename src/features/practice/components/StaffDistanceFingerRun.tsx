@@ -1166,29 +1166,7 @@ export function StaffDistanceFingerRun({
         </div>
       </div>
 
-      {isNoAnswerMode ? (
-        <div
-          aria-label="免答模式操作"
-          className={`staff-distance-question-actions is-${fingerHand}-hand`}
-        >
-          {inputError ? <p role="alert">{inputError}</p> : null}
-          <button
-            disabled={isAnswerRevealed || isNoAnswerComplete}
-            onClick={showNoAnswerAnswer}
-            type="button"
-          >
-            {isAnswerRevealed ? "答案已显示" : "查看答案"}
-          </button>
-          <button
-            className="primary"
-            disabled={isNoAnswerComplete}
-            onClick={advanceNoAnswerCard}
-            type="button"
-          >
-            下一个
-          </button>
-        </div>
-      ) : (
+      {!isNoAnswerMode ? (
         <p
           aria-live={wrongFeedback ? "assertive" : "polite"}
           className={`staff-distance-question-copy${inputMethod === "virtual-keyboard" ? " is-virtual-keyboard" : ""}${wrongFeedback ? " is-error" : ""}`}
@@ -1202,7 +1180,7 @@ export function StaffDistanceFingerRun({
                   ? "参考音已弹对；可保持按住或先抬起，再按目标音。"
                   : "参考音已弹对，请弹奏第二个目标音。"))}
         </p>
-      )}
+      ) : null}
       {showsFingerKeyboard && currentCard && !isViewportBlocked && !isNoAnswerComplete ? (
         <StaffDistanceFingerKeyboard
           containerRef={keyboardRef}
@@ -1232,6 +1210,23 @@ export function StaffDistanceFingerRun({
           onTouchPointerStart={handleKeyboardTouchStart}
           rangeReferenceMidi={getTargetMidiNoteNumber(lineReferenceNote)}
         />
+      ) : null}
+      {isNoAnswerMode && !isNoAnswerComplete ? (
+        <div
+          aria-label="免答模式操作"
+          className={`staff-distance-question-actions is-${fingerHand}-hand`}
+        >
+          {inputError ? <p role="alert">{inputError}</p> : null}
+          {isAnswerRevealed ? (
+            <button className="primary" onClick={advanceNoAnswerCard} type="button">
+              下一个
+            </button>
+          ) : (
+            <button onClick={showNoAnswerAnswer} type="button">
+              查看答案
+            </button>
+          )}
+        </div>
       ) : null}
       {isNoAnswerComplete ? (
         <section

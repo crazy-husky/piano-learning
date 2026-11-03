@@ -50,6 +50,7 @@ export function answerInputMode(value: string | undefined): AnswerInputMode {
   if (value === "microphone") return "microphone";
   if (value === "midi" || value === "exact-pitch") return "midi";
   if (value === "screen-keyboard" || value === "virtual-keyboard") return "virtual-keyboard";
+  if (value === "computer-keyboard") return "computer-keyboard";
   return "computer-keyboard";
 }
 

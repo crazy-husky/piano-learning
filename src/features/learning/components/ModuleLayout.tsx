@@ -56,7 +56,7 @@ export function ModuleLayout({
         className={`learning-module-panel is-${activeTab}`}
         id={`learning-module-panel-${activeTab}`}
         role="tabpanel"
-        tabIndex={0}
+        tabIndex={activeTab === "guide" ? 0 : undefined}
       >
         {children}
       </div>

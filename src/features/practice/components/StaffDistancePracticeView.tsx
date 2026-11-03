@@ -4,6 +4,7 @@ import {
   ChevronDown,
   CircleHelp,
   Eye,
+  Keyboard,
   Mic,
   Music2,
   RotateCcw,
@@ -36,6 +37,7 @@ import type {
   PracticeSessionRecord,
   PromptNoteDuration,
   StaffDistanceInputMethod,
+  StaffDistanceComputerKeyboardBindings,
   StaffDistanceFingerHand,
   StaffDistanceFingerBatch,
   StaffDistanceFingerInteractionMode,
@@ -66,6 +68,12 @@ import { StaffDistanceRun, type StaffDistanceMicrophoneInput } from "./StaffDist
 import type { PracticeDistanceMode } from "../../../routing/appRoutes";
 import { PRACTICE_FIXED_COUNT_PRESETS } from "../logic/practiceLengthOptions";
 import {
+  DEFAULT_STAFF_DISTANCE_COMPUTER_KEYBOARD_BINDINGS,
+  getStaffDistanceComputerKeyboardRange,
+  currentDeviceRequiresExternalKeyboardNotice,
+  normalizeStaffDistanceComputerKeyboardBindings,
+} from "../logic/staffDistanceComputerKeyboard";
+import {
   PRACTICE_PIANO_CALIBRATION_CARD_WIDTH_MM,
   PRACTICE_PIANO_SCALE_MAX,
   PRACTICE_PIANO_SCALE_MIN,
@@ -74,6 +82,7 @@ import {
   canFitPracticePianoKeyboardInEitherOrientation,
 } from "./staffDistanceFingerKeyboardLayout";
 import { usePracticeViewportSize } from "./usePracticeViewportSize";
+import { StaffDistanceComputerKeyboardSettings } from "./StaffDistanceComputerKeyboardSettings";
 import {
   DEFAULT_SCORE_CHASE_PREFERENCES,
   SCORE_CHASE_SPEED_OPTIONS,
@@ -101,6 +110,8 @@ interface StaffDistancePreferences extends StaffDistancePracticeSettings {
   fingerInteractionMode: StaffDistanceFingerInteractionMode;
   fingerNumber: StaffDistanceFingerNumber;
   inputMethod: StaffDistanceInputMethod;
+  computerKeyboardBindings: StaffDistanceComputerKeyboardBindings;
+  lastNonComputerKeyboardInputMethod: "midi" | "microphone";
   keyboardScale: number;
   mode: PracticeMode;
   noteDurations: PromptNoteDuration[];
@@ -144,6 +155,8 @@ const DEFAULT_PREFERENCES: StaffDistancePreferences = {
   chaseStartCount: DEFAULT_SCORE_CHASE_PREFERENCES.startCount,
   includeUnison: false,
   inputMethod: "midi",
+  computerKeyboardBindings: DEFAULT_STAFF_DISTANCE_COMPUTER_KEYBOARD_BINDINGS,
+  lastNonComputerKeyboardInputMethod: "midi",
   keyboardScale: 1,
   maxDistance: 2,
   fixedCount: 30,
@@ -243,9 +256,16 @@ function normalizePreferences(value: unknown): StaffDistancePreferences {
       PRACTICE_PIANO_SCALE_MAX
     ),
     inputMethod:
-      record.inputMethod === "microphone" || record.inputMethod === "virtual-keyboard"
+      record.inputMethod === "microphone" ||
+      record.inputMethod === "virtual-keyboard" ||
+      record.inputMethod === "computer-keyboard"
         ? record.inputMethod
         : "midi",
+    computerKeyboardBindings: normalizeStaffDistanceComputerKeyboardBindings(
+      record.computerKeyboardBindings
+    ),
+    lastNonComputerKeyboardInputMethod:
+      record.lastNonComputerKeyboardInputMethod === "microphone" ? "microphone" : "midi",
     mode:
       record.mode === "open-ended" ||
       record.mode === "fixed-count" ||
@@ -330,6 +350,9 @@ function createDistanceSession(
         staffNotationMode === "grand" ? false : settings.includeInterStaffLedgerSpellings,
       includeUnison: isFingerMode ? false : preferences.includeUnison,
       inputMethod: preferences.trainingMode !== "look" ? preferences.inputMethod : undefined,
+      ...(preferences.inputMethod === "computer-keyboard"
+        ? { computerKeyboardBindings: preferences.computerKeyboardBindings }
+        : {}),
       maxDistance: isFingerMode ? 7 : preferences.maxDistance,
       noteDuration:
         preferences.noteDurations.length === 1 ? preferences.noteDurations[0] : undefined,
@@ -425,23 +448,22 @@ export function StaffDistancePracticeView({
     viewportSize,
     preferences.keyboardScale
   );
-  const activeInputMethod: StaffDistanceInputMethod =
-    trainingMode !== "finger" && preferences.inputMethod === "virtual-keyboard"
-      ? "midi"
-      : preferences.inputMethod;
   const previousMidiConnectionRef = useRef(midi.isConnected);
   const keyboardCalibrationRef = useRef<HTMLDetailsElement | null>(null);
   const inputMethodSelectionRevisionRef = useRef(0);
   const setInputMethod = useCallback(
     (inputMethod: StaffDistanceInputMethod): void => {
       inputMethodSelectionRevisionRef.current += 1;
-      setPreferences((current) => ({ ...current, inputMethod }));
+      setPreferences((current) => ({
+        ...current,
+        inputMethod,
+        ...(inputMethod === "midi" || inputMethod === "microphone"
+          ? { lastNonComputerKeyboardInputMethod: inputMethod }
+          : {}),
+      }));
     },
     [setPreferences]
   );
-  useLayoutEffect(() => {
-    if (isActive) onInputModeChange(isFingerNoAnswerSelected ? null : activeInputMethod);
-  }, [activeInputMethod, isActive, isFingerNoAnswerSelected, onInputModeChange]);
   const [isCustomCountSelected, setIsCustomCountSelected] = useState(
     () =>
       !PRACTICE_FIXED_COUNT_PRESETS.includes(
@@ -555,6 +577,77 @@ export function StaffDistancePracticeView({
     settings.crossGroupPitchIds,
     settings.staffNotationMode
   );
+  const computerKeyboardRange = useMemo(
+    () => getStaffDistanceComputerKeyboardRange(allSelectedNotes),
+    [allSelectedNotes]
+  );
+  const requiresExternalKeyboardNotice = useMemo(
+    () => currentDeviceRequiresExternalKeyboardNotice(),
+    []
+  );
+  const canUseComputerKeyboard =
+    allSelectedNotes.length > 0 && computerKeyboardRange.isEligible && trainingMode === "play";
+  const activeInputMethod: StaffDistanceInputMethod =
+    preferences.inputMethod === "computer-keyboard"
+      ? canUseComputerKeyboard
+        ? "computer-keyboard"
+        : preferences.lastNonComputerKeyboardInputMethod
+      : trainingMode !== "finger" && preferences.inputMethod === "virtual-keyboard"
+        ? "midi"
+        : preferences.inputMethod;
+  useEffect(() => {
+    if (
+      trainingMode !== "play" ||
+      preferences.inputMethod !== "computer-keyboard" ||
+      canUseComputerKeyboard
+    ) {
+      return;
+    }
+    const reason =
+      computerKeyboardRange.reason === "too-many-low-groups"
+        ? "物理键盘模式最多支持一个低音组"
+        : computerKeyboardRange.reason === "too-many-high-groups"
+          ? "物理键盘模式最多支持一个高音组"
+          : "当前音域暂不支持物理键盘输入";
+    setPreferences((current) =>
+      current.inputMethod === "computer-keyboard"
+        ? {
+            ...current,
+            inputMethod: current.lastNonComputerKeyboardInputMethod,
+          }
+        : current
+    );
+    toast.info(reason + "，已切回上次的输入方式。");
+  }, [
+    canUseComputerKeyboard,
+    computerKeyboardRange.reason,
+    preferences.inputMethod,
+    setPreferences,
+    trainingMode,
+  ]);
+  const selectComputerKeyboard = useCallback(async (): Promise<void> => {
+    if (requiresExternalKeyboardNotice && activeInputMethod !== "computer-keyboard") {
+      const confirmed = await confirm({
+        title: "物理键盘需要外接键盘",
+        description:
+          "此模式需要连接外接物理键盘，并按已设置的按键作答。触屏不能代替实体键盘；请确认已连接外接键盘后再继续。",
+        confirmLabel: "继续选择",
+        cancelLabel: "取消",
+      });
+      if (!confirmed) return;
+    }
+    setStartError(null);
+    setInputMethod("computer-keyboard");
+  }, [activeInputMethod, confirm, requiresExternalKeyboardNotice, setInputMethod]);
+  useLayoutEffect(() => {
+    if (isActive) {
+      onInputModeChange(
+        isFingerNoAnswerSelected || activeInputMethod === "computer-keyboard"
+          ? null
+          : activeInputMethod
+      );
+    }
+  }, [activeInputMethod, isActive, isFingerNoAnswerSelected, onInputModeChange]);
   const validation = validateStaffDistancePractice(notes, selectedPitchIds, intervalSettings);
   const fingerDeckValidation = useMemo(
     () =>
@@ -737,6 +830,15 @@ export function StaffDistancePracticeView({
       const currentSettings = preflight.settings ?? settings;
       const sessionNotes =
         trainingMode === "finger" ? fingerNotes : getDistanceNotes(currentSettings);
+      if (
+        trainingMode === "play" &&
+        activeInputMethod === "computer-keyboard" &&
+        !getStaffDistanceComputerKeyboardRange(sessionNotes).isEligible
+      ) {
+        setStartError("当前音域不适用物理键盘输入，请重新选择输入方式。");
+        setInputMethod(preferences.lastNonComputerKeyboardInputMethod);
+        return;
+      }
       const nextValidationError =
         trainingMode === "finger"
           ? createStaffDistanceFingerCards(
@@ -827,6 +929,7 @@ export function StaffDistancePracticeView({
     hasOnlyOneAnswer,
     settings,
     setupDisabledReason,
+    setInputMethod,
     trainingMode,
   ]);
 
@@ -1315,7 +1418,6 @@ export function StaffDistancePracticeView({
         className="staff-distance-mode-panel"
         id="staff-distance-mode-panel"
         role="tabpanel"
-        tabIndex={0}
       >
         {trainingMode !== "finger" ? (
           <section
@@ -1434,7 +1536,7 @@ export function StaffDistancePracticeView({
                       <span>输入方式</span>
                       <div
                         aria-label="输入方式"
-                        className={`segmented staff-distance-input-methods${trainingMode === "finger" && canOfferVirtualKeyboard ? " has-virtual-keyboard" : ""}`}
+                        className={`segmented staff-distance-input-methods${(trainingMode === "finger" && canOfferVirtualKeyboard) || canUseComputerKeyboard ? " has-third-input" : ""}`}
                         data-setup-guide-target="distance-input-mode"
                         role="group"
                       >
@@ -1466,6 +1568,16 @@ export function StaffDistancePracticeView({
                         >
                           <Cable aria-hidden="true" size={14} /> MIDI
                         </button>
+                        {canUseComputerKeyboard ? (
+                          <button
+                            aria-pressed={activeInputMethod === "computer-keyboard"}
+                            className={activeInputMethod === "computer-keyboard" ? "active" : ""}
+                            onClick={() => void selectComputerKeyboard()}
+                            type="button"
+                          >
+                            <Keyboard aria-hidden="true" size={14} /> 物理键盘
+                          </button>
+                        ) : null}
                         {trainingMode === "finger" && canOfferVirtualKeyboard ? (
                           <button
                             aria-pressed={preferences.inputMethod === "virtual-keyboard"}
@@ -1497,6 +1609,24 @@ export function StaffDistancePracticeView({
                         </span>
                       ) : null}
                     </div>
+                    {canUseComputerKeyboard && activeInputMethod === "computer-keyboard" ? (
+                      <>
+                        <StaffDistanceComputerKeyboardSettings
+                          bindings={preferences.computerKeyboardBindings}
+                          leftOctave={computerKeyboardRange.leftOctave}
+                          onChange={(computerKeyboardBindings) =>
+                            setPreferences((current) => ({
+                              ...current,
+                              computerKeyboardBindings,
+                            }))
+                          }
+                          rightOctave={computerKeyboardRange.rightOctave}
+                        />
+                        <p className="staff-distance-computer-keyboard-help">
+                          左手负责低音组，右手负责高音组。开始后，按对应物理键位弹奏谱面上的音；音区变化后会重新检查是否适用。
+                        </p>
+                      </>
+                    ) : null}
                     {trainingMode === "finger" && preferences.inputMethod === "virtual-keyboard" ? (
                       <details
                         className="staff-distance-keyboard-calibration"
@@ -1870,9 +2000,11 @@ export function StaffDistancePracticeView({
               <span className="practice-free-summary-chip">
                 {activeInputMethod === "microphone"
                   ? "麦克风"
-                  : activeInputMethod === "virtual-keyboard"
-                    ? "钢琴键盘"
-                    : "MIDI"}
+                  : activeInputMethod === "computer-keyboard"
+                    ? "物理键盘"
+                    : activeInputMethod === "virtual-keyboard"
+                      ? "钢琴键盘"
+                      : "MIDI"}
               </span>
             ) : null}
           </div>

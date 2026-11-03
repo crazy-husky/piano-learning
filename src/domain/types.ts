@@ -22,8 +22,15 @@ export type EffectiveQueueAlgorithm =
 export type QueueComparisonFamily = "adaptive" | "melody-v1" | "melody-v2";
 export type StaffDistanceDirection = "up" | "down" | "same";
 export type StaffDistanceTrainingMode = "look" | "play" | "finger";
-export type StaffDistanceInputMethod = "midi" | "microphone" | "virtual-keyboard";
+export type StaffDistanceInputMethod =
+  "midi" | "microphone" | "virtual-keyboard" | "computer-keyboard";
 export type StaffDistanceFingerHand = "left" | "right";
+export type StaffDistanceComputerKeyboardHand = "left" | "right";
+export type StaffDistanceComputerKeyboardCode = string;
+export type StaffDistanceComputerKeyboardBindings = Record<
+  StaffDistanceComputerKeyboardHand,
+  Record<NoteName, StaffDistanceComputerKeyboardCode>
+>;
 export type StaffDistanceFingerNumber = 1 | 2 | 3 | 4 | 5;
 export type StaffDistanceFingerBatch = "line" | "space";
 export type StaffDistanceFingerInteractionMode = "play" | "no-answer";
@@ -267,6 +274,7 @@ export interface StaffDistancePracticeSessionDetails {
   enabledGroupIds: PracticeGroupId[];
   enabledPitchIds?: PitchId[];
   crossGroupPitchIds?: PitchId[];
+  computerKeyboardBindings?: StaffDistanceComputerKeyboardBindings;
   includeInterStaffLedgerSpellings: boolean;
   includeUnison: boolean;
   inputMethod?: StaffDistanceInputMethod;

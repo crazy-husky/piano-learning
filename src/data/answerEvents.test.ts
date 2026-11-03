@@ -4,6 +4,7 @@ import {
   answerEventToStaffGameProficiencySample,
   boundedAnswerEvent,
   MAX_ANSWER_EVENT_ATTEMPTS,
+  answerInputMode,
 } from "./answerEvents";
 import type { AnswerEvent } from "../domain/types";
 
@@ -45,6 +46,12 @@ describe("boundedAnswerEvent", () => {
     });
 
     expect(bounded.attempts[0].clipping).toBe(true);
+  });
+});
+
+describe("answerInputMode", () => {
+  it("preserves the computer keyboard source for practice statistics", () => {
+    expect(answerInputMode("computer-keyboard")).toBe("computer-keyboard");
   });
 });
 

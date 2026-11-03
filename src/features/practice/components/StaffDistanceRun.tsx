@@ -42,6 +42,12 @@ import {
   DESKTOP_STAFF_PAGE_NOTE_COUNT,
   MOBILE_STAFF_PAGE_NOTE_COUNT,
 } from "../logic/staffPageFlow";
+import {
+  DEFAULT_STAFF_DISTANCE_COMPUTER_KEYBOARD_BINDINGS,
+  getComputerKeyboardHandLabel,
+  getStaffDistanceComputerKeyboardPitch,
+  getStaffDistanceComputerKeyboardRange,
+} from "../logic/staffDistanceComputerKeyboard";
 import { MOBILE_PRACTICE_PAGE_STAFF_LAYOUT } from "../../../shared/staff/staffLayoutProfiles";
 import { estimateStaffGameSystemDelayMs } from "../../staff-game/logic/staffGameProficiency";
 import { practiceMicrophoneDebugParametersForSensitivityLevel } from "../../vocal-pitch/logic/practiceMicrophonePreferences";
@@ -117,6 +123,13 @@ function isTextEntryTarget(target: EventTarget | null): boolean {
   return (
     target.isContentEditable ||
     target.closest("input, textarea, select, [contenteditable='true']") !== null
+  );
+}
+
+function isDialogTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest('[role="dialog"], [aria-modal="true"], dialog[open]') !== null
   );
 }
 
@@ -432,6 +445,12 @@ function StaffDistanceIntervalRun({
     (reason: PracticeSessionRecord["endReason"], showSummary: boolean) => Promise<void>
   >(async () => undefined);
   const details = session.staffDistance!;
+  const computerKeyboardRange = useMemo(
+    () => getStaffDistanceComputerKeyboardRange(notes),
+    [notes]
+  );
+  const computerKeyboardBindings =
+    details.computerKeyboardBindings ?? DEFAULT_STAFF_DISTANCE_COMPUTER_KEYBOARD_BINDINGS;
   const measuredScoreWidth = scoreWidth || (isMobile ? 360 : 980);
   const scorePages = useMemo(
     () =>
@@ -912,10 +931,16 @@ function StaffDistanceIntervalRun({
         return;
       }
       const answerMode = inputMethod === "midi" ? "exact-pitch" : "microphone";
+      const matchesTarget = (target: TargetNote): boolean =>
+        inputMethod === "computer-keyboard"
+          ? answer.source === "computer-keyboard" &&
+            answer.noteName === target.noteName &&
+            answer.midiNoteNumber === getTargetMidiNoteNumber(target)
+          : isPracticeAnswerCorrect(answer, target, answerMode);
       if (!hasPlayedStartingNoteRef.current) {
         const startingNote = sequence[0];
         if (!startingNote) return;
-        const isStartingNoteCorrect = isPracticeAnswerCorrect(answer, startingNote, answerMode);
+        const isStartingNoteCorrect = matchesTarget(startingNote);
         if (!isStartingNoteCorrect) {
           setStartingNoteWrong(true);
           setInputError("音高不对，请先弹奏谱面上的第一个音。");
@@ -945,7 +970,7 @@ function StaffDistanceIntervalRun({
         questionStartedAtRef.current = performance.now();
         return;
       }
-      void submitAnswer(isPracticeAnswerCorrect(answer, currentTo, answerMode), answer);
+      void submitAnswer(matchesTarget(currentTo), answer);
     },
     [currentTo, inputMethod, sequence, submitAnswer, trainingMode]
   );
@@ -1115,6 +1140,35 @@ function StaffDistanceIntervalRun({
         void togglePause();
         return;
       }
+      if (
+        trainingMode === "play" &&
+        inputMethod === "computer-keyboard" &&
+        !isPausedRef.current &&
+        !event.isComposing &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        !isTextEntryTarget(event.target) &&
+        !isDialogTarget(event.target)
+      ) {
+        const pitch = getStaffDistanceComputerKeyboardPitch(
+          event.code,
+          computerKeyboardBindings,
+          computerKeyboardRange
+        );
+        if (pitch) {
+          event.preventDefault();
+          answerPitch({
+            midiNoteNumber: getTargetMidiNoteNumber(pitch),
+            noteName: pitch.noteName,
+            octave: pitch.octave,
+            source: "computer-keyboard",
+            inputTimeMs: performance.now(),
+          });
+          return;
+        }
+      }
       if (trainingMode === "look" && !isPausedRef.current && /^[0-7]$/.test(event.key)) {
         const selectedDistance = Number(event.key);
         if (selectedDistance <= details.maxDistance && answerOptions.includes(selectedDistance)) {
@@ -1125,7 +1179,17 @@ function StaffDistanceIntervalRun({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [answerDistance, answerOptions, details.maxDistance, togglePause, trainingMode]);
+  }, [
+    answerDistance,
+    answerOptions,
+    answerPitch,
+    computerKeyboardBindings,
+    computerKeyboardRange,
+    details.maxDistance,
+    inputMethod,
+    togglePause,
+    trainingMode,
+  ]);
 
   if (!currentFrom || !currentTo || scoreNotes.length < 2) {
     return (
@@ -1320,6 +1384,8 @@ function StaffDistanceIntervalRun({
             inputError
           ) : inputMethod === "midi" ? (
             `请弹奏 MIDI 键盘上的${hasPlayedStartingNote ? "下一个音" : "第一个音"}${midi.selectedInput?.name ? ` · ${midi.selectedInput.name}` : ""}`
+          ) : inputMethod === "computer-keyboard" ? (
+            `按对应键位弹奏${hasPlayedStartingNote ? "下一个音" : "第一个音"}${computerKeyboardRange.leftOctave === undefined ? "" : " · " + getComputerKeyboardHandLabel("left", computerKeyboardRange.leftOctave)}${computerKeyboardRange.rightOctave === undefined ? "" : " · " + getComputerKeyboardHandLabel("right", computerKeyboardRange.rightOctave)}`
           ) : microphone.status === "listening" ? (
             `麦克风已连接，请弹奏${hasPlayedStartingNote ? "下一个音" : "谱面上的第一个音"}`
           ) : microphone.status === "requesting" ? (
@@ -1395,7 +1461,10 @@ function StaffDistanceIntervalRun({
       {!isTouchDevice ? (
         <p className="staff-distance-run-shortcuts">
           {trainingMode === "look"
-            ? `电脑键盘：${details.includeUnison ? "0" : "1"}–${details.maxDistance} 作答 · `
+            ? `键盘：${details.includeUnison ? "0" : "1"}–${details.maxDistance} 作答 · `
+            : ""}
+          {trainingMode === "play" && inputMethod === "computer-keyboard"
+            ? "按设置的物理键位弹奏 · "
             : ""}
           空格暂停/继续
         </p>
@@ -1484,7 +1553,7 @@ export function StaffDistanceRun(props: StaffDistanceRunProps): JSX.Element {
         learningLevelId={props.learningLevelId}
         fingerHand={props.session.staffDistance?.fingerHand ?? "right"}
         fingerNumber={props.session.staffDistance?.fingerNumber ?? 1}
-        inputMethod={props.inputMethod}
+        inputMethod={props.inputMethod === "computer-keyboard" ? "midi" : props.inputMethod}
         keyboardScale={props.keyboardScale}
         midi={props.midi}
         microphone={props.microphone}
@@ -1501,6 +1570,9 @@ export function StaffDistanceRun(props: StaffDistanceRunProps): JSX.Element {
       />
     );
   }
-  const intervalInputMethod = props.inputMethod === "microphone" ? "microphone" : "midi";
+  const intervalInputMethod =
+    props.inputMethod === "microphone" || props.inputMethod === "computer-keyboard"
+      ? props.inputMethod
+      : "midi";
   return <StaffDistanceIntervalRun {...props} inputMethod={intervalInputMethod} />;
 }
