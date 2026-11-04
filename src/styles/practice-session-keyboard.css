@@ -365,6 +365,13 @@
   place-items: center;
   transform: translateY(0);
   transition: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.staff-page-renderer svg {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .staff-page-renderer-scrolling {

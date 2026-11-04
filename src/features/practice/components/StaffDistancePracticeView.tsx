@@ -2,7 +2,6 @@ import {
   AlertCircle,
   Cable,
   ChevronDown,
-  CircleHelp,
   Eye,
   Keyboard,
   Mic,
@@ -60,6 +59,7 @@ import { guideSetupRequirement } from "../../../shared/utils/guideSetupRequireme
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
+import { DismissibleHelpPopover } from "../../../shared/components/ui/DismissibleHelpPopover";
 import {
   isInteractiveShortcutTarget,
   shouldHandleGlobalEnter,
@@ -166,6 +166,7 @@ const DEFAULT_PREFERENCES: StaffDistancePreferences = {
   fingerNumber: 1,
   mode: "fixed-count",
   noteDurations: ["quarter"],
+  stepTraining: false,
   trainingMode: "look",
 };
 
@@ -242,6 +243,7 @@ function normalizePreferences(value: unknown): StaffDistancePreferences {
     ),
     includeUnison: typeof record.includeUnison === "boolean" ? record.includeUnison : false,
     maxDistance: numberInRange(record.maxDistance, 2, 1, 7),
+    stepTraining: typeof record.stepTraining === "boolean" ? record.stepTraining : false,
     fixedCount: numberInRange(record.fixedCount, 30, 1, 500),
     fixedDurationSeconds: numberInRange(record.fixedDurationSeconds, 60, 60, 7200),
     fingerHand: record.fingerHand === "left" ? "left" : "right",
@@ -302,6 +304,9 @@ function describeValidation(
   if (validation.reason === "only-one-answer") {
     return "当前只会出现数字 1。请开启同音 0，或把最大音距调到 2 步以上。";
   }
+  if (validation.reason === "step-training-unavailable") {
+    return "当前音域无法稳定生成最大音距与较小步数的组合；请扩展音域，或关闭步数专训。";
+  }
   const missingDistances = validation.missing?.join("、") ?? "所选";
   if (staffNotationMode === "grand" && validation.missing?.includes(7)) {
     return "当前选择的连续组不符合生成条件，请在高音区（中央 C 右边）选择连续多组音符，或者在低音区（中央 C 左边）选择连续多组音符。";
@@ -349,6 +354,8 @@ function createDistanceSession(
       includeInterStaffLedgerSpellings:
         staffNotationMode === "grand" ? false : settings.includeInterStaffLedgerSpellings,
       includeUnison: isFingerMode ? false : preferences.includeUnison,
+      stepTraining:
+        !isFingerMode && focus?.distance === undefined ? preferences.stepTraining : false,
       inputMethod: preferences.trainingMode !== "look" ? preferences.inputMethod : undefined,
       ...(preferences.inputMethod === "computer-keyboard"
         ? { computerKeyboardBindings: preferences.computerKeyboardBindings }
@@ -568,8 +575,9 @@ export function StaffDistancePracticeView({
     () => ({
       includeUnison: preferences.includeUnison,
       maxDistance: preferences.maxDistance,
+      stepTraining: preferences.stepTraining,
     }),
-    [preferences.includeUnison, preferences.maxDistance]
+    [preferences.includeUnison, preferences.maxDistance, preferences.stepTraining]
   );
   const selectedPitchIds = getStaffSelectedPitchIds(
     settings.enabledGroupIds,
@@ -1065,6 +1073,7 @@ export function StaffDistancePracticeView({
     const sessionSettings = {
       includeUnison: runSession.staffDistance.includeUnison,
       maxDistance: runSession.staffDistance.maxDistance,
+      stepTraining: runSession.staffDistance.stepTraining ?? false,
       ...(runSession.staffDistance.focusDistance !== undefined
         ? { focusDistance: runSession.staffDistance.focusDistance }
         : {}),
@@ -1728,15 +1737,13 @@ export function StaffDistancePracticeView({
                 <span className="control-label">最大音距</span>
                 <div aria-label="步数说明" className="staff-distance-rule-summary">
                   <span>C→E = 2 步 · 音距就像手指要移动的格数 · 同音 = 0</span>
-                  <details className="staff-distance-rule-help">
-                    <summary aria-label="查看步数规则">
-                      <CircleHelp aria-hidden="true" size={16} />
-                    </summary>
-                    <span role="tooltip">
-                      每跨一个相邻线位或间位算 1 步；方向只决定上行或下行，音距步数相同；同音重复算
-                      0 步。
-                    </span>
-                  </details>
+                  <DismissibleHelpPopover
+                    ariaLabel="查看步数规则"
+                    className="staff-distance-rule-help"
+                  >
+                    每跨一个相邻线位或间位算 1 步；方向只决定上行或下行，音距步数相同；同音重复算 0
+                    步。
+                  </DismissibleHelpPopover>
                 </div>
               </div>
               <div className="staff-distance-setting-content">
@@ -1760,6 +1767,28 @@ export function StaffDistancePracticeView({
                       <span>步</span>
                     </button>
                   ))}
+                </div>
+                <div className="staff-distance-focus-option">
+                  <label className="practice-checkbox-option">
+                    <input
+                      checked={preferences.stepTraining}
+                      type="checkbox"
+                      onChange={(event) =>
+                        setPreferences((current) => ({
+                          ...current,
+                          stepTraining: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span>步数专训</span>
+                  </label>
+                  <DismissibleHelpPopover
+                    ariaLabel="查看步数专训说明"
+                    className="staff-distance-focus-help"
+                  >
+                    练习会尽可能多地安排你选定的最大步数，帮助你通过反复练习形成下意识反应。最大音距为
+                    1 步时，会按普通练习出题。
+                  </DismissibleHelpPopover>
                 </div>
               </div>
             </div>
@@ -1991,6 +2020,9 @@ export function StaffDistancePracticeView({
               <>
                 <span className="practice-free-summary-chip">{staffLabel}</span>
                 <span className="practice-free-summary-chip">{preferences.maxDistance}步</span>
+                {preferences.stepTraining && preferences.maxDistance > 1 ? (
+                  <span className="practice-free-summary-chip">步数专训</span>
+                ) : null}
                 <span className="practice-free-summary-chip">{lengthLabel}</span>
               </>
             )}

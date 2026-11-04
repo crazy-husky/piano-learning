@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isPianoNotePlaybackBlocking } from "../../../audio/piano";
 import { DEFAULT_VOCAL_PITCH_CONFIG, midiToFrequency } from "../../../domain/vocalPitch";
 import { classifyPitchFrame } from "./pitchFrameClassifier";
 import type { PitchFrameDetector } from "./pitchFrameTypes";
@@ -661,8 +662,10 @@ export function usePracticeMicrophoneInput(
         ? frequencyToChromaticPracticeNote
         : frequencyToNaturalPracticeNote;
       const candidateNote = convertFrequency(frequencyHz ?? 0);
-      const liveNote = acceptedFrequency === null ? null : convertFrequency(acceptedFrequency);
       const recoverySelfTest = recoverySelfTestRef.current;
+      const isPianoPlayback = !recoverySelfTest && isPianoNotePlaybackBlocking(timeMs);
+      const liveNote =
+        acceptedFrequency === null || isPianoPlayback ? null : convertFrequency(acceptedFrequency);
       const suppressionWindows = recognizedNoteSuppressionWindowsRef.current.filter(
         (window) => window.endAtMs >= timeMs
       );
@@ -677,11 +680,11 @@ export function usePracticeMicrophoneInput(
             window.midiNotes.has(candidateNote.midiNoteNumber)
         )
       );
-      if (isSuppressedPromptPitch) recognizerRef.current.reset();
+      if (isSuppressedPromptPitch || isPianoPlayback) recognizerRef.current.reset();
       const recognized = recognizerRef.current.process({
         ambiguous,
         confidence,
-        frequencyHz: isSuppressedPromptPitch ? null : recognizerFrequency,
+        frequencyHz: isSuppressedPromptPitch || isPianoPlayback ? null : recognizerFrequency,
         rms: analysisRms,
         timeMs,
       });
@@ -712,7 +715,9 @@ export function usePracticeMicrophoneInput(
         }
       }
 
-      if (liveNote) {
+      if (isPianoPlayback) {
+        detectedNoteUiRef.current = null;
+      } else if (liveNote) {
         lastVoicedAtRef.current = timeMs;
         detectedNoteUiRef.current = `${liveNote.noteName}${liveNote.octave}`;
       } else if (timeMs - lastVoicedAtRef.current > DETECTED_NOTE_HOLD_MS) {

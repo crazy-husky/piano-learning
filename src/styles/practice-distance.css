@@ -333,33 +333,42 @@
   font-size: 12px;
 }
 
-.staff-distance-rule-help {
+.staff-distance-help-popover {
   position: relative;
   flex: 0 0 auto;
   color: var(--muted);
 }
 
-.staff-distance-rule-help summary {
+.staff-distance-help-trigger {
+  appearance: none;
   display: inline-flex;
   width: 22px;
   height: 22px;
   align-items: center;
   justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
-  list-style: none;
+  gap: 0;
+  padding: 0;
+  transition: none;
 }
 
-.staff-distance-rule-help summary::-webkit-details-marker,
+.staff-distance-help-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .staff-distance-advanced > summary::-webkit-details-marker {
   display: none;
 }
 
-.staff-distance-rule-help [role="tooltip"] {
+.staff-distance-help-tooltip {
   position: absolute;
   z-index: 20;
   top: calc(100% + 7px);
-  right: 0;
-  width: min(300px, 76vw);
   padding: 10px 12px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
@@ -368,6 +377,23 @@
   color: var(--text);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.staff-distance-rule-help .staff-distance-help-tooltip {
+  right: 0;
+  width: min(300px, 76vw);
+}
+
+.staff-distance-focus-option {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.staff-distance-focus-help .staff-distance-help-tooltip {
+  left: 0;
+  width: min(320px, 76vw);
 }
 
 .staff-distance-range-options {

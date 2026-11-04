@@ -37,6 +37,8 @@ export type StaffDistanceFingerInteractionMode = "play" | "no-answer";
 export interface StaffDistancePracticeSettings {
   includeUnison: boolean;
   maxDistance: number;
+  /** Emphasizes maxDistance and inserts a smaller interval after one or two repetitions. */
+  stepTraining?: boolean;
   /** One-shot focus used by a targeted remedial round; omitted in saved preferences. */
   focusDistance?: number;
 }
@@ -279,6 +281,7 @@ export interface StaffDistancePracticeSessionDetails {
   includeUnison: boolean;
   inputMethod?: StaffDistanceInputMethod;
   maxDistance: number;
+  stepTraining?: boolean;
   noteDuration?: PromptNoteDuration;
   noteDurations?: PromptNoteDuration[];
   questionResults: StaffDistanceQuestionResult[];

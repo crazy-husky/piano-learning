@@ -6,6 +6,9 @@ export { setPianoVolume } from "./pianoSettings";
 
 const PIANO_SAMPLE_BASE_URL = `${import.meta.env.BASE_URL}audio/salamander/`;
 const PIANO_SAMPLE_LOAD_TIMEOUT_MS = 15_000;
+const PIANO_NOTE_PLAYBACK_TAIL_MS = 800;
+const PIANO_MICROPHONE_INPUT_TAIL_MS = 300;
+const PIANO_PLAYBACK_WINDOW_RETENTION_MS = 15_000;
 const PIANO_SAMPLE_URLS = {
   A0: "A0.mp3",
   C1: "C1.mp3",
@@ -40,6 +43,11 @@ interface GetSamplerOptions {
   retryFailed?: boolean;
 }
 
+interface PianoNotePlaybackWindow {
+  endAtMs: number | null;
+  startAtMs: number;
+}
+
 export interface SustainedPianoNote {
   startedAtAudioTime: number;
   release: () => void;
@@ -51,9 +59,49 @@ let samplerStatus: SamplerStatus = "idle";
 let samplerLoadError: Error | null = null;
 let fallbackSynth: Tone.PolySynth | undefined;
 let pianoOutput: Tone.Gain | null = null;
+const pianoNotePlaybackWindows: PianoNotePlaybackWindow[] = [];
 
 function getPianoOutput(): Tone.Gain | Tone.DestinationInstance {
   return pianoOutput ?? Tone.getDestination();
+}
+
+function monotonicNowMs(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+function prunePianoNotePlaybackWindows(nowMs: number): void {
+  for (let index = pianoNotePlaybackWindows.length - 1; index >= 0; index -= 1) {
+    const playbackWindow = pianoNotePlaybackWindows[index]!;
+    if (
+      playbackWindow.endAtMs !== null &&
+      playbackWindow.endAtMs + PIANO_PLAYBACK_WINDOW_RETENTION_MS < nowMs
+    ) {
+      pianoNotePlaybackWindows.splice(index, 1);
+    }
+  }
+}
+
+function beginPianoNotePlayback(): PianoNotePlaybackWindow {
+  const nowMs = monotonicNowMs();
+  prunePianoNotePlaybackWindows(nowMs);
+  const playbackWindow: PianoNotePlaybackWindow = { endAtMs: null, startAtMs: nowMs };
+  pianoNotePlaybackWindows.push(playbackWindow);
+  return playbackWindow;
+}
+
+function endPianoNotePlayback(playbackWindow: PianoNotePlaybackWindow, audibleTailMs = 0): void {
+  playbackWindow.endAtMs = monotonicNowMs() + Math.max(0, audibleTailMs);
+}
+
+/** Whether a mic frame overlapped a piano cue or a piano cue is playing now. */
+export function isPianoNotePlaybackBlocking(timeMs: number): boolean {
+  const nowMs = monotonicNowMs();
+  prunePianoNotePlaybackWindows(nowMs);
+  return pianoNotePlaybackWindows.some(
+    ({ startAtMs, endAtMs }) =>
+      (timeMs >= startAtMs && (endAtMs === null || timeMs < endAtMs)) ||
+      (nowMs >= startAtMs && (endAtMs === null || nowMs < endAtMs))
+  );
 }
 
 /** Route the shared piano voices through a screen-specific mix while that screen is mounted. */
@@ -205,12 +253,22 @@ function targetNoteToToneName(note: TargetNote): string {
 
 async function playToneName(note: string): Promise<void> {
   await unlockAudio();
-  const sampledPiano = getLoadedSampler();
-  if (sampledPiano) {
-    sampledPiano.triggerAttackRelease(note, "8n", undefined, getPianoVolume());
-    return;
+  const playbackWindow = beginPianoNotePlayback();
+  try {
+    const sampledPiano = getLoadedSampler();
+    if (sampledPiano) {
+      sampledPiano.triggerAttackRelease(note, "8n", undefined, getPianoVolume());
+    } else {
+      getFallbackSynth().triggerAttackRelease(note, "8n", undefined, getPianoVolume());
+    }
+    endPianoNotePlayback(
+      playbackWindow,
+      Tone.Time("8n").toSeconds() * 1_000 + PIANO_NOTE_PLAYBACK_TAIL_MS
+    );
+  } catch (error) {
+    endPianoNotePlayback(playbackWindow);
+    throw error;
   }
-  getFallbackSynth().triggerAttackRelease(note, "8n", undefined, getPianoVolume());
 }
 
 export async function playPianoNote(noteName: PianoKeyName, octave: Octave): Promise<void> {
@@ -221,51 +279,69 @@ export async function playPianoNote(noteName: PianoKeyName, octave: Octave): Pro
 export async function playMuffledMidiNote(midi: number): Promise<void> {
   if (!Number.isFinite(midi)) return;
   await unlockAudio();
-  const filter = new Tone.Filter(360, "lowpass");
-  const gain = new Tone.Gain(0.22);
-  const synth = new Tone.Synth({
-    oscillator: { type: "sine" },
-    envelope: { attack: 0.005, decay: 0.08, sustain: 0.12, release: 0.05 },
-  });
-  synth.connect(filter);
-  filter.connect(gain);
-  gain.connect(getPianoOutput());
-  synth.triggerAttackRelease(Tone.Frequency(midi, "midi").toNote(), "16n", undefined, 0.35);
-  window.setTimeout(() => {
-    synth.dispose();
-    filter.dispose();
-    gain.dispose();
-  }, 320);
+  const playbackWindow = beginPianoNotePlayback();
+  try {
+    const filter = new Tone.Filter(360, "lowpass");
+    const gain = new Tone.Gain(0.22);
+    const synth = new Tone.Synth({
+      oscillator: { type: "sine" },
+      envelope: { attack: 0.005, decay: 0.08, sustain: 0.12, release: 0.05 },
+    });
+    synth.connect(filter);
+    filter.connect(gain);
+    gain.connect(getPianoOutput());
+    synth.triggerAttackRelease(Tone.Frequency(midi, "midi").toNote(), "16n", undefined, 0.35);
+    endPianoNotePlayback(
+      playbackWindow,
+      Tone.Time("16n").toSeconds() * 1_000 + PIANO_MICROPHONE_INPUT_TAIL_MS
+    );
+    window.setTimeout(() => {
+      synth.dispose();
+      filter.dispose();
+      gain.dispose();
+    }, 320);
+  } catch (error) {
+    endPianoNotePlayback(playbackWindow);
+    throw error;
+  }
 }
 
 async function startToneNote(note: string): Promise<SustainedPianoNote> {
   await unlockAudio();
-  const sampledPiano = getLoadedSampler();
-  let released = false;
-  const startedAtAudioTime = Tone.now();
+  const playbackWindow = beginPianoNotePlayback();
+  try {
+    const sampledPiano = getLoadedSampler();
+    let released = false;
+    const startedAtAudioTime = Tone.now();
 
-  if (sampledPiano) {
-    sampledPiano.triggerAttack(note, startedAtAudioTime, getPianoVolume());
+    if (sampledPiano) {
+      sampledPiano.triggerAttack(note, startedAtAudioTime, getPianoVolume());
+      return {
+        startedAtAudioTime,
+        release: () => {
+          if (released) return;
+          released = true;
+          sampledPiano.triggerRelease(note);
+          endPianoNotePlayback(playbackWindow, PIANO_NOTE_PLAYBACK_TAIL_MS);
+        },
+      };
+    }
+
+    const synth = getFallbackSynth();
+    synth.triggerAttack(note, startedAtAudioTime, getPianoVolume());
     return {
       startedAtAudioTime,
       release: () => {
         if (released) return;
         released = true;
-        sampledPiano.triggerRelease(note);
+        synth.triggerRelease(note);
+        endPianoNotePlayback(playbackWindow, PIANO_NOTE_PLAYBACK_TAIL_MS);
       },
     };
+  } catch (error) {
+    endPianoNotePlayback(playbackWindow);
+    throw error;
   }
-
-  const synth = getFallbackSynth();
-  synth.triggerAttack(note, startedAtAudioTime, getPianoVolume());
-  return {
-    startedAtAudioTime,
-    release: () => {
-      if (released) return;
-      released = true;
-      synth.triggerRelease(note);
-    },
-  };
 }
 
 export async function startPianoMidi(midi: number): Promise<SustainedPianoNote> {

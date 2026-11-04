@@ -21,7 +21,8 @@ export type StaffDistanceValidation =
   | { ok: true }
   | {
       ok: false;
-      reason: "need-two-groups" | "only-one-answer" | "missing-distances";
+      reason:
+        "need-two-groups" | "only-one-answer" | "missing-distances" | "step-training-unavailable";
       missing?: number[];
     };
 
@@ -105,7 +106,14 @@ export function validateStaffDistancePractice(
     ...Array.from({ length: settings.maxDistance }, (_, index) => index + 1),
   ];
   const missing = requestedDistances.filter((distance) => !availableDistances.has(distance));
-  return missing.length > 0 ? { ok: false, reason: "missing-distances", missing } : { ok: true };
+  if (missing.length > 0) return { ok: false, reason: "missing-distances", missing };
+  if (settings.stepTraining && settings.maxDistance > 1 && settings.focusDistance === undefined) {
+    const edgesById = new Map(notes.map((note) => [note.id, getEdges(note, notes, settings)]));
+    if (!canStartStepTraining(notes, settings.maxDistance, edgesById)) {
+      return { ok: false, reason: "step-training-unavailable" };
+    }
+  }
+  return { ok: true };
 }
 
 function hasTwoConsecutiveSelectedGroups(
@@ -299,6 +307,51 @@ function getTrailingDistanceRun(notes: readonly TargetNote[]): {
   return { count, distance };
 }
 
+const EARLY_STEP_TRAINING_DISTRACTOR_CHANCE = 0.2;
+
+function canInsertStepTrainingDistractor(
+  note: TargetNote,
+  consecutiveTargetCount: number,
+  targetDistance: number,
+  edgesById: ReadonlyMap<TargetNote["id"], readonly StaffDistanceEdge[]>
+): boolean {
+  const edges = edgesById.get(note.id) ?? [];
+  if (
+    edges.some(
+      (edge) =>
+        edge.distance < targetDistance &&
+        (edgesById.get(edge.note.id) ?? []).some((nextEdge) => nextEdge.distance === targetDistance)
+    )
+  ) {
+    return true;
+  }
+  if (consecutiveTargetCount >= MAX_CONSECUTIVE_DISTANCE_COUNT) return false;
+  return edges.some(
+    (edge) =>
+      edge.distance === targetDistance &&
+      canInsertStepTrainingDistractor(
+        edge.note,
+        consecutiveTargetCount + 1,
+        targetDistance,
+        edgesById
+      )
+  );
+}
+
+function canStartStepTraining(
+  notes: readonly TargetNote[],
+  targetDistance: number,
+  edgesById: ReadonlyMap<TargetNote["id"], readonly StaffDistanceEdge[]>
+): boolean {
+  return notes.some((note) =>
+    (edgesById.get(note.id) ?? []).some(
+      (edge) =>
+        edge.distance === targetDistance &&
+        canInsertStepTrainingDistractor(edge.note, 1, targetDistance, edgesById)
+    )
+  );
+}
+
 function routeAvoidsLongDistanceStreak(
   start: TargetNote,
   route: readonly TargetNote[],
@@ -447,6 +500,8 @@ export function createStaffDistanceSequence(
   recentNotes: readonly TargetNote[] = []
 ): TargetNote[] {
   if (transitionCount <= 0 || notes.length === 0) return [];
+  const stepTrainingEnabled =
+    settings.stepTraining && settings.focusDistance === undefined && settings.maxDistance > 1;
   const extraPitchIdSet = new Set(extraPitchIds);
   const targetWeight = (note: TargetNote): number => (extraPitchIdSet.has(note.pitchId) ? 0.15 : 1);
   const edgesById = new Map(notes.map((note) => [note.id, getEdges(note, notes, settings)]));
@@ -462,6 +517,13 @@ export function createStaffDistanceSequence(
     ? [initialNote]
     : notes.filter((note) => {
         const edges = edgesById.get(note.id) ?? [];
+        if (stepTrainingEnabled) {
+          return edges.some(
+            (edge) =>
+              edge.distance === settings.maxDistance &&
+              canInsertStepTrainingDistractor(edge.note, 1, settings.maxDistance, edgesById)
+          );
+        }
         return (
           edges.length > 0 &&
           (!hasAvailableLongLeap || edges.some((edge) => edge.distance >= LONG_LEAP_MIN_DISTANCE))
@@ -487,7 +549,10 @@ export function createStaffDistanceSequence(
     ["up", 0],
     ["down", 0],
   ]);
-  const chordPhrases = createBassChordPhrases(notes, settings);
+  const chordPhrases =
+    stepTrainingEnabled || settings.focusDistance !== undefined
+      ? new Map<TargetNote["id"], StaffDistancePhrase[]>()
+      : createBassChordPhrases(notes, settings);
   let activeBalanceWindow = -1;
   let forcedLongLeapWindow = -1;
   let forceLongLeapAfter = 0;
@@ -504,6 +569,7 @@ export function createStaffDistanceSequence(
     }
 
     if (
+      !stepTrainingEnabled &&
       settings.maxDistance >= LONG_LEAP_MIN_DISTANCE &&
       hasAvailableLongLeap &&
       forcedLongLeapWindow !== balanceWindow &&
@@ -575,12 +641,54 @@ export function createStaffDistanceSequence(
         (nextEdge) => nextEdge.distance > 0 && nextEdge.distance !== edge.distance
       );
     });
-    const candidateEdges =
+    let candidateEdges =
       continuationSafeEdges.length > 0
         ? continuationSafeEdges
         : distanceSafeEdges.length > 0
           ? distanceSafeEdges
           : edges;
+
+    if (stepTrainingEnabled) {
+      const targetRunCount = lastDistance === settings.maxDistance ? lastDistanceCount : 0;
+      const shouldInsertDistractor =
+        targetRunCount >= MAX_CONSECUTIVE_DISTANCE_COUNT ||
+        (targetRunCount === 1 && random() < EARLY_STEP_TRAINING_DISTRACTOR_CHANCE);
+      const targetEdges = candidateEdges.filter((edge) => edge.distance === settings.maxDistance);
+      const distractorEdges = candidateEdges.filter((edge) => edge.distance < settings.maxDistance);
+      const safeTargetEdges = targetEdges.filter((edge) =>
+        canInsertStepTrainingDistractor(
+          edge.note,
+          targetRunCount + 1,
+          settings.maxDistance,
+          edgesById
+        )
+      );
+      const safeDistractorEdges = distractorEdges.filter((edge) =>
+        (edgesById.get(edge.note.id) ?? []).some(
+          (nextEdge) =>
+            nextEdge.distance === settings.maxDistance &&
+            canInsertStepTrainingDistractor(nextEdge.note, 1, settings.maxDistance, edgesById)
+        )
+      );
+
+      if (shouldInsertDistractor) {
+        candidateEdges =
+          safeDistractorEdges.length > 0
+            ? safeDistractorEdges
+            : distractorEdges.length > 0
+              ? distractorEdges
+              : safeTargetEdges;
+      } else {
+        candidateEdges =
+          safeTargetEdges.length > 0
+            ? safeTargetEdges
+            : safeDistractorEdges.length > 0
+              ? safeDistractorEdges
+              : distractorEdges.length > 0
+                ? distractorEdges
+                : targetEdges;
+      }
+    }
     const distances = [...new Set(candidateEdges.map((edge) => edge.distance))];
     const distance = weightedPick(
       distances,
