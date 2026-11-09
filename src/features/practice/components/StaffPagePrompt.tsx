@@ -167,6 +167,7 @@ const WRONG_COLOR = "#c84c3d";
 const AUTO_FOLLOW_RESUME_DELAY_MS = 2000;
 const STAFF_PAGE_ROW_TOP_CLEARANCE_PX = 16;
 const STAFF_PAGE_NOTE_TOP_CLEARANCE_PX = 20;
+const STAFF_PAGE_NOTE_BOTTOM_CLEARANCE_PX = 20;
 const STAFF_PAGE_STAVE_LINE_SPACING_PX = 10;
 const STAFF_PAGE_STAVE_TOP_LINE_OFFSET_PX = 40;
 const STAFF_PAGE_NOTE_NAME_ORDER: Record<TargetNote["noteName"], number> = {
@@ -179,6 +180,8 @@ const STAFF_PAGE_NOTE_NAME_ORDER: Record<TargetNote["noteName"], number> = {
   B: 6,
 };
 const STAFF_PAGE_TREBLE_TOP_LINE_ORDER = 5 * 7 + STAFF_PAGE_NOTE_NAME_ORDER.F;
+const STAFF_PAGE_TREBLE_BOTTOM_LINE_ORDER = 4 * 7 + STAFF_PAGE_NOTE_NAME_ORDER.E;
+const STAFF_PAGE_BASS_BOTTOM_LINE_ORDER = 2 * 7 + STAFF_PAGE_NOTE_NAME_ORDER.G;
 
 function getStaffPageHighNoteTopPaddingPx(
   notes: readonly TargetNote[],
@@ -210,6 +213,48 @@ function getStaffPageHighNoteTopPaddingPx(
 
   // Snap the additional row height to a staff half-space so ledger lines stay
   // aligned when the enabled range includes notes above the normal treble staff.
+  return (
+    Math.ceil(requiredPadding / (STAFF_PAGE_STAVE_LINE_SPACING_PX / 2)) *
+    (STAFF_PAGE_STAVE_LINE_SPACING_PX / 2)
+  );
+}
+
+function getStaffPageLowNoteBottomPaddingPx(
+  notes: readonly TargetNote[],
+  layout: PracticePageStaffLayoutProfile,
+  staffNotationMode: StaffNotationMode,
+  useLedgerGap: boolean
+): number {
+  const bottomStaff = staffNotationMode === "treble-only" ? "treble" : "bass";
+  const bottomNotes =
+    staffNotationMode === "grand" ? notes.filter((note) => note.staff === "bass") : notes;
+  if (bottomNotes.length === 0) return 0;
+
+  const bottomLineOrder =
+    bottomStaff === "bass"
+      ? STAFF_PAGE_BASS_BOTTOM_LINE_ORDER
+      : STAFF_PAGE_TREBLE_BOTTOM_LINE_ORDER;
+  const bottomLineY =
+    (staffNotationMode === "grand"
+      ? layout.vertical.centerYPx +
+        (useLedgerGap ? layout.vertical.ledgerGapPx : layout.vertical.gapPx) / 2
+      : bottomStaff === "bass"
+        ? layout.vertical.bassOnlyYPx
+        : layout.vertical.trebleOnlyYPx) +
+    STAFF_PAGE_STAVE_TOP_LINE_OFFSET_PX +
+    4 * STAFF_PAGE_STAVE_LINE_SPACING_PX;
+  const lowestNoteY = Math.max(
+    ...bottomNotes.map((note) => {
+      const noteOrder = note.octave * 7 + STAFF_PAGE_NOTE_NAME_ORDER[note.noteName];
+      return bottomLineY + (bottomLineOrder - noteOrder) * (STAFF_PAGE_STAVE_LINE_SPACING_PX / 2);
+    })
+  );
+  const requiredPadding = Math.max(
+    0,
+    lowestNoteY + STAFF_PAGE_NOTE_BOTTOM_CLEARANCE_PX - layout.vertical.viewHeightPx
+  );
+
+  // Keep the additional viewport height aligned to staff half-spaces.
   return (
     Math.ceil(requiredPadding / (STAFF_PAGE_STAVE_LINE_SPACING_PX / 2)) *
     (STAFF_PAGE_STAVE_LINE_SPACING_PX / 2)
@@ -1865,7 +1910,17 @@ export function StaffPagePrompt({
       verticalRangeNotes,
     ]
   );
-  const rowViewHeightPx = layout.vertical.viewHeightPx + rowTopPaddingPx;
+  const rowBottomPaddingPx = useMemo(
+    () =>
+      getStaffPageLowNoteBottomPaddingPx(
+        verticalRangeNotes ?? noteGroups?.flat() ?? notes,
+        layout,
+        staffNotationMode,
+        useLedgerGap
+      ),
+    [layout, noteGroups, notes, staffNotationMode, useLedgerGap, verticalRangeNotes]
+  );
+  const rowViewHeightPx = layout.vertical.viewHeightPx + rowTopPaddingPx + rowBottomPaddingPx;
   const { rows, rowStartIndices } = useMemo(() => {
     if (canonicalRowStartIndices?.length && sourceNoteGroups.length > 0) {
       const starts = canonicalRowStartIndices

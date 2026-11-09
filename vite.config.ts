@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,35 +48,50 @@ const appBuildVersionPlugin: Plugin = {
   },
 };
 
-export default defineConfig({
-  base: process.env.GITHUB_PAGES && pagesRepoName ? `/${pagesRepoName}/` : "/",
-  define: {
-    __APP_BUILD_ID__: JSON.stringify(buildId),
-    __APP_VERSION__: JSON.stringify(buildVersion),
-    __APP_BUILD_TIME__: JSON.stringify(buildTime),
-  },
-  plugins: [react(), appBuildVersionPlugin],
-  worker: {
-    format: "es",
-  },
-  server: {
-    allowedHosts: tailscaleAllowedHosts,
-  },
-  preview: {
-    allowedHosts: tailscaleAllowedHosts,
-  },
-  build: {
-    target: ["chrome108", "edge108", "firefox101", "safari16.4"],
-    chunkSizeWarningLimit: 700,
-    sourcemap: "hidden",
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          audio: ["tone"],
-          notation: ["vexflow"],
-          storage: ["dexie"],
+export default defineConfig(({ mode }) => {
+  const localEnv = loadEnv(mode, projectRoot, "");
+  const analyticsProxyTarget =
+    process.env.PIANO_ANALYTICS_PROXY_TARGET ??
+    localEnv.PIANO_ANALYTICS_PROXY_TARGET ??
+    "http://127.0.0.1:9090";
+  return {
+    base: process.env.GITHUB_PAGES && pagesRepoName ? `/${pagesRepoName}/` : "/",
+    define: {
+      __APP_BUILD_ID__: JSON.stringify(buildId),
+      __APP_VERSION__: JSON.stringify(buildVersion),
+      __APP_BUILD_TIME__: JSON.stringify(buildTime),
+    },
+    plugins: [react(), appBuildVersionPlugin],
+    worker: {
+      format: "es",
+    },
+    server: {
+      allowedHosts: tailscaleAllowedHosts,
+      proxy: {
+        "/api/v1/piano-learning": analyticsProxyTarget,
+        "/client/piano-learning": analyticsProxyTarget,
+      },
+    },
+    preview: {
+      allowedHosts: tailscaleAllowedHosts,
+      proxy: {
+        "/api/v1/piano-learning": analyticsProxyTarget,
+        "/client/piano-learning": analyticsProxyTarget,
+      },
+    },
+    build: {
+      target: ["chrome108", "edge108", "firefox101", "safari16.4"],
+      chunkSizeWarningLimit: 700,
+      sourcemap: "hidden",
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            audio: ["tone"],
+            notation: ["vexflow"],
+            storage: ["dexie"],
+          },
         },
       },
     },
-  },
+  };
 });

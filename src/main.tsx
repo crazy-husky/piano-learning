@@ -1,6 +1,9 @@
 import ReactDOM from "react-dom/client";
 import { AppBootstrap } from "./app/AppBootstrap";
+import { startOptionalUsageAnalytics } from "./analytics/optionalUsageAnalytics";
 import "./styles.css";
+
+startOptionalUsageAnalytics();
 
 const root = document.getElementById("root");
 
