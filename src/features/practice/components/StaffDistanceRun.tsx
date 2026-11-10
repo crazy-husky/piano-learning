@@ -79,7 +79,10 @@ export interface StaffDistanceRunProps {
   noteDurations: readonly PromptNoteDuration[];
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   notes: TargetNote[];
-  onRestart?: (fingerInteractionMode?: StaffDistanceFingerInteractionMode) => Promise<void>;
+  onRestart?: (
+    fingerInteractionMode?: StaffDistanceFingerInteractionMode,
+    activePracticeMs?: number
+  ) => Promise<void>;
   onFinish: (session: PracticeSessionRecord, showSummary: boolean) => Promise<void>;
   onSaveChaseSettings: (settings: PracticeChaseSettings) => void;
   onNavigationExit?: (targetView: PracticeNavigationExitRequest["targetView"]) => void;
@@ -614,6 +617,7 @@ function StaffDistanceIntervalRun({
       wrongFeedbackTimerRef.current = undefined;
     }
     pendingAdvanceRef.current = null;
+    const activePracticeMs = Math.max(0, getActiveElapsed());
     activeStartedAtRef.current = 0;
     questionStartedAtRef.current = 0;
     isPausedRef.current = true;
@@ -621,7 +625,7 @@ function StaffDistanceIntervalRun({
     if (trainingMode === "play" && inputMethod === "microphone") microphone.stop();
     try {
       await answerEventSaveQueueRef.current;
-      await onRestart();
+      await onRestart(undefined, activePracticeMs);
     } catch (error) {
       endingRef.current = false;
       setInputError(error instanceof Error ? error.message : "重置练习失败，请重试。");

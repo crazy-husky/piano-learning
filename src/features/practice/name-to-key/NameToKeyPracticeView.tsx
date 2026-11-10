@@ -11,6 +11,7 @@ import { AlertCircle, ArrowLeft, Check, Mic, Music2, Pause, Play, RotateCcw } fr
 import { toast } from "sonner";
 import { getPianoAudioTime, playPianoNote } from "../../../audio/piano";
 import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
+import { trackUsageEvent } from "../../../analytics/optionalUsageAnalytics";
 import { deletePracticeSessionWithReviews, saveAnswerEvents } from "../../../data/db";
 import { createUuid } from "../../../domain/id";
 import type {
@@ -337,6 +338,7 @@ function NameToKeyPracticeContent({
   const targetResolvedRef = useRef(false);
   const lastTargetMidiRef = useRef<number | undefined>();
   const sessionIdRef = useRef("");
+  const sessionStartedAtRef = useRef(0);
   const eventIndexRef = useRef(0);
   const roundEventsRef = useRef<AnswerEvent[]>([]);
   const eventSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -526,6 +528,21 @@ function NameToKeyPracticeContent({
           toast.error("部分练习记录暂时保存失败。", { duration: 3500 });
         });
       }
+      const allEvents = roundEventsRef.current;
+      trackUsageEvent("practice_end", {
+        runId: sessionIdRef.current,
+        feature: "name-to-key",
+        mode: preferences.mode,
+        inputMode: preferences.inputMode,
+        state: showSummary ? "completed" : "abandoned",
+        reason: showSummary ? "completed" : "exit",
+        durationMs: sessionStartedAtRef.current ? Date.now() - sessionStartedAtRef.current : 0,
+        questionCount: allEvents.length,
+        completedCount: allEvents.filter((event) => event.isCorrectFinal === true).length,
+        interruptedCount: allEvents.filter((event) => event.isMissed).length,
+        wrongCount: allEvents.filter((event) => event.wrongAttempts > 0).length,
+      });
+      sessionStartedAtRef.current = 0;
       setTarget(null);
       setFeedback(null);
       setRemainingMs(0);
@@ -552,6 +569,8 @@ function NameToKeyPracticeContent({
       onStageChange,
       stage,
       stopMicrophone,
+      preferences.inputMode,
+      preferences.mode,
     ]
   );
   finishRoundRef.current = finishRound;
@@ -815,6 +834,7 @@ function NameToKeyPracticeContent({
       }
 
       sessionIdRef.current = createUuid();
+      sessionStartedAtRef.current = Date.now();
       setFocusTargetMidis(focusMidis?.length ? focusMidis : null);
       eventIndexRef.current = 0;
       roundEventsRef.current = [];
@@ -831,6 +851,12 @@ function NameToKeyPracticeContent({
       targetRef.current = null;
       setStage("running");
       setIsPaused(false);
+      trackUsageEvent("practice_start", {
+        runId: sessionIdRef.current,
+        feature: "name-to-key",
+        mode: preferences.mode,
+        inputMode: preferences.inputMode,
+      });
       onStageChange(true);
       setNextTarget(nextTargetPool);
     } catch (error) {
@@ -857,6 +883,21 @@ function NameToKeyPracticeContent({
   const restartRound = async (): Promise<void> => {
     if (stage !== "running" || isStarting || isRestarting) return;
     const previousSessionId = sessionIdRef.current;
+    const previousEvents = roundEventsRef.current;
+    trackUsageEvent("practice_end", {
+      runId: previousSessionId,
+      feature: "name-to-key",
+      mode: preferences.mode,
+      inputMode: preferences.inputMode,
+      state: "abandoned",
+      reason: "restart",
+      durationMs: sessionStartedAtRef.current ? Date.now() - sessionStartedAtRef.current : 0,
+      questionCount: previousEvents.length,
+      completedCount: previousEvents.filter((event) => event.isCorrectFinal === true).length,
+      interruptedCount: previousEvents.filter((event) => event.isMissed).length,
+      wrongCount: previousEvents.filter((event) => event.wrongAttempts > 0).length,
+    });
+    sessionStartedAtRef.current = 0;
     const wasPaused = isPaused;
     setIsRestarting(true);
     try {

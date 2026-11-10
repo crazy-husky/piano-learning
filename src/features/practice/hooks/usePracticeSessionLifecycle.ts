@@ -6,6 +6,7 @@ import {
   type SetStateAction,
 } from "react";
 import { db, deletePracticeSessionWithReviews, saveAnswerEvents } from "../../../data/db";
+import { trackUsageEvent } from "../../../analytics/optionalUsageAnalytics";
 import {
   answerDeviceInfo,
   answerInputMode,
@@ -314,6 +315,30 @@ export function usePracticeSessionLifecycle({
           completedCount: finalReviews.filter(isCompletedReview).length,
           interruptedCount: finalReviews.filter((review) => review.interrupted).length,
         };
+        trackUsageEvent("practice_end", {
+          runId: finalSession.id,
+          feature: finalSession.practiceType === "staff-distance" ? "distance" : "free-practice",
+          mode:
+            "startSnapshot" in finalSession
+              ? finalSession.startSnapshot.practiceConfig.mode
+              : finalSession.mode,
+          inputMode:
+            "answerPitchMode" in finalSession
+              ? finalSession.answerPitchMode
+              : "startSnapshot" in finalSession
+                ? (finalSession.startSnapshot.practiceConfig.answerPitchMode ?? "note-name")
+                : "note-name",
+          state:
+            endReason === "completed-count" || endReason === "completed-duration"
+              ? "completed"
+              : "abandoned",
+          reason: endReason ?? "unknown",
+          durationMs: finalSession.activePracticeMs ?? 0,
+          questionCount: finalReviews.length,
+          completedCount: finalSession.completedCount,
+          interruptedCount: finalSession.interruptedCount,
+          wrongCount: finalReviews.filter((review) => !review.answeredCorrectly).length,
+        });
         const pendingReviewPersistence = pendingReviewPersistenceRef.current;
         pendingReviewPersistenceRef.current = [];
         await Promise.all(pendingReviewPersistence);

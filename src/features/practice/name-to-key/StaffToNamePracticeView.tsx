@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Pause, Play, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { answerDeviceInfo } from "../../../data/answerEvents";
+import { trackUsageEvent } from "../../../analytics/optionalUsageAnalytics";
 import { deletePracticeSessionWithReviews, saveAnswerEvents } from "../../../data/db";
 import { createUuid } from "../../../domain/id";
 import { getNotesForGroups, NOTE_NAMES, PRACTICE_GROUPS } from "../../../domain/notes";
@@ -197,6 +198,7 @@ export function StaffToNamePracticeView({
   const attemptsRef = useRef<AnswerAttempt[]>([]);
   const eventsRef = useRef<AnswerEvent[]>([]);
   const sessionIdRef = useRef("");
+  const sessionStartedAtRef = useRef(0);
   const eventIndexRef = useRef(0);
   const promptStartedAtRef = useRef(0);
   const promptStartedAtIsoRef = useRef(new Date().toISOString());
@@ -361,6 +363,21 @@ export function StaffToNamePracticeView({
         targetResolvedRef.current = true;
         targetRef.current = null;
       }
+      const roundEvents = eventsRef.current;
+      trackUsageEvent("practice_end", {
+        runId: sessionIdRef.current,
+        feature: "staff-to-name",
+        mode: preferences.mode,
+        inputMode: "virtual-keyboard",
+        state: showSummary ? "completed" : "abandoned",
+        reason: showSummary ? "completed" : "exit",
+        durationMs: sessionStartedAtRef.current ? Date.now() - sessionStartedAtRef.current : 0,
+        questionCount: roundEvents.length,
+        completedCount: roundEvents.filter((event) => event.isCorrectFinal === true).length,
+        interruptedCount: roundEvents.filter((event) => event.isMissed).length,
+        wrongCount: roundEvents.filter((event) => event.wrongAttempts > 0).length,
+      });
+      sessionStartedAtRef.current = 0;
       setTarget(null);
       setFeedback(null);
       setIsPaused(false);
@@ -512,6 +529,7 @@ export function StaffToNamePracticeView({
         return;
       }
       sessionIdRef.current = createUuid();
+      sessionStartedAtRef.current = Date.now();
       setFocusTargetNoteIds(focusNoteIds?.length ? focusNoteIds : null);
       eventIndexRef.current = 0;
       eventsRef.current = [];
@@ -525,6 +543,12 @@ export function StaffToNamePracticeView({
       setIsPaused(false);
       setStage("running");
       onStageChange(true);
+      trackUsageEvent("practice_start", {
+        runId: sessionIdRef.current,
+        feature: "staff-to-name",
+        mode: preferences.mode,
+        inputMode: "virtual-keyboard",
+      });
       setNextTarget(nextTargetPool);
     } catch (error) {
       if (requestGeneration === startRequestGenerationRef.current && isActiveRef.current) {
@@ -560,6 +584,20 @@ export function StaffToNamePracticeView({
     if (stage !== "running" || isStarting || isRestarting) return;
     const previousSessionId = sessionIdRef.current;
     const wasPaused = isPaused;
+    trackUsageEvent("practice_end", {
+      runId: previousSessionId,
+      feature: "staff-to-name",
+      mode: preferences.mode,
+      inputMode: "virtual-keyboard",
+      state: "abandoned",
+      reason: "restart",
+      durationMs: sessionStartedAtRef.current ? Date.now() - sessionStartedAtRef.current : 0,
+      questionCount: eventsRef.current.length,
+      completedCount: eventsRef.current.filter((event) => event.isCorrectFinal === true).length,
+      interruptedCount: eventsRef.current.filter((event) => event.isMissed).length,
+      wrongCount: eventsRef.current.filter((event) => event.wrongAttempts > 0).length,
+    });
+    sessionStartedAtRef.current = 0;
     setIsRestarting(true);
     try {
       if (!wasPaused) pauseOrResume();

@@ -1,5 +1,6 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { setPianoVolume, unlockAudio } from "../../../audio/piano";
+import { trackUsageEvent } from "../../../analytics/optionalUsageAnalytics";
 import { db, resolveQueueStrategy } from "../../../data/db";
 import { createUuid } from "../../../domain/id";
 import { getNoteById } from "../../../domain/notes";
@@ -380,6 +381,14 @@ export function usePracticeSessionStart({
         beginSessionState(nextSession);
         setIsPaused(shouldStartPaused);
         sessionStarted = true;
+        trackUsageEvent("practice_start", {
+          runId: nextSession.id,
+          feature: nextSession.practiceType === "staff-distance" ? "distance" : "free-practice",
+          mode: practiceConfig.mode,
+          inputMode: practiceConfig.answerPitchMode ?? "note-name",
+          promptMode: presentationConfig.promptDisplayMode,
+          duet: isDuetPractice,
+        });
         if (presentationConfig.promptDisplayMode === "staff-page") {
           startStaffPage({
             sourceNotes: coreEnabledNotes,

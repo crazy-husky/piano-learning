@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { writeBackupNow } from "../../../data/backup";
 import { db, replacePracticeSessionDiscardingAnswerEvents } from "../../../data/db";
 import { createUuid } from "../../../domain/id";
+import { trackUsageEvent } from "../../../analytics/optionalUsageAnalytics";
 import { getNotesForSelection, getStaffSelectedPitchIds } from "../../../domain/notes";
 import { validateStaffDistancePractice } from "../../../domain/staffDistancePractice";
 import {
@@ -902,6 +903,15 @@ export function StaffDistancePracticeView({
       await db.practiceSessions.put(nextSession);
       if (isFingerNoAnswerSelected) markStaffDistanceFingerNoAnswerIntroSeen();
       setRunSession(nextSession);
+      trackUsageEvent("practice_start", {
+        runId: nextSession.id,
+        feature: "distance",
+        mode:
+          nextSession.staffDistance?.fingerInteractionMode === "no-answer"
+            ? "no-answer"
+            : (nextSession.staffDistance?.trainingMode ?? "distance"),
+        inputMode: nextSession.staffDistance?.inputMethod ?? "unknown",
+      });
     } catch (error) {
       if (microphoneStarted) microphone.stop();
       setStartError(error instanceof Error ? error.message : "练习未能开始，请重试。");
@@ -967,6 +977,33 @@ export function StaffDistancePracticeView({
     showSummary: boolean
   ): Promise<void> => {
     const answerEvents = await db.answerEvents.where("sessionId").equals(finalSession.id).toArray();
+    const questionResultsForAnalytics = finalSession.staffDistance?.questionResults ?? [];
+    const completedForAnalytics = questionResultsForAnalytics.filter(
+      (question) => question.targetCompleted ?? question.firstTryCorrect
+    ).length;
+    const endReason = finalSession.endReason;
+    trackUsageEvent("practice_end", {
+      runId: finalSession.id,
+      feature: "distance",
+      mode:
+        finalSession.staffDistance?.fingerInteractionMode === "no-answer"
+          ? "no-answer"
+          : (finalSession.staffDistance?.trainingMode ?? "distance"),
+      inputMode: finalSession.staffDistance?.inputMethod ?? "unknown",
+      state:
+        endReason === "completed-count" || endReason === "completed-duration" || showSummary
+          ? "completed"
+          : "abandoned",
+      reason: endReason ?? (showSummary ? "completed" : "exit"),
+      durationMs:
+        finalSession.activePracticeMs ??
+        Math.max(0, Date.now() - Date.parse(finalSession.startedAt)),
+      questionCount: questionResultsForAnalytics.length || answerEvents.length,
+      completedCount: completedForAnalytics,
+      interruptedCount: questionResultsForAnalytics.filter((question) => question.timedOut).length,
+      wrongCount: questionResultsForAnalytics.filter((question) => !question.firstTryCorrect)
+        .length,
+    });
     const isFingerMode = finalSession.staffDistance?.trainingMode === "finger";
     const questionResults = isFingerMode
       ? (finalSession.staffDistance?.questionResults ?? [])
@@ -1019,9 +1056,29 @@ export function StaffDistancePracticeView({
   };
 
   const restartSession = async (
-    fingerInteractionMode?: StaffDistanceFingerInteractionMode
+    fingerInteractionMode?: StaffDistanceFingerInteractionMode,
+    activePracticeMs = 0
   ): Promise<void> => {
     if (!runSession) return;
+    const previousResults = runSession.staffDistance?.questionResults ?? [];
+    trackUsageEvent("practice_end", {
+      runId: runSession.id,
+      feature: "distance",
+      mode:
+        runSession.staffDistance?.fingerInteractionMode === "no-answer"
+          ? "no-answer"
+          : (runSession.staffDistance?.trainingMode ?? "distance"),
+      inputMode: runSession.staffDistance?.inputMethod ?? "unknown",
+      state: "abandoned",
+      reason: "restart",
+      durationMs: Math.max(0, activePracticeMs),
+      questionCount: previousResults.length,
+      completedCount: previousResults.filter(
+        (question) => question.targetCompleted ?? question.firstTryCorrect
+      ).length,
+      interruptedCount: previousResults.filter((question) => question.timedOut).length,
+      wrongCount: previousResults.filter((question) => !question.firstTryCorrect).length,
+    });
     const nextFingerInteractionMode =
       fingerInteractionMode ?? runSession.staffDistance?.fingerInteractionMode ?? "play";
     if (
@@ -1058,6 +1115,15 @@ export function StaffDistancePracticeView({
       }));
     }
     setRunSession(nextSession);
+    trackUsageEvent("practice_start", {
+      runId: nextSession.id,
+      feature: "distance",
+      mode:
+        nextSession.staffDistance?.fingerInteractionMode === "no-answer"
+          ? "no-answer"
+          : (nextSession.staffDistance?.trainingMode ?? "distance"),
+      inputMode: nextSession.staffDistance?.inputMethod ?? "unknown",
+    });
   };
 
   const toggleUnison = (includeUnison: boolean): void =>

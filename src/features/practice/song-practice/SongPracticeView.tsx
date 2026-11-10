@@ -5,6 +5,7 @@ import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import type { AnswerAttempt } from "../../../domain/types";
 import { MAX_PRACTICE_QUESTIONS } from "../../../domain/practiceLimits";
 import { createUuid } from "../../../domain/id";
+import { trackUsageEvent } from "../../../analytics/optionalUsageAnalytics";
 import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
 import { saveAnswerEvents } from "../../../data/db";
 import { estimateStaffGameSystemDelayMs } from "../../staff-game/logic/staffGameProficiency";
@@ -357,16 +358,46 @@ export function SongPracticeView({
     stopMicrophone();
   }, [cancelRowPlayback, stopMicrophone]);
   const beginProgressSession = useCallback((): void => {
+    if (sessionStartedAtRef.current !== null && !sessionCompletedRef.current) {
+      trackUsageEvent("practice_end", {
+        runId: songSessionIdRef.current,
+        feature: "song",
+        mode: "song-practice",
+        inputMode: activeInputModeRef.current,
+        state: "abandoned",
+        reason: "restart",
+        durationMs: Math.max(0, Date.now() - sessionStartedAtRef.current),
+        questionCount: currentIndexRef.current,
+        completedCount: currentIndexRef.current,
+      });
+    }
     sessionStartedAtRef.current = Date.now();
     songSessionIdRef.current = createUuid();
     sessionCompletedRef.current = false;
     questionLimitReachedRef.current = false;
     setIsQuestionLimitReached(false);
     recordSongPracticeSessionStarted(selection.songId, selection.keyVersion);
+    trackUsageEvent("practice_start", {
+      runId: songSessionIdRef.current,
+      feature: "song",
+      mode: "song-practice",
+      inputMode: activeInputModeRef.current,
+    });
   }, [selection.keyVersion, selection.songId]);
   const completeProgressSession = useCallback((): void => {
     if (sessionCompletedRef.current || sessionStartedAtRef.current === null) return;
     sessionCompletedRef.current = true;
+    trackUsageEvent("practice_end", {
+      runId: songSessionIdRef.current,
+      feature: "song",
+      mode: "song-practice",
+      inputMode: activeInputModeRef.current,
+      state: "completed",
+      reason: "completed",
+      durationMs: Math.max(0, Date.now() - sessionStartedAtRef.current),
+      questionCount: currentIndexRef.current,
+      completedCount: currentIndexRef.current,
+    });
     recordSongPracticeSessionCompleted(
       selection.songId,
       selection.keyVersion,
@@ -791,6 +822,24 @@ export function SongPracticeView({
   useEffect(() => {
     if (sessionStartedAtRef.current === null) beginProgressSession();
   }, [beginProgressSession]);
+
+  useEffect(
+    () => () => {
+      if (sessionStartedAtRef.current === null || sessionCompletedRef.current) return;
+      trackUsageEvent("practice_end", {
+        runId: songSessionIdRef.current,
+        feature: "song",
+        mode: "song-practice",
+        inputMode: activeInputModeRef.current,
+        state: "abandoned",
+        reason: "exit",
+        durationMs: Math.max(0, Date.now() - sessionStartedAtRef.current),
+        questionCount: currentIndexRef.current,
+        completedCount: currentIndexRef.current,
+      });
+    },
+    []
+  );
 
   useEffect(() => {
     if (isFinished) completeProgressSession();

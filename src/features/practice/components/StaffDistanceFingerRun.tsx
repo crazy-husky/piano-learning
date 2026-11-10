@@ -106,7 +106,10 @@ export interface StaffDistanceFingerRunProps {
   onNavigationExit?: (
     targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal" | "metronome"
   ) => void;
-  onRestart?: (fingerInteractionMode?: StaffDistanceFingerInteractionMode) => Promise<void>;
+  onRestart?: (
+    fingerInteractionMode?: StaffDistanceFingerInteractionMode,
+    activePracticeMs?: number
+  ) => Promise<void>;
   onRunningChange: (running: boolean) => void;
   session: PracticeSessionRecord;
   staffNotationMode: StaffNotationMode;
@@ -1005,6 +1008,10 @@ export function StaffDistanceFingerRun({
       ?.fingerInteractionMode ?? "play"
   ): Promise<void> => {
     if (!onRestart || endingRef.current || isRestarting) return;
+    const now = performance.now();
+    const activePracticeMs =
+      activeElapsedMsRef.current +
+      (activeStartedAtRef.current === 0 ? 0 : Math.max(0, now - activeStartedAtRef.current));
     endingRef.current = true;
     pendingKeyboardAdvanceRef.current = null;
     activeKeyboardTouchPointerIdsRef.current.clear();
@@ -1015,7 +1022,7 @@ export function StaffDistanceFingerRun({
     if (inputMethod === "microphone") microphone.stop();
     try {
       await answerEventSaveQueueRef.current;
-      await onRestart(fingerInteractionMode);
+      await onRestart(fingerInteractionMode, activePracticeMs);
     } catch (error) {
       endingRef.current = false;
       setInputError(error instanceof Error ? error.message : "重置练习失败，请重试。");

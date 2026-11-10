@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { digestBlob } from "../../../data/blobDigest";
 import { createUuid } from "../../../domain/id";
+import { trackUsageEvent } from "../../../analytics/optionalUsageAnalytics";
 import {
   DEFAULT_VOCAL_PITCH_CONFIG,
   describeFrequency,
@@ -147,6 +148,7 @@ export function VocalPitchView({
   const recordingEndedRef = useRef<
     (result: VocalRecordingResult, reason: VocalRecordingEndReason) => void
   >(() => undefined);
+  const recordingAnalyticsRef = useRef<{ id: string; startedAt: number } | null>(null);
   const playback = useAudioPlayback(material, playbackVolume);
   materialRef.current = material;
   const {
@@ -503,6 +505,19 @@ export function VocalPitchView({
   );
 
   recordingEndedRef.current = (result, reason) => {
+    const activeRecording = recordingAnalyticsRef.current;
+    if (activeRecording) {
+      trackUsageEvent("practice_end", {
+        runId: activeRecording.id,
+        feature: "vocal",
+        mode: "recording",
+        inputMode: "microphone",
+        state: reason === "manual" || reason === "limit" ? "completed" : "abandoned",
+        reason,
+        durationMs: Math.max(0, Date.now() - activeRecording.startedAt),
+      });
+      recordingAnalyticsRef.current = null;
+    }
     const target = pendingRecordingNavigationTargetRef.current;
     pendingRecordingNavigationTargetRef.current = null;
     if (target) {
@@ -576,6 +591,15 @@ export function VocalPitchView({
       setFollowResetKey((value) => value + 1);
       try {
         await recorder.start(selectedMicrophoneId || undefined);
+        const id = createUuid();
+        const startedAt = Date.now();
+        recordingAnalyticsRef.current = { id, startedAt };
+        trackUsageEvent("practice_start", {
+          runId: id,
+          feature: "vocal",
+          mode: "recording",
+          inputMode: "microphone",
+        });
         if (mountedRef.current) await refreshMicrophones();
       } catch (error) {
         if (mountedRef.current) {

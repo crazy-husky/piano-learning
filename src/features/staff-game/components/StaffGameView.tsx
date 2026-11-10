@@ -22,6 +22,7 @@ import type {
   StaffGameChallengeMode,
 } from "../../../domain/types";
 import { createUuid } from "../../../domain/id";
+import { trackUsageEvent } from "../../../analytics/optionalUsageAnalytics";
 import {
   calculateStaffGameWrongNoteNoteDiagnostics,
   calculateStaffGameWrongNoteErrorCounts,
@@ -1021,6 +1022,12 @@ export function StaffGameView({
   const promptSuppressionWindowsRef = useRef<StaffGamePromptSuppressionWindow[]>([]);
   const spawnTargetRef = useRef<(atGameMs: number) => void>(() => undefined);
   const roundMetricsRef = useRef<StaffGameLevelRoundMetrics>(createRoundMetrics());
+  const analyticsRunRef = useRef<{
+    id: string;
+    startedAt: number;
+    mode: string;
+    inputMode: string;
+  } | null>(null);
   const playfieldRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
   const targetElementRef = useRef<HTMLDivElement>(null);
@@ -2281,6 +2288,71 @@ export function StaffGameView({
   useEffect(() => {
     onSessionActiveChange(phase === "running" || phase === "paused");
   }, [onSessionActiveChange, phase]);
+
+  useEffect(() => {
+    const activeRun = analyticsRunRef.current;
+    if (phase === "running") {
+      if (!activeRun) {
+        const id = createUuid();
+        const mode =
+          gameMode === "songs"
+            ? "song"
+            : roundPurposeRef.current === "wrong-note-review"
+              ? "wrong-note-review"
+              : roundChallengeModeRef.current;
+        const inputMode =
+          settings.inputMode === "midi"
+            ? "midi"
+            : settings.inputMode === "physical"
+              ? "microphone"
+              : "virtual-keyboard";
+        analyticsRunRef.current = { id, startedAt: Date.now(), mode, inputMode };
+        trackUsageEvent("practice_start", {
+          runId: id,
+          feature: "staff-game",
+          mode,
+          inputMode,
+        });
+      }
+      return;
+    }
+    if (!activeRun || phase === "paused") return;
+    const completed = phase === "summary";
+    const metrics = roundMetricsRef.current;
+    trackUsageEvent("practice_end", {
+      runId: activeRun.id,
+      feature: "staff-game",
+      mode: activeRun.mode,
+      inputMode: activeRun.inputMode,
+      state: completed ? "completed" : "abandoned",
+      reason: completed ? "completed" : "exit",
+      durationMs: Math.max(0, Date.now() - activeRun.startedAt),
+      questionCount: metrics.resolvedQuestionCount,
+      completedCount: metrics.firstTryCorrectCount,
+      wrongCount: wrongAnswerRecordsRef.current.length,
+    });
+    analyticsRunRef.current = null;
+  }, [gameMode, phase, settings.inputMode]);
+
+  useEffect(
+    () => () => {
+      const activeRun = analyticsRunRef.current;
+      if (!activeRun) return;
+      trackUsageEvent("practice_end", {
+        runId: activeRun.id,
+        feature: "staff-game",
+        mode: activeRun.mode,
+        inputMode: activeRun.inputMode,
+        state: "abandoned",
+        reason: "exit",
+        durationMs: Math.max(0, Date.now() - activeRun.startedAt),
+        questionCount: roundMetricsRef.current.resolvedQuestionCount,
+        completedCount: roundMetricsRef.current.firstTryCorrectCount,
+        wrongCount: wrongAnswerRecordsRef.current.length,
+      });
+    },
+    []
+  );
 
   useEffect(() => {
     if (phase === "paused" && comboTimerStartedAtRef.current !== null) {
