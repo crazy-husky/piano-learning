@@ -807,13 +807,13 @@
 }
 
 /* Pause and system prompts are rendered into document.body. */
-:root[data-app-theme="dark"] .staff-game-mic-dialog-backdrop,
-:root[data-app-theme="dark"] .staff-game-pause-backdrop {
+:root[data-app-theme="dark"] .staff-game-mic-dialog-backdrop {
   background-color: rgba(5, 15, 20, 0.72);
 }
 
 :root[data-app-theme="dark"] .staff-game-pause-backdrop {
-  backdrop-filter: grayscale(0.5) brightness(0.5);
+  background-color: rgba(5, 15, 20, 0.18);
+  backdrop-filter: grayscale(0.12) brightness(0.9);
 }
 
 :root[data-app-theme="dark"] .staff-game-low-fps-dialog,

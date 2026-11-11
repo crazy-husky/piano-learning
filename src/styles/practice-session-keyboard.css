@@ -713,7 +713,7 @@
   z-index: 20;
   width: 100%;
   min-height: 100vh;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--bg) 18%, transparent);
   color: var(--text);
   box-shadow: none;
   display: grid;

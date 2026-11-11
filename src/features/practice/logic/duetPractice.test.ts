@@ -74,7 +74,10 @@ function assertBreathAndNoteCap(page: ReturnType<typeof createDuetPracticePage>)
     const hasRest =
       hasStaffRestInMeasure(page, measure, "treble") ||
       hasStaffRestInMeasure(page, measure, "bass");
-    expect(hasLongNote || hasRest).toBe(true);
+    const fullySynchronizedMeasure = indices.every(
+      (index) => page.events[index]!.high.length > 0 && page.events[index]!.low.length > 0
+    );
+    expect(hasLongNote || hasRest || fullySynchronizedMeasure).toBe(true);
   });
 }
 
@@ -113,6 +116,29 @@ describe("createDuetPracticePage", () => {
         expect(treble.end <= bass.start || bass.end <= treble.start).toBe(true)
       )
     );
+  });
+
+  it("balances each Level 1 hand's note bags and avoids repeats across bag boundaries", () => {
+    const page = createDuetPracticePage(pool, "level-1", 700, {
+      seed: "balanced-note-bags",
+    });
+    const notesByStaff = {
+      treble: page.events.flatMap((event) => event.high.map((note) => note.noteName)),
+      bass: page.events.flatMap((event) => event.low.map((note) => note.noteName)),
+    };
+    const availableNotes = ["C", "D", "E", "F", "G", "A", "B"].sort();
+
+    (Object.values(notesByStaff) as (typeof availableNotes)[]).forEach((notes) => {
+      for (
+        let start = 0;
+        start + availableNotes.length <= notes.length;
+        start += availableNotes.length
+      ) {
+        const bag = notes.slice(start, start + availableNotes.length).sort();
+        expect(bag).toEqual(availableNotes);
+        if (start > 0) expect(notes[start - 1]).not.toBe(notes[start]);
+      }
+    });
   });
 
   it("varies Level 1 starting hands and weights quarter notes above half rests", () => {
@@ -174,27 +200,42 @@ describe("createDuetPracticePage", () => {
     expect(firstTwoRowDurations[0]).not.toEqual(firstTwoRowDurations[1]);
   });
 
-  it("Level 2 combines shared downbeats with a right-hand-only pickup and a rest", () => {
-    const page = createDuetPracticePage(pool, "level-2", 3);
+  it("Level 2 follows the 80/20 one-or-two sync distribution", () => {
+    const measureCount = 1_000;
+    const page = createDuetPracticePage(pool, "level-2", measureCount * 4, {
+      measureCount,
+      seed: "level-two-sync-distribution",
+    });
+    const synchronizedCounts = getSynchronizedCountsByMeasure(page);
+    const oneSyncMeasures = synchronizedCounts.filter((count) => count === 1).length;
 
-    expect(page.rhythm.onsets).toEqual([0, 1, 2]);
-    expect(page.events[0]!.high).toHaveLength(1);
-    expect(page.events[0]!.low).toHaveLength(1);
-    expect(page.events[1]!.high).toHaveLength(1);
-    expect(page.events[1]!.low).toHaveLength(0);
-    expect(page.events[2]!.high).toHaveLength(1);
-    expect(page.events[2]!.low).toHaveLength(1);
-    expect(hasStaffRestInMeasure(page, 0, "treble")).toBe(true);
-    expect(hasStaffRestInMeasure(page, 0, "bass")).toBe(true);
+    expect(synchronizedCounts).toHaveLength(measureCount);
+    expect(page.events.every((event) => event.high.length === 1)).toBe(true);
+    expect(oneSyncMeasures).toBeGreaterThanOrEqual(760);
+    expect(oneSyncMeasures).toBeLessThanOrEqual(840);
   });
 
-  it("Level 3 pairs a quarter-note melody with one sustained bass note", () => {
-    const page = createDuetPracticePage(pool, "level-3", 4);
+  it("Level 3 follows the 20/50/20/10 one-to-four sync distribution", () => {
+    const measureCount = 1_000;
+    const page = createDuetPracticePage(pool, "level-3", measureCount * 4, {
+      measureCount,
+      seed: "level-three-sync-distribution",
+    });
+    const synchronizedCounts = getSynchronizedCountsByMeasure(page);
+    const distribution = [1, 2, 3, 4].map(
+      (count) => synchronizedCounts.filter((actual) => actual === count).length
+    );
 
-    expect(page.rhythm.onsets).toEqual([0, 1, 2, 3]);
-    expect(page.events[0]!.low).toHaveLength(1);
-    expect(page.events.slice(1).every((event) => event.low.length === 0)).toBe(true);
-    expect(page.rhythm.staffNoteDurations?.[0]?.bass).toBe("whole");
+    expect(synchronizedCounts).toHaveLength(measureCount);
+    expect(page.events.every((event) => event.high.length === 1)).toBe(true);
+    expect(distribution[0]).toBeGreaterThanOrEqual(160);
+    expect(distribution[0]).toBeLessThanOrEqual(240);
+    expect(distribution[1]).toBeGreaterThanOrEqual(430);
+    expect(distribution[1]).toBeLessThanOrEqual(570);
+    expect(distribution[2]).toBeGreaterThanOrEqual(160);
+    expect(distribution[2]).toBeLessThanOrEqual(240);
+    expect(distribution[3]).toBeGreaterThanOrEqual(50);
+    expect(distribution[3]).toBeLessThanOrEqual(150);
   });
 
   it("Level 4 uses a left-hand block triad under a right-hand melody", () => {
@@ -287,4 +328,18 @@ function groupNoteCount(
   return page.events
     .slice(start, end)
     .reduce((count, event) => count + event.high.length + event.low.length, 0);
+}
+
+function getSynchronizedCountsByMeasure(page: ReturnType<typeof createDuetPracticePage>): number[] {
+  return [...new Set(page.rhythm.measures)].map((measure) =>
+    page.rhythm.measures.reduce(
+      (count, candidate, index) =>
+        candidate === measure &&
+        page.events[index]!.high.length > 0 &&
+        page.events[index]!.low.length > 0
+          ? count + 1
+          : count,
+      0
+    )
+  );
 }

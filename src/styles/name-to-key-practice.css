@@ -628,7 +628,7 @@
   align-content: center;
   justify-items: center;
   gap: 14px;
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  background: color-mix(in srgb, var(--bg) 18%, transparent);
   color: var(--text);
 }
 

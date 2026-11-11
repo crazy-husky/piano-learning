@@ -1617,7 +1617,7 @@
   justify-items: center;
   gap: 10px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  background: color-mix(in srgb, var(--bg) 18%, transparent);
 }
 
 .staff-distance-pause-overlay strong {

@@ -75,6 +75,11 @@ interface LevelOneRhythmTemplate {
   weight: number;
 }
 
+type LevelOneNoteOffsets = Record<Staff, number>;
+type LevelOneNotePools = Record<Staff, readonly NoteName[]>;
+
+const NOTE_NAME_ORDER: readonly NoteName[] = ["C", "D", "E", "F", "G", "A", "B"];
+
 // Quarter-note motion is the common case. Three templates use a half note,
 // so a half rest appears in only a minority of measures instead of every bar.
 const LEVEL_ONE_RHYTHM_TEMPLATES: readonly LevelOneRhythmTemplate[] = [
@@ -151,6 +156,95 @@ function getLevelOneRhythmTemplate(measureIndex: number, seed: number): LevelOne
     if (remainingWeight < 0) return template;
   }
   return LEVEL_ONE_RHYTHM_TEMPLATES[0]!;
+}
+
+function shuffleLevelOneNoteBag(
+  noteNames: readonly NoteName[],
+  bagIndex: number,
+  seed: number,
+  channel: number
+): NoteName[] {
+  const bag = [...noteNames];
+  for (let index = bag.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(
+      getMeasureRandom(seed, bagIndex, channel + index * 0x101) * (index + 1)
+    );
+    [bag[index], bag[swapIndex]] = [bag[swapIndex]!, bag[index]!];
+  }
+  return bag;
+}
+
+function getBalancedLevelOneNoteName(
+  noteNames: readonly NoteName[],
+  noteIndex: number,
+  seed: number,
+  channel: number
+): NoteName {
+  if (noteNames.length === 0) return "C";
+  if (noteNames.length === 1) return noteNames[0]!;
+
+  const bagIndex = Math.floor(noteIndex / noteNames.length);
+  const bagOffset = noteIndex % noteNames.length;
+  const bag = shuffleLevelOneNoteBag(noteNames, bagIndex, seed, channel);
+
+  // Only the previous bag's last note affects this bag's first note. Avoid
+  // walking every earlier bag when an appended score buffer resumes a long run.
+  if (bagIndex > 0) {
+    const previousBagLastNote = shuffleLevelOneNoteBag(noteNames, bagIndex - 1, seed, channel).at(
+      -1
+    );
+    if (previousBagLastNote && bag[0] === previousBagLastNote) {
+      const swapIndex = bag.findIndex(
+        (noteName, index) => index > 0 && noteName !== previousBagLastNote
+      );
+      if (swapIndex > 0) [bag[0], bag[swapIndex]] = [bag[swapIndex]!, bag[0]!];
+    }
+  }
+
+  return bag[bagOffset] ?? noteNames[0]!;
+}
+
+function getSynchronizedEventCount(
+  level: "level-2" | "level-3",
+  measureIndex: number,
+  seed: number
+): number {
+  const selection = getMeasureRandom(seed, measureIndex, 0x73796e63);
+  if (level === "level-2") return selection < 0.8 ? 1 : 2;
+  if (selection < 0.2) return 1;
+  if (selection < 0.7) return 2;
+  if (selection < 0.9) return 3;
+  // The requested Level 3 percentages total 90%; use the remaining 10% for four syncs.
+  return 4;
+}
+
+function getSynchronizedBeats(
+  candidateBeats: readonly number[],
+  count: number,
+  measureIndex: number,
+  seed: number
+): number[] {
+  const beats = [...candidateBeats];
+  for (let index = beats.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(
+      getMeasureRandom(seed, measureIndex, 0x62656174 + index * 0x101) * (index + 1)
+    );
+    [beats[index], beats[swapIndex]] = [beats[swapIndex]!, beats[index]!];
+  }
+  return beats.slice(0, count).sort((left, right) => left - right);
+}
+
+function getDurationForBeatSpan(beatSpan: number): StaffPageNoteDuration {
+  const normalizedSpan = Number(beatSpan.toFixed(2));
+  const durationByBeatSpan: Record<number, StaffPageNoteDuration> = {
+    0.5: "eighth",
+    1: "quarter",
+    1.5: "dotted-quarter",
+    2: "half",
+    3: "dotted-half",
+    4: "whole",
+  };
+  return durationByBeatSpan[normalizedSpan] ?? "quarter";
 }
 
 function getInitialAlternatingStaff(seed: number): Staff {
@@ -234,26 +328,14 @@ function makeAlternatingEvent(
     : makeEvent(beat, [], [noteName], duration);
 }
 
-function getLevelTwoFinalBeatEvent(
-  measureIndex: number,
-  seed: number,
-  trebleNote: NoteName,
-  bassNote: NoteName
-): MeasureEvent | undefined {
-  // Level 2 used to stop at beat 3, making beat 4 a rest in every bar.
-  // Keep an occasional final-beat breath, but usually add one hand so bars vary.
-  if (getMeasureRandom(seed, measureIndex, 0x6c327273) < 0.25) return undefined;
-  return getMeasureRandom(seed, measureIndex, 0x6c327374) < 0.5
-    ? makeEvent(3, [trebleNote])
-    : makeEvent(3, [], [bassNote]);
-}
-
 function getMeasureEvents(
   level: DuetPracticeLevel,
   measureIndex: number,
   alternatingFirstStaff: Staff,
   useDottedTemplate: boolean,
-  seed: number
+  seed: number,
+  levelOneNotePools?: LevelOneNotePools,
+  levelOneNoteOffsets: LevelOneNoteOffsets = { treble: 0, bass: 0 }
 ): MeasureEvent[] {
   const chord = getMeasureChord(measureIndex);
   const quarterMelody = getPhraseMeasure(QUARTER_MELODY_PHRASES, measureIndex);
@@ -269,70 +351,84 @@ function getMeasureEvents(
           { beat: 3, duration: "quarter" },
         ]
       : getLevelOneRhythmTemplate(measureIndex, seed).events;
+    const nextNoteOffsets = { ...levelOneNoteOffsets };
 
     return events.map(({ beat, duration }, index) => {
       const staff = index % 2 === 0 ? alternatingFirstStaff : otherStaff;
-      const noteIndex = index % quarterMelody.length;
-      const noteName =
-        staff === "bass"
-          ? index % 2 === 0
-            ? chord.bassRoot
-            : chord.bassFifth
-          : quarterMelody[noteIndex]!;
+      const notePool = levelOneNotePools?.[staff] ?? NOTE_NAME_ORDER;
+      const noteName = getBalancedLevelOneNoteName(
+        notePool,
+        nextNoteOffsets[staff],
+        seed,
+        staff === "treble" ? 0x74726562 : 0x62617373
+      );
+      nextNoteOffsets[staff] += 1;
       return makeAlternatingEvent(staff, beat, noteName, duration);
     });
   }
 
   if (level === "level-2") {
-    if (useDottedTemplate) {
-      const events = [
-        makeEvent(
-          0,
-          [quarterMelody[0]!],
-          [chord.bassRoot],
-          "dotted-quarter",
-          "dotted-quarter",
-          "dotted-quarter"
-        ),
-        makeEvent(1.5, [quarterMelody[1]!], [], "eighth"),
-        makeEvent(2, [quarterMelody[2]!], [chord.bassFifth], "quarter"),
-      ];
-      const finalBeat = getLevelTwoFinalBeatEvent(
-        measureIndex,
-        seed,
-        quarterMelody[3]!,
-        chord.bassRoot
-      );
-      if (finalBeat) events.push(finalBeat);
-      return events;
-    }
-
-    const events = [
-      makeEvent(0, [quarterMelody[0]!], [chord.bassRoot]),
-      makeEvent(1, [quarterMelody[1]!]),
-      makeEvent(2, [quarterMelody[2]!], [chord.bassFifth]),
-    ];
-    const finalBeat = getLevelTwoFinalBeatEvent(
+    const rhythmEvents: readonly LevelOneRhythmEvent[] = useDottedTemplate
+      ? [
+          { beat: 0, duration: "dotted-quarter" },
+          { beat: 1.5, duration: "eighth" },
+          { beat: 2, duration: "quarter" },
+          { beat: 3, duration: "quarter" },
+        ]
+      : [0, 1, 2, 3].map((beat) => ({ beat, duration: "quarter" as const }));
+    const synchronizedBeats = getSynchronizedBeats(
+      rhythmEvents.map((event) => event.beat),
+      getSynchronizedEventCount(level, measureIndex, seed),
       measureIndex,
-      seed,
-      quarterMelody[3]!,
-      chord.bassRoot
+      seed
     );
-    if (finalBeat) events.push(finalBeat);
-    return events;
+    let bassSyncIndex = 0;
+
+    return rhythmEvents.map(({ beat, duration }, index) => {
+      const hasBassSync = synchronizedBeats.includes(beat);
+      const bassNote = hasBassSync
+        ? [chord.bassRoot, chord.bassFifth][bassSyncIndex++ % 2]!
+        : undefined;
+      return makeEvent(
+        beat,
+        [quarterMelody[index]!],
+        bassNote ? [bassNote] : [],
+        duration,
+        duration,
+        duration
+      );
+    });
   }
 
   if (level === "level-3") {
-    return quarterMelody.map((noteName, index) =>
-      makeEvent(
-        index,
-        [noteName],
-        index === 0 ? [chord.bassRoot] : [],
-        "quarter",
-        "quarter",
-        useDottedTemplate ? "dotted-half" : "whole"
-      )
+    const synchronizedBeats = getSynchronizedBeats(
+      [0, 1, 2, 3],
+      getSynchronizedEventCount(level, measureIndex, seed),
+      measureIndex,
+      seed
     );
+    const bassScaleNotes = [
+      ...new Set([
+        ...chord.chordNotes,
+        ...quarterMelody.filter((noteName) => !chord.chordNotes.includes(noteName)),
+      ]),
+    ].slice(0, 4);
+    let bassSyncIndex = 0;
+
+    return quarterMelody.map((noteName, beat) => {
+      const hasBassSync = synchronizedBeats.includes(beat);
+      const nextSyncBeat = synchronizedBeats.find((syncBeat) => syncBeat > beat) ?? 4;
+      const bassNote = hasBassSync
+        ? [bassScaleNotes[bassSyncIndex++ % bassScaleNotes.length] ?? chord.bassRoot]
+        : [];
+      const bassBeatSpan = nextSyncBeat - beat;
+      const bassDuration = hasBassSync
+        ? useDottedTemplate && bassBeatSpan === 4
+          ? "dotted-half"
+          : getDurationForBeatSpan(bassBeatSpan)
+        : "quarter";
+      return makeEvent(beat, [noteName], bassNote, "quarter", "quarter", bassDuration);
+    });
   }
 
   if (level === "level-4") {
@@ -500,6 +596,11 @@ export function createDuetPracticePage(
       : measureIndex + Math.max(0, Math.floor(options.measureCount));
   let endBeat = startBeat;
   const seed = hashSeed(options.seed);
+  const levelOneNotePools: LevelOneNotePools = {
+    treble: NOTE_NAME_ORDER.filter((noteName) => lookup.get("treble")?.has(noteName) ?? false),
+    bass: NOTE_NAME_ORDER.filter((noteName) => lookup.get("bass")?.has(noteName) ?? false),
+  };
+  const levelOneNoteOffsets: LevelOneNoteOffsets = { treble: 0, bass: 0 };
   // Keep one continuous left/right alternation across measure boundaries and
   // appended score buffers. The first hand and each bar's rhythm are session-seeded.
   let nextAlternatingStaff: Staff = getInitialAlternatingStaff(seed);
@@ -511,8 +612,14 @@ export function createDuetPracticePage(
         previousMeasure,
         nextAlternatingStaff,
         allowDottedRhythms && previousMeasure % 4 === 3,
-        seed
+        seed,
+        levelOneNotePools,
+        levelOneNoteOffsets
       );
+      previousEvents.forEach((event) => {
+        levelOneNoteOffsets.treble += event.high.length;
+        levelOneNoteOffsets.bass += event.low.length;
+      });
       if (previousEvents.length % 2 === 1) {
         nextAlternatingStaff = nextAlternatingStaff === "treble" ? "bass" : "treble";
       }
@@ -527,7 +634,9 @@ export function createDuetPracticePage(
       measureIndex,
       nextAlternatingStaff,
       useDottedTemplate,
-      seed
+      seed,
+      levelOneNotePools,
+      levelOneNoteOffsets
     );
     for (const measureEvent of measureEvents) {
       const high = measureEvent.high
@@ -553,6 +662,10 @@ export function createDuetPracticePage(
       measures.push(measureIndex);
       noteBeamGroups.push(Math.floor(onset + 0.001));
       onsets.push(onset);
+      if (level === "level-1") {
+        levelOneNoteOffsets.treble += measureEvent.high.length;
+        levelOneNoteOffsets.bass += measureEvent.low.length;
+      }
       if (level === "level-1") {
         const lastStaff = high.length > 0 ? "treble" : "bass";
         nextAlternatingStaff = lastStaff === "treble" ? "bass" : "treble";
@@ -618,8 +731,8 @@ export function normalizeDuetPracticeLevel(
 export function getDuetPracticeLevelLabel(level: DuetPracticeLevel): string {
   const labels: Record<DuetPracticeLevel, string> = {
     "level-1": "Level 1 · 左右手交替",
-    "level-2": "Level 2 · 部分同步",
-    "level-3": "Level 3 · 旋律与低音",
+    "level-2": "Level 2 · 少量同步",
+    "level-3": "Level 3 · 大量同步",
     "level-4": "Level 4 · 柱式和弦",
     "level-5": "Level 5 · 八分音符",
     "level-6": "Level 6 · 分解和弦",
@@ -629,9 +742,9 @@ export function getDuetPracticeLevelLabel(level: DuetPracticeLevel): string {
 
 export function getDuetPracticeLevelDescription(level: DuetPracticeLevel): string {
   const descriptions: Record<DuetPracticeLevel, string> = {
-    "level-1": "左右手按稳定拍点轮流弹单音，不同时起音。",
-    "level-2": "第 1、3 拍双手同奏，第 2 拍由右手单独接续。",
-    "level-3": "右手弹四分音符旋律，左手每小节持续一个低音。",
+    "level-1": "左右手轮流弹单音，音符在各自音域内均衡轮换，不同时起音。",
+    "level-2": "每小节同奏 1 次的概率为 80%，同奏 2 次为 20%。",
+    "level-3": "每小节同奏 1/2/3/4 次的概率依次为 20%/50%/20%/10%。",
     "level-4": "左手在强拍弹柱式三和弦，右手继续弹简单旋律。",
     "level-5": "右手弹均匀八分音符旋律，左手柱式和弦保持。",
     "level-6": "左手按四分音符弹分解和弦，右手继续旋律。",
@@ -641,7 +754,7 @@ export function getDuetPracticeLevelDescription(level: DuetPracticeLevel): strin
 
 export function getDuetPracticeEventCountPerMeasure(level: DuetPracticeLevel): number | undefined {
   const counts: Partial<Record<DuetPracticeLevel, number>> = {
-    "level-2": 3,
+    "level-2": 4,
     "level-3": 4,
     "level-4": 4,
     "level-5": 8,
