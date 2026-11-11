@@ -207,6 +207,38 @@
   padding: 18px 0 12px;
 }
 
+.blind-practice-target {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+
+.blind-practice-target > span {
+  color: var(--muted);
+  font-size: clamp(16px, 2.2vw, 24px);
+  font-weight: 600;
+}
+
+.blind-practice-target > strong {
+  color: var(--accent);
+  font-size: clamp(76px, 15vw, 176px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.blind-practice-feedback {
+  color: var(--danger);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.practice-running-shell.is-blind-practice .prompt-stage {
+  min-height: 0;
+}
+
 .staff {
   width: min(720px, 100%);
   min-height: 250px;

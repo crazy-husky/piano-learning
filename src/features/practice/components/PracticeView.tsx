@@ -175,6 +175,7 @@ import {
 } from "../logic/duetPractice";
 
 const FREE_STAFF_ROW_PREVIEW_TEMPO_BPM = 60;
+const BLIND_PRACTICE_NOTE_DURATIONS: PromptNoteDuration[] = ["quarter"];
 
 interface PracticeViewProps {
   midi: MidiInputController;
@@ -210,7 +211,7 @@ interface PracticeViewProps {
   onMetronomeSyncPauseChange?: (pause: (() => void) | undefined) => void;
   showPracticeKindTabs?: boolean;
   practiceModeLock?: "single" | "duet";
-  practiceProfile?: "pre-reading";
+  practiceProfile?: "pre-reading" | "blind-practice";
 }
 
 export type PracticeNavigationExitTarget =
@@ -470,25 +471,31 @@ export function PracticeView({
   practiceProfile,
 }: PracticeViewProps): JSX.Element {
   const isPreReadingPractice = practiceProfile === "pre-reading";
+  const isBlindPractice = practiceProfile === "blind-practice";
   const freePracticeCopy = isPreReadingPractice
     ? {
         title: "提前识谱",
         description: "打破逐音视奏，训练眼睛走在手的前面。",
       }
-    : practiceModeLock === "single"
+    : isBlindPractice
       ? {
-          title: "单音极速反应",
-          description: "看谱后迅速识别音高并作答，练习连续、轻松的单手反应。",
+          title: "盲弹练习",
+          description: "不看键盘，根据音名在不同音组间找到目标音。",
         }
-      : practiceModeLock === "duet"
+      : practiceModeLock === "single"
         ? {
-            title: "双手协同",
-            description: "同时跟踪高低声部，让左右手在同一节奏中协作。",
+            title: "单音极速反应",
+            description: "看谱后迅速识别音高并作答，练习连续、轻松的单手反应。",
           }
-        : {
-            title: "自由练习",
-            description: "看到音符后，快速识别音高并找到对应琴键。",
-          };
+        : practiceModeLock === "duet"
+          ? {
+              title: "双手协同",
+              description: "同时跟踪高低声部，让左右手在同一节奏中协作。",
+            }
+          : {
+              title: "自由练习",
+              description: "看到音符后，快速识别音高并找到对应琴键。",
+            };
   const {
     audioError: metronomeAudioError,
     getAudioTime: getMetronomeAudioTime,
@@ -665,22 +672,26 @@ export function PracticeView({
   const duetRangePreset = normalizeDuetPracticeRangePreset(
     practiceSetupPreferences.duetRangePreset
   );
+  const configuredAnswerPitchMode = runningStartSnapshot
+    ? normalizeAnswerPitchMode(runningStartSnapshot.practiceConfig.answerPitchMode)
+    : normalizeAnswerPitchMode(practiceSetupPreferences.answerPitchMode);
   const answerPitchMode = isDuetPractice
     ? "exact-pitch"
-    : runningStartSnapshot
-      ? normalizeAnswerPitchMode(runningStartSnapshot.practiceConfig.answerPitchMode)
-      : normalizeAnswerPitchMode(practiceSetupPreferences.answerPitchMode);
+    : isBlindPractice && configuredAnswerPitchMode === "note-name"
+      ? "microphone"
+      : configuredAnswerPitchMode;
   const requiresMidiStaffPage = practiceTab === "free" && answerPitchMode === "exact-pitch";
   const isMetronomeSyncMandatory = practiceTab === "free" && isDuetPractice;
   const supportsMetronomeSyncNoteDurations =
-    practiceSetupPreferences.promptNoteDurations.length > 0 &&
-    practiceSetupPreferences.promptNoteDurations.every(
-      (duration) => duration === "whole" || duration === "quarter"
-    );
+    isBlindPractice ||
+    (practiceSetupPreferences.promptNoteDurations.length > 0 &&
+      practiceSetupPreferences.promptNoteDurations.every(
+        (duration) => duration === "whole" || duration === "quarter"
+      ));
   const isMetronomeSyncSelected =
     practiceTab === "free" &&
     !isDuetPractice &&
-    answerPitchMode === "exact-pitch" &&
+    (answerPitchMode === "exact-pitch" || isBlindPractice) &&
     (isPreReadingPractice
       ? preReadingMetronomeSyncEnabled
       : practiceSetupPreferences.metronomeSyncEnabled);
@@ -709,14 +720,17 @@ export function PracticeView({
     if (activePracticeInputMode) onInputModeChange(activePracticeInputMode);
   }, [activePracticeInputMode, onInputModeChange]);
   const mode = runningStartSnapshot?.practiceConfig.mode ?? practiceSetupPreferences.mode;
-  const promptDisplayMode = isPreReadingPractice
-    ? "staff-page"
-    : isDuetPractice || requiresMidiStaffPage
+  const promptDisplayMode =
+    isPreReadingPractice || isBlindPractice
       ? "staff-page"
-      : (runningStartSnapshot?.presentationConfig.promptDisplayMode ??
-        practiceSetupPreferences.promptDisplayMode);
-  const isContinuousStaffPage = practiceTab === "free" && promptDisplayMode === "staff-page";
-  const isMobileStaffPage = isMobileViewport && promptDisplayMode === "staff-page";
+      : isDuetPractice || requiresMidiStaffPage
+        ? "staff-page"
+        : (runningStartSnapshot?.presentationConfig.promptDisplayMode ??
+          practiceSetupPreferences.promptDisplayMode);
+  const isContinuousStaffPage =
+    practiceTab === "free" && promptDisplayMode === "staff-page" && !isBlindPractice;
+  const isMobileStaffPage =
+    isMobileViewport && promptDisplayMode === "staff-page" && !isBlindPractice;
   const responsivePracticeStaffLayout = isDuetPractice
     ? isMobileStaffPage
       ? MOBILE_DUET_PRACTICE_PAGE_STAFF_LAYOUT
@@ -801,23 +815,26 @@ export function PracticeView({
     phase === "running" &&
     practiceTab === "free" &&
     runningStartSnapshot?.practiceConfig.metronomeSync === true &&
-    answerPitchMode === "exact-pitch" &&
+    (answerPitchMode === "exact-pitch" || isBlindPractice) &&
     promptDisplayMode === "staff-page";
   const metronomeSyncActiveRef = useRef(isMetronomeSyncActive);
   metronomeSyncActiveRef.current = isMetronomeSyncActive;
   const promptNoteDurations = useMemo(
     () =>
-      runningStartSnapshot
-        ? normalizePromptNoteDurations(
-            runningStartSnapshot.presentationConfig.promptNoteDurations,
-            [runningStartSnapshot.presentationConfig.promptNoteDuration]
-          )
-        : practiceSetupPreferences.promptNoteDurations,
-    [practiceSetupPreferences.promptNoteDurations, runningStartSnapshot]
+      isBlindPractice
+        ? BLIND_PRACTICE_NOTE_DURATIONS
+        : runningStartSnapshot
+          ? normalizePromptNoteDurations(
+              runningStartSnapshot.presentationConfig.promptNoteDurations,
+              [runningStartSnapshot.presentationConfig.promptNoteDuration]
+            )
+          : practiceSetupPreferences.promptNoteDurations,
+    [isBlindPractice, practiceSetupPreferences.promptNoteDurations, runningStartSnapshot]
   );
-  const promptNoteDuration =
-    runningStartSnapshot?.presentationConfig.promptNoteDuration ??
-    practiceSetupPreferences.promptNoteDuration;
+  const promptNoteDuration = isBlindPractice
+    ? "quarter"
+    : (runningStartSnapshot?.presentationConfig.promptNoteDuration ??
+      practiceSetupPreferences.promptNoteDuration);
   const fixedCount =
     runningStartSnapshot?.practiceConfig.fixedCount ?? practiceSetupPreferences.fixedCount;
   const fixedDurationSeconds =
@@ -833,8 +850,10 @@ export function PracticeView({
     (answerPitchMode === "exact-pitch"
       ? practiceSetupPreferences.midiPlayAnswerNote
       : practiceSetupPreferences.playAnswerNote);
-  const queueStrategy =
-    runningStartSnapshot?.practiceConfig.queueStrategy ?? practiceSetupPreferences.queueStrategy;
+  const queueStrategy = isBlindPractice
+    ? "adaptive"
+    : (runningStartSnapshot?.practiceConfig.queueStrategy ??
+      practiceSetupPreferences.queueStrategy);
   const drillNoteNames =
     runningStartSnapshot?.practiceConfig.drillNoteNames ?? practiceSetupPreferences.drillNoteNames;
   const startPausedReading = staffPageUiPreferences.startPausedReading;
@@ -1157,8 +1176,10 @@ export function PracticeView({
       (isPreReadingPractice ? preReadingRange.enabledPitchIds : settings.enabledPitchIds));
   const effectiveCrossGroupPitchIds = isDuetPractice
     ? undefined
-    : (runningStartSnapshot?.practiceConfig.crossGroupPitchIds ??
-      (isPreReadingPractice ? preReadingRange.crossGroupPitchIds : settings.crossGroupPitchIds));
+    : isBlindPractice
+      ? undefined
+      : (runningStartSnapshot?.practiceConfig.crossGroupPitchIds ??
+        (isPreReadingPractice ? preReadingRange.crossGroupPitchIds : settings.crossGroupPitchIds));
   const effectiveInterStaffLedgerSpellings =
     staffNotationMode === "grand"
       ? false
@@ -1536,14 +1557,16 @@ export function PracticeView({
       answerPitchMode: isDuetPractice ? settings.answerPitchMode : answerPitchMode,
       defaultMode: mode,
       promptDisplayMode:
-        isDuetPractice || isPreReadingPractice ? settings.promptDisplayMode : promptDisplayMode,
-      promptNoteDuration,
-      promptNoteDurations,
+        isDuetPractice || isPreReadingPractice || isBlindPractice
+          ? settings.promptDisplayMode
+          : promptDisplayMode,
+      promptNoteDuration: isBlindPractice ? settings.promptNoteDuration : promptNoteDuration,
+      promptNoteDurations: isBlindPractice ? settings.promptNoteDurations : promptNoteDurations,
       fixedCount,
       fixedDurationSeconds,
-      autoPlayTarget,
-      playAnswerNote,
-      queueStrategy,
+      autoPlayTarget: isBlindPractice ? settings.autoPlayTarget : autoPlayTarget,
+      playAnswerNote: isBlindPractice ? settings.playAnswerNote : playAnswerNote,
+      queueStrategy: isBlindPractice ? settings.queueStrategy : queueStrategy,
       drillNoteNames,
       focusedTraining: false,
     };
@@ -1551,6 +1574,7 @@ export function PracticeView({
     return nextSettings;
   }, [
     answerPitchMode,
+    isBlindPractice,
     isDuetPractice,
     isPreReadingPractice,
     autoPlayTarget,
@@ -1704,10 +1728,12 @@ export function PracticeView({
         ? adaptiveStaffRows?.rowStartIndices
         : undefined,
       allowDottedRhythms: duetAllowDottedRhythms,
-      forceRhythmGeneration: requiresMidiStaffPage || isDuetPractice,
+      forceRhythmGeneration: requiresMidiStaffPage || isDuetPractice || isBlindPractice,
+      blindPractice: isBlindPractice,
       promptNoteDurations,
       rangeExtensionNotes,
-      retainHistory: practiceTab === "free" && promptDisplayMode === "staff-page",
+      retainHistory:
+        practiceTab === "free" && promptDisplayMode === "staff-page" && !isBlindPractice,
       fixedCount,
       isMobileViewport,
       mode,
@@ -2172,6 +2198,7 @@ export function PracticeView({
     values: {
       answerPitchMode,
       isDuetPractice,
+      isBlindPractice,
       shouldSynchronizeMetronome,
       midiAutoPlayTarget: practiceSetupPreferences.midiAutoPlayTarget,
       midiPlayAnswerNote: practiceSetupPreferences.midiPlayAnswerNote,
@@ -2592,9 +2619,12 @@ export function PracticeView({
       if (isPausedRef.current) return;
       if (freeRowPlaybackActiveRef.current !== null) return;
       if (isPreReadingPractice && preReadingScoreWindow.phase !== "training") return;
-      if (isMetronomeSyncActive && answer.source === "midi") {
+      if (
+        isMetronomeSyncActive &&
+        (answer.source === "midi" || (isBlindPractice && answer.source === "microphone"))
+      ) {
         // The final count-in callback establishes the first score-beat anchor.
-        // Keep accepting MIDI inside that beat's early window while the count-in
+        // Keep accepting input inside that beat's early window while the count-in
         // numeral is still visible on screen.
         if (syncTempoAnchorsRef.current.length === 0) return;
         const prompt = promptRef.current;
@@ -2753,6 +2783,7 @@ export function PracticeView({
       answerInputLockedRef,
       getCurrentSyncOnset,
       getSyncOnsetAtIndex,
+      isBlindPractice,
       isMetronomeSyncActive,
       isPreReadingPractice,
       preReadingScoreWindow.phase,
@@ -3000,7 +3031,9 @@ export function PracticeView({
     }
     if (shouldSynchronizeMetronome && metronomePreferences.beatsPerBar !== 4) {
       return {
-        message: "木鱼与谱面同步已开启，木鱼节拍器需要设为4/4拍",
+        message: isBlindPractice
+          ? "木鱼与练习同步需要将木鱼设为4/4拍"
+          : "木鱼与谱面同步已开启，木鱼节拍器需要设为4/4拍",
         target: '[data-setup-guide-target="practice-metronome-woodfish"]',
       };
     }
@@ -3029,12 +3062,19 @@ export function PracticeView({
         target: '[data-setup-guide-target="practice-note-groups"]',
       };
     }
+    if (isBlindPractice && new Set(enabledNotes.map((note) => note.groupId)).size < 2) {
+      return {
+        message: "盲弹练习至少需要选择两个音组",
+        target: '[data-setup-guide-target="practice-note-groups"]',
+      };
+    }
     return null;
   }, [
     answerPitchMode,
     drillNoteNames.length,
-    enabledNotes.length,
+    enabledNotes,
     isDuetPractice,
+    isBlindPractice,
     metronomeFloatingVisible,
     metronomePreferences.beatsPerBar,
     midi.isConnected,
@@ -3348,9 +3388,10 @@ export function PracticeView({
         activeTab={practiceTab}
         freePracticeTitle={freePracticeCopy.title}
         freePracticeDescription={freePracticeCopy.description}
+        blindPractice={isBlindPractice}
         showPracticeKindTabs={showPracticeKindTabs}
         showPracticeModeTabs={practiceModeLock === undefined}
-        lockedPromptDisplayMode={isPreReadingPractice ? "staff-page" : undefined}
+        lockedPromptDisplayMode={isPreReadingPractice || isBlindPractice ? "staff-page" : undefined}
         preReadingBufferSize={isPreReadingPractice ? preReadingBufferSize : undefined}
         onPreReadingBufferSizeChange={isPreReadingPractice ? setPreReadingBufferSize : undefined}
         distanceContent={
@@ -3470,6 +3511,15 @@ export function PracticeView({
             : practiceSetupPreferences.metronomeSyncEnabled,
           practiceMode: practiceModeLock ?? practiceSetupPreferences.practiceMode,
           ...(isPreReadingPractice ? { promptDisplayMode: "staff-page" as const } : {}),
+          ...(isBlindPractice
+            ? {
+                answerPitchMode,
+                promptDisplayMode: "staff-page" as const,
+                promptNoteDuration: "quarter" as const,
+                promptNoteDurations: ["quarter" as const],
+                queueStrategy: "adaptive" as const,
+              }
+            : {}),
         }}
         setupStartError={setupStartError}
         setupStartGuideTarget={setupStartIssue?.target}
@@ -3528,6 +3578,7 @@ export function PracticeView({
         "practice-shell",
         "practice-running-shell",
         isContinuousStaffPage ? "is-free-score-stream" : "",
+        isBlindPractice ? "is-blind-practice" : "",
         isMobileViewport ? "practice-running-mobile" : "",
         isMobileViewport && answerPitchMode !== "note-name"
           ? "practice-without-touch-keyboard"
@@ -3722,13 +3773,35 @@ export function PracticeView({
           <div className="practice-metronome-sync-status" role="status" aria-live="polite">
             {syncCountInBeat !== null ? <strong>准备拍 {syncCountInBeat}</strong> : null}
             <strong>{metronomePreferences.bpm} BPM</strong>
-            <span className="practice-metronome-sync-legend" aria-label="谱面颜色说明">
-              <span className="is-error">红色：错音或漏拍</span>
-              <span className="is-warning">黄色：时机偏早或偏晚</span>
-            </span>
+            {!isBlindPractice ? (
+              <span className="practice-metronome-sync-legend" aria-label="谱面颜色说明">
+                <span className="is-error">红色：错音或漏拍</span>
+                <span className="is-warning">黄色：时机偏早或偏晚</span>
+              </span>
+            ) : null}
           </div>
         ) : null}
-        {promptDisplayMode === "staff-page" ? (
+        {isBlindPractice ? (
+          currentNote ? (
+            <div aria-live="polite" className="blind-practice-target">
+              <span>请弹奏这个音</span>
+              <strong>
+                {currentNote.noteName}
+                {currentNote.accidental === "sharp"
+                  ? "♯"
+                  : currentNote.accidental === "flat"
+                    ? "♭"
+                    : ""}
+                {currentNote.octave}
+              </strong>
+              {feedback?.type === "wrong" ? (
+                <small className="blind-practice-feedback" role="status">
+                  再找一次
+                </small>
+              ) : null}
+            </div>
+          ) : null
+        ) : promptDisplayMode === "staff-page" ? (
           <div
             ref={staffPagePromptContainerRef}
             className={[

@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { BookOpen, Eye, Keyboard, Ruler, Users, Zap } from "lucide-react";
+import { BookOpen, Eye, EyeOff, Keyboard, Ruler, Users, Zap } from "lucide-react";
 import type { LearningLevelId } from "../../routing/appRoutes";
 import type { DuetPracticeLevel, PreReadingBufferSize } from "../../domain/types";
 
@@ -37,6 +37,12 @@ export type GraduationCriteria =
       sampleCountPerLevel: number;
       minFirstTryAccuracy: number;
       description: string;
+    }
+  | {
+      kind: "blind-practice";
+      sampleCount: number;
+      minFirstTryAccuracy: number;
+      description: string;
     };
 
 export interface LearningModuleDefinition {
@@ -44,6 +50,7 @@ export interface LearningModuleDefinition {
   name: string;
   summary: string;
   icon: LucideIcon;
+  optional?: boolean;
   graduationCriteria: GraduationCriteria;
   guide: {
     title: string;
@@ -51,10 +58,11 @@ export interface LearningModuleDefinition {
     principle: string;
     highlight: string;
     steps: string[];
+    methods?: { title: string; description: string }[];
   };
 }
 
-export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
+const LEARNING_MODULES_BY_ID: readonly LearningModuleDefinition[] = [
   {
     id: 1,
     name: "基础识谱",
@@ -185,8 +193,57 @@ export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
       steps: ["分别辨认高音与低音声部", "确认两手目标的先后与同时关系", "保持节拍并逐步提高连贯度"],
     },
   },
+  {
+    id: 7,
+    name: "盲弹练习",
+    summary: "不看键盘，借助黑键组在不同音组间移动找音。",
+    icon: EyeOff,
+    optional: true,
+    graduationCriteria: {
+      kind: "blind-practice",
+      sampleCount: 20,
+      minFirstTryAccuracy: 0.8,
+      description: "完成至少 20 题，首次答对率达到 80%。",
+    },
+    guide: {
+      title: "不看键盘，也能找到目标音",
+      goal: "逐步建立不依赖视觉查看键位的定位能力。",
+      principle:
+        "常见的盲弹练习有两种定位思路：一种先建立身体与键盘的固定参照，另一种利用键盘结构判断当前位置。本练习以第二种相对定位为核心。",
+      highlight: "看清目标音名后不看键盘，用两黑键组、三黑键组判断位置；题目会在不同音组间跳转。",
+      steps: [
+        "读出当前目标音名，随后把注意力放到手和键盘的触感上",
+        "摸清附近的两黑键组、三黑键组，判断目标音与黑键组的相对位置",
+        "弹出目标音后继续下一题，在跨音组移动中练习重新定位",
+      ],
+      methods: [
+        {
+          title: "绝对定位法 · 身体对齐中央 C",
+          description:
+            "用身体中线（例如鼻尖）与中央 C 对齐，建立身体和键盘的固定位置关系，再从这个基准寻找其他音。它适合作为进阶定位方法，要形成稳定感觉，需要长期反复练习；这里仅作介绍。",
+        },
+        {
+          title: "相对定位法 · 借助两黑键、三黑键组",
+          description:
+            "不要求身体始终对齐某一个固定琴键，而是通过触摸两黑键组、三黑键组判断手当前所在的位置，再推断目标音。盲弹练习会让目标音在不同音组间随机跳转，重点训练这种相对找位能力。",
+        },
+      ],
+    },
+  },
+];
+
+export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
+  ...LEARNING_MODULES_BY_ID.slice(0, 4),
+  LEARNING_MODULES_BY_ID[5]!,
+  LEARNING_MODULES_BY_ID[4]!,
+  LEARNING_MODULES_BY_ID[6]!,
 ];
 
 export function getLearningModule(id: LearningLevelId): LearningModuleDefinition {
-  return LEARNING_MODULES[id - 1]!;
+  return LEARNING_MODULES_BY_ID.find((module) => module.id === id)!;
+}
+
+export function getLearningModuleSequenceNumber(id: LearningLevelId): number {
+  const index = LEARNING_MODULES.findIndex((module) => module.id === id);
+  return index < 0 ? id : index + 1;
 }

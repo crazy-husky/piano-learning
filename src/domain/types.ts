@@ -127,6 +127,7 @@ export interface ReviewRecord {
 
 export type AnswerEventMode =
   | "free-practice"
+  | "blind-practice"
   | "pre-reading"
   | "staff-game"
   | "song"
@@ -148,7 +149,7 @@ export interface AnswerEvent {
   promptEndedAt?: string;
   mode: AnswerEventMode;
   /** Learning route that produced this prompt; used to scope level statistics and deletion. */
-  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   /** Challenge subtype; absent for songs, review rounds, and legacy events. */
   gameMode?: StaffGameChallengeMode | null;
   staffGameSource?: "challenge" | "review";

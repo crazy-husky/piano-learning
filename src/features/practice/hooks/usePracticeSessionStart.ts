@@ -55,6 +55,7 @@ interface PracticeStaffPageStartInput {
 interface PracticeSessionStartValues {
   answerPitchMode: AnswerPitchMode;
   isDuetPractice: boolean;
+  isBlindPractice: boolean;
   shouldSynchronizeMetronome: boolean;
   midiAutoPlayTarget: boolean;
   midiPlayAnswerNote: boolean;
@@ -143,6 +144,7 @@ export function usePracticeSessionStart({
   const {
     answerPitchMode,
     isDuetPractice,
+    isBlindPractice,
     shouldSynchronizeMetronome,
     midiAutoPlayTarget,
     midiPlayAnswerNote,
@@ -235,13 +237,13 @@ export function usePracticeSessionStart({
           await onSettingsSaved(nextSettings, { feedback: false });
         }
         const nextMode = nextSettings.defaultMode;
-        const nextQueueStrategy = resolveQueueStrategy(nextSettings);
+        const nextQueueStrategy = isBlindPractice ? "adaptive" : resolveQueueStrategy(nextSettings);
         const nextSchedulerReviews = preflightResult.reviews
           ? filterLongTermReviews(preflightResult.reviews)
           : schedulerReviews;
         const preReadingRange =
           nextSettings.staffRangeProfiles?.[nextSettings.staffNotationMode] ?? nextSettings;
-        const practiceSettings = isDuetPractice
+        const basePracticeSettings = isDuetPractice
           ? {
               ...nextSettings,
               answerPitchMode: "exact-pitch" as const,
@@ -266,6 +268,17 @@ export function usePracticeSessionStart({
               : nextSettings.staffNotationMode === "grand"
                 ? { ...nextSettings, includeInterStaffLedgerSpellings: false }
                 : nextSettings;
+        const practiceSettings = isBlindPractice
+          ? {
+              ...basePracticeSettings,
+              answerPitchMode,
+              crossGroupPitchIds: undefined,
+              promptDisplayMode: "staff-page" as const,
+              promptNoteDuration: "quarter" as const,
+              promptNoteDurations: ["quarter" as const],
+              queueStrategy: "adaptive" as const,
+            }
+          : basePracticeSettings;
         const focusedNotes = options?.focusTargetNoteIds?.length
           ? options.focusTargetNoteIds.map(getNoteById)
           : [];
@@ -286,12 +299,12 @@ export function usePracticeSessionStart({
           availablePreflightAnswerPitchMode === "exact-pitch"
             ? {
                 ...microphoneSettings,
-                playAnswerNote: midiPlayAnswerNote,
+                playAnswerNote: isBlindPractice ? false : midiPlayAnswerNote,
               }
             : microphoneSettings;
         const builtStartSnapshot = buildPracticeSessionStartSnapshot({
           autoPlayTarget:
-            availablePreflightAnswerPitchMode === "microphone"
+            isBlindPractice || availablePreflightAnswerPitchMode === "microphone"
               ? false
               : availablePreflightAnswerPitchMode === "exact-pitch"
                 ? midiAutoPlayTarget
@@ -301,13 +314,16 @@ export function usePracticeSessionStart({
           settings: { ...inputModeSettings, queueStrategy: nextQueueStrategy },
           smoothStaffPageScroll: shouldSynchronizeMetronome
             ? false
-            : staffPageUiPreferences.smoothStaffPageScroll,
-          startPausedReading,
+            : isBlindPractice
+              ? false
+              : staffPageUiPreferences.smoothStaffPageScroll,
+          startPausedReading: isBlindPractice ? false : startPausedReading,
           duetLevel: isDuetPractice ? (duetLevel ?? "level-1") : undefined,
           duetCurriculumVersion: isDuetPractice ? DUET_PRACTICE_CURRICULUM_VERSION : undefined,
           duetAllowDottedRhythms: isDuetPractice ? duetAllowDottedRhythms : undefined,
           metronomeSync:
-            shouldSynchronizeMetronome && availablePreflightAnswerPitchMode === "exact-pitch",
+            shouldSynchronizeMetronome &&
+            (availablePreflightAnswerPitchMode === "exact-pitch" || isBlindPractice),
           ...(preReadingBufferSize !== undefined ? { preReadingBufferSize } : {}),
         });
         if (!builtStartSnapshot) {
@@ -430,6 +446,7 @@ export function usePracticeSessionStart({
   const startSession = useCallback(startSessionAction, [
     answerPitchMode,
     isDuetPractice,
+    isBlindPractice,
     shouldSynchronizeMetronome,
     duetLevel,
     duetRangePreset,

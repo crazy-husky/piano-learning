@@ -259,6 +259,35 @@ function addOccasionalRangeNotes(
   return result;
 }
 
+function selectBlindPracticeNotes(
+  notes: readonly TargetNote[],
+  count: number,
+  previousNoteId?: TargetNote["id"]
+): TargetNote[] {
+  const notesByGroup = new Map<TargetNote["groupId"], TargetNote[]>();
+  for (const note of notes) {
+    const groupNotes = notesByGroup.get(note.groupId) ?? [];
+    groupNotes.push(note);
+    notesByGroup.set(note.groupId, groupNotes);
+  }
+
+  const groups = [...notesByGroup.entries()];
+  if (groups.length < 2 || count <= 0) return [];
+
+  let previousGroupId = notes.find((note) => note.id === previousNoteId)?.groupId;
+  const result: TargetNote[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const eligibleGroups = groups.filter(([groupId]) => groupId !== previousGroupId);
+    const [groupId, groupNotes] =
+      eligibleGroups[Math.floor(Math.random() * eligibleGroups.length)] ?? groups[0]!;
+    const note = groupNotes[Math.floor(Math.random() * groupNotes.length)];
+    if (!note) continue;
+    result.push(note);
+    previousGroupId = groupId;
+  }
+  return result;
+}
+
 interface PracticeStaffPageFlowValues {
   drillNoteNames: NoteName[];
   enabledNotes: TargetNote[];
@@ -268,6 +297,7 @@ interface PracticeStaffPageFlowValues {
   pageNoteCount: number;
   promptNoteDurations: PromptNoteDuration[];
   forceRhythmGeneration: boolean;
+  blindPractice: boolean;
   rangeExtensionNotes: TargetNote[];
   duetLevel?: DuetPracticeLevel;
   adaptiveMeasureAreaWidthPx?: number;
@@ -329,6 +359,7 @@ export function usePracticeStaffPageFlow({
     pageNoteCount,
     promptNoteDurations,
     forceRhythmGeneration,
+    blindPractice,
     rangeExtensionNotes,
     duetLevel,
     adaptiveMeasureAreaWidthPx,
@@ -532,35 +563,39 @@ export function usePracticeStaffPageFlow({
           : generatedDuetPage;
       const generatedNotes = duetLevel
         ? []
-        : sourceQueueStrategy !== "melody" && !isSplitStaffRange
-          ? (adaptiveSchedulerRef.current?.selectPage(count, {
-              lastTargetNoteId,
-            }) ??
-            selectNotePage({
-              notes: sourceNotes,
-              reviews: sourceReviews,
-              sessions,
-              currentSessionId: sessionRef.current?.id,
-              queueStrategy: sourceQueueStrategy,
-              drillNoteNames: sourceDrillNoteNames,
-              lastTargetNoteId,
-              melodyState: melodyGenerationStateRef.current,
-              count,
-            }))
-          : selectNotePage({
-              notes: sourceNotes,
-              reviews: sourceReviews,
-              sessions,
-              currentSessionId: sessionRef.current?.id,
-              queueStrategy: sourceQueueStrategy,
-              drillNoteNames: sourceDrillNoteNames,
-              lastTargetNoteId,
-              melodyState: melodyGenerationStateRef.current,
-              count,
-            });
+        : blindPractice
+          ? selectBlindPracticeNotes(sourceNotes, count, lastTargetNoteId)
+          : sourceQueueStrategy !== "melody" && !isSplitStaffRange
+            ? (adaptiveSchedulerRef.current?.selectPage(count, {
+                lastTargetNoteId,
+              }) ??
+              selectNotePage({
+                notes: sourceNotes,
+                reviews: sourceReviews,
+                sessions,
+                currentSessionId: sessionRef.current?.id,
+                queueStrategy: sourceQueueStrategy,
+                drillNoteNames: sourceDrillNoteNames,
+                lastTargetNoteId,
+                melodyState: melodyGenerationStateRef.current,
+                count,
+              }))
+            : selectNotePage({
+                notes: sourceNotes,
+                reviews: sourceReviews,
+                sessions,
+                currentSessionId: sessionRef.current?.id,
+                queueStrategy: sourceQueueStrategy,
+                drillNoteNames: sourceDrillNoteNames,
+                lastTargetNoteId,
+                melodyState: melodyGenerationStateRef.current,
+                count,
+              });
       const selectedNotes = duetLevel
         ? []
-        : addOccasionalRangeNotes(generatedNotes, rangeExtensionNotes);
+        : blindPractice
+          ? generatedNotes
+          : addOccasionalRangeNotes(generatedNotes, rangeExtensionNotes);
       const noteGroups = duetPage?.noteGroups;
       const notes = duetPage?.notes ?? selectedNotes;
       const rhythm =
@@ -598,6 +633,7 @@ export function usePracticeStaffPageFlow({
       duetLevel,
       fixedCount,
       forceRhythmGeneration,
+      blindPractice,
       getNextStaffPageCount,
       isMobileViewport,
       lastTargetNoteIdRef,
@@ -616,7 +652,7 @@ export function usePracticeStaffPageFlow({
   const startStaffPageScroll = useCallback(
     (nextCompletedCount: number, nextIndex: number): boolean => {
       const page = staffPageRef.current;
-      if (!page) {
+      if (blindPractice || !page) {
         return false;
       }
 
@@ -721,7 +757,8 @@ export function usePracticeStaffPageFlow({
       let nextNoteGroups = page.noteGroups;
       let nextRhythm = page.rhythm;
       if (nextRowCount > 0) {
-        const lastTargetNoteId = page.notes[page.notes.length - 1]?.id;
+        const lastTargetNoteId =
+          remainingVisibleNotes.at(-1)?.id ?? page.notes[page.notes.length - 1]?.id;
         const isSplitStaffRange = new Set(enabledNotes.map((note) => note.staff)).size > 1;
         const pageSelectionOptions = {
           notes: enabledNotes,
@@ -780,15 +817,19 @@ export function usePracticeStaffPageFlow({
             : generatedDuetAppend;
         const nextRow = duetLevel
           ? []
-          : !isSplitStaffRange && queueStrategy !== "melody"
-            ? (adaptiveSchedulerRef.current?.selectPage(nextRowCount, {
-                lastTargetNoteId: pageSelectionOptions.lastTargetNoteId,
-                plannedTargetNoteIds: pageSelectionOptions.plannedTargetNoteIds,
-              }) ?? selectNotePage(pageSelectionOptions))
-            : selectNotePage(pageSelectionOptions);
+          : blindPractice
+            ? selectBlindPracticeNotes(enabledNotes, nextRowCount, lastTargetNoteId)
+            : !isSplitStaffRange && queueStrategy !== "melody"
+              ? (adaptiveSchedulerRef.current?.selectPage(nextRowCount, {
+                  lastTargetNoteId: pageSelectionOptions.lastTargetNoteId,
+                  plannedTargetNoteIds: pageSelectionOptions.plannedTargetNoteIds,
+                }) ?? selectNotePage(pageSelectionOptions))
+              : selectNotePage(pageSelectionOptions);
         const selectedAppendedNotes = duetLevel
           ? []
-          : addOccasionalRangeNotes(nextRow, rangeExtensionNotes);
+          : blindPractice
+            ? nextRow
+            : addOccasionalRangeNotes(nextRow, rangeExtensionNotes);
         const appendedGroups = duetAppend?.noteGroups;
         const appendedNotes = duetAppend?.notes ?? selectedAppendedNotes;
         nextNotes = [...page.notes, ...appendedNotes];
@@ -963,6 +1004,7 @@ export function usePracticeStaffPageFlow({
       adaptiveMaxMeasuresPerRow,
       staffPageRowStartIndices,
       adaptiveSchedulerRef,
+      blindPractice,
       isPausedRef,
       melodyGenerationStateRef,
       mode,

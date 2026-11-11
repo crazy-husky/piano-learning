@@ -69,7 +69,7 @@ interface PracticeNavigationExitRequest {
 }
 
 export interface StaffDistanceRunProps {
-  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   chaseSettings: PracticeChaseSettings;
   fixedCount: number;
   fixedDurationSeconds: number;

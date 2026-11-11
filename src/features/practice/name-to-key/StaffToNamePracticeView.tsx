@@ -52,7 +52,7 @@ interface StaffToNamePreferences {
 interface StaffToNamePracticeViewProps {
   isActive: boolean;
   showRestartControl?: boolean;
-  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   navigationExitRequest?: {
     id: number;
     targetView: "home" | "practice" | "stats" | "settings" | "study" | "vocal" | "metronome";

@@ -92,7 +92,7 @@ interface NameToKeyMicrophone {
 interface NameToKeyPracticeViewProps {
   isActive: boolean;
   showRestartControl?: boolean;
-  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   midi: MidiInputController;
   microphone: NameToKeyMicrophone;
   navigationExitRequest?: {

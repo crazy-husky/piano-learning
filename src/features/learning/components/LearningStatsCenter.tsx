@@ -485,7 +485,13 @@ export function LearningStatsCenter({
           {dimensions.length > 1 ? (
             <label>
               <span>
-                {levelId === 5 ? "预读深度" : levelId === 6 ? "双手协同难度" : "训练方式"}
+                {levelId === 5
+                  ? "预读深度"
+                  : levelId === 6
+                    ? "双手协同难度"
+                    : levelId === 7
+                      ? "输入方式"
+                      : "训练方式"}
               </span>
               <select onChange={(event) => setDimension(event.target.value)} value={dimension}>
                 {dimensions.map((option) => (

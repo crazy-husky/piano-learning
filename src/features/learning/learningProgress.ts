@@ -126,6 +126,7 @@ export function evaluateLearningProgress({
   );
   const preReading = answerEvents.filter((event) => event.mode === "pre-reading");
   const duetEvents = answerEvents.filter(isDuetEvent);
+  const blindPracticeEvents = answerEvents.filter((event) => event.mode === "blind-practice");
   const staffRecallCriteria = getGraduationCriteria(1, "staff-recall");
   const staffRecallTarget = staffRecallCriteria.completedRuns;
   const matchingRecallRuns = [...new Set(staffRecallRuns.map(getStaffRecallTargetNoteSetKey))]
@@ -204,6 +205,13 @@ export function evaluateLearningProgress({
     isWithinCriteria(duetByLevel.get(level) ?? [], duetTarget, duetAccuracyTarget)
   );
 
+  const blindPracticeCriteria = getGraduationCriteria(7, "blind-practice");
+  const levelSevenMastered = isWithinCriteria(
+    blindPracticeEvents,
+    blindPracticeCriteria.sampleCount,
+    blindPracticeCriteria.minFirstTryAccuracy
+  );
+
   const activityByLevel = [
     levelOneActivity,
     freeSingleNote.length > 0,
@@ -211,6 +219,7 @@ export function evaluateLearningProgress({
     answerEvents.some((event) => event.mode === "staff-distance"),
     preReading.length > 0,
     duetEvents.length > 0,
+    blindPracticeEvents.length > 0,
   ];
   const masteredByLevel = [
     levelOneMastered,
@@ -219,6 +228,7 @@ export function evaluateLearningProgress({
     levelFourMastered,
     levelFiveMastered,
     levelSixMastered,
+    levelSevenMastered,
   ];
   const sampleCount = (events: readonly AnswerEvent[]): number =>
     events.filter(isPracticeSample).length;
@@ -239,10 +249,11 @@ export function evaluateLearningProgress({
       )
       .join(" · ") + `（首次答对需 ${formatPercent(preReadingAccuracyTarget)}）`,
     `${duetLevels.filter((level) => isWithinCriteria(duetByLevel.get(level) ?? [], duetTarget, duetAccuracyTarget)).length}/${duetLevels.length} 个难度达标`,
+    `${countProgress(blindPracticeEvents, blindPracticeCriteria.sampleCount)} 题 · 首次答对 ${formatPercent(firstTryAccuracy(blindPracticeEvents))}（需 ${formatPercent(blindPracticeCriteria.minFirstTryAccuracy)}）`,
   ];
 
   const result = {} as Record<LearningLevelId, LearningProgressSummary>;
-  for (let index = 0; index < 6; index += 1) {
+  for (let index = 0; index < 7; index += 1) {
     const level = (index + 1) as LearningLevelId;
     const status = masteredByLevel[index]
       ? "mastered"

@@ -127,7 +127,7 @@ interface DistanceFocus {
 interface StaffDistancePracticeViewProps {
   isActive: boolean;
   showRestartControl?: boolean;
-  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   distanceMode?: PracticeDistanceMode;
   midi: MidiInputController;
   microphone: StaffDistanceMicrophoneInput;

@@ -87,7 +87,7 @@ interface FingerStepAttempts {
 }
 
 export interface StaffDistanceFingerRunProps {
-  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   fingerHand: StaffDistanceFingerHand;
   fingerNumber: StaffDistanceFingerNumber;
   inputMethod: StaffDistanceInputMethod;
@@ -126,7 +126,7 @@ function makeEmptyStepAttempts(): FingerStepAttempts {
 }
 
 function makeFingerAnswerEvent(args: {
-  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   attempts: AnswerAttempt[];
   batch: StaffDistanceFingerBatch;
   cardIndex: number;

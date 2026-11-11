@@ -88,6 +88,13 @@ export function getLearningStatsDimensions(levelId: LearningLevelId) {
       ...DUET_LEVELS.map((value, index) => ({ value, label: `L${index + 1}` })),
     ];
   }
+  if (levelId === 7) {
+    return [
+      { value: "all", label: "全部输入方式" },
+      { value: "midi", label: "MIDI 键盘" },
+      { value: "microphone", label: "麦克风" },
+    ];
+  }
   return [{ value: "all", label: "全部训练方式" }];
 }
 
@@ -115,6 +122,7 @@ export function getEventDimension(
     const level = event.duetLevel ?? getSessionConfig(session)?.duetLevel;
     return level && DUET_LEVELS.includes(level) ? level : "unclassified";
   }
+  if (levelId === 7) return event.inputMode;
   return "all";
 }
 
@@ -171,6 +179,7 @@ export function eventMatchesLevel(event: AnswerEvent, levelId: LearningLevelId):
       )
     );
   }
+  if (levelId === 7) return event.mode === "blind-practice";
   return false;
 }
 
@@ -278,7 +287,9 @@ export function buildWeakPracticeItems(
                     : "音距速推"
               : levelId === 6
                 ? `双手协同 · ${event.duetLevel ?? "等级未知"}`
-                : "单音练习";
+                : levelId === 7
+                  ? "盲弹练习"
+                  : "单音练习";
     if (previous) {
       previous.count += 1;
       previous.events?.push(event);

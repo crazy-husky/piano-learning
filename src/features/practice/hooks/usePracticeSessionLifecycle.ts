@@ -109,7 +109,7 @@ interface UsePracticeSessionLifecycleOptions {
   timers: Pick<PracticeTimers, "getPromptActiveMs" | "getSessionActiveMs" | "pauseActiveTimers">;
   services: PracticeSessionLifecycleServices;
   ui: PracticeSessionLifecycleUi;
-  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
 }
 
 export function usePracticeSessionLifecycle({
@@ -203,7 +203,12 @@ export function usePracticeSessionLifecycle({
           occurredAt: review.endedAt,
           promptStartedAt: review.startedAt,
           promptEndedAt: review.endedAt,
-          mode: preReadingBufferSize !== undefined ? "pre-reading" : "free-practice",
+          mode:
+            learningLevelId === 7
+              ? "blind-practice"
+              : preReadingBufferSize !== undefined
+                ? "pre-reading"
+                : "free-practice",
           ...(learningLevelId ? { learningLevelId } : {}),
           inputMode,
           deviceInfo: answerDeviceInfo(),

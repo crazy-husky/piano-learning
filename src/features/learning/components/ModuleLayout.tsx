@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { LearningModuleDefinition } from "../learningModules";
+import { getLearningModuleSequenceNumber, type LearningModuleDefinition } from "../learningModules";
 import type { LearningModuleTab } from "../../../routing/appRoutes";
 
 const TABS: readonly { id: LearningModuleTab; label: string }[] = [
@@ -28,7 +28,9 @@ export function ModuleLayout({
     >
       <header className="learning-module-header">
         <div className="learning-module-heading-copy">
-          <span className="learning-module-eyebrow">学习路线 · LEVEL {module.id}</span>
+          <span className="learning-module-eyebrow">
+            学习路线 · LEVEL {getLearningModuleSequenceNumber(module.id)}
+          </span>
           <h1 id="learning-module-title">{module.name}</h1>
           <p>{module.summary}</p>
         </div>

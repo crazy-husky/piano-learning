@@ -6,6 +6,7 @@ export type AppRoutePath =
   | "/level/4"
   | "/level/5"
   | "/level/6"
+  | "/level/7"
   | "/playground/challenge"
   | "/playground/songs"
   | "/playground/songs/play"
@@ -19,7 +20,7 @@ export type AppRoutePage =
   "home" | "study" | "practice" | "game" | "stats" | "metronome" | "settings" | "vocal";
 export type PracticeRouteTab = "free" | "distance" | "name-key" | "songs";
 export type PracticeDistanceMode = "look" | "play" | "finger";
-export type LearningLevelId = 1 | 2 | 3 | 4 | 5 | 6;
+export type LearningLevelId = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type LearningModuleTab = "guide" | "practice" | "stats";
 export type PlaygroundStatsTab = "challenge" | "songs";
 
@@ -42,6 +43,7 @@ const ROUTE_PATHS = new Set<AppRoutePath>([
   "/level/4",
   "/level/5",
   "/level/6",
+  "/level/7",
   "/playground/challenge",
   "/playground/songs",
   "/playground/songs/play",
@@ -60,7 +62,7 @@ export function appRouteFromHash(hash: string): AppRoute {
   const normalizedPath = (rawPath.startsWith("/") ? rawPath : `/${rawPath}`) as AppRoutePath;
   const path = ROUTE_PATHS.has(normalizedPath) ? normalizedPath : "/";
   const query = new URLSearchParams(rawQuery);
-  const levelMatch = /^\/level\/([1-6])$/.exec(path);
+  const levelMatch = /^\/level\/([1-7])$/.exec(path);
   const levelId = levelMatch ? (Number(levelMatch[1]) as LearningLevelId) : undefined;
   const requestedModuleTab = query.get("tab");
   const moduleTab: LearningModuleTab | undefined = levelId
@@ -103,7 +105,7 @@ export function appRouteFromHash(hash: string): AppRoute {
   const practiceTab: PracticeRouteTab | undefined =
     path === "/playground/songs/score"
       ? "songs"
-      : levelId === 2 || levelId === 5 || levelId === 6
+      : levelId === 2 || levelId === 5 || levelId === 6 || levelId === 7
         ? "free"
         : levelId === 3
           ? "name-key"

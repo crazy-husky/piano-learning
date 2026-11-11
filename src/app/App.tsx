@@ -1582,13 +1582,19 @@ export function App({
                         isLearningRoutePractice
                         showPracticeKindTabs={false}
                         practiceModeLock={
-                          route.levelId === 2 || route.levelId === 5
+                          route.levelId === 2 || route.levelId === 5 || route.levelId === 7
                             ? "single"
                             : route.levelId === 6
                               ? "duet"
                               : undefined
                         }
-                        practiceProfile={route.levelId === 5 ? "pre-reading" : undefined}
+                        practiceProfile={
+                          route.levelId === 5
+                            ? "pre-reading"
+                            : route.levelId === 7
+                              ? "blind-practice"
+                              : undefined
+                        }
                         onPracticeDistanceModeChange={(mode, replace = false) =>
                           navigateToRoute(route.path, {
                             query: { tab: "practice", distanceMode: mode },

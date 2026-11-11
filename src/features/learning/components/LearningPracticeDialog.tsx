@@ -167,6 +167,7 @@ function questionTitle(event: AnswerEvent, levelId: LearningLevelId): string {
   if (levelId === 3 && event.mode === "name-to-key")
     return `找到音名 ${event.targetDisplayName ?? noteLabel(event)} 对应的琴键`;
   if (levelId === 4) return "判断相邻音的方向和距离";
+  if (levelId === 7) return "根据目标音名，在不看键盘的情况下找到琴键";
   if (levelId === 5)
     return `根据提前 ${event.preReadingBufferSize ?? "?"} 个音的谱面，回忆下一个目标音`;
   if (levelId === 6) return "识别这组双手目标音";

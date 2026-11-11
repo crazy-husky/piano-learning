@@ -124,6 +124,7 @@ interface PracticeSetupViewProps {
   freePracticeDescription: string;
   showPracticeKindTabs?: boolean;
   showPracticeModeTabs?: boolean;
+  blindPractice?: boolean;
   lockedPromptDisplayMode?: PromptDisplayMode;
   staffNotationModeLock?: StaffNotationMode;
   preReadingBufferSize?: PreReadingBufferSize;
@@ -271,6 +272,7 @@ export function PracticeSetupView({
   freePracticeDescription,
   showPracticeKindTabs = true,
   showPracticeModeTabs = true,
+  blindPractice = false,
   lockedPromptDisplayMode,
   staffNotationModeLock,
   preReadingBufferSize,
@@ -319,7 +321,12 @@ export function PracticeSetupView({
     queueStrategy,
   } = preferences;
   const isDuetPractice = practiceMode === "duet";
-  const activeAnswerPitchMode = isDuetPractice ? "exact-pitch" : answerPitchMode;
+  const isBlindPractice = blindPractice;
+  const activeAnswerPitchMode = isDuetPractice
+    ? "exact-pitch"
+    : isBlindPractice && answerPitchMode === "note-name"
+      ? "microphone"
+      : answerPitchMode;
   const promptDisplayMode =
     lockedPromptDisplayMode ??
     (activeAnswerPitchMode === "exact-pitch" ? "staff-page" : savedPromptDisplayMode);
@@ -952,7 +959,7 @@ export function PracticeSetupView({
                         </small>
                       </span>
                     </button>
-                    {!isDuetPractice ? (
+                    {!isDuetPractice && !isBlindPractice ? (
                       <button
                         aria-pressed={activeAnswerPitchMode === "note-name"}
                         className={activeAnswerPitchMode === "note-name" ? "is-selected" : ""}
@@ -999,7 +1006,7 @@ export function PracticeSetupView({
               </div>
             </section>
 
-            {activeAnswerPitchMode === "exact-pitch" ? (
+            {activeAnswerPitchMode === "exact-pitch" || isBlindPractice ? (
               <section
                 aria-label="节拍同步"
                 className="practice-free-section"
@@ -1016,8 +1023,11 @@ export function PracticeSetupView({
                           onMetronomeSyncEnabledChange(event.currentTarget.checked)
                         }
                       />
-                      <span>木鱼与谱面同步</span>
+                      <span>{isBlindPractice ? "木鱼与练习同步" : "木鱼与谱面同步"}</span>
                     </label>
+                  ) : null}
+                  {isBlindPractice ? (
+                    <small className="practice-free-helper">盲弹练习固定使用四分音符。</small>
                   ) : null}
                   {metronomeError ? (
                     <small className="practice-free-warning" role="alert">
@@ -1056,7 +1066,7 @@ export function PracticeSetupView({
               </section>
             ) : null}
 
-            <section className="practice-free-advanced-disclosure">
+            <section className="practice-free-advanced-disclosure" hidden={isBlindPractice}>
               <button
                 aria-controls="practice-free-advanced-options"
                 aria-expanded={isAdvancedOpen}
@@ -1106,7 +1116,7 @@ export function PracticeSetupView({
                   </section>
                 ) : null}
 
-                {!isDuetPractice ? (
+                {!isDuetPractice && !isBlindPractice ? (
                   <section className="practice-free-field">
                     <GlobalRangeControls
                       allowInterStaffLedgerChoice={false}
@@ -1118,68 +1128,70 @@ export function PracticeSetupView({
                   </section>
                 ) : null}
 
-                <section className="practice-free-field practice-free-strategy-field">
-                  <span className="control-label">出题策略</span>
-                  <div className="practice-free-strategy-list">
-                    {PRACTICE_QUEUE_OPTIONS.map((option) => (
-                      <label
-                        aria-label={option.label}
-                        className={`practice-free-strategy-option${queueStrategy === option.strategy ? " is-selected" : ""}`}
-                        key={option.strategy}
-                      >
-                        <input
-                          checked={queueStrategy === option.strategy}
-                          name="practice-queue-strategy"
-                          type="radio"
-                          value={option.strategy}
-                          onClick={(event) =>
-                            blurQueueStrategyAfterPointerClick(event.currentTarget, event.detail)
-                          }
-                          onChange={() => setQueueStrategy(option.strategy)}
-                        />
-                        <span className="practice-free-strategy-copy">
-                          <strong>{option.label}</strong>
-                          <small>{option.description}</small>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                  <ConditionalReveal
-                    className="practice-free-note-drill-reveal"
-                    visible={queueStrategy === "note-drill"}
-                  >
-                    <div
-                      className="practice-free-drill-options"
-                      data-setup-guide-target="practice-drill-notes"
-                    >
-                      <span className="practice-free-sub-label">强化音名</span>
-                      <div className="note-name-options">
-                        {ANSWER_BUTTONS.map((button) => {
-                          const checked = drillNoteNames.includes(button.noteName);
-                          return (
-                            <label
-                              className={checked ? "choice choice-active" : "choice"}
-                              key={button.noteName}
-                            >
-                              <input
-                                checked={checked}
-                                type="checkbox"
-                                onChange={(event) =>
-                                  toggleDrillNoteName(button.noteName, event.target.checked)
-                                }
-                              />
-                              <span>{button.noteName}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
+                {!isBlindPractice ? (
+                  <section className="practice-free-field practice-free-strategy-field">
+                    <span className="control-label">出题策略</span>
+                    <div className="practice-free-strategy-list">
+                      {PRACTICE_QUEUE_OPTIONS.map((option) => (
+                        <label
+                          aria-label={option.label}
+                          className={`practice-free-strategy-option${queueStrategy === option.strategy ? " is-selected" : ""}`}
+                          key={option.strategy}
+                        >
+                          <input
+                            checked={queueStrategy === option.strategy}
+                            name="practice-queue-strategy"
+                            type="radio"
+                            value={option.strategy}
+                            onClick={(event) =>
+                              blurQueueStrategyAfterPointerClick(event.currentTarget, event.detail)
+                            }
+                            onChange={() => setQueueStrategy(option.strategy)}
+                          />
+                          <span className="practice-free-strategy-copy">
+                            <strong>{option.label}</strong>
+                            <small>{option.description}</small>
+                          </span>
+                        </label>
+                      ))}
                     </div>
-                  </ConditionalReveal>
-                </section>
+                    <ConditionalReveal
+                      className="practice-free-note-drill-reveal"
+                      visible={queueStrategy === "note-drill"}
+                    >
+                      <div
+                        className="practice-free-drill-options"
+                        data-setup-guide-target="practice-drill-notes"
+                      >
+                        <span className="practice-free-sub-label">强化音名</span>
+                        <div className="note-name-options">
+                          {ANSWER_BUTTONS.map((button) => {
+                            const checked = drillNoteNames.includes(button.noteName);
+                            return (
+                              <label
+                                className={checked ? "choice choice-active" : "choice"}
+                                key={button.noteName}
+                              >
+                                <input
+                                  checked={checked}
+                                  type="checkbox"
+                                  onChange={(event) =>
+                                    toggleDrillNoteName(button.noteName, event.target.checked)
+                                  }
+                                />
+                                <span>{button.noteName}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </ConditionalReveal>
+                  </section>
+                ) : null}
 
                 <section className="practice-free-field">
                   <span className="control-label">
-                    {isDuetPractice ? "音符时值" : "谱面与节奏"}
+                    {isBlindPractice ? "节拍设置" : isDuetPractice ? "音符时值" : "谱面与节奏"}
                   </span>
                   <div className="practice-free-display-row">
                     {!isDuetPractice && !lockedPromptDisplayMode ? (
@@ -1218,36 +1230,44 @@ export function PracticeSetupView({
                       className="practice-free-duration-tags"
                       data-setup-guide-target="practice-note-durations"
                     >
-                      {PROMPT_NOTE_DURATION_OPTIONS.map((option) => (
-                        <button
-                          aria-pressed={promptNoteDurations.includes(option.value)}
-                          aria-label={option.ariaLabel}
-                          className={
-                            promptNoteDurations.includes(option.value) ? "is-selected" : ""
-                          }
-                          key={option.value}
-                          onClick={() => {
-                            const selected = new Set(promptNoteDurations);
-                            if (selected.has(option.value)) {
-                              if (selected.size === 1) return;
-                              selected.delete(option.value);
-                            } else {
-                              selected.add(option.value);
+                      {isBlindPractice ? (
+                        <span className="practice-free-helper">四分音符（固定）</span>
+                      ) : (
+                        PROMPT_NOTE_DURATION_OPTIONS.map((option) => (
+                          <button
+                            aria-pressed={promptNoteDurations.includes(option.value)}
+                            aria-label={option.ariaLabel}
+                            className={
+                              promptNoteDurations.includes(option.value) ? "is-selected" : ""
                             }
-                            setPromptNoteDurations(
-                              PROMPT_NOTE_DURATION_OPTIONS.map((item) => item.value).filter(
-                                (value) => selected.has(value)
-                              )
-                            );
-                          }}
-                          type="button"
-                        >
-                          {option.label}
-                        </button>
-                      ))}
+                            key={option.value}
+                            onClick={() => {
+                              const selected = new Set(promptNoteDurations);
+                              if (selected.has(option.value)) {
+                                if (selected.size === 1) return;
+                                selected.delete(option.value);
+                              } else {
+                                selected.add(option.value);
+                              }
+                              setPromptNoteDurations(
+                                PROMPT_NOTE_DURATION_OPTIONS.map((item) => item.value).filter(
+                                  (value) => selected.has(value)
+                                )
+                              );
+                            }}
+                            type="button"
+                          >
+                            {option.label}
+                          </button>
+                        ))
+                      )}
                     </div>
                   </div>
-                  {lockedPromptDisplayMode ? (
+                  {isBlindPractice ? (
+                    <small className="practice-free-helper">
+                      每题为一个四分音符，可按需开启节拍同步。
+                    </small>
+                  ) : lockedPromptDisplayMode ? (
                     <small className="practice-free-helper">
                       连续看谱（固定）；为专注训练，此关卡强制使用谱页模式。
                     </small>
@@ -1257,7 +1277,7 @@ export function PracticeSetupView({
                       混合时值按连续谱面显示，仍逐音答题。
                     </small>
                   ) : null}
-                  {!isDuetPractice ? (
+                  {!isDuetPractice && !isBlindPractice ? (
                     <ConditionalReveal
                       className="practice-free-pause-reveal"
                       visible={promptDisplayMode === "staff-page"}
@@ -1274,7 +1294,7 @@ export function PracticeSetupView({
                   ) : null}
                 </section>
 
-                {!isDuetPractice ? (
+                {!isDuetPractice && !isBlindPractice ? (
                   <section className="practice-free-field practice-free-sound-field">
                     <span className="control-label">声音</span>
                     <div className="practice-checkbox-options practice-free-sound-options">

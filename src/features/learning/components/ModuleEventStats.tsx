@@ -8,7 +8,8 @@ import type {
 } from "../../../domain/types";
 import { db } from "../../../data/db";
 
-type ModuleEventKind = "name-to-key" | "staff-to-name" | "staff-distance" | "pre-reading" | "duet";
+type ModuleEventKind =
+  "name-to-key" | "staff-to-name" | "staff-distance" | "pre-reading" | "duet" | "blind-practice";
 
 interface DimensionOption {
   value: string;
@@ -49,6 +50,13 @@ const DIMENSION_FILTERS: Partial<Record<ModuleEventKind, DimensionFilter>> = {
     label: "双手协同难度",
     options: DUET_LEVELS.map((value, index) => ({ value, label: `L${index + 1}` })),
   },
+  "blind-practice": {
+    label: "输入方式",
+    options: [
+      { value: "midi", label: "MIDI 键盘" },
+      { value: "microphone", label: "麦克风" },
+    ],
+  },
 };
 
 const EVENT_FILTERS: Record<ModuleEventKind, (event: AnswerEvent) => boolean> = {
@@ -63,6 +71,7 @@ const EVENT_FILTERS: Record<ModuleEventKind, (event: AnswerEvent) => boolean> = 
       event.duetLevel !== undefined ||
       event.targetMidiHigh !== undefined ||
       event.targetMidiLow !== undefined),
+  "blind-practice": (event) => event.mode === "blind-practice",
 };
 
 const COPY: Record<
@@ -97,6 +106,12 @@ const COPY: Record<
     title: "双手协同统计",
     empty: "暂无数据。完成当前难度的双手合弹练习后，这里会显示答题数、首次答对率和反应时间。",
     description: "按双手协同难度分别统计。",
+    accuracyLabel: "首次答对率",
+  },
+  "blind-practice": {
+    title: "盲弹练习统计",
+    empty: "暂无数据。完成盲弹练习后，这里会显示答题数、首次答对率和反应时间。",
+    description: "按麦克风或 MIDI 键盘输入方式分别统计。",
     accuracyLabel: "首次答对率",
   },
 };
@@ -454,6 +469,10 @@ export function DuetStats({
   sessions: PracticeSessionRecord[];
 }): JSX.Element {
   return <ModuleEventStats dataSetId={dataSetId} kind="duet" sessions={sessions} />;
+}
+
+export function BlindPracticeStats({ dataSetId }: { dataSetId: string }): JSX.Element {
+  return <ModuleEventStats dataSetId={dataSetId} kind="blind-practice" />;
 }
 
 export function isDuetAnswerEvent(event: AnswerEvent): boolean {
