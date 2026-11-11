@@ -713,7 +713,7 @@
   z-index: 15;
   right: 0;
   bottom: calc(100% + 8px);
-  width: max-content;
+  width: min(680px, 100%);
   max-width: min(320px, 80vw);
   padding: 8px 10px;
   border: 1px solid var(--border-strong);
@@ -818,7 +818,7 @@
 
 .staff-distance-score-wrap .staff-page-renderer > svg {
   width: auto;
-  max-width: 100%;
+  max-width: min(600px, 100%);
 }
 
 .staff-distance-question-copy {
@@ -1175,7 +1175,7 @@
   padding: 20px;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
   color: var(--text);
   box-shadow: 0 18px 48px rgb(0 0 0 / 28%);
 }
@@ -1613,30 +1613,43 @@
   inset: 0;
   z-index: 4;
   display: grid;
+  place-items: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.staff-distance-pause-content {
+  display: grid;
   align-content: center;
   justify-items: center;
   gap: 10px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--bg) 18%, transparent);
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 18px 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
 }
 
-.staff-distance-pause-overlay strong {
+.staff-distance-pause-content strong {
   font-size: 24px;
 }
 
-.staff-distance-pause-overlay span {
+.staff-distance-pause-content span {
   color: var(--muted);
 }
 
-.staff-distance-pause-overlay button {
+.staff-distance-pause-content button {
   display: inline-flex;
   min-height: 44px;
   align-items: center;
   gap: 7px;
 }
 
-.staff-distance-pause-overlay .practice-pause-resume-button,
-.staff-distance-pause-overlay .practice-pause-restart-button {
+.staff-distance-pause-content .practice-pause-resume-button {
   width: 132px;
 }
 

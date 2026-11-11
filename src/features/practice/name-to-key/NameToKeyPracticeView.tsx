@@ -1526,7 +1526,7 @@ function NameToKeyPracticeContent({
                   {isPaused ? <Play size={17} /> : <Pause size={17} />}
                   {isPaused ? "继续" : "暂停"}
                 </button>
-                {showRestartControl ? (
+                {showRestartControl && !isPaused ? (
                   <button
                     aria-label="重新开始当前练习"
                     disabled={isRestarting}
@@ -1625,39 +1625,30 @@ function NameToKeyPracticeContent({
 
           {isPaused ? (
             <div className="name-key-paused-overlay">
-              <strong>已暂停</strong>
-              <span>
-                {preferences.mode === "fixed-duration" ? "倒计时也暂停了" : "练习进度已暂停"}
-              </span>
-              <button
-                className="primary practice-pause-resume-button"
-                onClick={() => void togglePause()}
-                type="button"
-              >
-                <Play size={17} />
-                继续
-              </button>
-              {showRestartControl ? (
+              <div className="name-key-paused-content" role="status">
+                <strong>已暂停</strong>
+                <span>
+                  {preferences.mode === "fixed-duration" ? "倒计时也暂停了" : "练习进度已暂停"}
+                </span>
                 <button
-                  className="practice-pause-restart-button"
-                  disabled={isRestarting}
-                  onClick={() => void restartRound()}
+                  className="primary practice-pause-resume-button"
+                  onClick={() => void togglePause()}
                   type="button"
                 >
-                  <RotateCcw aria-hidden="true" size={17} />
-                  重新开始
+                  <Play size={17} />
+                  继续
                 </button>
-              ) : null}
-              {preferences.inputMode === "microphone" &&
-              (microphoneError ||
-                microphoneStatus === "error" ||
-                microphoneStatus === "requesting") ? (
-                <PracticeMicrophoneRetryButton
-                  isConnecting={microphoneStatus === "requesting"}
-                  isPreparingModel={isPreparingSwiftF0}
-                  onRetry={retryMicrophone}
-                />
-              ) : null}
+                {preferences.inputMode === "microphone" &&
+                (microphoneError ||
+                  microphoneStatus === "error" ||
+                  microphoneStatus === "requesting") ? (
+                  <PracticeMicrophoneRetryButton
+                    isConnecting={microphoneStatus === "requesting"}
+                    isPreparingModel={isPreparingSwiftF0}
+                    onRetry={retryMicrophone}
+                  />
+                ) : null}
+              </div>
             </div>
           ) : null}
           {statusMessage &&

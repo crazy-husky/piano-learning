@@ -1089,7 +1089,7 @@ export function StaffDistanceFingerRun({
                 {isPaused ? "继续" : "暂停"}
               </button>
             ) : null}
-            {onRestart ? (
+            {onRestart && !isPaused ? (
               <button
                 aria-label="重新开始当前练习"
                 disabled={isRestarting}
@@ -1295,50 +1295,41 @@ export function StaffDistanceFingerRun({
         </div>
       ) : null}
       {isPaused && !isNoAnswerMode ? (
-        <div className="staff-distance-pause-overlay" role="status">
-          <strong>已暂停</strong>
-          <span>
-            {inputError ? (
-              inputError
-            ) : showResumeConnecting ? (
-              <LoadingActivityText kind="dots">
-                {microphone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风"}
-              </LoadingActivityText>
-            ) : (
-              `计时已停止，当前卡片还剩 ${progressText}`
-            )}
-          </span>
-          <button
-            className="primary practice-pause-resume-button"
-            disabled={isResumeConnecting}
-            onClick={() => void togglePause()}
-            type="button"
-          >
-            <Play size={16} />
-            继续
-          </button>
-          {onRestart ? (
+        <div className="staff-distance-pause-overlay">
+          <div className="staff-distance-pause-content" role="status">
+            <strong>已暂停</strong>
+            <span>
+              {inputError ? (
+                inputError
+              ) : showResumeConnecting ? (
+                <LoadingActivityText kind="dots">
+                  {microphone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风"}
+                </LoadingActivityText>
+              ) : (
+                `计时已停止，当前卡片还剩 ${progressText}`
+              )}
+            </span>
             <button
-              className="practice-pause-restart-button"
-              disabled={isRestarting}
-              onClick={() => void restart()}
+              className="primary practice-pause-resume-button"
+              disabled={isResumeConnecting}
+              onClick={() => void togglePause()}
               type="button"
             >
-              <RotateCcw aria-hidden="true" size={16} />
-              重新开始
+              <Play size={16} />
+              继续
             </button>
-          ) : null}
-          {inputMethod === "microphone" && (microphone.error || microphone.status === "error") ? (
-            <PracticeMicrophoneRetryButton
-              isConnecting={false}
-              isPreparingModel={microphone.isPreparingSwiftF0}
-              onRetry={async () => {
-                const ready = await microphone.start({ includeAccidentals: false });
-                if (ready) setInputError(null);
-                return ready;
-              }}
-            />
-          ) : null}
+            {inputMethod === "microphone" && (microphone.error || microphone.status === "error") ? (
+              <PracticeMicrophoneRetryButton
+                isConnecting={false}
+                isPreparingModel={microphone.isPreparingSwiftF0}
+                onRetry={async () => {
+                  const ready = await microphone.start({ includeAccidentals: false });
+                  if (ready) setInputError(null);
+                  return ready;
+                }}
+              />
+            ) : null}
+          </div>
         </div>
       ) : null}
       {isViewportBlocked ? (

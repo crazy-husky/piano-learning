@@ -1,11 +1,10 @@
-import { RotateCcw } from "lucide-react";
+import { Play } from "lucide-react";
 import { PracticeMicrophoneRetryButton } from "./PracticeMicrophoneRetryButton";
 import { LoadingActivityText } from "./LoadingActivity";
 
 interface PauseOverlayProps {
   onExit?: () => void;
   onResume: () => void;
-  onRestart?: () => void;
   allowBackdropResume?: boolean;
   resumeBlockedMessage?: string;
   resumeMessage?: string;
@@ -21,7 +20,6 @@ interface PauseOverlayProps {
 export function PauseOverlay({
   onExit,
   onResume,
-  onRestart,
   allowBackdropResume = true,
   resumeBlockedMessage,
   resumeMessage,
@@ -78,14 +76,15 @@ export function PauseOverlay({
               ))}
           </small>
         ) : null}
-        {showKeyboardShortcuts && onRestart ? (
+        {showKeyboardShortcuts ? (
           <button
-            className="pause-overlay-restart practice-pause-restart-button"
-            onClick={onRestart}
+            className="primary pause-overlay-resume practice-pause-resume-button"
+            disabled={Boolean(resumeBlockedMessage)}
+            onClick={onResume}
             type="button"
           >
-            <RotateCcw aria-hidden="true" size={17} />
-            重新开始
+            <Play aria-hidden="true" size={17} />
+            继续
           </button>
         ) : null}
         {!showKeyboardShortcuts ? (
@@ -95,23 +94,13 @@ export function PauseOverlay({
                 退出练习
               </button>
             ) : null}
-            {onRestart ? (
-              <button
-                className="pause-overlay-restart practice-pause-restart-button"
-                onClick={onRestart}
-                type="button"
-              >
-                <RotateCcw aria-hidden="true" size={17} />
-                重新开始
-              </button>
-            ) : null}
             <button
-              className="pause-overlay-resume practice-pause-resume-button"
+              className="primary pause-overlay-resume practice-pause-resume-button"
               disabled={Boolean(resumeBlockedMessage)}
               onClick={onResume}
               type="button"
             >
-              继续练习
+              继续
             </button>
           </div>
         ) : null}

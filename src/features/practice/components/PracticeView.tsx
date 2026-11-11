@@ -3659,7 +3659,7 @@ export function PracticeView({
               {isPaused ? <Play size={18} /> : <Pause size={18} />}
               {isPaused ? "继续" : "暂停"}
             </button>
-            {isLearningRoutePractice ? (
+            {isLearningRoutePractice && !isPaused ? (
               <button
                 aria-label="重新开始当前练习"
                 disabled={isRestartingPractice}
@@ -4037,7 +4037,6 @@ export function PracticeView({
         <PauseOverlay
           onExit={handleExitPractice}
           onResume={resumePractice}
-          onRestart={isLearningRoutePractice ? () => void restartCurrentPractice() : undefined}
           allowBackdropResume={!isMobileViewport}
           resumeBlockedMessage={
             answerPitchMode === "exact-pitch" && !midi.isConnected

@@ -935,7 +935,7 @@ export function StaffToNamePracticeView({
                   )}
                   {isPaused ? "继续" : "暂停"}
                 </button>
-                {showRestartControl ? (
+                {showRestartControl && !isPaused ? (
                   <button
                     aria-label="重新开始当前练习"
                     disabled={isRestarting}
