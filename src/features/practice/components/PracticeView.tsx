@@ -323,6 +323,7 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
     answerPitchMode: settings.answerPitchMode,
     practiceMode: "single",
     metronomeSyncEnabled: false,
+    blindPracticeMetronomeSyncEnabled: false,
     duetLevel: "level-1",
     duetRangePreset: DEFAULT_DUET_PRACTICE_RANGE_PRESET,
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
@@ -373,6 +374,10 @@ function parsePracticeSetupUiPreferences(
     practiceMode: value.practiceMode === "duet" ? "duet" : "single",
     metronomeSyncEnabled:
       typeof value.metronomeSyncEnabled === "boolean" ? value.metronomeSyncEnabled : false,
+    blindPracticeMetronomeSyncEnabled:
+      typeof value.blindPracticeMetronomeSyncEnabled === "boolean"
+        ? value.blindPracticeMetronomeSyncEnabled
+        : false,
     duetLevel: normalizeDuetPracticeLevel(
       value.duetLevel ?? value.duetDifficulty,
       duetCurriculumVersion
@@ -694,7 +699,9 @@ export function PracticeView({
     (answerPitchMode === "exact-pitch" || isBlindPractice) &&
     (isPreReadingPractice
       ? preReadingMetronomeSyncEnabled
-      : practiceSetupPreferences.metronomeSyncEnabled);
+      : isBlindPractice
+        ? practiceSetupPreferences.blindPracticeMetronomeSyncEnabled
+        : practiceSetupPreferences.metronomeSyncEnabled);
   const shouldSynchronizeMetronome = isMetronomeSyncMandatory || isMetronomeSyncSelected;
   const activePracticeInputMode: PracticeInputMode | null =
     practiceTab === "free"
@@ -729,8 +736,8 @@ export function PracticeView({
           practiceSetupPreferences.promptDisplayMode);
   const isContinuousStaffPage =
     practiceTab === "free" && promptDisplayMode === "staff-page" && !isBlindPractice;
-  const isMobileStaffPage =
-    isMobileViewport && promptDisplayMode === "staff-page" && !isBlindPractice;
+  const isMobileStaffPage = isMobileViewport && promptDisplayMode === "staff-page";
+  const isPagedStaffPage = isMobileStaffPage || isBlindPractice;
   const responsivePracticeStaffLayout = isDuetPractice
     ? isMobileStaffPage
       ? MOBILE_DUET_PRACTICE_PAGE_STAFF_LAYOUT
@@ -939,6 +946,13 @@ export function PracticeView({
       setPreReadingMetronomeSyncEnabled(enabled);
       return;
     }
+    if (isBlindPractice) {
+      setPracticeSetupPreferences((current) => ({
+        ...current,
+        blindPracticeMetronomeSyncEnabled: enabled,
+      }));
+      return;
+    }
     setPracticeSetupPreferences((current) => ({ ...current, metronomeSyncEnabled: enabled }));
   };
   const setPromptDisplayMode = (nextPromptDisplayMode: PromptDisplayMode): void => {
@@ -1143,6 +1157,7 @@ export function PracticeView({
         ...makeDefaultPracticeSetupUiPreferences(nextSettings),
         practiceMode: current.practiceMode,
         metronomeSyncEnabled: current.metronomeSyncEnabled,
+        blindPracticeMetronomeSyncEnabled: current.blindPracticeMetronomeSyncEnabled,
         duetLevel: current.duetLevel,
         duetRangePreset: current.duetRangePreset,
         duetCurriculumVersion: current.duetCurriculumVersion,
@@ -3129,40 +3144,44 @@ export function PracticeView({
     mode === "fixed-duration" ? fixedDurationSeconds * 1000 - getSessionActiveMs() : 0;
   const mobileStaffPageRowCount = 1;
   const mobileStaffPageNoteCount = MOBILE_STAFF_PAGE_NOTE_COUNT * mobileStaffPageRowCount;
+  const pagedStaffPageNoteCount = isMobileStaffPage
+    ? mobileStaffPageNoteCount
+    : DESKTOP_STAFF_PAGE_NOTE_COUNT;
   const staffPageRowCount = 1;
   const showPracticeKeyboard =
     practiceTab !== "distance" && activePracticeInputMode === "virtual-keyboard";
-  const mobileStaffPageStartIndex = isContinuousStaffPage
-    ? 0
-    : Math.floor(Math.max(0, staffPageIndex) / mobileStaffPageNoteCount) * mobileStaffPageNoteCount;
+  const mobileStaffPageStartIndex =
+    isContinuousStaffPage || !isPagedStaffPage
+      ? 0
+      : Math.floor(Math.max(0, staffPageIndex) / pagedStaffPageNoteCount) * pagedStaffPageNoteCount;
   const mobileStaffPageNotes = useMemo(
     () =>
-      isMobileStaffPage && !isContinuousStaffPage
+      isPagedStaffPage && !isContinuousStaffPage
         ? staffPageNotes.slice(
             mobileStaffPageStartIndex,
-            mobileStaffPageStartIndex + mobileStaffPageNoteCount
+            mobileStaffPageStartIndex + pagedStaffPageNoteCount
           )
         : staffPageNotes,
     [
       isContinuousStaffPage,
-      isMobileStaffPage,
-      mobileStaffPageNoteCount,
+      isPagedStaffPage,
+      pagedStaffPageNoteCount,
       mobileStaffPageStartIndex,
       staffPageNotes,
     ]
   );
   const mobileStaffPageNoteGroups = useMemo(
     () =>
-      isMobileStaffPage && !isContinuousStaffPage
+      isPagedStaffPage && !isContinuousStaffPage
         ? staffPageNoteGroups.slice(
             mobileStaffPageStartIndex,
-            mobileStaffPageStartIndex + mobileStaffPageNoteCount
+            mobileStaffPageStartIndex + pagedStaffPageNoteCount
           )
         : staffPageNoteGroups,
     [
       isContinuousStaffPage,
-      isMobileStaffPage,
-      mobileStaffPageNoteCount,
+      isPagedStaffPage,
+      pagedStaffPageNoteCount,
       mobileStaffPageStartIndex,
       staffPageNoteGroups,
     ]
@@ -3170,7 +3189,7 @@ export function PracticeView({
   const visibleCompletedStaffNoteIndices = (() => {
     const completed = staffPageRef.current?.completedStaffNoteIndices;
     if (!completed) return undefined;
-    if (!isMobileStaffPage || isContinuousStaffPage) return completed;
+    if (!isPagedStaffPage || isContinuousStaffPage) return completed;
     return Object.fromEntries(
       Object.entries(completed).map(([staff, indices]) => [
         staff,
@@ -3178,7 +3197,7 @@ export function PracticeView({
           .filter(
             (index) =>
               index >= mobileStaffPageStartIndex &&
-              index < mobileStaffPageStartIndex + mobileStaffPageNoteCount
+              index < mobileStaffPageStartIndex + pagedStaffPageNoteCount
           )
           .map((index) => index - mobileStaffPageStartIndex),
       ])
@@ -3186,9 +3205,9 @@ export function PracticeView({
   })();
   const visibleStaffPageRhythm = useMemo(() => {
     if (!staffPageRhythm) return undefined;
-    if (!isMobileStaffPage || isContinuousStaffPage) return staffPageRhythm;
+    if (!isPagedStaffPage || isContinuousStaffPage) return staffPageRhythm;
     const start = mobileStaffPageStartIndex;
-    const end = start + mobileStaffPageNoteCount;
+    const end = start + pagedStaffPageNoteCount;
     return {
       ...staffPageRhythm,
       durations: staffPageRhythm.durations.slice(start, end),
@@ -3201,8 +3220,8 @@ export function PracticeView({
     };
   }, [
     isContinuousStaffPage,
-    isMobileStaffPage,
-    mobileStaffPageNoteCount,
+    isPagedStaffPage,
+    pagedStaffPageNoteCount,
     mobileStaffPageStartIndex,
     staffPageRhythm,
   ]);
@@ -3217,8 +3236,8 @@ export function PracticeView({
   }, [visibleStaffPageRhythm]);
   const staffPageNoteCount = isDuetPractice
     ? duetStaffPageNoteCount
-    : isMobileStaffPage
-      ? mobileStaffPageNoteCount
+    : isPagedStaffPage
+      ? pagedStaffPageNoteCount
       : DESKTOP_STAFF_PAGE_NOTE_COUNT;
   const staffPageRenderedRowCount = Math.max(
     1,
@@ -3229,7 +3248,7 @@ export function PracticeView({
       )
   );
   const freeCursorIndexOffset =
-    staffPageFirstNoteOffset + (isMobileStaffPage ? mobileStaffPageStartIndex : 0);
+    staffPageFirstNoteOffset + (isPagedStaffPage ? mobileStaffPageStartIndex : 0);
   const visiblePreReadingNoteStates = isPreReadingPractice
     ? mobileStaffPageNotes.map((_, index) =>
         preReadingScoreWindow.getNoteVisibility(freeCursorIndexOffset + index)
@@ -3303,7 +3322,7 @@ export function PracticeView({
     ]
   );
   const trackedFreeScoreNoteIndex =
-    isMobileStaffPage && !isContinuousStaffPage
+    isPagedStaffPage && !isContinuousStaffPage
       ? (staffPageView?.noteIndexInPage ?? staffPageIndex - mobileStaffPageStartIndex)
       : staffPageIndex;
   const handleFreeTrackedNoteVisibilityChange = useCallback(
@@ -3508,7 +3527,9 @@ export function PracticeView({
           ...practiceSetupPreferences,
           metronomeSyncEnabled: isPreReadingPractice
             ? preReadingMetronomeSyncEnabled
-            : practiceSetupPreferences.metronomeSyncEnabled,
+            : isBlindPractice
+              ? practiceSetupPreferences.blindPracticeMetronomeSyncEnabled
+              : practiceSetupPreferences.metronomeSyncEnabled,
           practiceMode: practiceModeLock ?? practiceSetupPreferences.practiceMode,
           ...(isPreReadingPractice ? { promptDisplayMode: "staff-page" as const } : {}),
           ...(isBlindPractice
@@ -3781,27 +3802,7 @@ export function PracticeView({
             ) : null}
           </div>
         ) : null}
-        {isBlindPractice ? (
-          currentNote ? (
-            <div aria-live="polite" className="blind-practice-target">
-              <span>请弹奏这个音</span>
-              <strong>
-                {currentNote.noteName}
-                {currentNote.accidental === "sharp"
-                  ? "♯"
-                  : currentNote.accidental === "flat"
-                    ? "♭"
-                    : ""}
-                {currentNote.octave}
-              </strong>
-              {feedback?.type === "wrong" ? (
-                <small className="blind-practice-feedback" role="status">
-                  再找一次
-                </small>
-              ) : null}
-            </div>
-          ) : null
-        ) : promptDisplayMode === "staff-page" ? (
+        {promptDisplayMode === "staff-page" ? (
           <div
             ref={staffPagePromptContainerRef}
             className={[
@@ -3811,6 +3812,27 @@ export function PracticeView({
               .filter(Boolean)
               .join(" ")}
           >
+            {isBlindPractice ? (
+              <div aria-live="polite" className="blind-practice-score-instruction">
+                <span>请按顺序弹奏谱面上的音符</span>
+                {feedback?.type === "wrong" ? (
+                  <small className="blind-practice-feedback" role="status">
+                    再找一次
+                  </small>
+                ) : null}
+                {currentNote ? (
+                  <span className="sr-only">
+                    当前目标音 {currentNote.noteName}
+                    {currentNote.accidental === "sharp"
+                      ? "升"
+                      : currentNote.accidental === "flat"
+                        ? "降"
+                        : ""}
+                    {currentNote.octave}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
             <StaffPagePrompt
               notes={mobileStaffPageNotes}
               verticalRangeNotes={enabledNotes}
@@ -3825,7 +3847,7 @@ export function PracticeView({
                 isDuetPractice &&
                 feedback?.type === "wrong" &&
                 feedback.staffPageIndex !== undefined
-                  ? isMobileStaffPage && !isContinuousStaffPage
+                  ? isPagedStaffPage && !isContinuousStaffPage
                     ? feedback.staffPageIndex - mobileStaffPageStartIndex
                     : feedback.staffPageIndex
                   : undefined
@@ -3834,7 +3856,7 @@ export function PracticeView({
               barlineAfterNoteIndices={staffPageBarlineAfterNoteIndices}
               beatsPerMeasure={visibleStaffPageRhythm ? 4 : undefined}
               completedCount={
-                isMobileStaffPage && !isContinuousStaffPage
+                isPagedStaffPage && !isContinuousStaffPage
                   ? (staffPageView?.completedCount ?? staffPageCompletedCount)
                   : staffPageCompletedCount
               }
@@ -3935,7 +3957,7 @@ export function PracticeView({
                 !isDuetPractice &&
                 feedback?.type === "wrong" &&
                 feedback.staffPageIndex !== undefined
-                  ? isMobileStaffPage && !isContinuousStaffPage
+                  ? isPagedStaffPage && !isContinuousStaffPage
                     ? feedback.staffPageIndex - mobileStaffPageStartIndex
                     : feedback.staffPageIndex
                   : undefined

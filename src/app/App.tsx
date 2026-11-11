@@ -456,6 +456,10 @@ export function App({
   }, [route.path, view]);
 
   const practiceInputRouteKey = `${route.path}:${route.practiceTab ?? "free"}`;
+  const shouldShowPracticeFloatingMetronome =
+    route.levelId === 7 ||
+    (practiceInputModeState?.routeKey === practiceInputRouteKey &&
+      practiceInputModeState.mode !== "microphone");
   const handlePracticeInputModeChange = useCallback(
     (mode: PracticeInputMode): void => {
       setPracticeInputModeState({ mode, routeKey: practiceInputRouteKey });
@@ -1618,8 +1622,7 @@ export function App({
                           saveSettings(settings, { ...options, feedback: false })
                         }
                       />
-                      {practiceInputModeState?.routeKey === practiceInputRouteKey &&
-                      practiceInputModeState.mode !== "microphone" ? (
+                      {shouldShowPracticeFloatingMetronome ? (
                         <MetronomeFloating
                           controller={metronomeController}
                           hiddenForVisit={practiceMetronomeHiddenForVisit}

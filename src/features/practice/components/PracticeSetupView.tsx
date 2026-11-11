@@ -69,6 +69,7 @@ export interface PracticeSetupUiPreferences {
   answerPitchMode: AnswerPitchMode;
   practiceMode: "single" | "duet";
   metronomeSyncEnabled: boolean;
+  blindPracticeMetronomeSyncEnabled: boolean;
   duetLevel: DuetPracticeLevel;
   duetRangePreset: DuetPracticeRangePreset;
   duetCurriculumVersion: number;
