@@ -1087,6 +1087,79 @@ main.has-backup-reminder .setup-grid::after {
   font-weight: 650;
 }
 
+.duet-summary-section .summary-section-heading > span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.duet-summary-metrics,
+.duet-summary-breakdown {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.duet-summary-metric,
+.duet-summary-breakdown article {
+  background: color-mix(in srgb, var(--surface-soft) 84%, var(--accent-soft));
+  border: 1px solid color-mix(in srgb, var(--border) 72%, var(--accent));
+  border-radius: 14px;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 14px 15px;
+}
+
+.duet-summary-metric > span,
+.duet-summary-breakdown article > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.duet-summary-metric > strong,
+.duet-summary-breakdown article > strong {
+  color: var(--success);
+  font-size: clamp(20px, 3vw, 26px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.duet-summary-metric > small,
+.duet-summary-breakdown article > small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.duet-summary-breakdown {
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+}
+
+.duet-summary-breakdown article > strong {
+  color: var(--text);
+}
+
+.duet-summary-note,
+.duet-summary-suggestion p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 12px 0 0;
+}
+
+.duet-summary-suggestion h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.duet-summary-suggestion p {
+  color: var(--text);
+  font-weight: 650;
+}
+
 .learning-weakness-action {
   margin-top: 14px;
 }
@@ -1537,6 +1610,10 @@ main.has-backup-reminder .setup-grid::after {
   }
 
   .practice-summary-dialog .practice-summary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .duet-summary-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

@@ -200,7 +200,7 @@ describe("createDuetPracticePage", () => {
     expect(firstTwoRowDurations[0]).not.toEqual(firstTwoRowDurations[1]);
   });
 
-  it("Level 2 follows the 80/20 one-or-two sync distribution", () => {
+  it("Level 2 follows the 70/30 one-or-two bass-note distribution without adjacent doubles", () => {
     const measureCount = 1_000;
     const page = createDuetPracticePage(pool, "level-2", measureCount * 4, {
       measureCount,
@@ -211,8 +211,18 @@ describe("createDuetPracticePage", () => {
 
     expect(synchronizedCounts).toHaveLength(measureCount);
     expect(page.events.every((event) => event.high.length === 1)).toBe(true);
-    expect(oneSyncMeasures).toBeGreaterThanOrEqual(760);
-    expect(oneSyncMeasures).toBeLessThanOrEqual(840);
+    expect(oneSyncMeasures).toBeGreaterThanOrEqual(660);
+    expect(oneSyncMeasures).toBeLessThanOrEqual(740);
+    [...new Set(page.rhythm.measures)].forEach((measure) => {
+      const lowBeats = page.rhythm.measures.flatMap((candidate, index) =>
+        candidate === measure && page.events[index]!.low.length > 0
+          ? [page.rhythm.onsets[index]! % 4]
+          : []
+      );
+      if (lowBeats.length === 2) {
+        expect(lowBeats[1]! - lowBeats[0]!).toBeGreaterThan(1);
+      }
+    });
   });
 
   it("Level 3 follows the 20/50/20/10 one-to-four sync distribution", () => {

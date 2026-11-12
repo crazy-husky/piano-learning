@@ -1,4 +1,4 @@
-import type { AnswerPitchMode, NoteName, TargetNote } from "./types";
+import type { AnswerPitchMode, DuetTimingGrade, NoteName, TargetNote } from "./types";
 import type { PracticeMicrophoneAlgorithm } from "../features/vocal-pitch/logic/practiceMicrophonePreferences";
 
 const NOTE_NAME_SEMITONES: Record<NoteName, number> = {
@@ -20,6 +20,8 @@ export interface PracticeAnswerInput {
   diagnosticSampleId?: number;
   midiNoteNumber?: number;
   inputTimeMs?: number;
+  /** Optional onset-based timing result attached by synchronized duet practice. */
+  duetTimingGrade?: DuetTimingGrade;
   noteName: NoteName;
   octave?: number;
   source: AnswerInputSource;

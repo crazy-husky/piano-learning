@@ -213,7 +213,7 @@ function getSynchronizedEventCount(
   seed: number
 ): number {
   const selection = getMeasureRandom(seed, measureIndex, 0x73796e63);
-  if (level === "level-2") return selection < 0.8 ? 1 : 2;
+  if (level === "level-2") return selection < 0.7 ? 1 : 2;
   if (selection < 0.2) return 1;
   if (selection < 0.7) return 2;
   if (selection < 0.9) return 3;
@@ -225,8 +225,21 @@ function getSynchronizedBeats(
   candidateBeats: readonly number[],
   count: number,
   measureIndex: number,
-  seed: number
+  seed: number,
+  avoidAdjacent = false
 ): number[] {
+  if (avoidAdjacent && count === 2) {
+    const separatedPairs = candidateBeats.flatMap((beat, index) =>
+      candidateBeats
+        .slice(index + 1)
+        .flatMap((nextBeat) => (nextBeat - beat > 1 ? [[beat, nextBeat]] : []))
+    );
+    const pairIndex = Math.floor(
+      getMeasureRandom(seed, measureIndex, 0x73657061) * separatedPairs.length
+    );
+    return separatedPairs[pairIndex] ?? candidateBeats.slice(0, count);
+  }
+
   const beats = [...candidateBeats];
   for (let index = beats.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(
@@ -383,7 +396,8 @@ function getMeasureEvents(
       rhythmEvents.map((event) => event.beat),
       getSynchronizedEventCount(level, measureIndex, seed),
       measureIndex,
-      seed
+      seed,
+      true
     );
     let bassSyncIndex = 0;
 
@@ -749,7 +763,7 @@ export function getDuetPracticeLevelLabel(level: DuetPracticeLevel): string {
 export function getDuetPracticeLevelDescription(level: DuetPracticeLevel): string {
   const descriptions: Record<DuetPracticeLevel, string> = {
     "level-1": "左右手轮流弹单音，音符在各自音域内均衡轮换，不同时起音。",
-    "level-2": "每小节同奏 1 次的概率为 80%，同奏 2 次为 20%。",
+    "level-2": "每小节低音出现 1 次的概率为 70%，出现 2 次的概率为 30%；出现两次时会尽量分开。",
     "level-3": "每小节同奏 1/2/3/4 次的概率依次为 20%/50%/20%/10%。",
     "level-4": "左手在强拍弹柱式三和弦，右手继续弹简单旋律。",
     "level-5": "右手弹均匀八分音符旋律，左手柱式和弦保持。",

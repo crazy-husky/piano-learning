@@ -9,6 +9,7 @@ import type {
 } from "../../../domain/types";
 import type { LearningLevelId } from "../../../routing/appRoutes";
 import { db, deletePracticeSessionWithReviews } from "../../../data/db";
+import { buildDuetPracticeSummaryStats, formatDuetRate } from "../../../domain/duetPracticeSummary";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
 import { LearningPracticeDialog, LearningWeakDetailsDialog } from "./LearningPracticeDialog";
 import { buildDuetWrongNoteTestPlan, type DuetWrongNoteTestPlan } from "../duetWrongNoteTest";
@@ -22,6 +23,7 @@ import {
   getEventTargetIds,
   getCorrectEventChoices,
   getEventDimension,
+  getDuetMetricCounts,
   getMetricValue,
   getLearningStatsDimensions,
   isWithinLearningStatsRange,
@@ -159,7 +161,7 @@ export function LearningStatsCenter({
   );
   const dimensionWasManuallyChangedRef = useRef(false);
   const [metric, setMetric] = useState<LearningStatsMetric>(
-    levelId === 1 ? "duration" : "accuracy"
+    levelId === 1 ? "duration" : levelId === 6 ? "right-hand" : "accuracy"
   );
   const [managerOpen, setManagerOpen] = useState(false);
   const [managerRange, setManagerRange] = useState<LearningStatsRange>("all");
@@ -221,6 +223,11 @@ export function LearningStatsCenter({
     setDimension(latestLevel ?? "level-1");
     setManagerDimension(latestLevel ?? "level-1");
   }, [dimensions, events, levelId, moduleEvents, returnFilters, sessionsById]);
+  useEffect(() => {
+    if (levelId === 6 && dimension === "level-1" && metric === "both-hands") {
+      setMetric("right-hand");
+    }
+  }, [dimension, levelId, metric]);
   const selectedEvents = useMemo(
     () =>
       moduleEvents.filter(
@@ -294,17 +301,22 @@ export function LearningStatsCenter({
   const firstTryAccuracy = metricEvents.length
     ? metricEvents.filter((event) => event.isCorrectFirstTry === true).length / metricEvents.length
     : null;
-  const responseTimes = metricEvents
-    .filter((event) => !event.isMissed)
-    .map((event) => event.responseTimeMs ?? event.rawResponseTimeMs)
-    .filter((value): value is number => value !== null && value !== undefined && value > 0)
-    .sort((left, right) => left - right);
+  const responseTimes =
+    levelId === 6
+      ? []
+      : metricEvents
+          .filter((event) => !event.isMissed)
+          .map((event) => event.responseTimeMs ?? event.rawResponseTimeMs)
+          .filter((value): value is number => value !== null && value !== undefined && value > 0)
+          .sort((left, right) => left - right);
   const medianResponse = responseTimes.length
     ? responseTimes.length % 2
       ? responseTimes[Math.floor(responseTimes.length / 2)]!
       : (responseTimes[responseTimes.length / 2 - 1]! + responseTimes[responseTimes.length / 2]!) /
         2
     : null;
+  const duetSummaryStats = buildDuetPracticeSummaryStats(selectedEvents, true);
+  const hasLegacyDuetEvents = selectedEvents.some((event) => event.duetPerformance === undefined);
   const correctControls = useMemo(
     () => getCorrectEventChoices(selectedEvents, weakItems, levelId),
     [levelId, selectedEvents, weakItems]
@@ -312,12 +324,28 @@ export function LearningStatsCenter({
   const managerDimensions = useMemo(() => getLearningStatsDimensions(levelId), [levelId]);
 
   const chartPoints = useMemo(() => {
-    const grouped = new Map<string, { values: number[]; firstAt: number }>();
-    const append = (timestamp: string, value: number): void => {
+    const grouped = new Map<
+      string,
+      { values: number[]; correct: number; total: number; firstAt: number }
+    >();
+    const append = (
+      timestamp: string,
+      value: number,
+      counts?: { correct: number; total: number }
+    ): void => {
       const label = dateBucket(timestamp, range);
       const timestampMs = Date.parse(timestamp);
-      const bucket = grouped.get(label) ?? { values: [], firstAt: timestampMs };
+      const bucket = grouped.get(label) ?? {
+        values: [],
+        correct: 0,
+        total: 0,
+        firstAt: timestampMs,
+      };
       bucket.values.push(value);
+      if (counts) {
+        bucket.correct += counts.correct;
+        bucket.total += counts.total;
+      }
       bucket.firstAt = Math.min(bucket.firstAt, timestampMs);
       grouped.set(label, bucket);
     };
@@ -328,6 +356,11 @@ export function LearningStatsCenter({
           noteIdInPitchGroups(id, pitchGroups)
         ).length;
         append(run.endedAt, metric === "volume" ? filteredNoteCount : duration);
+      }
+    } else if (levelId === 6) {
+      for (const event of selectedEvents) {
+        const counts = getDuetMetricCounts(event, metric);
+        if (counts) append(event.occurredAt, counts.correct / counts.total, counts);
       }
     } else {
       for (const event of metricEvents) {
@@ -340,16 +373,25 @@ export function LearningStatsCenter({
       .map(([label, bucket]) => {
         const { values } = bucket;
         const value =
-          metric === "accuracy"
-            ? values.reduce((sum, item) => sum + item, 0) / values.length
-            : metric === "response" || metric === "duration"
+          levelId === 6
+            ? bucket.total > 0
+              ? bucket.correct / bucket.total
+              : 0
+            : metric === "accuracy"
               ? values.reduce((sum, item) => sum + item, 0) / values.length
-              : values.reduce((sum, item) => sum + item, 0);
-        return { label, value, samples: values.length, firstAt: bucket.firstAt };
+              : metric === "response" || metric === "duration"
+                ? values.reduce((sum, item) => sum + item, 0) / values.length
+                : values.reduce((sum, item) => sum + item, 0);
+        return {
+          label,
+          value,
+          samples: levelId === 6 ? bucket.total : values.length,
+          firstAt: bucket.firstAt,
+        };
       })
       .sort((left, right) => left.firstAt - right.firstAt)
       .slice(-24);
-  }, [levelId, metric, metricEvents, pitchGroups, range, selectedRuns]);
+  }, [levelId, metric, metricEvents, pitchGroups, range, selectedEvents, selectedRuns]);
   const maximum = Math.max(1, ...chartPoints.map((point) => point.value));
 
   const managerRows = useMemo<ManagerRow[]>(() => {
@@ -446,7 +488,16 @@ export function LearningStatsCenter({
         { value: "duration" as const, label: "单轮用时" },
         { value: "volume" as const, label: "识别音符数" },
       ]
-    : METRICS;
+    : levelId === 6
+      ? [
+          { value: "right-hand" as const, label: "右手首答正确率" },
+          { value: "left-hand" as const, label: "左手首答正确率" },
+          { value: "beat" as const, label: "节拍命中率" },
+          ...(dimension === "level-1"
+            ? []
+            : [{ value: "both-hands" as const, label: "双手同拍完整率" }]),
+        ]
+      : METRICS;
   const displayedWeakItems = useMemo(
     () =>
       [...weakItems].sort((left, right) => {
@@ -683,13 +734,18 @@ export function LearningStatsCenter({
             >
               {chartPoints.length ? (
                 chartPoints.map((point) => {
-                  const height =
-                    metric === "accuracy" ? point.value * 100 : (point.value / maximum) * 100;
+                  const rateMetric = levelId === 6 || metric === "accuracy";
+                  const height = rateMetric ? point.value * 100 : (point.value / maximum) * 100;
+                  const displayValue = rateMetric
+                    ? `${Math.round(point.value * 100)}%`
+                    : metric === "response" || metric === "duration"
+                      ? formatDuration(point.value)
+                      : `${point.value} 题`;
                   return (
                     <div className="learning-stats-chart-column" key={point.label}>
                       <span
                         style={{ height: `${Math.max(4, height)}%` }}
-                        title={`${point.label} · ${metric === "accuracy" ? `${Math.round(point.value * 100)}%` : metric === "response" || metric === "duration" ? formatDuration(point.value) : `${point.value} 题`} · ${point.samples} 个样本`}
+                        title={`${point.label} · ${displayValue} · ${point.samples} 个样本`}
                       />
                       <small>{point.label}</small>
                     </div>
@@ -699,7 +755,57 @@ export function LearningStatsCenter({
                 <p role="status">当前筛选范围暂无图表数据。</p>
               )}
             </div>
-            {levelId !== 1 ? (
+            {levelId === 6 ? (
+              <dl className="learning-stats-summary">
+                <div>
+                  <dt>右手首答正确率</dt>
+                  <dd>
+                    {formatDuetRate(duetSummaryStats.hands.treble)}
+                    <small>
+                      {duetSummaryStats.hands.treble.correct} /{" "}
+                      {duetSummaryStats.hands.treble.total} 个音
+                    </small>
+                  </dd>
+                </div>
+                <div>
+                  <dt>左手首答正确率</dt>
+                  <dd>
+                    {formatDuetRate(duetSummaryStats.hands.bass)}
+                    <small>
+                      {duetSummaryStats.hands.bass.correct} / {duetSummaryStats.hands.bass.total}{" "}
+                      个音
+                    </small>
+                  </dd>
+                </div>
+                <div>
+                  <dt>目标音准拍率</dt>
+                  <dd>
+                    {formatDuetRate({
+                      correct: duetSummaryStats.timing.onTime,
+                      total:
+                        duetSummaryStats.timing.onTime +
+                        duetSummaryStats.timing.early +
+                        duetSummaryStats.timing.late +
+                        duetSummaryStats.timing.missed,
+                    })}
+                    <small>
+                      漏拍 {duetSummaryStats.timing.missed} · 偏拍{" "}
+                      {duetSummaryStats.timing.early + duetSummaryStats.timing.late}
+                    </small>
+                  </dd>
+                </div>
+                <div>
+                  <dt>双手同拍完整率</dt>
+                  <dd>
+                    {formatDuetRate(duetSummaryStats.bothHandEvents)}
+                    <small>
+                      {duetSummaryStats.bothHandEvents.correct} /{" "}
+                      {duetSummaryStats.bothHandEvents.total} 组
+                    </small>
+                  </dd>
+                </div>
+              </dl>
+            ) : levelId !== 1 ? (
               <dl className="learning-stats-summary">
                 <div>
                   <dt>有效答题数</dt>
@@ -744,6 +850,11 @@ export function LearningStatsCenter({
                 </div>
               </dl>
             )}
+            {levelId === 6 && hasLegacyDuetEvents ? (
+              <p className="learning-stats-hint" role="status">
+                部分历史练习记录没有左右手与拍点明细，不会计入以上细分统计。
+              </p>
+            ) : null}
           </section>
 
           <section

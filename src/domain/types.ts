@@ -17,6 +17,7 @@ export type PromptDisplayMode = "single-note" | "staff-page";
 export type PromptNoteDuration = "whole" | "quarter" | "eighth" | "sixteenth";
 export type DuetPracticeLevel =
   "level-1" | "level-2" | "level-3" | "level-4" | "level-5" | "level-6";
+export type DuetTimingGrade = "early" | "on-time" | "late";
 export type EffectiveQueueAlgorithm =
   "adaptive-v1" | "adaptive-v2" | "focused-v1" | "melody-v1" | "melody-v2";
 export type QueueComparisonFamily = "adaptive" | "melody-v1" | "melody-v2";
@@ -120,6 +121,20 @@ export interface ReviewRecord {
   duetTargetNoteIds?: TargetNoteId[];
   /** Target notes already completed when a duet prompt timed out. */
   duetCompletedTargetNoteIds?: TargetNoteId[];
+  /** Compact, onset-based duet results; does not store raw input timestamps. */
+  duetPerformance?: {
+    syncEnabled: boolean;
+    targets: Array<{
+      targetNoteId: TargetNoteId;
+      staff: Staff;
+      firstTryCorrect: boolean;
+      completed: boolean;
+      attempted: boolean;
+      missedOnset?: boolean;
+      timingGrade?: DuetTimingGrade;
+    }>;
+    wrongOnTimeAttempts: number;
+  };
   replayCount: number;
   focusLosses: FocusLoss[];
   ignored?: boolean;
@@ -168,6 +183,7 @@ export interface AnswerEvent {
   duetTargetNoteIds?: TargetNoteId[];
   /** Target notes already completed when a duet prompt timed out. */
   duetCompletedTargetNoteIds?: TargetNoteId[];
+  duetPerformance?: ReviewRecord["duetPerformance"];
   duetTargetMidis?: { treble: number[]; bass: number[] };
   targetNoteId?: string;
   targetGroupId?: PracticeGroupId;
@@ -226,6 +242,8 @@ export interface AnswerAttempt {
   atMs: number;
   /** The outstanding duet target this wrong input was closest to; null means unassigned. */
   duetTargetNoteId?: TargetNoteId | null;
+  /** Metronome grade for this input; based on the target onset, not prompt duration. */
+  duetTimingGrade?: DuetTimingGrade;
   confidence?: number;
   inputMode?: AnswerInputMode;
   microphoneAlgorithm?: "swiftf0" | "yin";

@@ -91,6 +91,7 @@ export interface PracticeSetupUiPreferences {
   promptNoteDuration: PromptNoteDuration;
   promptNoteDurations: PromptNoteDuration[];
   queueStrategy: PracticeQueueStrategy;
+  queueStrategyPreferenceVersion: 1;
 }
 
 interface PracticeSetupActions {

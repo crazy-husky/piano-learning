@@ -10,6 +10,7 @@ import type {
 } from "../../../domain/sessionProgress";
 import type { TargetNoteId } from "../../../domain/types";
 import type { PracticeSessionSummary } from "../hooks/usePracticeSessionState";
+import { DuetPracticeSummary } from "./DuetPracticeSummary";
 import {
   SessionProgressChart,
   SessionProgressControls,
@@ -67,6 +68,11 @@ export function PracticeSummaryView({
 }: PracticeSummaryViewProps): JSX.Element {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const displayedWeakestNotes = onWeakRepractice ? weakRepracticeNotes : weakestNotes;
+  const practiceConfig =
+    "startSnapshot" in summary.session ? summary.session.startSnapshot.practiceConfig : undefined;
+  const duetLevel = practiceConfig?.duetLevel;
+  const isDuetSummary =
+    duetLevel !== undefined || summary.reviews.some((review) => review.duetTargetNoteIds?.length);
 
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
@@ -91,82 +97,92 @@ export function PracticeSummaryView({
           <h1 id="practice-summary-title" tabIndex={-1}>
             本次结果
           </h1>
-          {summaryHasTooManyErrors ? (
+          {summaryHasTooManyErrors && !isDuetSummary ? (
             <p className="summary-quality-warning">
               错音有点多{">_<"} 这次先不算~ <br />
               或许从更少的音区开始练习，或者先去学习页学习/默写一下吧~
             </p>
           ) : null}
         </div>
-        <div className="metric-grid practice-summary-metrics">
-          <div className="metric">
-            <span>答对</span>
-            <strong>{summary.reviews.filter(isCompletedReview).length}</strong>
-          </div>
-          <div className="metric">
-            <span>错误</span>
-            <strong>
-              {summary.reviews.reduce(
-                (sum, review) =>
-                  sum + review.wrongAnswers.length + Number(review.wasMissed === true),
-                0
-              )}
-            </strong>
-          </div>
-          <div className="metric">
-            <span>中位时长</span>
-            <strong>{formatQualifiedTimeMedian}</strong>
-          </div>
-          <div className="metric">
-            <span>P90</span>
-            <strong>{formatQualifiedTimeP90}</strong>
-          </div>
-        </div>
-        <section className="summary-section">
-          <div className="summary-section-heading">
-            <h2>{onWeakRepractice ? "本次薄弱点" : "薄弱音"}</h2>
-          </div>
-          <div className="note-list">
-            <div className="note-row note-row-header">
-              <span>目标音</span>
-              <span>中位时长</span>
-              <span>错音率</span>
-              <span>常错音</span>
-            </div>
-            {displayedWeakestNotes.map((note) => (
-              <div className="note-row" key={note.targetNoteId}>
-                <span>{formatTargetNoteLabel(getNoteById(note.targetNoteId))}</span>
-                <span>{formatMs(note.medianMs)}</span>
-                <span>{Math.round(note.errorRate * 100)}%</span>
-                <span>{note.commonConfusion ?? "无"}</span>
+        {isDuetSummary ? (
+          <DuetPracticeSummary
+            level={duetLevel ?? "level-1"}
+            reviews={summary.reviews}
+            syncEnabled={practiceConfig?.metronomeSync === true}
+          />
+        ) : (
+          <>
+            <div className="metric-grid practice-summary-metrics">
+              <div className="metric">
+                <span>答对</span>
+                <strong>{summary.reviews.filter(isCompletedReview).length}</strong>
               </div>
-            ))}
-          </div>
-          {onWeakRepractice && weaknessNoteIds.length > 0 ? (
-            <button className="primary learning-weakness-action" onClick={onWeakRepractice}>
-              针对薄弱项再练一局
-            </button>
-          ) : null}
-        </section>
-        {!summaryHasTooManyErrors && series.length > 0 ? (
-          <section className="summary-section">
-            <div className="summary-section-heading session-progress-heading">
-              <h2>答对进度</h2>
-              <SessionProgressControls
-                allHistory={allHistory}
-                allHistoryCount={allHistoryCount}
-                benchmark={benchmark}
-                historyLimit={historyLimit}
-                mode={mode}
-                onAllHistoryChange={onAllHistoryChange}
-                onHistoryLimitChange={onHistoryLimitChange}
-                onModeChange={onModeChange}
-              />
+              <div className="metric">
+                <span>错误</span>
+                <strong>
+                  {summary.reviews.reduce(
+                    (sum, review) =>
+                      sum + review.wrongAnswers.length + Number(review.wasMissed === true),
+                    0
+                  )}
+                </strong>
+              </div>
+              <div className="metric">
+                <span>中位时长</span>
+                <strong>{formatQualifiedTimeMedian}</strong>
+              </div>
+              <div className="metric">
+                <span>P90</span>
+                <strong>{formatQualifiedTimeP90}</strong>
+              </div>
             </div>
-            <SessionProgressChart series={series} />
-            <SessionProgressLegend series={series} />
-          </section>
-        ) : null}
+            <section className="summary-section">
+              <div className="summary-section-heading">
+                <h2>{onWeakRepractice ? "本次薄弱点" : "薄弱音"}</h2>
+              </div>
+              <div className="note-list">
+                <div className="note-row note-row-header">
+                  <span>目标音</span>
+                  <span>中位时长</span>
+                  <span>错音率</span>
+                  <span>常错音</span>
+                </div>
+                {displayedWeakestNotes.map((note) => (
+                  <div className="note-row" key={note.targetNoteId}>
+                    <span>{formatTargetNoteLabel(getNoteById(note.targetNoteId))}</span>
+                    <span>{formatMs(note.medianMs)}</span>
+                    <span>{Math.round(note.errorRate * 100)}%</span>
+                    <span>{note.commonConfusion ?? "无"}</span>
+                  </div>
+                ))}
+              </div>
+              {onWeakRepractice && weaknessNoteIds.length > 0 ? (
+                <button className="primary learning-weakness-action" onClick={onWeakRepractice}>
+                  针对薄弱项再练一局
+                </button>
+              ) : null}
+            </section>
+            {!summaryHasTooManyErrors && series.length > 0 ? (
+              <section className="summary-section">
+                <div className="summary-section-heading session-progress-heading">
+                  <h2>答对进度</h2>
+                  <SessionProgressControls
+                    allHistory={allHistory}
+                    allHistoryCount={allHistoryCount}
+                    benchmark={benchmark}
+                    historyLimit={historyLimit}
+                    mode={mode}
+                    onAllHistoryChange={onAllHistoryChange}
+                    onHistoryLimitChange={onHistoryLimitChange}
+                    onModeChange={onModeChange}
+                  />
+                </div>
+                <SessionProgressChart series={series} />
+                <SessionProgressLegend series={series} />
+              </section>
+            ) : null}
+          </>
+        )}
         <div className="action-row">
           <button onClick={onReturnToSetup}>
             {returnButtonLabel === "返回统计" ? (

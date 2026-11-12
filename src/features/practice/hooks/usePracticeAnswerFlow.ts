@@ -395,11 +395,20 @@ export function usePracticeAnswerFlow({
         !answeredCorrectly && duetTargets
           ? getDuetWrongTargetNoteId(answerMidi, duetTargets, prompt.completedDuetTargetNoteIds)
           : undefined;
+      const matchedDuetTargetNoteId =
+        answeredCorrectly && matchedDuetStaff && duetTargets && answerMidi !== undefined
+          ? (matchedDuetStaff === "treble" ? duetTargets.high : duetTargets.low).find(
+              (target) => getTargetMidiNoteNumber(target) === answerMidi
+            )?.id
+          : undefined;
       prompt.answerAttempts.push({
         midi: answerMidi,
         noteName: answer.noteName,
         atMs: atActiveMs,
-        ...(duetTargets ? { duetTargetNoteId: duetTargetNoteId ?? null } : {}),
+        ...(duetTargets
+          ? { duetTargetNoteId: matchedDuetTargetNoteId ?? duetTargetNoteId ?? null }
+          : {}),
+        ...(answer.duetTimingGrade ? { duetTimingGrade: answer.duetTimingGrade } : {}),
         confidence: answer.confidence,
         inputMode,
         microphoneAlgorithm: answer.microphoneAlgorithm,

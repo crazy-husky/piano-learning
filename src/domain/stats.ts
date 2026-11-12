@@ -79,6 +79,14 @@ export interface LongTermStatsEligibility {
   statisticalReviewCount: number;
 }
 
+function isReactionTimeSample(review: ReviewRecord): boolean {
+  return (
+    isCompletedReview(review) &&
+    !review.duetTargetNoteIds?.length &&
+    review.duetPerformance?.syncEnabled !== true
+  );
+}
+
 function groupReviewsBySession(reviews: ReviewRecord[]): Map<string, ReviewRecord[]> {
   const reviewsBySession = new Map<string, ReviewRecord[]>();
   for (const review of reviews) {
@@ -240,7 +248,7 @@ export function buildDailyStats(reviews: ReviewRecord[]): DailyStat[] {
   return [...byDate.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, dayReviews]) => {
-      const times = dayReviews.filter(isCompletedReview).map((review) => review.activeMs);
+      const times = dayReviews.filter(isReactionTimeSample).map((review) => review.activeMs);
       const completedReviews = dayReviews.length;
       const totalActiveMs = totalActiveMsByDate.get(date) ?? 0;
       return {
@@ -291,7 +299,7 @@ export function buildPracticeSessionStats(
   return [...reviewsBySession.entries()]
     .map(([sessionId, sessionReviews]) => {
       const session = sessionsById.get(sessionId);
-      const times = sessionReviews.filter(isCompletedReview).map((review) => review.activeMs);
+      const times = sessionReviews.filter(isReactionTimeSample).map((review) => review.activeMs);
       return {
         sessionId,
         startedAt: session?.startedAt ?? earliestReviewStartedAt(sessionReviews),
@@ -377,7 +385,7 @@ function addRecognitionReview(
   targetNoteId: TargetNoteId
 ): void {
   const recentReview = {
-    ...(isCompletedReview(review) ? { activeMs: review.activeMs } : {}),
+    ...(isReactionTimeSample(review) ? { activeMs: review.activeMs } : {}),
     hasError: reviewHasTargetError(review, targetNoteId),
   };
   window.totalCount += 1;
@@ -528,7 +536,7 @@ export function buildNoteStats(
           (review.targetNoteId === note.id || review.duetTargetNoteIds?.includes(note.id)) &&
           isStatisticalReview(review)
       );
-      const times = noteReviews.filter(isCompletedReview).map((review) => review.activeMs);
+      const times = noteReviews.filter(isReactionTimeSample).map((review) => review.activeMs);
       const reviewsWithErrors = noteReviews.filter((review) =>
         reviewHasTargetError(review, note.id)
       ).length;

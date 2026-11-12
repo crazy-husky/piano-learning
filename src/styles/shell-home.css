@@ -932,6 +932,17 @@
   letter-spacing: -0.03em;
 }
 
+.module-stats-metrics dd small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .module-stats-recent-date {
   display: block;
   max-width: 100%;
@@ -1655,6 +1666,21 @@
   color: var(--text);
   font-size: 18px;
   font-weight: 850;
+}
+
+.learning-stats-summary dd small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.learning-stats-hint {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 12px 0 0;
 }
 
 .learning-stats-manager > ul {

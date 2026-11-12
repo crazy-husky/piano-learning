@@ -7,6 +7,7 @@ import type {
   StaffDistanceTrainingMode,
 } from "../../../domain/types";
 import { db } from "../../../data/db";
+import { buildDuetPracticeSummaryStats, formatDuetRate } from "../../../domain/duetPracticeSummary";
 
 type ModuleEventKind =
   "name-to-key" | "staff-to-name" | "staff-distance" | "pre-reading" | "duet" | "blind-practice";
@@ -104,7 +105,7 @@ const COPY: Record<
   },
   duet: {
     title: "双手协同统计",
-    empty: "暂无数据。完成当前难度的双手合弹练习后，这里会显示答题数、首次答对率和反应时间。",
+    empty: "暂无数据。完成双手协同练习后，这里会显示左右手首答正确率和节拍表现。",
     description: "按双手协同难度分别统计。",
     accuracyLabel: "首次答对率",
   },
@@ -234,11 +235,21 @@ export function ModuleEventStats({
   const firstTryAccuracy = metricSamples.length
     ? firstTryCorrectCount / metricSamples.length
     : null;
-  const responseTimes = metricSamples
-    .filter((event) => !event.isMissed)
-    .map((event) => event.responseTimeMs ?? event.rawResponseTimeMs)
-    .filter((value): value is number => value !== null && value !== undefined && value > 0)
-    .sort((left, right) => left - right);
+  const duetSummaryStats = buildDuetPracticeSummaryStats(selectedEvents, true);
+  const hasLegacyDuetEvents = selectedEvents.some((event) => event.duetPerformance === undefined);
+  const duetBeatTotal =
+    duetSummaryStats.timing.onTime +
+    duetSummaryStats.timing.early +
+    duetSummaryStats.timing.late +
+    duetSummaryStats.timing.missed;
+  const responseTimes =
+    kind === "duet"
+      ? []
+      : metricSamples
+          .filter((event) => !event.isMissed)
+          .map((event) => event.responseTimeMs ?? event.rawResponseTimeMs)
+          .filter((value): value is number => value !== null && value !== undefined && value > 0)
+          .sort((left, right) => left - right);
   const middle = Math.floor(responseTimes.length / 2);
   const medianResponse = responseTimes.length
     ? responseTimes.length % 2 === 0
@@ -326,31 +337,77 @@ export function ModuleEventStats({
       ) : (
         <>
           <dl className="module-stats-metrics">
-            <div>
-              <dt>有效答题数</dt>
-              <dd>{metricSamples.length}</dd>
-            </div>
-            <div>
-              <dt>{copy.accuracyLabel}</dt>
-              <dd>{formatPercent(firstTryAccuracy)}</dd>
-            </div>
-            <div>
-              <dt>中位反应时间</dt>
-              <dd>{formatDuration(medianResponse)}</dd>
-            </div>
-            <div>
-              <dt>最近练习</dt>
-              <dd>
-                <time
-                  className="module-stats-recent-date"
-                  dateTime={selectedEvents[0]!.occurredAt}
-                  title={new Date(selectedEvents[0]!.occurredAt).toLocaleString()}
-                >
-                  {new Date(selectedEvents[0]!.occurredAt).toLocaleDateString()}
-                </time>
-              </dd>
-            </div>
+            {kind === "duet" ? (
+              <>
+                <div>
+                  <dt>右手首答正确率</dt>
+                  <dd>
+                    {formatDuetRate(duetSummaryStats.hands.treble)}
+                    <small>
+                      {duetSummaryStats.hands.treble.correct} /{" "}
+                      {duetSummaryStats.hands.treble.total} 个音
+                    </small>
+                  </dd>
+                </div>
+                <div>
+                  <dt>左手首答正确率</dt>
+                  <dd>
+                    {formatDuetRate(duetSummaryStats.hands.bass)}
+                    <small>
+                      {duetSummaryStats.hands.bass.correct} / {duetSummaryStats.hands.bass.total}{" "}
+                      个音
+                    </small>
+                  </dd>
+                </div>
+                <div>
+                  <dt>目标音准拍率</dt>
+                  <dd>
+                    {formatDuetRate({
+                      correct: duetSummaryStats.timing.onTime,
+                      total: duetBeatTotal,
+                    })}
+                    <small>漏拍 {duetSummaryStats.timing.missed}</small>
+                  </dd>
+                </div>
+                <div>
+                  <dt>双手同拍完整率</dt>
+                  <dd>{formatDuetRate(duetSummaryStats.bothHandEvents)}</dd>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <dt>有效答题数</dt>
+                  <dd>{metricSamples.length}</dd>
+                </div>
+                <div>
+                  <dt>{copy.accuracyLabel}</dt>
+                  <dd>{formatPercent(firstTryAccuracy)}</dd>
+                </div>
+                <div>
+                  <dt>中位反应时间</dt>
+                  <dd>{formatDuration(medianResponse)}</dd>
+                </div>
+                <div>
+                  <dt>最近练习</dt>
+                  <dd>
+                    <time
+                      className="module-stats-recent-date"
+                      dateTime={selectedEvents[0]!.occurredAt}
+                      title={new Date(selectedEvents[0]!.occurredAt).toLocaleString()}
+                    >
+                      {new Date(selectedEvents[0]!.occurredAt).toLocaleDateString()}
+                    </time>
+                  </dd>
+                </div>
+              </>
+            )}
           </dl>
+          {kind === "duet" && hasLegacyDuetEvents ? (
+            <p className="module-stats-empty" role="status">
+              部分历史练习记录没有左右手与拍点明细，不会计入以上细分统计。
+            </p>
+          ) : null}
           <section aria-label="近十四天练习量" className="module-stats-activity">
             <h3>近 14 天答题量</h3>
             <div className="module-stats-bars">

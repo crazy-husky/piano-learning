@@ -12,7 +12,15 @@ import type { LearningLevelId } from "../../../routing/appRoutes";
 
 export type LearningStatsRange =
   "1" | "3" | "7" | "15" | "30" | "90" | "180" | "365" | "all" | "custom";
-export type LearningStatsMetric = "accuracy" | "response" | "volume" | "duration";
+export type LearningStatsMetric =
+  | "accuracy"
+  | "response"
+  | "volume"
+  | "duration"
+  | "right-hand"
+  | "left-hand"
+  | "beat"
+  | "both-hands";
 export type LearningStatsDimension = "all" | string;
 export type WeakPracticeItem = {
   id: string;
@@ -428,7 +436,66 @@ export function buildRecallWeakItems(
   return ranked.slice(0, Math.max(1, Math.ceil(ranked.length / 4)));
 }
 
+export function getDuetMetricCounts(
+  event: AnswerEvent,
+  metric: LearningStatsMetric
+): { correct: number; total: number } | null {
+  if (event.wasSkipped === true) return null;
+  if (metric === "right-hand" || metric === "left-hand") {
+    const staff = metric === "right-hand" ? "treble" : "bass";
+    const targets = event.duetPerformance?.targets.filter(
+      (target) => target.staff === staff && target.attempted
+    );
+    return targets?.length
+      ? {
+          correct: targets.filter((target) => target.firstTryCorrect).length,
+          total: targets.length,
+        }
+      : null;
+  }
+  if (metric === "beat") {
+    const performance = event.duetPerformance;
+    if (!performance?.syncEnabled) return null;
+    const targets = performance.targets.filter(
+      (target) =>
+        (target.completed && target.timingGrade !== undefined) || target.missedOnset === true
+    );
+    return targets.length
+      ? {
+          correct: targets.filter((target) => target.completed && target.timingGrade === "on-time")
+            .length,
+          total: targets.length,
+        }
+      : null;
+  }
+  if (metric === "both-hands") {
+    if (event.wasInterrupted === true) return null;
+    const performance = event.duetPerformance;
+    if (!performance) return null;
+    const hasTreble = performance.targets.some((target) => target.staff === "treble");
+    const hasBass = performance.targets.some((target) => target.staff === "bass");
+    if (!hasTreble || !hasBass) return null;
+    const complete = performance.targets.every(
+      (target) =>
+        target.attempted &&
+        target.firstTryCorrect &&
+        (!performance.syncEnabled || target.timingGrade === "on-time")
+    );
+    return { correct: Number(complete), total: 1 };
+  }
+  return null;
+}
+
 export function getMetricValue(event: AnswerEvent, metric: LearningStatsMetric): number | null {
+  if (
+    metric === "right-hand" ||
+    metric === "left-hand" ||
+    metric === "beat" ||
+    metric === "both-hands"
+  ) {
+    const counts = getDuetMetricCounts(event, metric);
+    return counts ? counts.correct / counts.total : null;
+  }
   if (event.wasInterrupted === true || event.wasSkipped === true) return null;
   if (metric === "volume") return 1;
   if (metric === "accuracy") {
@@ -436,6 +503,14 @@ export function getMetricValue(event: AnswerEvent, metric: LearningStatsMetric):
     return event.isMissed ? 0 : null;
   }
   if (metric === "response") {
+    if (
+      event.learningLevelId === 6 ||
+      event.duetLevel !== undefined ||
+      event.duetTargetNoteIds?.length ||
+      event.duetPerformance
+    ) {
+      return null;
+    }
     const value = event.responseTimeMs ?? event.rawResponseTimeMs;
     return typeof value === "number" && value > 0 && !event.isMissed ? value : null;
   }

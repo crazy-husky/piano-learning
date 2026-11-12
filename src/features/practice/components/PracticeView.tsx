@@ -2,7 +2,7 @@ import { ArrowLeft, Pause, Play, RotateCcw, Settings2, Volume2 } from "lucide-re
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getPianoAudioTime, playMuffledMidiNote, playTargetNote } from "../../../audio/piano";
-import { resolveDrillNoteNames, resolveQueueStrategy } from "../../../data/db";
+import { resolveDrillNoteNames } from "../../../data/db";
 import { writeBackupIfSafe } from "../../../data/backup";
 import {
   markMidiLatencyStage,
@@ -244,6 +244,7 @@ function formatDuration(ms: number): string {
 const STAFF_PAGE_SCROLL_DURATION_MS = 200;
 const MELODY_BUFFER_SIZE = 16;
 const PRACTICE_SETUP_UI_PREFERENCES_KEY = "anki-note.practiceSetupUiPreferences";
+const PRACTICE_QUEUE_STRATEGY_PREFERENCE_VERSION = 1 as const;
 const PRACTICE_MODES: readonly PracticeMode[] = ["open-ended", "fixed-count", "fixed-duration"];
 const PROMPT_DISPLAY_MODES: readonly PromptDisplayMode[] = ["single-note", "staff-page"];
 
@@ -348,7 +349,8 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
       promptNoteDurations.length > 1 ? "staff-page" : (settings.promptDisplayMode ?? "staff-page"),
     promptNoteDuration: promptNoteDurations[0]!,
     promptNoteDurations,
-    queueStrategy: resolveQueueStrategy(settings),
+    queueStrategy: "adaptive",
+    queueStrategyPreferenceVersion: PRACTICE_QUEUE_STRATEGY_PREFERENCE_VERSION,
   };
 }
 
@@ -371,6 +373,8 @@ function parsePracticeSetupUiPreferences(
   ]);
   const duetCurriculumVersion =
     typeof value.duetCurriculumVersion === "number" ? value.duetCurriculumVersion : undefined;
+  const hasCurrentQueueStrategyPreferenceVersion =
+    value.queueStrategyPreferenceVersion === PRACTICE_QUEUE_STRATEGY_PREFERENCE_VERSION;
 
   return {
     answerPitchMode: normalizeAnswerPitchMode(value.answerPitchMode, fallback.answerPitchMode),
@@ -437,11 +441,14 @@ function parsePracticeSetupUiPreferences(
           : fallback.promptDisplayMode,
     promptNoteDuration: promptNoteDurations[0]!,
     promptNoteDurations,
-    queueStrategy: isPracticeQueueStrategy(value.queueStrategy)
-      ? value.queueStrategy === "focused"
-        ? "adaptive"
-        : value.queueStrategy
-      : fallback.queueStrategy,
+    queueStrategy: hasCurrentQueueStrategyPreferenceVersion
+      ? isPracticeQueueStrategy(value.queueStrategy)
+        ? value.queueStrategy === "focused"
+          ? "adaptive"
+          : value.queueStrategy
+        : "adaptive"
+      : "adaptive",
+    queueStrategyPreferenceVersion: PRACTICE_QUEUE_STRATEGY_PREFERENCE_VERSION,
   };
 }
 
@@ -1176,6 +1183,8 @@ export function PracticeView({
         practiceMode: current.practiceMode,
         metronomeSyncEnabled: current.metronomeSyncEnabled,
         blindPracticeMetronomeSyncEnabled: current.blindPracticeMetronomeSyncEnabled,
+        queueStrategy: current.queueStrategy,
+        queueStrategyPreferenceVersion: current.queueStrategyPreferenceVersion,
         duetLevel: current.duetLevel,
         duetRangePreset: current.duetRangePreset,
         duetCurriculumVersion: current.duetCurriculumVersion,
@@ -2659,6 +2668,7 @@ export function PracticeView({
       if (isPausedRef.current) return;
       if (freeRowPlaybackActiveRef.current !== null) return;
       if (isPreReadingPractice && preReadingScoreWindow.phase !== "training") return;
+      let answerWithTiming = answer;
       if (
         isMetronomeSyncActive &&
         (answer.source === "midi" || (isBlindPractice && answer.source === "microphone"))
@@ -2737,7 +2747,15 @@ export function PracticeView({
                   entry.answer.inputTimeMs === answer.inputTimeMs
               )
             ) {
-              pendingEarlySyncAnswersRef.current.push({ targetIndex: futureIndex, answer });
+              pendingEarlySyncAnswersRef.current.push({
+                targetIndex: futureIndex,
+                answer: prompt?.duetTargets
+                  ? {
+                      ...answer,
+                      duetTimingGrade: getPracticeTimingGrade(futureDeltaMs, futureWindow),
+                    }
+                  : answer,
+              });
             }
             return;
           }
@@ -2762,6 +2780,19 @@ export function PracticeView({
           const answeredCorrectly = targetMidis
             ? matchedStaff !== undefined
             : isPracticeAnswerCorrect(answer, prompt.note, "exact-pitch");
+          const expectedTime = getPracticeAudioTimeAtBeat(
+            onset.currentBeat,
+            syncTempoAnchorsRef.current,
+            metronomePreferences.bpm
+          );
+          const windowMs = getPracticeTimingWindowMs(metronomePreferences.bpm, onset.gapBeats);
+          const timingGrade =
+            expectedTime === undefined
+              ? undefined
+              : getPracticeTimingGrade((inputTime - expectedTime) * 1000, windowMs);
+          if (timingGrade && prompt.duetTargets) {
+            answerWithTiming = { ...answer, duetTimingGrade: timingGrade };
+          }
           const noteIndex = staffPageFirstNoteOffset + onset.index;
           if (!answeredCorrectly) {
             const staves = targetMidis
@@ -2782,16 +2813,7 @@ export function PracticeView({
               ];
             });
           } else {
-            const expectedTime = getPracticeAudioTimeAtBeat(
-              onset.currentBeat,
-              syncTempoAnchorsRef.current,
-              metronomePreferences.bpm
-            );
-            const windowMs = getPracticeTimingWindowMs(metronomePreferences.bpm, onset.gapBeats);
-            const grade =
-              expectedTime === undefined
-                ? "on-time"
-                : getPracticeTimingGrade((inputTime - expectedTime) * 1000, windowMs);
+            const grade = timingGrade ?? "on-time";
             const staff = matchedStaff ?? prompt.note.staff;
             if (grade !== "on-time") {
               setSyncTimingFeedback((current) => {
@@ -2817,7 +2839,7 @@ export function PracticeView({
           }
         }
       }
-      void submitAnswer(answer);
+      void submitAnswer(answerWithTiming);
     },
     [
       answerInputLockedRef,

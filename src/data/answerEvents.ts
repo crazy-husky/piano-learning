@@ -118,6 +118,7 @@ export function answerEventToReview(event: AnswerEvent): ReviewRecord | null {
     ...(event.duetCompletedTargetNoteIds
       ? { duetCompletedTargetNoteIds: event.duetCompletedTargetNoteIds }
       : {}),
+    ...(event.duetPerformance ? { duetPerformance: event.duetPerformance } : {}),
     activeMs: event.activeMs ?? event.rawResponseTimeMs ?? 0,
     wrongAnswers,
     replayCount: 0,

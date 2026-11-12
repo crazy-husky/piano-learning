@@ -139,6 +139,8 @@ export function usePracticeSessionLifecycle({
       timers.pauseActiveTimers();
       const endedAt = new Date().toISOString();
       const ignored = shouldIgnoreReviewForSession(session);
+      const sessionPracticeConfig =
+        "startSnapshot" in session ? session.startSnapshot.practiceConfig : undefined;
       const review: ReviewRecord = {
         id: createUuid(),
         schemaVersion: 1,
@@ -162,6 +164,39 @@ export function usePracticeSessionLifecycle({
                 (note) => note.id
               ),
               duetCompletedTargetNoteIds: [...prompt.completedDuetTargetNoteIds],
+              duetPerformance: {
+                syncEnabled: sessionPracticeConfig?.metronomeSync === true,
+                targets: [
+                  ...prompt.duetTargets.high.map((target) => ({
+                    target,
+                    staff: "treble" as const,
+                  })),
+                  ...prompt.duetTargets.low.map((target) => ({ target, staff: "bass" as const })),
+                ].map(({ target, staff }) => {
+                  const targetAttempts = prompt.answerAttempts.filter(
+                    (attempt) => attempt.duetTargetNoteId === target.id
+                  );
+                  const firstCorrectAttempt = targetAttempts.find((attempt) => attempt.isCorrect);
+                  return {
+                    targetNoteId: target.id,
+                    staff,
+                    firstTryCorrect: targetAttempts[0]?.isCorrect === true,
+                    completed: prompt.completedDuetTargetNoteIds.includes(target.id),
+                    attempted: targetAttempts.length > 0 || options.wasMissed === true,
+                    ...(options.wasMissed &&
+                    sessionPracticeConfig?.metronomeSync === true &&
+                    !prompt.completedDuetTargetNoteIds.includes(target.id)
+                      ? { missedOnset: true }
+                      : {}),
+                    ...(firstCorrectAttempt?.duetTimingGrade
+                      ? { timingGrade: firstCorrectAttempt.duetTimingGrade }
+                      : {}),
+                  };
+                }),
+                wrongOnTimeAttempts: prompt.answerAttempts.filter(
+                  (attempt) => !attempt.isCorrect && attempt.duetTimingGrade === "on-time"
+                ).length,
+              },
             }
           : {}),
         replayCount: prompt.replayCount,
@@ -170,8 +205,6 @@ export function usePracticeSessionLifecycle({
       };
       runtime.promptRef.current = null;
       runtime.lastTargetNoteIdRef.current = prompt.note.id;
-      const sessionPracticeConfig =
-        "startSnapshot" in session ? session.startSnapshot.practiceConfig : undefined;
       if (!ignored && sessionPracticeConfig?.wrongNoteTest !== true) {
         const sessionAnswerMode =
           "answerPitchMode" in session ? session.answerPitchMode : undefined;
@@ -231,6 +264,7 @@ export function usePracticeSessionLifecycle({
                   (note) => note.id
                 ),
                 duetCompletedTargetNoteIds: [...prompt.completedDuetTargetNoteIds],
+                duetPerformance: review.duetPerformance,
                 duetTargetMidis: getDuetTargetMidis(prompt.duetTargets),
                 ...(prompt.duetTargets.high[0]
                   ? {
