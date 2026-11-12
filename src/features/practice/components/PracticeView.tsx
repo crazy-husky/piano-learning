@@ -65,6 +65,7 @@ import { LoadingActivityText } from "../../../shared/components/LoadingActivity"
 import { B6SwiftF0ReminderDialog } from "../../vocal-pitch/components/B6SwiftF0ReminderDialog";
 import type { PracticePagePreferences } from "../../../shared/preferences/practicePagePreferences";
 import type { LearningLevelId, PracticeDistanceMode } from "../../../routing/appRoutes";
+import type { DuetWrongNoteTestPlan } from "../../learning/duetWrongNoteTest";
 import { VirtualPianoKeyboard } from "../../../shared/components/VirtualPianoKeyboard";
 import { isNaturalPianoKey, NATURAL_PIANO_KEYS } from "../../../shared/components/pianoKeyNames";
 import { StaffPagePrompt } from "./StaffPagePrompt";
@@ -206,6 +207,8 @@ interface PracticeViewProps {
   practiceDistanceMode?: PracticeDistanceMode;
   isLearningRoutePractice?: boolean;
   learningLevelId?: LearningLevelId;
+  duetWrongNoteTestPlan?: DuetWrongNoteTestPlan | null;
+  onWrongNoteTestExit?: () => void;
   onRunningChange: (running: boolean) => void;
   onMetronomeSyncToggleChange?: (toggle: (() => void) | undefined) => void;
   onMetronomeSyncPauseChange?: (pause: (() => void) | undefined) => void;
@@ -471,36 +474,45 @@ export function PracticeView({
   practiceDistanceMode,
   isLearningRoutePractice = false,
   learningLevelId,
+  duetWrongNoteTestPlan,
+  onWrongNoteTestExit,
   showPracticeKindTabs = true,
   practiceModeLock,
   practiceProfile,
 }: PracticeViewProps): JSX.Element {
   const isPreReadingPractice = practiceProfile === "pre-reading";
   const isBlindPractice = practiceProfile === "blind-practice";
-  const freePracticeCopy = isPreReadingPractice
+  const freePracticeCopy = duetWrongNoteTestPlan
     ? {
-        title: "提前识谱",
-        description: "打破逐音视奏，训练眼睛走在手的前面。",
+        title: "双手协同 · 错题测试",
+        description: `Level ${Number(duetWrongNoteTestPlan.level.slice(-1))} · 错题与同级题混合，共 ${duetWrongNoteTestPlan.questions.length} 题。${
+          midi.isConnected ? "" : "请连接 MIDI 键盘后开始。"
+        }`,
       }
-    : isBlindPractice
+    : isPreReadingPractice
       ? {
-          title: "盲弹练习",
-          description: "不看键盘，根据音名在不同音组间找到目标音。",
+          title: "提前识谱",
+          description: "打破逐音视奏，训练眼睛走在手的前面。",
         }
-      : practiceModeLock === "single"
+      : isBlindPractice
         ? {
-            title: "单音极速反应",
-            description: "看谱后迅速识别音高并作答，练习连续、轻松的单手反应。",
+            title: "盲弹练习",
+            description: "不看键盘，根据音名在不同音组间找到目标音。",
           }
-        : practiceModeLock === "duet"
+        : practiceModeLock === "single"
           ? {
-              title: "双手协同",
-              description: "同时跟踪高低声部，让左右手在同一节奏中协作。",
+              title: "单音极速反应",
+              description: "看谱后迅速识别音高并作答，练习连续、轻松的单手反应。",
             }
-          : {
-              title: "自由练习",
-              description: "看到音符后，快速识别音高并找到对应琴键。",
-            };
+          : practiceModeLock === "duet"
+            ? {
+                title: "双手协同",
+                description: "同时跟踪高低声部，让左右手在同一节奏中协作。",
+              }
+            : {
+                title: "自由练习",
+                description: "看到音符后，快速识别音高并找到对应琴键。",
+              };
   const {
     audioError: metronomeAudioError,
     getAudioTime: getMetronomeAudioTime,
@@ -660,8 +672,9 @@ export function PracticeView({
   const isDuetPractice = runningStartSnapshot
     ? runningStartSnapshot.practiceConfig.duetLevel !== undefined ||
       runningStartSnapshot.practiceConfig.duetDifficulty !== undefined
-    : practiceTab === "free" &&
-      (practiceModeLock ?? practiceSetupPreferences.practiceMode) === "duet";
+    : Boolean(duetWrongNoteTestPlan) ||
+      (practiceTab === "free" &&
+        (practiceModeLock ?? practiceSetupPreferences.practiceMode) === "duet");
   const duetLevel = runningStartSnapshot
     ? normalizeDuetPracticeLevel(
         runningStartSnapshot.practiceConfig.duetLevel ??
@@ -669,13 +682,13 @@ export function PracticeView({
         runningStartSnapshot.practiceConfig.duetCurriculumVersion
       )
     : isDuetPractice
-      ? practiceSetupPreferences.duetLevel
+      ? (duetWrongNoteTestPlan?.level ?? practiceSetupPreferences.duetLevel)
       : undefined;
   const duetAllowDottedRhythms =
     runningStartSnapshot?.practiceConfig.duetAllowDottedRhythms ??
     practiceSetupPreferences.duetAllowDottedRhythms;
   const duetRangePreset = normalizeDuetPracticeRangePreset(
-    practiceSetupPreferences.duetRangePreset
+    duetWrongNoteTestPlan?.rangePreset ?? practiceSetupPreferences.duetRangePreset
   );
   const configuredAnswerPitchMode = runningStartSnapshot
     ? normalizeAnswerPitchMode(runningStartSnapshot.practiceConfig.answerPitchMode)
@@ -726,7 +739,9 @@ export function PracticeView({
   useLayoutEffect(() => {
     if (activePracticeInputMode) onInputModeChange(activePracticeInputMode);
   }, [activePracticeInputMode, onInputModeChange]);
-  const mode = runningStartSnapshot?.practiceConfig.mode ?? practiceSetupPreferences.mode;
+  const mode =
+    runningStartSnapshot?.practiceConfig.mode ??
+    (duetWrongNoteTestPlan ? "fixed-count" : practiceSetupPreferences.mode);
   const promptDisplayMode =
     isPreReadingPractice || isBlindPractice
       ? "staff-page"
@@ -843,7 +858,9 @@ export function PracticeView({
     : (runningStartSnapshot?.presentationConfig.promptNoteDuration ??
       practiceSetupPreferences.promptNoteDuration);
   const fixedCount =
-    runningStartSnapshot?.practiceConfig.fixedCount ?? practiceSetupPreferences.fixedCount;
+    runningStartSnapshot?.practiceConfig.fixedCount ??
+    duetWrongNoteTestPlan?.questions.length ??
+    practiceSetupPreferences.fixedCount;
   const fixedDurationSeconds =
     runningStartSnapshot?.practiceConfig.fixedDurationSeconds ??
     practiceSetupPreferences.fixedDurationSeconds;
@@ -1024,6 +1041,7 @@ export function PracticeView({
   >([]);
   const sessionRef = useRef<PracticeSessionRecord | null>(null);
   const sessionStartSnapshotRef = useRef<PracticeSessionStartSnapshot | null>(null);
+  const duetWrongNoteTestAutoStartRef = useRef<string | null>(null);
   const syncSessionRef = useRef(false);
   const syncRunningSeenRef = useRef(false);
   const syncStartInFlightRef = useRef(false);
@@ -1585,7 +1603,9 @@ export function PracticeView({
       drillNoteNames,
       focusedTraining: false,
     };
-    await onSettingsSaved(nextSettings, { feedback: false });
+    if (!duetWrongNoteTestPlan) {
+      await onSettingsSaved(nextSettings, { feedback: false });
+    }
     return nextSettings;
   }, [
     answerPitchMode,
@@ -1597,6 +1617,7 @@ export function PracticeView({
     fixedCount,
     fixedDurationSeconds,
     drillNoteNames,
+    duetWrongNoteTestPlan,
     mode,
     onSettingsSaved,
     queueStrategy,
@@ -1730,6 +1751,7 @@ export function PracticeView({
       drillNoteNames,
       enabledNotes: coreEnabledNotes,
       duetLevel: isDuetPractice ? duetLevel : undefined,
+      duetQuestionTargets: duetWrongNoteTestPlan?.questions,
       adaptiveMeasureAreaWidthPx:
         isContinuousStaffPage || isDuetPractice ? adaptiveMeasureAreaWidthPx : undefined,
       adaptiveMaxMeasuresPerRow: isContinuousStaffPage
@@ -2213,6 +2235,8 @@ export function PracticeView({
     values: {
       answerPitchMode,
       isDuetPractice,
+      isDuetWrongNoteTest: Boolean(duetWrongNoteTestPlan),
+      duetWrongNoteTestCount: duetWrongNoteTestPlan?.questions.length,
       isBlindPractice,
       shouldSynchronizeMetronome,
       midiAutoPlayTarget: practiceSetupPreferences.midiAutoPlayTarget,
@@ -2274,6 +2298,7 @@ export function PracticeView({
       syncStaffPage,
     },
   });
+
   const restartCurrentPractice = useCallback(async (): Promise<void> => {
     if (!isLearningRoutePractice || phase !== "running" || isRestartingPractice) return;
     setIsRestartingPractice(true);
@@ -3120,6 +3145,19 @@ export function PracticeView({
   }, [practiceTab, setupDisabledReason]);
 
   useEffect(() => {
+    if (!duetWrongNoteTestPlan) {
+      duetWrongNoteTestAutoStartRef.current = null;
+      return;
+    }
+    if (phase !== "setup" || !midi.isConnected) return;
+
+    const startAttemptKey = setupStartIssue?.message ?? "ready";
+    if (duetWrongNoteTestAutoStartRef.current === startAttemptKey) return;
+    duetWrongNoteTestAutoStartRef.current = startAttemptKey;
+    attemptStartSession();
+  }, [attemptStartSession, duetWrongNoteTestPlan, midi.isConnected, phase, setupStartIssue]);
+
+  useEffect(() => {
     if (phase === "running") {
       return;
     }
@@ -3408,6 +3446,7 @@ export function PracticeView({
         freePracticeTitle={freePracticeCopy.title}
         freePracticeDescription={freePracticeCopy.description}
         blindPractice={isBlindPractice}
+        lockPracticeSetup={Boolean(duetWrongNoteTestPlan)}
         showPracticeKindTabs={showPracticeKindTabs}
         showPracticeModeTabs={practiceModeLock === undefined}
         lockedPromptDisplayMode={isPreReadingPractice || isBlindPractice ? "staff-page" : undefined}
@@ -3541,6 +3580,16 @@ export function PracticeView({
                 queueStrategy: "adaptive" as const,
               }
             : {}),
+          ...(duetWrongNoteTestPlan
+            ? {
+                practiceMode: "duet" as const,
+                answerPitchMode: "exact-pitch" as const,
+                duetLevel: duetWrongNoteTestPlan.level,
+                duetRangePreset: duetWrongNoteTestPlan.rangePreset,
+                mode: "fixed-count" as const,
+                fixedCount: duetWrongNoteTestPlan.questions.length,
+              }
+            : {}),
         }}
         setupStartError={setupStartError}
         setupStartGuideTarget={setupStartIssue?.target}
@@ -3576,10 +3625,18 @@ export function PracticeView({
         onAllHistoryChange={setSummaryAllHistory}
         onHistoryLimitChange={setSummaryHistoryLimit}
         onModeChange={setSummaryProgressMode}
-        onReturnToSetup={() => setPhase("setup")}
+        onReturnToSetup={() => {
+          if (duetWrongNoteTestPlan) {
+            if (onWrongNoteTestExit) onWrongNoteTestExit();
+            else setPhase("setup");
+            return;
+          }
+          setPhase("setup");
+        }}
+        returnButtonLabel={duetWrongNoteTestPlan ? "返回统计" : undefined}
         onStartAgain={() => void startSession()}
         onWeakRepractice={
-          canOfferWeakRepractice && weaknessNoteIds.length > 0
+          !duetWrongNoteTestPlan && canOfferWeakRepractice && weaknessNoteIds.length > 0
             ? () => void startSession({ focusTargetNoteIds: weaknessNoteIds })
             : undefined
         }

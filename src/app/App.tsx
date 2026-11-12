@@ -45,6 +45,7 @@ import { HomeView } from "../features/home/components/HomeView";
 import { ModuleLayout } from "../features/learning/components/ModuleLayout";
 import { ModuleGuideView } from "../features/learning/components/ModuleGuideView";
 import { LearningModuleStatsView } from "../features/learning/components/LearningModuleStatsView";
+import type { DuetWrongNoteTestPlan } from "../features/learning/duetWrongNoteTest";
 import {
   PlaygroundLayout,
   type PlaygroundChallengeMode,
@@ -320,6 +321,14 @@ export function App({
   }, []);
 
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
+  const [duetWrongNoteTestPlan, setDuetWrongNoteTestPlan] = useState<DuetWrongNoteTestPlan | null>(
+    null
+  );
+  useEffect(() => {
+    if (duetWrongNoteTestPlan && !(route.levelId === 6 && route.moduleTab === "practice")) {
+      setDuetWrongNoteTestPlan(null);
+    }
+  }, [duetWrongNoteTestPlan, route.levelId, route.moduleTab]);
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
   }, [route.path]);
@@ -1584,6 +1593,15 @@ export function App({
                         practiceTab={route.practiceTab ?? "free"}
                         practiceDistanceMode={route.practiceDistanceMode}
                         isLearningRoutePractice
+                        duetWrongNoteTestPlan={
+                          route.levelId === 6 && moduleTab === "practice"
+                            ? duetWrongNoteTestPlan
+                            : null
+                        }
+                        onWrongNoteTestExit={() => {
+                          setDuetWrongNoteTestPlan(null);
+                          selectModuleTab("stats");
+                        }}
                         showPracticeKindTabs={false}
                         practiceModeLock={
                           route.levelId === 2 || route.levelId === 5 || route.levelId === 7
@@ -1607,8 +1625,14 @@ export function App({
                         }
                         onPracticeTabChange={() => undefined}
                         onDataChanged={refreshPracticeHistory}
-                        onNavigationExit={handleNavigationExit}
-                        onOpenStats={() => selectModuleTab("stats")}
+                        onNavigationExit={(targetView) => {
+                          setDuetWrongNoteTestPlan(null);
+                          handleNavigationExit(targetView);
+                        }}
+                        onOpenStats={() => {
+                          setDuetWrongNoteTestPlan(null);
+                          selectModuleTab("stats");
+                        }}
                         onBeforePracticeStart={preflightBeforePracticeStart}
                         onPracticeFinished={showBackupReminderAfterActivity}
                         onRunningChange={setPracticeRunning}
@@ -1654,6 +1678,10 @@ export function App({
                       onDataChanged={
                         route.levelId === 1 ? refreshStaffRecallHistory : refreshPracticeHistory
                       }
+                      onStartDuetWrongNoteTest={(plan) => {
+                        setDuetWrongNoteTestPlan(plan);
+                        selectModuleTab("practice");
+                      }}
                     />
                   ) : (
                     <HistoryLoadingState

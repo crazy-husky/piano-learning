@@ -55,6 +55,8 @@ interface PracticeStaffPageStartInput {
 interface PracticeSessionStartValues {
   answerPitchMode: AnswerPitchMode;
   isDuetPractice: boolean;
+  isDuetWrongNoteTest: boolean;
+  duetWrongNoteTestCount?: number;
   isBlindPractice: boolean;
   shouldSynchronizeMetronome: boolean;
   midiAutoPlayTarget: boolean;
@@ -144,6 +146,8 @@ export function usePracticeSessionStart({
   const {
     answerPitchMode,
     isDuetPractice,
+    isDuetWrongNoteTest,
+    duetWrongNoteTestCount,
     isBlindPractice,
     shouldSynchronizeMetronome,
     midiAutoPlayTarget,
@@ -236,7 +240,7 @@ export function usePracticeSessionStart({
         if (!isDuetPractice && nextSettings !== preflightSettings) {
           await onSettingsSaved(nextSettings, { feedback: false });
         }
-        const nextMode = nextSettings.defaultMode;
+        const nextMode = isDuetWrongNoteTest ? "fixed-count" : nextSettings.defaultMode;
         const nextQueueStrategy = isBlindPractice ? "adaptive" : resolveQueueStrategy(nextSettings);
         const nextSchedulerReviews = preflightResult.reviews
           ? filterLongTermReviews(preflightResult.reviews)
@@ -246,6 +250,12 @@ export function usePracticeSessionStart({
         const basePracticeSettings = isDuetPractice
           ? {
               ...nextSettings,
+              ...(isDuetWrongNoteTest
+                ? {
+                    defaultMode: "fixed-count" as const,
+                    fixedCount: duetWrongNoteTestCount ?? 1,
+                  }
+                : {}),
               answerPitchMode: "exact-pitch" as const,
               enabledGroupIds: getDuetPracticeGroupIds(duetRangePreset),
               enabledPitchIds: undefined,
@@ -325,6 +335,7 @@ export function usePracticeSessionStart({
             shouldSynchronizeMetronome &&
             (availablePreflightAnswerPitchMode === "exact-pitch" || isBlindPractice),
           ...(preReadingBufferSize !== undefined ? { preReadingBufferSize } : {}),
+          wrongNoteTest: isDuetWrongNoteTest,
         });
         if (!builtStartSnapshot) {
           return;
@@ -367,7 +378,9 @@ export function usePracticeSessionStart({
           snapshot: startSnapshot,
           startedAt,
         });
-        await db.practiceSessions.put(nextSession);
+        if (!isDuetWrongNoteTest) {
+          await db.practiceSessions.put(nextSession);
+        }
         resetPracticeMicrophoneCapture();
         sessionRef.current = nextSession;
         sessionStartSnapshotRef.current = startSnapshot;
@@ -446,6 +459,8 @@ export function usePracticeSessionStart({
   const startSession = useCallback(startSessionAction, [
     answerPitchMode,
     isDuetPractice,
+    isDuetWrongNoteTest,
+    duetWrongNoteTestCount,
     isBlindPractice,
     shouldSynchronizeMetronome,
     duetLevel,

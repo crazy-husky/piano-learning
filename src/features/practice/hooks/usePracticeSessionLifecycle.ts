@@ -170,7 +170,9 @@ export function usePracticeSessionLifecycle({
       };
       runtime.promptRef.current = null;
       runtime.lastTargetNoteIdRef.current = prompt.note.id;
-      if (!ignored) {
+      const sessionPracticeConfig =
+        "startSnapshot" in session ? session.startSnapshot.practiceConfig : undefined;
+      if (!ignored && sessionPracticeConfig?.wrongNoteTest !== true) {
         const sessionAnswerMode =
           "answerPitchMode" in session ? session.answerPitchMode : undefined;
         const inputMode =
@@ -192,8 +194,6 @@ export function usePracticeSessionLifecycle({
             : 0;
         const attempts: AnswerAttempt[] = prompt.answerAttempts;
         const finalAttempt = attempts.at(-1);
-        const sessionPracticeConfig =
-          "startSnapshot" in session ? session.startSnapshot.practiceConfig : undefined;
         const preReadingBufferSize = sessionPracticeConfig?.preReadingBufferSize;
         const event: AnswerEvent = {
           id: review.id,
@@ -349,10 +349,18 @@ export function usePracticeSessionLifecycle({
         await Promise.all(pendingReviewPersistence);
         const shouldKeepSession =
           !options.discard && shouldKeepPracticeSession(finalSession, finalReviews);
+        const isWrongNoteTest =
+          "startSnapshot" in finalSession &&
+          finalSession.startSnapshot.practiceConfig.wrongNoteTest === true;
         if (options.discard) {
-          await deletePracticeSessionWithReviews(finalSession.id, finalReviews);
+          if (!isWrongNoteTest) {
+            await deletePracticeSessionWithReviews(finalSession.id, finalReviews);
+          }
           runtime.sessionRef.current = null;
           runtime.promptRef.current = null;
+        } else if (isWrongNoteTest) {
+          runtime.sessionRef.current = shouldKeepSession ? finalSession : null;
+          if (!shouldKeepSession) runtime.promptRef.current = null;
         } else if (shouldKeepSession) {
           await db.practiceSessions.put(finalSession);
           runtime.sessionRef.current = finalSession;
@@ -377,12 +385,12 @@ export function usePracticeSessionLifecycle({
         if (updateUi) {
           ui.setIsPaused(false);
         }
-        if (shouldKeepSession) {
+        if (shouldKeepSession && !isWrongNoteTest) {
           await writeBackupNow().catch(() => undefined);
         }
         await services.onDataChanged();
         runtime.adaptiveSchedulerRef.current = null;
-        if (shouldKeepSession && updateUi) {
+        if (shouldKeepSession && updateUi && !isWrongNoteTest) {
           services.onPracticeFinished();
         }
       } catch (error) {

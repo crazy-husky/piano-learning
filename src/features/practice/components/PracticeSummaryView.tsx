@@ -1,4 +1,4 @@
-import { RotateCcw, SlidersHorizontal } from "lucide-react";
+import { BarChart3, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 import { formatTargetNoteLabel, getNoteById } from "../../../domain/notes";
 import { isCompletedReview } from "../../../domain/reviews";
@@ -30,6 +30,7 @@ interface PracticeSummaryViewProps {
   onHistoryLimitChange: (limit: number) => void;
   onModeChange: (mode: SessionProgressMode) => void;
   onReturnToSetup: () => void;
+  returnButtonLabel?: string;
   onStartAgain: () => void;
   onWeakRepractice?: () => void;
   series: SessionProgressSeries[];
@@ -54,6 +55,7 @@ export function PracticeSummaryView({
   onHistoryLimitChange,
   onModeChange,
   onReturnToSetup,
+  returnButtonLabel = "返回配置",
   onStartAgain,
   onWeakRepractice,
   series,
@@ -167,8 +169,12 @@ export function PracticeSummaryView({
         ) : null}
         <div className="action-row">
           <button onClick={onReturnToSetup}>
-            <SlidersHorizontal size={18} />
-            返回配置
+            {returnButtonLabel === "返回统计" ? (
+              <BarChart3 size={18} />
+            ) : (
+              <SlidersHorizontal size={18} />
+            )}
+            {returnButtonLabel}
           </button>
           <button
             aria-keyshortcuts="Enter"

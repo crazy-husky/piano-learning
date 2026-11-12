@@ -332,6 +332,8 @@ export interface PracticeSessionStartSnapshot {
     duetAllowDottedRhythms?: boolean;
     metronomeSync?: boolean;
     preReadingBufferSize?: PreReadingBufferSize;
+    /** Temporary stats wrong-note tests must not enter regular practice history. */
+    wrongNoteTest?: boolean;
   };
   presentationConfig: {
     autoPlayTarget: boolean;

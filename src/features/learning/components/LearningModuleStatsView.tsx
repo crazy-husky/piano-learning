@@ -5,6 +5,7 @@ import type {
   StaffRecallRunRecord,
 } from "../../../domain/types";
 import type { LearningLevelId } from "../../../routing/appRoutes";
+import type { DuetWrongNoteTestPlan } from "../duetWrongNoteTest";
 import { LearningStatsCenter } from "./LearningStatsCenter";
 
 export function LearningModuleStatsView({
@@ -14,6 +15,7 @@ export function LearningModuleStatsView({
   sessions,
   staffRecallRuns,
   onDataChanged,
+  onStartDuetWrongNoteTest,
 }: {
   levelId: LearningLevelId;
   settings: AppSettings;
@@ -21,6 +23,7 @@ export function LearningModuleStatsView({
   sessions: PracticeSessionRecord[];
   staffRecallRuns: StaffRecallRunRecord[];
   onDataChanged: () => Promise<void>;
+  onStartDuetWrongNoteTest?: (plan: DuetWrongNoteTestPlan) => void;
 }): JSX.Element {
   return (
     <LearningStatsCenter
@@ -31,6 +34,7 @@ export function LearningModuleStatsView({
       sessions={sessions}
       settings={settings}
       staffRecallRuns={staffRecallRuns}
+      onStartDuetWrongNoteTest={onStartDuetWrongNoteTest}
     />
   );
 }

@@ -40,6 +40,9 @@ export interface DuetPracticeGenerationOptions {
   exactCount?: boolean;
   /** Cap generation to this many complete measures, relative to startBeat. */
   measureCount?: number;
+  /** Optional per-prompt targets used by the focused wrong-note test. */
+  targetPairs?: readonly (DuetTargetPair | null)[];
+  targetOffset?: number;
   /** Stable for one practice session so appended score buffers continue the same score. */
   seed?: number | string;
 }
@@ -639,12 +642,15 @@ export function createDuetPracticePage(
       levelOneNoteOffsets
     );
     for (const measureEvent of measureEvents) {
-      const high = measureEvent.high
+      const generatedHigh = measureEvent.high
         .map((name) => getMeasureNote(lookup, "treble", name, measureIndex))
         .filter((note): note is TargetNote => note !== undefined);
-      const low = measureEvent.low
+      const generatedLow = measureEvent.low
         .map((name) => getMeasureNote(lookup, "bass", name, measureIndex))
         .filter((note): note is TargetNote => note !== undefined);
+      const targetPair = options.targetPairs?.[(options.targetOffset ?? 0) + events.length];
+      const high = targetPair?.high ?? generatedHigh;
+      const low = targetPair?.low ?? generatedLow;
       const group = [...high, ...low];
       if (group.length === 0) continue;
       const onset = measureStart + measureEvent.beat;
@@ -667,7 +673,7 @@ export function createDuetPracticePage(
         levelOneNoteOffsets.bass += measureEvent.low.length;
       }
       if (level === "level-1") {
-        const lastStaff = high.length > 0 ? "treble" : "bass";
+        const lastStaff = generatedHigh.length > 0 ? "treble" : "bass";
         nextAlternatingStaff = lastStaff === "treble" ? "bass" : "treble";
       }
       if (events.length >= requestedCount && options.exactCount) break;

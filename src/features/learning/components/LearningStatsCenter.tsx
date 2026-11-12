@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, BookOpenCheck, Trash2, X } from "lucide-react";
 import type {
   AppSettings,
@@ -11,6 +11,7 @@ import type { LearningLevelId } from "../../../routing/appRoutes";
 import { db, deletePracticeSessionWithReviews } from "../../../data/db";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
 import { LearningPracticeDialog, LearningWeakDetailsDialog } from "./LearningPracticeDialog";
+import { buildDuetWrongNoteTestPlan, type DuetWrongNoteTestPlan } from "../duetWrongNoteTest";
 import {
   buildRecallWeakItems,
   buildWeakPracticeItems,
@@ -36,6 +37,54 @@ type WeakSortMode = "frequency" | "occurrence";
 type ManagerRow = { id: string; title: string; subtitle: string; count: number; date: string };
 const WEAK_ITEMS_PER_PAGE = 10;
 const MAX_PRACTICE_ITEMS = 100;
+const DUET_TEST_RETURN_FILTERS_KEY = "anki-note.learningStats.duetTestReturnFilters.v1";
+
+interface LearningStatsReturnFilters {
+  levelId: LearningLevelId;
+  range: LearningStatsRange;
+  customStart: string;
+  customEnd: string;
+  pitchGroups: string[];
+  dimension: string;
+}
+
+function consumeDuetTestReturnFilters(levelId: LearningLevelId): LearningStatsReturnFilters | null {
+  try {
+    const raw = window.sessionStorage.getItem(DUET_TEST_RETURN_FILTERS_KEY);
+    if (!raw) return null;
+    window.sessionStorage.removeItem(DUET_TEST_RETURN_FILTERS_KEY);
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== "object") return null;
+    const candidate = value as Partial<LearningStatsReturnFilters>;
+    if (
+      candidate.levelId !== levelId ||
+      !LEARNING_STATS_RANGES.some((option) => option.value === candidate.range) ||
+      !Array.isArray(candidate.pitchGroups) ||
+      typeof candidate.dimension !== "string" ||
+      !getLearningStatsDimensions(levelId).some((option) => option.value === candidate.dimension)
+    ) {
+      return null;
+    }
+    return {
+      levelId,
+      range: candidate.range!,
+      customStart: typeof candidate.customStart === "string" ? candidate.customStart : "",
+      customEnd: typeof candidate.customEnd === "string" ? candidate.customEnd : "",
+      pitchGroups: candidate.pitchGroups.filter((item): item is string => typeof item === "string"),
+      dimension: candidate.dimension,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveDuetTestReturnFilters(filters: LearningStatsReturnFilters): void {
+  try {
+    window.sessionStorage.setItem(DUET_TEST_RETURN_FILTERS_KEY, JSON.stringify(filters));
+  } catch {
+    // Returning to the statistics page still works if browser storage is unavailable.
+  }
+}
 
 const METRICS: readonly { value: LearningStatsMetric; label: string }[] = [
   { value: "accuracy", label: "首次答对率" },
@@ -88,6 +137,7 @@ export function LearningStatsCenter({
   settings,
   staffRecallRuns,
   onDataChanged,
+  onStartDuetWrongNoteTest,
 }: {
   levelId: LearningLevelId;
   reviews: ReviewRecord[];
@@ -95,14 +145,19 @@ export function LearningStatsCenter({
   settings: AppSettings;
   staffRecallRuns: StaffRecallRunRecord[];
   onDataChanged: () => Promise<void>;
+  onStartDuetWrongNoteTest?: (plan: DuetWrongNoteTestPlan) => void;
 }): JSX.Element {
   const confirmDialog = useConfirmDialog();
+  const [returnFilters] = useState(() => consumeDuetTestReturnFilters(levelId));
   const [events, setEvents] = useState<AnswerEvent[] | null>(null);
-  const [range, setRange] = useState<LearningStatsRange>("30");
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd, setCustomEnd] = useState("");
-  const [pitchGroups, setPitchGroups] = useState<string[]>(["all"]);
-  const [dimension, setDimension] = useState("all");
+  const [range, setRange] = useState<LearningStatsRange>(returnFilters?.range ?? "30");
+  const [customStart, setCustomStart] = useState(returnFilters?.customStart ?? "");
+  const [customEnd, setCustomEnd] = useState(returnFilters?.customEnd ?? "");
+  const [pitchGroups, setPitchGroups] = useState<string[]>(returnFilters?.pitchGroups ?? ["all"]);
+  const [dimension, setDimension] = useState(
+    returnFilters?.dimension ?? (levelId === 6 ? "level-1" : "all")
+  );
+  const dimensionWasManuallyChangedRef = useRef(false);
   const [metric, setMetric] = useState<LearningStatsMetric>(
     levelId === 1 ? "duration" : "accuracy"
   );
@@ -111,7 +166,9 @@ export function LearningStatsCenter({
   const [managerCustomStart, setManagerCustomStart] = useState("");
   const [managerCustomEnd, setManagerCustomEnd] = useState("");
   const [managerPitchGroups, setManagerPitchGroups] = useState<string[]>(["all"]);
-  const [managerDimension, setManagerDimension] = useState("all");
+  const [managerDimension, setManagerDimension] = useState(
+    returnFilters?.dimension ?? (levelId === 6 ? "level-1" : "all")
+  );
   const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
   const [actionMode, setActionMode] = useState<ActionMode | null>(null);
   const [weakSortMode, setWeakSortMode] = useState<WeakSortMode>("frequency");
@@ -146,6 +203,24 @@ export function LearningStatsCenter({
       ),
     [events, levelId, settings.dataSetId]
   );
+  useEffect(() => {
+    if (
+      levelId !== 6 ||
+      events === null ||
+      returnFilters !== null ||
+      dimensionWasManuallyChangedRef.current
+    ) {
+      return;
+    }
+    const latestLevel = [...moduleEvents]
+      .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
+      .map((event) => getEventDimension(levelId, event, sessionsById))
+      .find(
+        (value) => value !== "unclassified" && dimensions.some((option) => option.value === value)
+      );
+    setDimension(latestLevel ?? "level-1");
+    setManagerDimension(latestLevel ?? "level-1");
+  }, [dimensions, events, levelId, moduleEvents, returnFilters, sessionsById]);
   const selectedEvents = useMemo(
     () =>
       moduleEvents.filter(
@@ -326,6 +401,7 @@ export function LearningStatsCenter({
 
   const openManager = (): void => {
     setSelectedRecords(new Set());
+    setManagerDimension(dimension);
     setManagerOpen(true);
   };
 
@@ -391,7 +467,39 @@ export function LearningStatsCenter({
     currentWeakPage * WEAK_ITEMS_PER_PAGE,
     (currentWeakPage + 1) * WEAK_ITEMS_PER_PAGE
   );
-  const practiceWeakItems = displayedWeakItems.slice(0, MAX_PRACTICE_ITEMS);
+  const practiceWeakItems = useMemo(
+    () => displayedWeakItems.slice(0, MAX_PRACTICE_ITEMS),
+    [displayedWeakItems]
+  );
+  const duetWrongNoteTestPlan = useMemo(
+    () =>
+      levelId === 6 && dimensions.some((option) => option.value === dimension)
+        ? buildDuetWrongNoteTestPlan(
+            dimension as DuetWrongNoteTestPlan["level"],
+            practiceWeakItems,
+            correctControls,
+            pitchGroups
+          )
+        : null,
+    [correctControls, dimension, dimensions, levelId, pitchGroups, practiceWeakItems]
+  );
+  const startWrongNoteTest = (): void => {
+    if (levelId === 6) {
+      if (duetWrongNoteTestPlan && onStartDuetWrongNoteTest) {
+        saveDuetTestReturnFilters({
+          levelId,
+          range,
+          customStart,
+          customEnd,
+          pitchGroups,
+          dimension,
+        });
+        onStartDuetWrongNoteTest(duetWrongNoteTestPlan);
+      }
+      return;
+    }
+    setActionMode("test");
+  };
   useEffect(() => {
     setWeakPage(0);
   }, [weakItems]);
@@ -493,7 +601,14 @@ export function LearningStatsCenter({
                       ? "输入方式"
                       : "训练方式"}
               </span>
-              <select onChange={(event) => setDimension(event.target.value)} value={dimension}>
+              <select
+                onChange={(event) => {
+                  dimensionWasManuallyChangedRef.current = true;
+                  setDimension(event.target.value);
+                  if (levelId === 6) setManagerDimension(event.target.value);
+                }}
+                value={dimension}
+              >
                 {dimensions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -763,8 +878,11 @@ export function LearningStatsCenter({
             </button>
             <button
               className="primary"
-              disabled={weakItems.length === 0}
-              onClick={() => setActionMode("test")}
+              disabled={
+                weakItems.length === 0 ||
+                (levelId === 6 && (!duetWrongNoteTestPlan || !onStartDuetWrongNoteTest))
+              }
+              onClick={startWrongNoteTest}
               type="button"
             >
               <BarChart3 aria-hidden="true" size={17} />

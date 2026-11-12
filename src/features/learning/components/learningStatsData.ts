@@ -83,10 +83,7 @@ export function getLearningStatsDimensions(levelId: LearningLevelId) {
     ];
   }
   if (levelId === 6) {
-    return [
-      { value: "all", label: "全部难度" },
-      ...DUET_LEVELS.map((value, index) => ({ value, label: `L${index + 1}` })),
-    ];
+    return [...DUET_LEVELS.map((value, index) => ({ value, label: `L${index + 1}` }))];
   }
   if (levelId === 7) {
     return [

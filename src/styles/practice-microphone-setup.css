@@ -1180,6 +1180,10 @@
   min-width: 0;
 }
 
+.practice-free-config-content.is-locked {
+  opacity: 0.78;
+}
+
 .practice-free-section {
   min-width: 0;
   padding: 0;

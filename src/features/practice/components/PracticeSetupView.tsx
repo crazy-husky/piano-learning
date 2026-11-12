@@ -126,6 +126,7 @@ interface PracticeSetupViewProps {
   showPracticeKindTabs?: boolean;
   showPracticeModeTabs?: boolean;
   blindPractice?: boolean;
+  lockPracticeSetup?: boolean;
   lockedPromptDisplayMode?: PromptDisplayMode;
   staffNotationModeLock?: StaffNotationMode;
   preReadingBufferSize?: PreReadingBufferSize;
@@ -274,6 +275,7 @@ export function PracticeSetupView({
   showPracticeKindTabs = true,
   showPracticeModeTabs = true,
   blindPractice = false,
+  lockPracticeSetup = false,
   lockedPromptDisplayMode,
   staffNotationModeLock,
   preReadingBufferSize,
@@ -659,7 +661,13 @@ export function PracticeSetupView({
               </div>
             </div>
           </div>
-          <div className="practice-free-config-content">
+          <div
+            aria-disabled={lockPracticeSetup || undefined}
+            className={`practice-free-config-content${lockPracticeSetup ? " is-locked" : ""}`}
+            ref={(element) => {
+              if (element) element.inert = lockPracticeSetup;
+            }}
+          >
             {showPracticeModeTabs || isDuetPractice ? (
               <section
                 aria-label="练习方式"

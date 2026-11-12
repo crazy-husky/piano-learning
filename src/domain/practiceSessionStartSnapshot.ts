@@ -24,6 +24,7 @@ export interface BuildPracticeSessionStartSnapshotInput {
   duetAllowDottedRhythms?: boolean;
   metronomeSync?: boolean;
   preReadingBufferSize?: PreReadingBufferSize;
+  wrongNoteTest?: boolean;
 }
 
 export interface BuiltPracticeSessionStartSnapshot {
@@ -90,6 +91,7 @@ export function buildPracticeSessionStartSnapshot({
   duetAllowDottedRhythms,
   metronomeSync,
   preReadingBufferSize,
+  wrongNoteTest,
 }: BuildPracticeSessionStartSnapshotInput): BuiltPracticeSessionStartSnapshot | undefined {
   const activity = buildPracticeActivitySnapshot({
     answerPitchMode: settings.answerPitchMode,
@@ -138,6 +140,7 @@ export function buildPracticeSessionStartSnapshot({
           : {}),
         ...(metronomeSync ? { metronomeSync: true } : {}),
         ...(preReadingBufferSize ? { preReadingBufferSize } : {}),
+        ...(wrongNoteTest ? { wrongNoteTest: true } : {}),
       },
       presentationConfig: {
         autoPlayTarget,
