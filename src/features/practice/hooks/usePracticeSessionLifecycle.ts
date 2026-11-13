@@ -166,6 +166,16 @@ export function usePracticeSessionLifecycle({
               duetCompletedTargetNoteIds: [...prompt.completedDuetTargetNoteIds],
               duetPerformance: {
                 syncEnabled: sessionPracticeConfig?.metronomeSync === true,
+                timingModel: "onset-v1",
+                ...(prompt.answerAttempts[0]?.isCorrect === true &&
+                prompt.answerAttempts[0].duetTimingGrade
+                  ? { onsetTimingGrade: prompt.answerAttempts[0].duetTimingGrade }
+                  : {}),
+                ...(options.wasMissed &&
+                sessionPracticeConfig?.metronomeSync === true &&
+                prompt.answerAttempts[0]?.isCorrect !== true
+                  ? { onsetMissed: true }
+                  : {}),
                 targets: [
                   ...prompt.duetTargets.high.map((target) => ({
                     target,
@@ -193,9 +203,10 @@ export function usePracticeSessionLifecycle({
                       : {}),
                   };
                 }),
-                wrongOnTimeAttempts: prompt.answerAttempts.filter(
-                  (attempt) => !attempt.isCorrect && attempt.duetTimingGrade === "on-time"
-                ).length,
+                wrongOnTimeAttempts: Number(
+                  prompt.answerAttempts[0]?.isCorrect === false &&
+                    prompt.answerAttempts[0].duetTimingGrade === "on-time"
+                ),
               },
             }
           : {}),

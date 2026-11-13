@@ -68,18 +68,24 @@ export function getPracticeBeatAtAudioTime(
 }
 
 export function getPracticeTimingWindowMs(bpm: number, nearestOnsetGapBeats: number): number {
-  const safeBpm = Number.isFinite(bpm) && bpm > 0 ? bpm : 80;
-  const beatMs = 60_000 / safeBpm;
+  const beatMs = getPracticeBeatDurationMs(bpm);
   const gapBeats = Number.isFinite(nearestOnsetGapBeats)
     ? Math.max(0.0625, nearestOnsetGapBeats)
     : 1;
   return Math.min(150, beatMs * 0.2, beatMs * gapBeats * 0.35);
 }
 
+export function getPracticeBeatDurationMs(bpm: number): number {
+  const safeBpm = Number.isFinite(bpm) && bpm > 0 ? bpm : 80;
+  return 60_000 / safeBpm;
+}
+
 export function getPracticeTimingGrade(
   deltaMs: number,
-  timingWindowMs: number
-): PracticeTimingGrade {
+  timingWindowMs: number,
+  maximumOffsetMs = Number.POSITIVE_INFINITY
+): PracticeTimingGrade | undefined {
+  if (!Number.isFinite(deltaMs) || Math.abs(deltaMs) > maximumOffsetMs) return undefined;
   if (Math.abs(deltaMs) <= timingWindowMs) return "on-time";
   return deltaMs < 0 ? "early" : "late";
 }

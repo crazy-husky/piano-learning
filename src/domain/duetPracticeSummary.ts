@@ -13,7 +13,7 @@ export interface DuetPracticeSummaryStats {
     late: number;
     missed: number;
     wrongOnTimeAttempts: number;
-    correctOffbeatTargets: number;
+    correctOffbeatOnsets: number;
   };
   singleNoteEvents: DuetCountRate;
   multiNoteEvents: DuetCountRate;
@@ -33,14 +33,17 @@ function isOnBeat(target: { timingGrade?: DuetTimingGrade }): boolean {
 }
 
 function isCompleteOnFirstTry(
-  targets: NonNullable<ReviewRecord["duetPerformance"]>["targets"],
+  performance: NonNullable<ReviewRecord["duetPerformance"]>,
   syncEnabled: boolean
 ): boolean {
+  const { targets } = performance;
   return (
     targets.length > 0 &&
-    targets.every((target) =>
-      syncEnabled ? target.firstTryCorrect && isOnBeat(target) : target.firstTryCorrect
-    )
+    targets.every((target) => target.firstTryCorrect) &&
+    (!syncEnabled ||
+      (performance.timingModel === "onset-v1"
+        ? performance.onsetTimingGrade === "on-time"
+        : targets.every(isOnBeat)))
   );
 }
 
@@ -59,7 +62,7 @@ export function buildDuetPracticeSummaryStats(
       late: 0,
       missed: 0,
       wrongOnTimeAttempts: 0,
-      correctOffbeatTargets: 0,
+      correctOffbeatOnsets: 0,
     },
     singleNoteEvents: { correct: 0, total: 0 },
     multiNoteEvents: { correct: 0, total: 0 },
@@ -77,14 +80,26 @@ export function buildDuetPracticeSummaryStats(
       hand.total += 1;
       hand.correct += Number(target.firstTryCorrect);
       hand.completed += Number(target.completed);
+    }
 
-      if (target.completed && target.timingGrade) {
-        if (target.timingGrade === "early") stats.timing.early += 1;
-        else if (target.timingGrade === "on-time") stats.timing.onTime += 1;
-        else stats.timing.late += 1;
-        if (target.timingGrade !== "on-time") stats.timing.correctOffbeatTargets += 1;
+    if (syncEnabled && performance.timingModel === "onset-v1") {
+      if (performance.onsetTimingGrade === "early") stats.timing.early += 1;
+      else if (performance.onsetTimingGrade === "on-time") stats.timing.onTime += 1;
+      else if (performance.onsetTimingGrade === "late") stats.timing.late += 1;
+      if (performance.onsetTimingGrade && performance.onsetTimingGrade !== "on-time") {
+        stats.timing.correctOffbeatOnsets += 1;
       }
-      if (syncEnabled && target.missedOnset) stats.timing.missed += 1;
+      if (performance.onsetMissed) stats.timing.missed += 1;
+    } else {
+      for (const target of attemptedTargets) {
+        if (target.completed && target.timingGrade) {
+          if (target.timingGrade === "early") stats.timing.early += 1;
+          else if (target.timingGrade === "on-time") stats.timing.onTime += 1;
+          else stats.timing.late += 1;
+          if (target.timingGrade !== "on-time") stats.timing.correctOffbeatOnsets += 1;
+        }
+        if (syncEnabled && target.missedOnset) stats.timing.missed += 1;
+      }
     }
 
     stats.timing.wrongOnTimeAttempts += performance.wrongOnTimeAttempts;
@@ -97,22 +112,16 @@ export function buildDuetPracticeSummaryStats(
 
     if (performance.targets.length === 1) {
       stats.singleNoteEvents.total += 1;
-      stats.singleNoteEvents.correct += Number(
-        isCompleteOnFirstTry(performance.targets, syncEnabled)
-      );
+      stats.singleNoteEvents.correct += Number(isCompleteOnFirstTry(performance, syncEnabled));
     } else if (performance.targets.length > 1) {
       stats.multiNoteEvents.total += 1;
-      stats.multiNoteEvents.correct += Number(
-        isCompleteOnFirstTry(performance.targets, syncEnabled)
-      );
+      stats.multiNoteEvents.correct += Number(isCompleteOnFirstTry(performance, syncEnabled));
     }
 
     const staves = new Set(performance.targets.map((target) => target.staff));
     if (staves.has("treble") && staves.has("bass")) {
       stats.bothHandEvents.total += 1;
-      stats.bothHandEvents.correct += Number(
-        isCompleteOnFirstTry(performance.targets, syncEnabled)
-      );
+      stats.bothHandEvents.correct += Number(isCompleteOnFirstTry(performance, syncEnabled));
     }
   }
 

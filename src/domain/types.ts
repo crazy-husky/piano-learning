@@ -124,6 +124,10 @@ export interface ReviewRecord {
   /** Compact, onset-based duet results; does not store raw input timestamps. */
   duetPerformance?: {
     syncEnabled: boolean;
+    /** New timing summaries count the first input for each onset group once. */
+    timingModel?: "onset-v1";
+    onsetTimingGrade?: DuetTimingGrade;
+    onsetMissed?: boolean;
     targets: Array<{
       targetNoteId: TargetNoteId;
       staff: Staff;

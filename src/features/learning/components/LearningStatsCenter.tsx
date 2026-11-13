@@ -778,7 +778,7 @@ export function LearningStatsCenter({
                   </dd>
                 </div>
                 <div>
-                  <dt>目标音准拍率</dt>
+                  <dt>起音组准拍率</dt>
                   <dd>
                     {formatDuetRate({
                       correct: duetSummaryStats.timing.onTime,
@@ -789,7 +789,7 @@ export function LearningStatsCenter({
                         duetSummaryStats.timing.missed,
                     })}
                     <small>
-                      漏拍 {duetSummaryStats.timing.missed} · 偏拍{" "}
+                      漏拍起音组 {duetSummaryStats.timing.missed} · 偏拍组{" "}
                       {duetSummaryStats.timing.early + duetSummaryStats.timing.late}
                     </small>
                   </dd>

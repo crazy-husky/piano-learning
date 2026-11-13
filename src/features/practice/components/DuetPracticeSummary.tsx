@@ -41,8 +41,8 @@ export function DuetPracticeSummary({
         : "bass"
       : undefined;
   const suggestion =
-    syncEnabled && stats.timing.correctOffbeatTargets > 0
-      ? `有 ${stats.timing.correctOffbeatTargets} 个音高正确但没有踩准拍，下一局先跟稳节拍。`
+    syncEnabled && stats.timing.correctOffbeatOnsets > 0
+      ? `有 ${stats.timing.correctOffbeatOnsets} 组起音音高正确但没有踩准拍，下一局先跟稳节拍。`
       : stats.timing.wrongOnTimeAttempts > 0
         ? `有 ${stats.timing.wrongOnTimeAttempts} 次踩准拍但音高错误，下一局多核对谱面音高。`
         : weakerHand && stats.hands[weakerHand].total > 0
@@ -80,11 +80,11 @@ export function DuetPracticeSummary({
           ))}
           {syncEnabled ? (
             <article className="duet-summary-metric">
-              <span>目标音准拍率</span>
+              <span>起音组准拍率</span>
               <strong>{formatDuetRate(beatRate)}</strong>
               <small>
                 准拍 {stats.timing.onTime} · 偏早 {stats.timing.early} · 偏晚 {stats.timing.late} ·
-                漏拍 {stats.timing.missed}
+                漏拍 {stats.timing.missed} 组
               </small>
             </article>
           ) : null}
@@ -120,24 +120,24 @@ export function DuetPracticeSummary({
               <article>
                 <span>踩准拍的错音</span>
                 <strong>{stats.timing.wrongOnTimeAttempts}</strong>
-                <small>按次计数</small>
+                <small>按每组首个输入计数</small>
               </article>
               <article>
                 <span>音高正确但偏拍</span>
-                <strong>{stats.timing.correctOffbeatTargets}</strong>
-                <small>按目标音计数</small>
+                <strong>{stats.timing.correctOffbeatOnsets}</strong>
+                <small>按起音组计数</small>
               </article>
               <article>
-                <span>漏拍音符</span>
+                <span>漏拍起音组</span>
                 <strong>{stats.timing.missed}</strong>
-                <small>节拍窗口内未完成</small>
+                <small>后一拍边界前没有正确首音</small>
               </article>
             </>
           ) : null}
         </div>
         <p className="duet-summary-note">
           {syncEnabled
-            ? "节拍数据按正确音符相对目标拍点的落点统计；首答错音不计入正确音踩拍率。"
+            ? "每组只按第一个输入统计拍点；首音错音后的补正确音仍计入音高完成，不计入本组踩拍结果。"
             : "本次未开启节拍同步，因此不统计节拍表现。"}
         </p>
       </section>

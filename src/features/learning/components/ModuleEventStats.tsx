@@ -360,13 +360,13 @@ export function ModuleEventStats({
                   </dd>
                 </div>
                 <div>
-                  <dt>目标音准拍率</dt>
+                  <dt>起音组准拍率</dt>
                   <dd>
                     {formatDuetRate({
                       correct: duetSummaryStats.timing.onTime,
                       total: duetBeatTotal,
                     })}
-                    <small>漏拍 {duetSummaryStats.timing.missed}</small>
+                    <small>漏拍起音组 {duetSummaryStats.timing.missed}</small>
                   </dd>
                 </div>
                 <div>

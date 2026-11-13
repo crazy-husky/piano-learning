@@ -166,10 +166,12 @@ import {
 import {
   getPracticeBeatAtAudioTime,
   getPracticeAudioTimeAtBeat,
+  getPracticeBeatDurationMs,
   getPracticeTimingGrade,
   getPracticeTimingWindowMs,
   PRACTICE_PROGRESS_MARKER_LEAD_SECONDS,
   PRACTICE_TEMPO_ANCHOR_HISTORY_LIMIT,
+  type PracticeTimingGrade,
   type PracticeTempoAnchor,
 } from "../logic/practiceMetronomeSync";
 import {
@@ -1059,9 +1061,12 @@ export function PracticeView({
   };
 
   const promptRef = useRef<PromptRuntime | null>(null);
-  const pendingEarlySyncAnswersRef = useRef<
-    Array<{ targetIndex: number; answer: PracticeAnswerInput }>
-  >([]);
+  const pendingSyncAnswersRef = useRef<Array<{ targetIndex: number; answer: PracticeAnswerInput }>>(
+    []
+  );
+  const firstSyncInputByOnsetRef = useRef(
+    new Map<number, { answer: PracticeAnswerInput; timingGrade?: PracticeTimingGrade }>()
+  );
   const sessionRef = useRef<PracticeSessionRecord | null>(null);
   const sessionStartSnapshotRef = useRef<PracticeSessionStartSnapshot | null>(null);
   const duetWrongNoteTestAutoStartRef = useRef<string | null>(null);
@@ -1715,16 +1720,14 @@ export function PracticeView({
       }
       const pageIndex = staffPageRef.current?.index;
       if (pageIndex !== undefined) {
-        const queuedAnswers = pendingEarlySyncAnswersRef.current.filter(
+        const queuedAnswers = pendingSyncAnswersRef.current.filter(
           (entry) => entry.targetIndex === pageIndex
         );
-        pendingEarlySyncAnswersRef.current = pendingEarlySyncAnswersRef.current.filter(
+        pendingSyncAnswersRef.current = pendingSyncAnswersRef.current.filter(
           (entry) => entry.targetIndex !== pageIndex
         );
         if (queuedAnswers.length > 0) {
-          window.setTimeout(() => {
-            queuedAnswers.forEach(({ answer }) => submitAnswerRef.current(answer));
-          }, 0);
+          queuedAnswers.forEach(({ answer }) => submitAnswerRef.current(answer));
         }
       }
     },
@@ -1878,7 +1881,8 @@ export function PracticeView({
     []
   );
   const clearPendingSyncAnswers = useCallback((): void => {
-    pendingEarlySyncAnswersRef.current = [];
+    pendingSyncAnswersRef.current = [];
+    firstSyncInputByOnsetRef.current.clear();
   }, []);
   const preReadingCurrentNoteIndex = staffPageFirstNoteOffset + staffPageIndex;
   const preReadingController = usePreReadingPracticeController({
@@ -1908,7 +1912,8 @@ export function PracticeView({
   preReadingCountdownResetRef.current = resetPreReadingCountdown;
   const startSynchronizedMetronome = useCallback(async (): Promise<boolean> => {
     if (metronomePreferences.beatsPerBar !== 4) return false;
-    pendingEarlySyncAnswersRef.current = [];
+    pendingSyncAnswersRef.current = [];
+    firstSyncInputByOnsetRef.current.clear();
     syncSessionRef.current = true;
     syncCountInStartSequenceRef.current = null;
     syncTempoAnchorsRef.current = [];
@@ -1971,7 +1976,8 @@ export function PracticeView({
   ]);
   startSynchronizedMetronomeRef.current = startSynchronizedMetronome;
   const stopSynchronizedMetronome = useCallback((): void => {
-    pendingEarlySyncAnswersRef.current = [];
+    pendingSyncAnswersRef.current = [];
+    firstSyncInputByOnsetRef.current.clear();
     syncSessionRef.current = false;
     syncCountInStartSequenceRef.current = null;
     syncTempoAnchorsRef.current = [];
@@ -2315,7 +2321,8 @@ export function PracticeView({
         questionLimitReachedRef.current = false;
         setIsQuestionLimitReached(false);
         setSyncTimingFeedback([]);
-        pendingEarlySyncAnswersRef.current = [];
+        pendingSyncAnswersRef.current = [];
+        firstSyncInputByOnsetRef.current.clear();
         beginSessionState(nextSession);
       },
       drawMelodyNote,
@@ -2694,94 +2701,172 @@ export function PracticeView({
         (answer.source === "midi" || (isBlindPractice && answer.source === "microphone"))
       ) {
         // The final count-in callback establishes the first score-beat anchor.
-        // Keep accepting input inside that beat's early window while the count-in
+        // Keep accepting input inside the one-beat early window while the count-in
         // numeral is still visible on screen.
         if (syncTempoAnchorsRef.current.length === 0) return;
         const prompt = promptRef.current;
         const page = staffPageRef.current;
         const answerMidi = answer.midiNoteNumber;
         const inputTime = performanceTimeToAudioTime(answer.inputTimeMs ?? performance.now());
-        if (page && answerMidi !== undefined && page.index + 1 < page.notes.length) {
-          const futureIndex = page.index + 1;
-          const futureOnset = getSyncOnsetAtIndex(futureIndex);
-          const futureTime = futureOnset
-            ? getPracticeAudioTimeAtBeat(
-                futureOnset.currentBeat,
-                syncTempoAnchorsRef.current,
-                metronomePreferences.bpm
-              )
-            : undefined;
-          const futureWindow = futureOnset
-            ? getPracticeTimingWindowMs(metronomePreferences.bpm, futureOnset.gapBeats)
-            : 0;
-          const futureDeltaMs =
-            futureTime === undefined ? undefined : (inputTime - futureTime) * 1000;
-          if (
-            futureOnset &&
-            futureDeltaMs !== undefined &&
-            Math.abs(futureDeltaMs) <= futureWindow
-          ) {
-            const futureTargets =
-              page.noteGroups?.[futureIndex] ??
-              (page.notes[futureIndex] ? [page.notes[futureIndex]!] : []);
-            const target = futureTargets.find(
-              (candidate) => getTargetMidiNoteNumber(candidate) === answerMidi
+        const onset = getCurrentSyncOnset();
+        const currentTargets = prompt?.duetTargets
+          ? [...prompt.duetTargets.high, ...prompt.duetTargets.low]
+          : prompt
+            ? [prompt.note]
+            : [];
+        const beatDurationMs = getPracticeBeatDurationMs(metronomePreferences.bpm);
+        const timingCandidates: Array<{
+          index: number;
+          deltaMs: number;
+          grade: PracticeTimingGrade;
+          targets: Array<{ staff: Staff; midi: number }>;
+          matchedTarget?: { staff: Staff; midi: number };
+        }> = [];
+        if (page && answerMidi !== undefined) {
+          for (let index = page.index; index < page.notes.length; index += 1) {
+            const candidateOnset = getSyncOnsetAtIndex(index);
+            if (!candidateOnset) continue;
+            const expectedTime = getPracticeAudioTimeAtBeat(
+              candidateOnset.currentBeat,
+              syncTempoAnchorsRef.current,
+              metronomePreferences.bpm
             );
-            const futureNoteIndex = staffPageFirstNoteOffset + futureIndex;
-            const targetStaves = [...new Set(futureTargets.map((candidate) => candidate.staff))];
-            if (target) {
-              setSyncTimingFeedback((current) => [
-                ...current.filter(
-                  (entry) =>
-                    entry.noteIndex !== futureNoteIndex ||
-                    entry.staff !== target.staff ||
-                    (entry.midi !== undefined && entry.midi !== answerMidi)
-                ),
-                {
-                  noteIndex: futureNoteIndex,
-                  staff: target.staff,
-                  midi: answerMidi,
-                  result: "matched",
-                },
-              ]);
-            } else {
-              setSyncTimingFeedback((current) => [
-                ...current.filter(
-                  (entry) =>
-                    entry.noteIndex !== futureNoteIndex ||
-                    !targetStaves.includes(entry.staff) ||
-                    entry.midi !== undefined
-                ),
-                ...targetStaves.map((staff) => ({
-                  noteIndex: futureNoteIndex,
-                  staff,
-                  result: "missed" as const,
-                })),
-              ]);
-            }
-            if (
-              !pendingEarlySyncAnswersRef.current.some(
-                (entry) =>
-                  entry.targetIndex === futureIndex &&
-                  entry.answer.midiNoteNumber === answerMidi &&
-                  entry.answer.inputTimeMs === answer.inputTimeMs
-              )
-            ) {
-              pendingEarlySyncAnswersRef.current.push({
-                targetIndex: futureIndex,
-                answer: prompt?.duetTargets
-                  ? {
-                      ...answer,
-                      duetTimingGrade: getPracticeTimingGrade(futureDeltaMs, futureWindow),
-                    }
-                  : answer,
-              });
-            }
-            return;
+            if (expectedTime === undefined) continue;
+            const deltaMs = (inputTime - expectedTime) * 1000;
+            if (deltaMs < -beatDurationMs) break;
+            const grade = getPracticeTimingGrade(
+              deltaMs,
+              getPracticeTimingWindowMs(metronomePreferences.bpm, candidateOnset.gapBeats),
+              beatDurationMs
+            );
+            if (!grade) continue;
+
+            const rawTargets =
+              index === page.index
+                ? currentTargets
+                : (page.noteGroups?.[index] ?? (page.notes[index] ? [page.notes[index]!] : []));
+            const targets = rawTargets
+              .map((target) => ({
+                staff: target.staff,
+                midi: getTargetMidiNoteNumber(target),
+              }))
+              .filter(
+                (target) =>
+                  index !== page.index ||
+                  !prompt?.duetTargets ||
+                  !prompt.completedDuetMidis.includes(target.midi)
+              );
+            timingCandidates.push({
+              index,
+              deltaMs,
+              grade,
+              targets,
+              matchedTarget: targets.find((target) => target.midi === answerMidi),
+            });
           }
         }
-        const onset = getCurrentSyncOnset();
+
+        const matchingCandidates = timingCandidates.filter((candidate) => candidate.matchedTarget);
+        const preferredCandidates = matchingCandidates.length
+          ? matchingCandidates
+          : timingCandidates;
+        const onTimeMatches = preferredCandidates.filter(
+          (candidate) => candidate.matchedTarget && candidate.grade === "on-time"
+        );
+        const candidatePool = onTimeMatches.length ? onTimeMatches : preferredCandidates;
+        const selectedCandidate = [...candidatePool].sort(
+          (left, right) =>
+            Math.abs(left.deltaMs) - Math.abs(right.deltaMs) || left.index - right.index
+        )[0];
+
+        if (selectedCandidate && page && selectedCandidate.index > page.index) {
+          const targetIndex = selectedCandidate.index;
+          const targetNoteIndex = staffPageFirstNoteOffset + targetIndex;
+          const targetKey = targetNoteIndex;
+          const priorFirstInput = firstSyncInputByOnsetRef.current.get(targetKey);
+          const isFirstInput = priorFirstInput === undefined;
+          let queuedAnswer = answer;
+          if (isFirstInput && prompt?.duetTargets) {
+            queuedAnswer = { ...answer, duetTimingGrade: selectedCandidate.grade };
+          }
+          if (isFirstInput) {
+            firstSyncInputByOnsetRef.current.set(targetKey, {
+              answer: queuedAnswer,
+              timingGrade: selectedCandidate.grade,
+            });
+          }
+
+          const target = selectedCandidate.matchedTarget;
+          const targetStaves = [...new Set(selectedCandidate.targets.map((item) => item.staff))];
+          if (target) {
+            setSyncTimingFeedback((current) => {
+              const next = current.filter(
+                (entry) =>
+                  entry.noteIndex !== targetNoteIndex ||
+                  entry.staff !== target.staff ||
+                  (entry.midi !== undefined && entry.midi !== answerMidi)
+              );
+              if (!isFirstInput) return next;
+              return [
+                ...next,
+                {
+                  noteIndex: targetNoteIndex,
+                  staff: target.staff,
+                  midi: answerMidi,
+                  result: selectedCandidate.grade === "on-time" ? "matched" : "offbeat",
+                },
+              ];
+            });
+          } else if (isFirstInput) {
+            setSyncTimingFeedback((current) => [
+              ...current.filter(
+                (entry) =>
+                  entry.noteIndex !== targetNoteIndex ||
+                  !targetStaves.includes(entry.staff) ||
+                  entry.midi !== undefined
+              ),
+              ...targetStaves.map((staff) => ({
+                noteIndex: targetNoteIndex,
+                staff,
+                result: "missed" as const,
+              })),
+            ]);
+          }
+
+          const isDuplicateQueuedInput = pendingSyncAnswersRef.current.some(
+            (entry) =>
+              entry.targetIndex === targetIndex &&
+              entry.answer.midiNoteNumber === answerMidi &&
+              entry.answer.inputTimeMs === answer.inputTimeMs
+          );
+          if (!isDuplicateQueuedInput) {
+            pendingSyncAnswersRef.current.push({ targetIndex, answer: queuedAnswer });
+          }
+          return;
+        }
+
         if (prompt && onset && !answerInputLockedRef.current) {
+          const noteIndex = staffPageFirstNoteOffset + onset.index;
+          const targetKey = noteIndex;
+          const priorFirstInput = firstSyncInputByOnsetRef.current.get(targetKey);
+          const isReplayOfFirstInput = priorFirstInput?.answer === answer;
+          const isFirstOnsetInput = priorFirstInput === undefined;
+          const timingGrade = isFirstOnsetInput
+            ? selectedCandidate?.index === onset.index
+              ? selectedCandidate.grade
+              : undefined
+            : isReplayOfFirstInput
+              ? priorFirstInput.timingGrade
+              : undefined;
+          if (isFirstOnsetInput) {
+            firstSyncInputByOnsetRef.current.set(targetKey, {
+              answer,
+              ...(selectedCandidate?.index === onset.index
+                ? { timingGrade: selectedCandidate.grade }
+                : {}),
+            });
+          }
+
           const targetMidis = prompt.duetTargets
             ? getDuetTargetMidis(prompt.duetTargets)
             : undefined;
@@ -2800,62 +2885,50 @@ export function PracticeView({
           const answeredCorrectly = targetMidis
             ? matchedStaff !== undefined
             : isPracticeAnswerCorrect(answer, prompt.note, "exact-pitch");
-          const expectedTime = getPracticeAudioTimeAtBeat(
-            onset.currentBeat,
-            syncTempoAnchorsRef.current,
-            metronomePreferences.bpm
-          );
-          const windowMs = getPracticeTimingWindowMs(metronomePreferences.bpm, onset.gapBeats);
-          const timingGrade =
-            expectedTime === undefined
-              ? undefined
-              : getPracticeTimingGrade((inputTime - expectedTime) * 1000, windowMs);
+          if (answeredCorrectly && selectedCandidate?.index !== onset.index) return;
           if (timingGrade && prompt.duetTargets) {
             answerWithTiming = { ...answer, duetTimingGrade: timingGrade };
           }
-          const noteIndex = staffPageFirstNoteOffset + onset.index;
           if (!answeredCorrectly) {
-            const staves = targetMidis
-              ? (["treble", "bass"] as const).filter(
-                  (staff) => !prompt.completedDuetStaves.includes(staff)
-                )
-              : [prompt.note.staff];
-            setSyncTimingFeedback((current) => {
-              const next = current.filter(
-                (entry) =>
-                  entry.noteIndex !== noteIndex ||
-                  !staves.includes(entry.staff) ||
-                  entry.midi !== undefined
-              );
-              return [
-                ...next,
-                ...staves.map((staff) => ({ noteIndex, staff, result: "missed" as const })),
-              ];
-            });
-          } else {
-            const grade = timingGrade ?? "on-time";
-            const staff = matchedStaff ?? prompt.note.staff;
-            if (grade !== "on-time") {
+            if (isFirstOnsetInput && timingGrade) {
+              const staves = targetMidis
+                ? (["treble", "bass"] as const).filter(
+                    (staff) => !prompt.completedDuetStaves.includes(staff)
+                  )
+                : [prompt.note.staff];
               setSyncTimingFeedback((current) => {
                 const next = current.filter(
                   (entry) =>
                     entry.noteIndex !== noteIndex ||
-                    entry.staff !== staff ||
-                    (entry.midi !== undefined && entry.midi !== answerMidi)
+                    !staves.includes(entry.staff) ||
+                    entry.midi !== undefined
                 );
-                return [...next, { noteIndex, staff, midi: answerMidi, result: "offbeat" }];
+                return [
+                  ...next,
+                  ...staves.map((staff) => ({ noteIndex, staff, result: "missed" as const })),
+                ];
               });
-            } else {
-              setSyncTimingFeedback((current) => [
-                ...current.filter(
-                  (entry) =>
-                    entry.noteIndex !== noteIndex ||
-                    entry.staff !== staff ||
-                    (entry.midi !== undefined && entry.midi !== answerMidi)
-                ),
-                { noteIndex, staff, midi: answerMidi, result: "matched" },
-              ]);
             }
+          } else {
+            const staff = matchedStaff ?? prompt.note.staff;
+            setSyncTimingFeedback((current) => {
+              const next = current.filter(
+                (entry) =>
+                  entry.noteIndex !== noteIndex ||
+                  entry.staff !== staff ||
+                  (entry.midi !== undefined && entry.midi !== answerMidi)
+              );
+              if (!timingGrade) return next;
+              return [
+                ...next,
+                {
+                  noteIndex,
+                  staff,
+                  midi: answerMidi,
+                  result: timingGrade === "on-time" ? "matched" : "offbeat",
+                },
+              ];
+            });
           }
         }
       }
@@ -2978,11 +3051,11 @@ export function PracticeView({
       metronomePreferences.bpm
     );
     if (expectedTime === undefined) return undefined;
-    const timingWindowMs = getPracticeTimingWindowMs(metronomePreferences.bpm, onset.gapBeats);
+    const timingWindowMs = getPracticeBeatDurationMs(metronomePreferences.bpm);
     const targetIndex = onset.index;
     let isCurrentDeadline = true;
     let timeoutId: number | null = null;
-    const deadlineAudioTime = expectedTime + timingWindowMs / 1000;
+    const deadlineAudioTime = expectedTime + (timingWindowMs + 5) / 1000;
     const checkDeadline = (): void => {
       if (
         !isCurrentDeadline ||
