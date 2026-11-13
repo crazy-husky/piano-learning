@@ -180,9 +180,9 @@ const LEARNING_MODULES_BY_ID: readonly LearningModuleDefinition[] = [
     graduationCriteria: {
       kind: "duet",
       levels: ["level-1", "level-2", "level-3", "level-4", "level-5", "level-6"],
-      sampleCountPerLevel: 10,
+      sampleCountPerLevel: 40,
       minFirstTryAccuracy: 0.8,
-      description: "6 个难度各完成至少 10 题，每个难度的首次答对率达到 80%。",
+      description: "每个 Level 至少完成 40 题，首次答对率达到 80%。",
     },
     guide: {
       title: "让双手成为一个节奏单元",

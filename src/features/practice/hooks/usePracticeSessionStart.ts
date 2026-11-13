@@ -60,6 +60,7 @@ interface PracticeSessionStartValues {
   isDuetPractice: boolean;
   isDuetWrongNoteTest: boolean;
   duetWrongNoteTestCount?: number;
+  duetWrongNoteTestRangeGroupIds?: DuetPracticeRangeGroupId[];
   isBlindPractice: boolean;
   shouldSynchronizeMetronome: boolean;
   midiAutoPlayTarget: boolean;
@@ -152,6 +153,7 @@ export function usePracticeSessionStart({
     isDuetPractice,
     isDuetWrongNoteTest,
     duetWrongNoteTestCount,
+    duetWrongNoteTestRangeGroupIds,
     isBlindPractice,
     shouldSynchronizeMetronome,
     midiAutoPlayTarget,
@@ -252,8 +254,9 @@ export function usePracticeSessionStart({
           : schedulerReviews;
         const preReadingRange =
           nextSettings.staffRangeProfiles?.[nextSettings.staffNotationMode] ?? nextSettings;
-        const duetEnabledGroupIds =
-          !isDuetWrongNoteTest && isDuetPracticeCustomRangeLevel(duetLevel)
+        const duetEnabledGroupIds = isDuetWrongNoteTest
+          ? (duetWrongNoteTestRangeGroupIds ?? getDuetPracticeGroupIds(duetRangePreset))
+          : isDuetPracticeCustomRangeLevel(duetLevel)
             ? normalizeDuetPracticeRangeGroupIds(
                 duetRangeGroupIds,
                 getDuetPracticeGroupIds(duetRangePreset)
@@ -473,6 +476,7 @@ export function usePracticeSessionStart({
     isDuetPractice,
     isDuetWrongNoteTest,
     duetWrongNoteTestCount,
+    duetWrongNoteTestRangeGroupIds,
     isBlindPractice,
     shouldSynchronizeMetronome,
     duetLevel,

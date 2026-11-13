@@ -134,6 +134,7 @@ interface PracticeSetupViewProps {
   showPracticeModeTabs?: boolean;
   blindPractice?: boolean;
   lockPracticeSetup?: boolean;
+  duetRangeSummaryOverride?: string;
   lockedPromptDisplayMode?: PromptDisplayMode;
   staffNotationModeLock?: StaffNotationMode;
   preReadingBufferSize?: PreReadingBufferSize;
@@ -283,6 +284,7 @@ export function PracticeSetupView({
   showPracticeModeTabs = true,
   blindPractice = false,
   lockPracticeSetup = false,
+  duetRangeSummaryOverride,
   lockedPromptDisplayMode,
   staffNotationModeLock,
   preReadingBufferSize,
@@ -495,9 +497,10 @@ export function PracticeSetupView({
         ? "低音谱表"
         : "大谱表";
   const rangeSummary = isDuetPractice
-    ? isCustomDuetRange
-      ? getDuetPracticeRangeGroupSummary(duetRangeGroupIds)
-      : getDuetPracticeRangeSummary(duetRangePreset)
+    ? (duetRangeSummaryOverride ??
+      (isCustomDuetRange
+        ? getDuetPracticeRangeGroupSummary(duetRangeGroupIds)
+        : getDuetPracticeRangeSummary(duetRangePreset)))
     : selectedPitchIds.length === 0
       ? "未选音域"
       : formatSelectedPitchRanges(selectedPitchIds);

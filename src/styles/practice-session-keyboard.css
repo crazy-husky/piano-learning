@@ -316,6 +316,17 @@
   width: 100%;
 }
 
+.staff-page-desktop-view .staff-page-current-note-indicator,
+.staff-page-mobile-view .staff-page-current-note-indicator {
+  fill: var(--accent);
+  stroke: color-mix(in srgb, var(--surface) 78%, var(--accent));
+  stroke-width: 1px;
+  paint-order: stroke;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 48%));
+  pointer-events: none;
+  transition: opacity 100ms ease-out;
+}
+
 .pre-reading-focus-control {
   max-width: 360px;
 }

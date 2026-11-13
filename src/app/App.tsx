@@ -335,6 +335,7 @@ export function App({
   const [playgroundNavExpanded, setPlaygroundNavExpanded] = useState(() =>
     route.path.startsWith("/playground/")
   );
+  const playgroundNavGroupRef = useRef<HTMLDivElement | null>(null);
   const [isHomeMetronomeOpen, setIsHomeMetronomeOpen] = useState(() => route.page === "metronome");
   const metronomeController = useMetronomeController();
   const stopMetronome = metronomeController.stop;
@@ -350,6 +351,23 @@ export function App({
   useEffect(() => {
     if (route.path.startsWith("/playground/")) setPlaygroundNavExpanded(true);
   }, [route.path]);
+  useEffect(() => {
+    if (!playgroundNavExpanded) return undefined;
+    const closeOnOutsidePointerDown = (event: PointerEvent): void => {
+      if (event.target instanceof Node && !playgroundNavGroupRef.current?.contains(event.target)) {
+        setPlaygroundNavExpanded(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setPlaygroundNavExpanded(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [playgroundNavExpanded]);
   const practiceHistoryRestorePendingRef = useRef(false);
   const staffGameSelectionReturnPathRef = useRef<AppRoutePath>("/");
   const staffGameSelectionRoutePushedRef = useRef(false);
@@ -1381,7 +1399,7 @@ export function App({
             <House aria-hidden="true" size={18} />
             首页
           </button>
-          <div className="app-nav-game-group">
+          <div className="app-nav-game-group" ref={playgroundNavGroupRef}>
             <button
               aria-expanded={playgroundNavExpanded}
               className={`app-nav-game-toggle${route.path.startsWith("/playground/") ? " active" : ""}`}

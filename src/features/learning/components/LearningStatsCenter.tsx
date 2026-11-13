@@ -168,6 +168,8 @@ export function LearningStatsCenter({
   const [managerCustomStart, setManagerCustomStart] = useState("");
   const [managerCustomEnd, setManagerCustomEnd] = useState("");
   const [managerPitchGroups, setManagerPitchGroups] = useState<string[]>(["all"]);
+  const statsPitchFilterDetailsRef = useRef<HTMLDetailsElement | null>(null);
+  const managerPitchFilterDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const [managerDimension, setManagerDimension] = useState(
     returnFilters?.dimension ?? (levelId === 6 ? "level-1" : "all")
   );
@@ -197,6 +199,19 @@ export function LearningStatsCenter({
   useEffect(() => {
     void reloadEvents();
   }, [reloadEvents]);
+
+  useEffect(() => {
+    const closePitchFiltersOnOutsidePointerDown = (event: PointerEvent): void => {
+      if (!(event.target instanceof Node)) return;
+      [statsPitchFilterDetailsRef, managerPitchFilterDetailsRef].forEach((ref) => {
+        const details = ref.current;
+        if (details?.open && !details.contains(event.target as Node)) details.open = false;
+      });
+    };
+
+    document.addEventListener("pointerdown", closePitchFiltersOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closePitchFiltersOnOutsidePointerDown);
+  }, []);
 
   const moduleEvents = useMemo(
     () =>
@@ -617,7 +632,7 @@ export function LearningStatsCenter({
           </label>
           <div className="learning-stats-pitch-filter">
             <span>音区范围</span>
-            <details>
+            <details ref={statsPitchFilterDetailsRef}>
               <summary>{pitchGroupSummary}</summary>
               <div
                 aria-label="选择一个或多个音区"
@@ -1051,7 +1066,7 @@ export function LearningStatsCenter({
               </label>
               <div className="learning-stats-pitch-filter">
                 <span>音区范围</span>
-                <details>
+                <details ref={managerPitchFilterDetailsRef}>
                   <summary>{managerPitchGroupSummary}</summary>
                   <div
                     aria-label="管理音区范围"

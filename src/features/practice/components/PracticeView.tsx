@@ -156,6 +156,7 @@ import {
 import {
   DEFAULT_DUET_PRACTICE_RANGE_PRESET,
   getDuetPracticeGroupIds,
+  getDuetPracticeRangeGroupSummary,
   getDuetTargetMidis,
   isDuetPracticeCustomRangeLevel,
   normalizeDuetPracticeRangeGroupIds,
@@ -252,6 +253,55 @@ const PRACTICE_SETUP_UI_PREFERENCES_KEY = "anki-note.practiceSetupUiPreferences"
 const PRACTICE_QUEUE_STRATEGY_PREFERENCE_VERSION = 1 as const;
 const PRACTICE_MODES: readonly PracticeMode[] = ["open-ended", "fixed-count", "fixed-duration"];
 const PROMPT_DISPLAY_MODES: readonly PromptDisplayMode[] = ["single-note", "staff-page"];
+
+function DuetWrongNoteMidiDialog({
+  midi,
+  onReturnToStats,
+}: {
+  midi: MidiInputController;
+  onReturnToStats?: () => void;
+}): JSX.Element {
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return undefined;
+    if (!dialog.open) dialog.showModal();
+    dialog
+      .querySelector<HTMLElement>(".midi-input-control select, .midi-input-control button")
+      ?.focus({ preventScroll: true });
+    return () => {
+      if (dialog.open) dialog.close();
+    };
+  }, []);
+
+  return (
+    <dialog
+      aria-labelledby="duet-wrong-note-midi-title"
+      className="duet-wrong-note-midi-overlay"
+      onCancel={(event) => {
+        event.preventDefault();
+        onReturnToStats?.();
+      }}
+      ref={dialogRef}
+    >
+      <div className="duet-wrong-note-midi-dialog">
+        <h2 id="duet-wrong-note-midi-title">选择 MIDI 输入设备</h2>
+        <p>
+          双手协同错题测试需要 MIDI。
+          {getMidiPracticeStartWarning(midi, "midi-required") ?? "设备连接后会自动开始测试。"}
+        </p>
+        <MidiInputControl ariaLabel="错题测试 MIDI 输入设备" midi={midi} />
+        {midi.errorMessage ? <p role="alert">{midi.errorMessage}</p> : null}
+        {onReturnToStats ? (
+          <button onClick={onReturnToStats} type="button">
+            返回统计
+          </button>
+        ) : null}
+      </div>
+    </dialog>
+  );
+}
 
 const PRACTICE_QUEUE_STRATEGIES: readonly PracticeQueueStrategy[] = [
   "adaptive",
@@ -2271,6 +2321,7 @@ export function PracticeView({
       isDuetPractice,
       isDuetWrongNoteTest: Boolean(duetWrongNoteTestPlan),
       duetWrongNoteTestCount: duetWrongNoteTestPlan?.questions.length,
+      duetWrongNoteTestRangeGroupIds: duetWrongNoteTestPlan?.rangeGroupIds,
       isBlindPractice,
       shouldSynchronizeMetronome,
       midiAutoPlayTarget: practiceSetupPreferences.midiAutoPlayTarget,
@@ -2701,7 +2752,7 @@ export function PracticeView({
         (answer.source === "midi" || (isBlindPractice && answer.source === "microphone"))
       ) {
         // The final count-in callback establishes the first score-beat anchor.
-        // Keep accepting input inside the one-beat early window while the count-in
+        // Keep accepting input inside the half-beat early window while the count-in
         // numeral is still visible on screen.
         if (syncTempoAnchorsRef.current.length === 0) return;
         const prompt = promptRef.current;
@@ -2722,6 +2773,7 @@ export function PracticeView({
           targets: Array<{ staff: Staff; midi: number }>;
           matchedTarget?: { staff: Staff; midi: number };
         }> = [];
+        const maximumBeatOffsetMs = beatDurationMs * 0.5;
         if (page && answerMidi !== undefined) {
           for (let index = page.index; index < page.notes.length; index += 1) {
             const candidateOnset = getSyncOnsetAtIndex(index);
@@ -2733,11 +2785,11 @@ export function PracticeView({
             );
             if (expectedTime === undefined) continue;
             const deltaMs = (inputTime - expectedTime) * 1000;
-            if (deltaMs < -beatDurationMs) break;
+            if (deltaMs < -maximumBeatOffsetMs) break;
             const grade = getPracticeTimingGrade(
               deltaMs,
               getPracticeTimingWindowMs(metronomePreferences.bpm, candidateOnset.gapBeats),
-              beatDurationMs
+              maximumBeatOffsetMs
             );
             if (!grade) continue;
 
@@ -2849,21 +2901,20 @@ export function PracticeView({
           const noteIndex = staffPageFirstNoteOffset + onset.index;
           const targetKey = noteIndex;
           const priorFirstInput = firstSyncInputByOnsetRef.current.get(targetKey);
+          const belongsToCurrentOnset = selectedCandidate?.index === onset.index;
           const isReplayOfFirstInput = priorFirstInput?.answer === answer;
-          const isFirstOnsetInput = priorFirstInput === undefined;
-          const timingGrade = isFirstOnsetInput
-            ? selectedCandidate?.index === onset.index
-              ? selectedCandidate.grade
-              : undefined
-            : isReplayOfFirstInput
-              ? priorFirstInput.timingGrade
-              : undefined;
+          const isFirstOnsetInput = priorFirstInput === undefined && belongsToCurrentOnset;
+          const timingGrade = !belongsToCurrentOnset
+            ? undefined
+            : isFirstOnsetInput
+              ? selectedCandidate?.grade
+              : isReplayOfFirstInput
+                ? priorFirstInput?.timingGrade
+                : undefined;
           if (isFirstOnsetInput) {
             firstSyncInputByOnsetRef.current.set(targetKey, {
               answer,
-              ...(selectedCandidate?.index === onset.index
-                ? { timingGrade: selectedCandidate.grade }
-                : {}),
+              ...(timingGrade ? { timingGrade } : {}),
             });
           }
 
@@ -3192,7 +3243,12 @@ export function PracticeView({
         target: '[data-setup-guide-target="practice-metronome-woodfish"]',
       };
     }
-    if (isDuetPractice && queueStrategy === "note-drill" && drillNoteNames.length === 0) {
+    if (
+      isDuetPractice &&
+      !duetWrongNoteTestPlan &&
+      queueStrategy === "note-drill" &&
+      drillNoteNames.length === 0
+    ) {
       return {
         message: "请选择强化音名",
         target: '[data-setup-guide-target="practice-drill-notes"]',
@@ -3240,6 +3296,7 @@ export function PracticeView({
     queueStrategy,
     shouldSynchronizeMetronome,
     supportsMetronomeSyncNoteDurations,
+    duetWrongNoteTestPlan,
   ]);
   const setupDisabledReason = setupStartIssue?.message;
   const attemptStartSession = useCallback((): void => {
@@ -3702,25 +3759,36 @@ export function PracticeView({
                 answerPitchMode: "exact-pitch" as const,
                 duetLevel: duetWrongNoteTestPlan.level,
                 duetRangePreset: duetWrongNoteTestPlan.rangePreset,
+                duetRangeGroupIds: duetWrongNoteTestPlan.rangeGroupIds,
                 mode: "fixed-count" as const,
                 fixedCount: duetWrongNoteTestPlan.questions.length,
               }
             : {}),
         }}
+        duetRangeSummaryOverride={
+          duetWrongNoteTestPlan
+            ? getDuetPracticeRangeGroupSummary(duetWrongNoteTestPlan.rangeGroupIds)
+            : undefined
+        }
         setupStartError={setupStartError}
         setupStartGuideTarget={setupStartIssue?.target}
         setupStartGuideRequest={setupStartGuideRequest}
         startPausedReading={startPausedReading}
         settings={setupSettings}
         overlay={
-          <B6SwiftF0ReminderDialog
-            active={
-              practiceTab === "free" &&
-              answerPitchMode === "microphone" &&
-              practiceMicrophonePreferences.algorithm !== "swiftf0" &&
-              allQueueNotes.some((note) => getTargetMidiNoteNumber(note) === 95)
-            }
-          />
+          <>
+            <B6SwiftF0ReminderDialog
+              active={
+                practiceTab === "free" &&
+                answerPitchMode === "microphone" &&
+                practiceMicrophonePreferences.algorithm !== "swiftf0" &&
+                allQueueNotes.some((note) => getTargetMidiNoteNumber(note) === 95)
+              }
+            />
+            {duetWrongNoteTestPlan && phase === "setup" && !midi.isConnected ? (
+              <DuetWrongNoteMidiDialog midi={midi} onReturnToStats={onWrongNoteTestExit} />
+            ) : null}
+          </>
         }
       />
     );
@@ -4009,6 +4077,8 @@ export function PracticeView({
             <StaffPagePrompt
               notes={mobileStaffPageNotes}
               verticalRangeNotes={enabledNotes}
+              currentNoteIndicatorIndex={isDuetPractice ? trackedFreeScoreNoteIndex : undefined}
+              noteLabelsAboveStaffTopLinePx={isDuetPractice ? 50 : undefined}
               canonicalRowStartIndices={
                 isContinuousStaffPage ? adaptiveStaffRows?.rowStartIndices : undefined
               }

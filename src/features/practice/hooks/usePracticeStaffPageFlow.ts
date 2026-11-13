@@ -546,6 +546,7 @@ export function usePracticeStaffPageFlow({
       const generatedDuetPage = duetLevel
         ? createDuetPracticePage(sourceNotes, duetLevel, duetRequestedCount, {
             allowDottedRhythms,
+            allowSingleStaff: duetQuestionTargets !== undefined,
             exactCount: duetExactCount,
             measureCount: duetMeasureCount,
             targetPairs: duetQuestionTargets,
@@ -802,6 +803,7 @@ export function usePracticeStaffPageFlow({
         const generatedDuetAppend = duetLevel
           ? createDuetPracticePage(enabledNotes, duetLevel, duetAppendRequestedCount, {
               allowDottedRhythms,
+              allowSingleStaff: duetQuestionTargets !== undefined,
               startBeat: page.rhythm?.endBeat ?? 0,
               measureCount: duetAppendMeasureCount,
               exactCount: duetAppendExactCount,

@@ -3222,24 +3222,24 @@ export function StaffPagePrompt({
                 logicalPx(13, surface.scale),
                 palette.active
               );
-              const currentNoteIndex = rowStartIndex + slotIndex;
-              if (
-                currentNoteIndicatorIndexRef.current !== undefined &&
-                noteLabelsAboveStaffTopLinePx !== undefined
-              ) {
-                const indicator = addStaffPageCurrentNoteIndicator(
-                  rowGroup,
-                  currentNoteIndex,
-                  lyricX,
-                  trebleTopLineY,
-                  surface.scale,
-                  currentNoteIndex === currentNoteIndicatorIndexRef.current
-                );
-                renderedCurrentNoteIndicatorsRef.current.push({
-                  element: indicator,
-                  index: currentNoteIndex,
-                });
-              }
+            }
+            const currentNoteIndex = rowStartIndex + slotIndex;
+            if (
+              currentNoteIndicatorIndexRef.current !== undefined &&
+              noteLabelsAboveStaffTopLinePx !== undefined
+            ) {
+              const indicator = addStaffPageCurrentNoteIndicator(
+                rowGroup,
+                currentNoteIndex,
+                lyricX,
+                trebleTopLineY,
+                surface.scale,
+                currentNoteIndex === currentNoteIndicatorIndexRef.current
+              );
+              renderedCurrentNoteIndicatorsRef.current.push({
+                element: indicator,
+                index: currentNoteIndex,
+              });
             }
             if (!noteLyrics?.length) return;
             noteLyrics.forEach((text, lineIndex) => {

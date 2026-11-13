@@ -79,7 +79,7 @@ export function PracticeSummaryView({
     if (!dialog || dialog.open) return undefined;
 
     dialog.showModal();
-    dialog.querySelector<HTMLElement>("#practice-summary-title")?.focus({ preventScroll: true });
+    dialog.querySelector<HTMLElement>(".practice-summary-dialog")?.focus({ preventScroll: true });
     return () => {
       if (dialog.open) dialog.close();
     };
@@ -92,11 +92,9 @@ export function PracticeSummaryView({
       ref={dialogRef}
       onCancel={(event) => event.preventDefault()}
     >
-      <div className="panel summary-panel practice-summary-dialog">
+      <div className="panel summary-panel practice-summary-dialog" tabIndex={-1}>
         <div className="panel-heading summary-result-heading">
-          <h1 id="practice-summary-title" tabIndex={-1}>
-            本次结果
-          </h1>
+          <h1 id="practice-summary-title">本次结果</h1>
           {summaryHasTooManyErrors && !isDuetSummary ? (
             <p className="summary-quality-warning">
               错音有点多{">_<"} 这次先不算~ <br />

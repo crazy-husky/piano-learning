@@ -95,7 +95,7 @@ describe("createDuetPracticePage", () => {
     });
   });
 
-  it("Level 1 alternates single notes by hand without overlapping note durations", () => {
+  it("Level 1 uses single-hand notes without overlapping note durations", () => {
     const page = createDuetPracticePage(pool, "level-1", 24);
 
     expect(page.events.every((event) => event.high.length + event.low.length === 1)).toBe(true);
@@ -141,12 +141,17 @@ describe("createDuetPracticePage", () => {
     });
   });
 
-  it("varies Level 1 starting hands and weights quarter notes above half rests", () => {
+  it("randomizes Level 1 hand sequences while balancing hands in every measure", () => {
     const page = createDuetPracticePage(pool, "level-1", 64, { seed: "rhythm-variety-session" });
     const measures = [...new Set(page.rhythm.measures)];
     const measureDurations = measures.map((measure) =>
       page.rhythm.measures.flatMap((candidate, index) =>
         candidate === measure ? [page.rhythm.durations[index]!] : []
+      )
+    );
+    const staffSequenceByMeasure = measures.map((measure) =>
+      page.rhythm.measures.flatMap((candidate, index) =>
+        candidate === measure ? [page.events[index]!.high.length > 0 ? "treble" : "bass"] : []
       )
     );
     const firstStaffByMeasure = measures.map((measure) => {
@@ -183,6 +188,12 @@ describe("createDuetPracticePage", () => {
     expect(new Set(measureDurations.map((durations) => durations.join(","))).size).toBeGreaterThan(
       1
     );
+    expect(staffSequenceByMeasure.every((sequence) => new Set(sequence).size === 2)).toBe(true);
+    expect(
+      staffSequenceByMeasure.some((sequence) =>
+        sequence.some((staff, index) => index > 0 && staff === sequence[index - 1])
+      )
+    ).toBe(true);
     expect(new Set(firstStaffByMeasure)).toEqual(new Set(["treble", "bass"]));
     expect(halfRestMeasureCount).toBeGreaterThan(0);
     expect(halfRestMeasureCount).toBeLessThan(measures.length / 2);
@@ -198,6 +209,17 @@ describe("createDuetPracticePage", () => {
         page.rhythm.durations.slice(startIndex, startIndex + rows.rows[rowIndex]!.length)
       );
     expect(firstTwoRowDurations[0]).not.toEqual(firstTwoRowDurations[1]);
+  });
+
+  it("keeps both hands in the scored part of a fixed-count Level 1 bar", () => {
+    const page = createDuetPracticePage(pool, "level-1", 2, {
+      exactCount: true,
+      seed: "level-one-exact-count-tail",
+    });
+    const scoredHands = page.events.map((event) => (event.high.length > 0 ? "treble" : "bass"));
+
+    expect(page.events).toHaveLength(2);
+    expect(new Set(scoredHands)).toEqual(new Set(["treble", "bass"]));
   });
 
   it("Level 2 follows the 70/30 one-or-two bass-note distribution without adjacent doubles", () => {
@@ -301,15 +323,31 @@ describe("createDuetPracticePage", () => {
     });
   });
 
-  it("continues Level 1 hand alternation when a new staff-page buffer starts mid-phrase", () => {
-    const whole = createDuetPracticePage(pool, "level-1", 20);
+  it("keeps seeded Level 1 hand sequences stable across appended staff-page buffers", () => {
+    const seed = "stable-level-one-hand-sequence";
+    const whole = createDuetPracticePage(pool, "level-1", 20, { seed });
     const appended = createDuetPracticePage(pool, "level-1", 6, {
       startBeat: whole.rhythm.endBeat,
+      seed,
     });
-    const previousLastStaff = whole.events.at(-1)!.high.length > 0 ? "treble" : "bass";
-    const nextFirstStaff = appended.events[0]!.high.length > 0 ? "treble" : "bass";
+    const combined = createDuetPracticePage(
+      pool,
+      "level-1",
+      whole.events.length + appended.events.length,
+      { seed }
+    );
+    const staffSequence = (events: typeof whole.events): string[] =>
+      events.map((event) => (event.high.length > 0 ? "treble" : "bass"));
 
-    expect(nextFirstStaff).not.toBe(previousLastStaff);
+    expect(staffSequence(combined.events).slice(0, whole.events.length)).toEqual(
+      staffSequence(whole.events)
+    );
+    expect(
+      staffSequence(combined.events).slice(
+        whole.events.length,
+        whole.events.length + appended.events.length
+      )
+    ).toEqual(staffSequence(appended.events));
   });
 });
 

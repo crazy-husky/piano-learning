@@ -2,11 +2,18 @@ import { ALL_NOTES } from "../../domain/notes";
 import { getTargetMidiNoteNumber } from "../../domain/answerInput";
 import type { AnswerEvent, DuetPracticeLevel, TargetNote } from "../../domain/types";
 import type { DuetTargetPair } from "../practice/logic/duetPractice";
+import {
+  DUET_PRACTICE_RANGE_GROUPS,
+  type DuetPracticeRangeGroupId,
+} from "../practice/logic/duetPractice";
 import type { WeakPracticeItem } from "./components/learningStatsData";
+
+const SUPPORTED_DUET_RANGE_GROUP_IDS = new Set(DUET_PRACTICE_RANGE_GROUPS.map(({ id }) => id));
 
 export interface DuetWrongNoteTestPlan {
   level: DuetPracticeLevel;
   rangePreset: "standard" | "extended";
+  rangeGroupIds: DuetPracticeRangeGroupId[];
   /** Null questions use the selected level's normal generated notes as controls. */
   questions: Array<DuetTargetPair | null>;
   weakTargetCount: number;
@@ -41,9 +48,10 @@ function targetPairFromEvent(
 
   const pair = { high: byStaff("treble"), low: byStaff("bass") };
   const selected = (note: TargetNote): boolean =>
-    pitchGroups.length === 0 ||
-    pitchGroups.includes("all") ||
-    pitchGroups.includes(String(note.octave));
+    SUPPORTED_DUET_RANGE_GROUP_IDS.has(note.groupId as DuetPracticeRangeGroupId) &&
+    (pitchGroups.length === 0 ||
+      pitchGroups.includes("all") ||
+      pitchGroups.includes(String(note.octave)));
   pair.high = pair.high.filter(selected);
   pair.low = pair.low.filter(selected);
   return pair.high.length || pair.low.length ? pair : null;
@@ -66,12 +74,24 @@ function chooseExtendedRange(questions: readonly (DuetTargetPair | null)[]): boo
   );
 }
 
+function getSelectedRangeGroupIds(pitchGroups: readonly string[]): DuetPracticeRangeGroupId[] {
+  const allGroupIds = DUET_PRACTICE_RANGE_GROUPS.map(({ id }) => id);
+  if (pitchGroups.length === 0 || pitchGroups.includes("all")) return allGroupIds;
+
+  const selectedOctaves = new Set(pitchGroups.filter((group) => /^[2-5]$/.test(group)));
+  const selectedGroupIds = DUET_PRACTICE_RANGE_GROUPS.filter(({ id }) =>
+    selectedOctaves.has(id.slice(1, 2))
+  ).map(({ id }) => id);
+  return selectedGroupIds;
+}
+
 export function buildDuetWrongNoteTestPlan(
   level: DuetPracticeLevel,
   weakItems: readonly WeakPracticeItem[],
   controls: readonly AnswerEvent[],
   pitchGroups: readonly string[]
 ): DuetWrongNoteTestPlan | null {
+  const rangeGroupIds = getSelectedRangeGroupIds(pitchGroups);
   const weakQuestions = weakItems
     .map((item) => ({ id: item.id, target: targetPairFromEvent(item.event, pitchGroups) }))
     .filter((item): item is { id: string; target: DuetTargetPair } => item.target !== null);
@@ -97,6 +117,7 @@ export function buildDuetWrongNoteTestPlan(
   return {
     level,
     rangePreset: chooseExtendedRange(questions) ? "extended" : "standard",
+    rangeGroupIds,
     questions,
     weakTargetCount: weakQuestions.length,
   };
