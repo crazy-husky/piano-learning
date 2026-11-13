@@ -2056,6 +2056,28 @@
   gap: 8px;
 }
 
+.practice-free-duet-range-staff-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.practice-free-duet-range-hand {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.practice-free-duet-range-hand > legend {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .practice-free-duet-range-option {
   display: flex;
   align-items: flex-start;
@@ -2072,6 +2094,10 @@
 .practice-free-duet-range-option.is-selected {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent-soft) 68%, transparent);
+}
+
+.practice-free-duet-range-option.is-required {
+  cursor: not-allowed;
 }
 
 .practice-free-duet-range-option input {
@@ -2108,6 +2134,10 @@
 }
 
 @media (max-width: 560px) {
+  .practice-free-duet-range-staff-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .practice-free-duet-range-options {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -157,7 +157,10 @@ import {
   DEFAULT_DUET_PRACTICE_RANGE_PRESET,
   getDuetPracticeGroupIds,
   getDuetTargetMidis,
+  isDuetPracticeCustomRangeLevel,
+  normalizeDuetPracticeRangeGroupIds,
   normalizeDuetPracticeRangePreset,
+  type DuetPracticeRangeGroupId,
   type DuetTargetPair,
 } from "../logic/duetPractice";
 import {
@@ -330,6 +333,7 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
     blindPracticeMetronomeSyncEnabled: false,
     duetLevel: "level-1",
     duetRangePreset: DEFAULT_DUET_PRACTICE_RANGE_PRESET,
+    duetRangeGroupIds: getDuetPracticeGroupIds(DEFAULT_DUET_PRACTICE_RANGE_PRESET),
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms: false,
     autoPlayTarget: settings.autoPlayTarget,
@@ -375,6 +379,7 @@ function parsePracticeSetupUiPreferences(
     typeof value.duetCurriculumVersion === "number" ? value.duetCurriculumVersion : undefined;
   const hasCurrentQueueStrategyPreferenceVersion =
     value.queueStrategyPreferenceVersion === PRACTICE_QUEUE_STRATEGY_PREFERENCE_VERSION;
+  const duetRangePreset = normalizeDuetPracticeRangePreset(value.duetRangePreset);
 
   return {
     answerPitchMode: normalizeAnswerPitchMode(value.answerPitchMode, fallback.answerPitchMode),
@@ -389,7 +394,11 @@ function parsePracticeSetupUiPreferences(
       value.duetLevel ?? value.duetDifficulty,
       duetCurriculumVersion
     ),
-    duetRangePreset: normalizeDuetPracticeRangePreset(value.duetRangePreset),
+    duetRangePreset,
+    duetRangeGroupIds: normalizeDuetPracticeRangeGroupIds(
+      value.duetRangeGroupIds,
+      getDuetPracticeGroupIds(duetRangePreset)
+    ),
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms:
       typeof value.duetAllowDottedRhythms === "boolean" ? value.duetAllowDottedRhythms : false,
@@ -697,6 +706,7 @@ export function PracticeView({
   const duetRangePreset = normalizeDuetPracticeRangePreset(
     duetWrongNoteTestPlan?.rangePreset ?? practiceSetupPreferences.duetRangePreset
   );
+  const usesCustomDuetRange = !duetWrongNoteTestPlan && isDuetPracticeCustomRangeLevel(duetLevel);
   const configuredAnswerPitchMode = runningStartSnapshot
     ? normalizeAnswerPitchMode(runningStartSnapshot.practiceConfig.answerPitchMode)
     : normalizeAnswerPitchMode(practiceSetupPreferences.answerPitchMode);
@@ -962,6 +972,12 @@ export function PracticeView({
   const setDuetRangePreset = (preset: PracticeSetupUiPreferences["duetRangePreset"]): void => {
     setPracticeSetupPreferences((current) => ({ ...current, duetRangePreset: preset }));
   };
+  const setDuetRangeGroupIds = (groupIds: DuetPracticeRangeGroupId[]): void => {
+    setPracticeSetupPreferences((current) => ({
+      ...current,
+      duetRangeGroupIds: normalizeDuetPracticeRangeGroupIds(groupIds, current.duetRangeGroupIds),
+    }));
+  };
   const setDuetAllowDottedRhythms = (enabled: boolean): void => {
     setPracticeSetupPreferences((current) => ({ ...current, duetAllowDottedRhythms: enabled }));
   };
@@ -1187,6 +1203,7 @@ export function PracticeView({
         queueStrategyPreferenceVersion: current.queueStrategyPreferenceVersion,
         duetLevel: current.duetLevel,
         duetRangePreset: current.duetRangePreset,
+        duetRangeGroupIds: current.duetRangeGroupIds,
         duetCurriculumVersion: current.duetCurriculumVersion,
         duetAllowDottedRhythms: current.duetAllowDottedRhythms,
         midiAutoPlayTarget: current.midiAutoPlayTarget,
@@ -1209,7 +1226,9 @@ export function PracticeView({
   );
   const effectiveEnabledGroupIds = isDuetPractice
     ? (runningStartSnapshot?.practiceConfig.enabledGroupIds ??
-      getDuetPracticeGroupIds(duetRangePreset))
+      (usesCustomDuetRange
+        ? practiceSetupPreferences.duetRangeGroupIds
+        : getDuetPracticeGroupIds(duetRangePreset)))
     : (runningStartSnapshot?.practiceConfig.enabledGroupIds ??
       (isPreReadingPractice ? preReadingRange.enabledGroupIds : settings.enabledGroupIds));
   const effectiveEnabledPitchIds = isDuetPractice
@@ -2252,6 +2271,7 @@ export function PracticeView({
       midiPlayAnswerNote: practiceSetupPreferences.midiPlayAnswerNote,
       duetLevel,
       duetRangePreset,
+      duetRangeGroupIds: practiceSetupPreferences.duetRangeGroupIds,
       duetAllowDottedRhythms,
       midi,
       prefersReducedMotion,
@@ -3540,6 +3560,7 @@ export function PracticeView({
           onMetronomeSyncEnabledChange: setMetronomeSyncEnabled,
           onDuetLevelChange: setDuetLevel,
           onDuetRangePresetChange: setDuetRangePreset,
+          onDuetRangeGroupIdsChange: setDuetRangeGroupIds,
           onDuetAllowDottedRhythmsChange: setDuetAllowDottedRhythms,
           onAutoPlayTargetChange: setAutoPlayTarget,
           onFixedCountChange: setFixedCount,

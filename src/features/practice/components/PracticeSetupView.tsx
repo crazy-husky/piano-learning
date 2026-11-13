@@ -24,9 +24,13 @@ import type {
 } from "../../../domain/types";
 import type { ChaseHandMode } from "../logic/scoreChase";
 import {
+  DUET_PRACTICE_RANGE_GROUPS,
   getDuetPracticeLevelDescription,
   getDuetPracticeLevelLabel,
+  getDuetPracticeRangeGroupSummary,
   getDuetPracticeRangeSummary,
+  isDuetPracticeCustomRangeLevel,
+  type DuetPracticeRangeGroupId,
   type DuetPracticeRangePreset,
 } from "../logic/duetPractice";
 import { PRACTICE_FIXED_COUNT_PRESETS } from "../logic/practiceLengthOptions";
@@ -72,6 +76,7 @@ export interface PracticeSetupUiPreferences {
   blindPracticeMetronomeSyncEnabled: boolean;
   duetLevel: DuetPracticeLevel;
   duetRangePreset: DuetPracticeRangePreset;
+  duetRangeGroupIds: DuetPracticeRangeGroupId[];
   duetCurriculumVersion: number;
   duetAllowDottedRhythms: boolean;
   autoPlayTarget: boolean;
@@ -100,6 +105,7 @@ interface PracticeSetupActions {
   onMetronomeSyncEnabledChange: (enabled: boolean) => void;
   onDuetLevelChange: (level: DuetPracticeLevel) => void;
   onDuetRangePresetChange: (preset: DuetPracticeRangePreset) => void;
+  onDuetRangeGroupIdsChange: (groupIds: DuetPracticeRangeGroupId[]) => void;
   onDuetAllowDottedRhythmsChange: (enabled: boolean) => void;
   onAutoPlayTargetChange: (enabled: boolean) => void;
   onFixedCountChange: (count: number) => void;
@@ -311,6 +317,7 @@ export function PracticeSetupView({
     metronomeSyncEnabled,
     duetLevel,
     duetRangePreset,
+    duetRangeGroupIds,
     duetAllowDottedRhythms,
     autoPlayTarget: nonMidiAutoPlayTarget,
     midiAutoPlayTarget,
@@ -325,6 +332,9 @@ export function PracticeSetupView({
     queueStrategy,
   } = preferences;
   const isDuetPractice = practiceMode === "duet";
+  const isCustomDuetRange =
+    isDuetPractice && !lockPracticeSetup && isDuetPracticeCustomRangeLevel(duetLevel);
+  const selectedDuetRangeGroups = new Set(duetRangeGroupIds);
   const isBlindPractice = blindPractice;
   const activeAnswerPitchMode = isDuetPractice
     ? "exact-pitch"
@@ -485,7 +495,9 @@ export function PracticeSetupView({
         ? "低音谱表"
         : "大谱表";
   const rangeSummary = isDuetPractice
-    ? getDuetPracticeRangeSummary(duetRangePreset)
+    ? isCustomDuetRange
+      ? getDuetPracticeRangeGroupSummary(duetRangeGroupIds)
+      : getDuetPracticeRangeSummary(duetRangePreset)
     : selectedPitchIds.length === 0
       ? "未选音域"
       : formatSelectedPitchRanges(selectedPitchIds);
@@ -724,49 +736,121 @@ export function PracticeSetupView({
                       </label>
                       <fieldset className="practice-free-duet-range">
                         <legend className="control-label">练习音区</legend>
-                        <div className="practice-free-duet-range-options">
-                          <label
-                            className={`practice-free-duet-range-option${
-                              duetRangePreset === "standard" ? " is-selected" : ""
-                            }`}
-                            htmlFor="practice-duet-range-standard"
-                          >
-                            <input
-                              checked={duetRangePreset === "standard"}
-                              id="practice-duet-range-standard"
-                              name="practice-duet-range"
-                              onChange={() => onDuetRangePresetChange("standard")}
-                              type="radio"
-                              value="standard"
-                            />
-                            <span className="practice-free-duet-range-copy">
-                              标准音区
-                              <small>C3–B3 + C4–B4</small>
-                            </span>
-                          </label>
-                          <label
-                            className={`practice-free-duet-range-option${
-                              duetRangePreset === "extended" ? " is-selected" : ""
-                            }`}
-                            htmlFor="practice-duet-range-extended"
-                          >
-                            <input
-                              checked={duetRangePreset === "extended"}
-                              id="practice-duet-range-extended"
-                              name="practice-duet-range"
-                              onChange={() => onDuetRangePresetChange("extended")}
-                              type="radio"
-                              value="extended"
-                            />
-                            <span className="practice-free-duet-range-copy">
-                              扩展音区
-                              <small>C2–B2 + C3–B3 + C4–B4 + C5–B5</small>
-                            </span>
-                          </label>
-                        </div>
-                        <p className="practice-free-duet-range-hint">
-                          扩展音区会让左右手分别在两个八度间交替出题。
-                        </p>
+                        {isCustomDuetRange ? (
+                          <>
+                            <div className="practice-free-duet-range-staff-options">
+                              {(["bass", "treble"] as const).map((staff) => {
+                                const staffGroups = DUET_PRACTICE_RANGE_GROUPS.filter(
+                                  (group) => group.staff === staff
+                                );
+                                const selectedCount = duetRangeGroupIds.filter((groupId) =>
+                                  staffGroups.some((group) => group.id === groupId)
+                                ).length;
+
+                                return (
+                                  <fieldset className="practice-free-duet-range-hand" key={staff}>
+                                    <legend>
+                                      {staff === "bass" ? "低音区 · 左手" : "高音区 · 右手"}
+                                    </legend>
+                                    <div className="practice-free-duet-range-options">
+                                      {staffGroups.map((group) => {
+                                        const selected = selectedDuetRangeGroups.has(group.id);
+                                        const isRequired = selected && selectedCount === 1;
+                                        const id = `practice-duet-range-group-${group.id}`;
+
+                                        return (
+                                          <label
+                                            className={`practice-free-duet-range-option${
+                                              selected ? " is-selected" : ""
+                                            }${isRequired ? " is-required" : ""}`}
+                                            htmlFor={id}
+                                            key={group.id}
+                                          >
+                                            <input
+                                              aria-describedby="practice-duet-range-hint"
+                                              checked={selected}
+                                              disabled={isRequired}
+                                              id={id}
+                                              onChange={(event) => {
+                                                const nextGroupIds = event.currentTarget.checked
+                                                  ? [...duetRangeGroupIds, group.id]
+                                                  : duetRangeGroupIds.filter(
+                                                      (groupId) => groupId !== group.id
+                                                    );
+                                                actions.onDuetRangeGroupIdsChange(nextGroupIds);
+                                              }}
+                                              title={
+                                                isRequired
+                                                  ? `至少保留一个${staff === "bass" ? "低音区" : "高音区"}`
+                                                  : undefined
+                                              }
+                                              type="checkbox"
+                                            />
+                                            <span className="practice-free-duet-range-copy">
+                                              {group.label}
+                                            </span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  </fieldset>
+                                );
+                              })}
+                            </div>
+                            <p
+                              className="practice-free-duet-range-hint"
+                              id="practice-duet-range-hint"
+                            >
+                              高音区和低音区至少各选一个；双手协同固定使用大谱表。
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <div className="practice-free-duet-range-options">
+                              <label
+                                className={`practice-free-duet-range-option${
+                                  duetRangePreset === "standard" ? " is-selected" : ""
+                                }`}
+                                htmlFor="practice-duet-range-standard"
+                              >
+                                <input
+                                  checked={duetRangePreset === "standard"}
+                                  id="practice-duet-range-standard"
+                                  name="practice-duet-range"
+                                  onChange={() => onDuetRangePresetChange("standard")}
+                                  type="radio"
+                                  value="standard"
+                                />
+                                <span className="practice-free-duet-range-copy">
+                                  标准音区
+                                  <small>C3–B3 + C4–B4</small>
+                                </span>
+                              </label>
+                              <label
+                                className={`practice-free-duet-range-option${
+                                  duetRangePreset === "extended" ? " is-selected" : ""
+                                }`}
+                                htmlFor="practice-duet-range-extended"
+                              >
+                                <input
+                                  checked={duetRangePreset === "extended"}
+                                  id="practice-duet-range-extended"
+                                  name="practice-duet-range"
+                                  onChange={() => onDuetRangePresetChange("extended")}
+                                  type="radio"
+                                  value="extended"
+                                />
+                                <span className="practice-free-duet-range-copy">
+                                  扩展音区
+                                  <small>C2–B2 + C3–B3 + C4–B4 + C5–B5</small>
+                                </span>
+                              </label>
+                            </div>
+                            <p className="practice-free-duet-range-hint">
+                              扩展音区会让左右手分别在两个八度间交替出题。
+                            </p>
+                          </>
+                        )}
                       </fieldset>
                       <p className="practice-free-mode-hint">
                         {getDuetPracticeLevelDescription(duetLevel)}

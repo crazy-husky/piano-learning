@@ -13,18 +13,91 @@ export const DUET_PRACTICE_CURRICULUM_VERSION = 2;
 
 export type DuetPracticeRangePreset = "standard" | "extended";
 
+export const DUET_PRACTICE_RANGE_GROUPS = [
+  { id: "C2-B2", staff: "bass", label: "C2–B2" },
+  { id: "C3-B3", staff: "bass", label: "C3–B3" },
+  { id: "C4-B4", staff: "treble", label: "C4–B4" },
+  { id: "C5-B5", staff: "treble", label: "C5–B5" },
+] as const satisfies readonly { id: PracticeGroupId; staff: Staff; label: string }[];
+
+export type DuetPracticeRangeGroupId = (typeof DUET_PRACTICE_RANGE_GROUPS)[number]["id"];
+
+export const DEFAULT_DUET_PRACTICE_RANGE_GROUP_IDS: readonly DuetPracticeRangeGroupId[] = [
+  "C3-B3",
+  "C4-B4",
+];
+
 export const DEFAULT_DUET_PRACTICE_RANGE_PRESET: DuetPracticeRangePreset = "standard";
 
 export function normalizeDuetPracticeRangePreset(value: unknown): DuetPracticeRangePreset {
   return value === "extended" ? "extended" : DEFAULT_DUET_PRACTICE_RANGE_PRESET;
 }
 
-export function getDuetPracticeGroupIds(preset: DuetPracticeRangePreset): PracticeGroupId[] {
-  return preset === "extended" ? ["C2-B2", "C3-B3", "C4-B4", "C5-B5"] : ["C3-B3", "C4-B4"];
+export function getDuetPracticeGroupIds(
+  preset: DuetPracticeRangePreset
+): DuetPracticeRangeGroupId[] {
+  return preset === "extended"
+    ? DUET_PRACTICE_RANGE_GROUPS.map(({ id }) => id)
+    : [...DEFAULT_DUET_PRACTICE_RANGE_GROUP_IDS];
 }
 
 export function getDuetPracticeRangeSummary(preset: DuetPracticeRangePreset): string {
   return preset === "extended" ? "C2–B5（左右手各两个八度）" : "C3–B4（左右手各一个八度）";
+}
+
+export function getDuetPracticeRangeGroupSummary(
+  groupIds: readonly DuetPracticeRangeGroupId[]
+): string {
+  const selected = new Set(groupIds);
+  return DUET_PRACTICE_RANGE_GROUPS.filter(({ id }) => selected.has(id))
+    .map(({ label }) => label)
+    .join(" + ");
+}
+
+export function normalizeDuetPracticeRangeGroupIds(
+  value: unknown,
+  fallback: readonly DuetPracticeRangeGroupId[] = DEFAULT_DUET_PRACTICE_RANGE_GROUP_IDS
+): DuetPracticeRangeGroupId[] {
+  const fallbackIds = new Set(
+    fallback.filter((id): id is DuetPracticeRangeGroupId =>
+      DUET_PRACTICE_RANGE_GROUPS.some((group) => group.id === id)
+    )
+  );
+  if (fallbackIds.size === 0) {
+    DEFAULT_DUET_PRACTICE_RANGE_GROUP_IDS.forEach((id) => fallbackIds.add(id));
+  }
+
+  const selectedIds = new Set<DuetPracticeRangeGroupId>();
+  if (Array.isArray(value)) {
+    value.forEach((id: unknown) => {
+      if (DUET_PRACTICE_RANGE_GROUPS.some((group) => group.id === id)) {
+        selectedIds.add(id as DuetPracticeRangeGroupId);
+      }
+    });
+  }
+  if (selectedIds.size === 0) {
+    fallbackIds.forEach((id) => selectedIds.add(id));
+  }
+
+  for (const staff of ["bass", "treble"] as const) {
+    const hasStaffRange = DUET_PRACTICE_RANGE_GROUPS.some(
+      (group) => group.staff === staff && selectedIds.has(group.id)
+    );
+    if (!hasStaffRange) {
+      const fallbackGroup = DUET_PRACTICE_RANGE_GROUPS.find(
+        (group) => group.staff === staff && fallbackIds.has(group.id)
+      );
+      const defaultGroup = DUET_PRACTICE_RANGE_GROUPS.find((group) => group.staff === staff);
+      const group = fallbackGroup ?? defaultGroup;
+      if (group) selectedIds.add(group.id);
+    }
+  }
+
+  return DUET_PRACTICE_RANGE_GROUPS.filter(({ id }) => selectedIds.has(id)).map(({ id }) => id);
+}
+
+export function isDuetPracticeCustomRangeLevel(level: DuetPracticeLevel | undefined): boolean {
+  return level === "level-1" || level === "level-2" || level === "level-3";
 }
 
 export interface DuetTargetPair {

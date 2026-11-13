@@ -13,6 +13,9 @@ import {
 import {
   DUET_PRACTICE_CURRICULUM_VERSION,
   getDuetPracticeGroupIds,
+  isDuetPracticeCustomRangeLevel,
+  normalizeDuetPracticeRangeGroupIds,
+  type DuetPracticeRangeGroupId,
   type DuetPracticeRangePreset,
 } from "../logic/duetPractice";
 import {
@@ -63,6 +66,7 @@ interface PracticeSessionStartValues {
   midiPlayAnswerNote: boolean;
   duetLevel?: DuetPracticeLevel;
   duetRangePreset: DuetPracticeRangePreset;
+  duetRangeGroupIds: DuetPracticeRangeGroupId[];
   duetAllowDottedRhythms: boolean;
   midi: Pick<MidiInputController, "isConnected">;
   prefersReducedMotion: boolean;
@@ -154,6 +158,7 @@ export function usePracticeSessionStart({
     midiPlayAnswerNote,
     duetLevel,
     duetRangePreset,
+    duetRangeGroupIds,
     duetAllowDottedRhythms,
     midi,
     prefersReducedMotion,
@@ -247,6 +252,13 @@ export function usePracticeSessionStart({
           : schedulerReviews;
         const preReadingRange =
           nextSettings.staffRangeProfiles?.[nextSettings.staffNotationMode] ?? nextSettings;
+        const duetEnabledGroupIds =
+          !isDuetWrongNoteTest && isDuetPracticeCustomRangeLevel(duetLevel)
+            ? normalizeDuetPracticeRangeGroupIds(
+                duetRangeGroupIds,
+                getDuetPracticeGroupIds(duetRangePreset)
+              )
+            : getDuetPracticeGroupIds(duetRangePreset);
         const basePracticeSettings = isDuetPractice
           ? {
               ...nextSettings,
@@ -257,7 +269,7 @@ export function usePracticeSessionStart({
                   }
                 : {}),
               answerPitchMode: "exact-pitch" as const,
-              enabledGroupIds: getDuetPracticeGroupIds(duetRangePreset),
+              enabledGroupIds: duetEnabledGroupIds,
               enabledPitchIds: undefined,
               crossGroupPitchIds: undefined,
               staffNotationMode: "grand" as const,
@@ -465,6 +477,7 @@ export function usePracticeSessionStart({
     shouldSynchronizeMetronome,
     duetLevel,
     duetRangePreset,
+    duetRangeGroupIds,
     duetAllowDottedRhythms,
     adaptiveSchedulerRef,
     applySettingsSnapshot,
