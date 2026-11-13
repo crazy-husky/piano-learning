@@ -22,6 +22,7 @@ export interface BuildPracticeSessionStartSnapshotInput {
   duetLevel?: DuetPracticeLevel;
   duetCurriculumVersion?: number;
   duetAllowDottedRhythms?: boolean;
+  duetStrictHandAlternation?: boolean;
   metronomeSync?: boolean;
   preReadingBufferSize?: PreReadingBufferSize;
   wrongNoteTest?: boolean;
@@ -89,6 +90,7 @@ export function buildPracticeSessionStartSnapshot({
   duetLevel,
   duetCurriculumVersion,
   duetAllowDottedRhythms,
+  duetStrictHandAlternation,
   metronomeSync,
   preReadingBufferSize,
   wrongNoteTest,
@@ -136,6 +138,7 @@ export function buildPracticeSessionStartSnapshot({
               duetLevel,
               duetCurriculumVersion: duetCurriculumVersion ?? 2,
               duetAllowDottedRhythms: duetAllowDottedRhythms ?? false,
+              ...(duetStrictHandAlternation ? { duetStrictHandAlternation: true } : {}),
             }
           : {}),
         ...(metronomeSync ? { metronomeSync: true } : {}),

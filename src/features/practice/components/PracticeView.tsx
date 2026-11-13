@@ -388,6 +388,7 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
     duetRangeGroupIds: getDuetPracticeGroupIds(DEFAULT_DUET_PRACTICE_RANGE_PRESET),
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms: false,
+    duetStrictHandAlternation: false,
     autoPlayTarget: settings.autoPlayTarget,
     midiAutoPlayTarget: false,
     chaseEnabled: DEFAULT_SCORE_CHASE_PREFERENCES.enabled,
@@ -454,6 +455,10 @@ function parsePracticeSetupUiPreferences(
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms:
       typeof value.duetAllowDottedRhythms === "boolean" ? value.duetAllowDottedRhythms : false,
+    duetStrictHandAlternation:
+      typeof value.duetStrictHandAlternation === "boolean"
+        ? value.duetStrictHandAlternation
+        : false,
     autoPlayTarget:
       typeof value.autoPlayTarget === "boolean" ? value.autoPlayTarget : fallback.autoPlayTarget,
     midiAutoPlayTarget:
@@ -755,6 +760,11 @@ export function PracticeView({
   const duetAllowDottedRhythms =
     runningStartSnapshot?.practiceConfig.duetAllowDottedRhythms ??
     practiceSetupPreferences.duetAllowDottedRhythms;
+  const duetStrictHandAlternation = runningStartSnapshot
+    ? runningStartSnapshot.practiceConfig.duetStrictHandAlternation === true
+    : duetWrongNoteTestPlan
+      ? false
+      : practiceSetupPreferences.duetStrictHandAlternation;
   const duetRangePreset = normalizeDuetPracticeRangePreset(
     duetWrongNoteTestPlan?.rangePreset ?? practiceSetupPreferences.duetRangePreset
   );
@@ -1030,6 +1040,12 @@ export function PracticeView({
       duetRangeGroupIds: normalizeDuetPracticeRangeGroupIds(groupIds, current.duetRangeGroupIds),
     }));
   };
+  const setDuetStrictHandAlternation = (enabled: boolean): void => {
+    setPracticeSetupPreferences((current) => ({
+      ...current,
+      duetStrictHandAlternation: enabled,
+    }));
+  };
   const setDuetAllowDottedRhythms = (enabled: boolean): void => {
     setPracticeSetupPreferences((current) => ({ ...current, duetAllowDottedRhythms: enabled }));
   };
@@ -1261,6 +1277,7 @@ export function PracticeView({
         duetRangeGroupIds: current.duetRangeGroupIds,
         duetCurriculumVersion: current.duetCurriculumVersion,
         duetAllowDottedRhythms: current.duetAllowDottedRhythms,
+        duetStrictHandAlternation: current.duetStrictHandAlternation,
         midiAutoPlayTarget: current.midiAutoPlayTarget,
         midiPlayAnswerNote: current.midiPlayAnswerNote,
         chaseEnabled: current.chaseEnabled,
@@ -1846,6 +1863,7 @@ export function PracticeView({
         ? adaptiveStaffRows?.rowStartIndices
         : undefined,
       allowDottedRhythms: duetAllowDottedRhythms,
+      duetStrictHandAlternation,
       forceRhythmGeneration: requiresMidiStaffPage || isDuetPractice || isBlindPractice,
       blindPractice: isBlindPractice,
       promptNoteDurations,
@@ -2330,6 +2348,7 @@ export function PracticeView({
       duetRangePreset,
       duetRangeGroupIds: practiceSetupPreferences.duetRangeGroupIds,
       duetAllowDottedRhythms,
+      duetStrictHandAlternation,
       midi,
       prefersReducedMotion,
       queueNotes,
@@ -3692,6 +3711,7 @@ export function PracticeView({
           onDuetRangePresetChange: setDuetRangePreset,
           onDuetRangeGroupIdsChange: setDuetRangeGroupIds,
           onDuetAllowDottedRhythmsChange: setDuetAllowDottedRhythms,
+          onDuetStrictHandAlternationChange: setDuetStrictHandAlternation,
           onAutoPlayTargetChange: setAutoPlayTarget,
           onFixedCountChange: setFixedCount,
           onFixedDurationSecondsChange: setFixedDurationSeconds,

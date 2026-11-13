@@ -352,6 +352,7 @@ export interface PracticeSessionStartSnapshot {
     duetLevel?: DuetPracticeLevel;
     duetCurriculumVersion?: number;
     duetAllowDottedRhythms?: boolean;
+    duetStrictHandAlternation?: boolean;
     metronomeSync?: boolean;
     preReadingBufferSize?: PreReadingBufferSize;
     /** Temporary stats wrong-note tests must not enter regular practice history. */

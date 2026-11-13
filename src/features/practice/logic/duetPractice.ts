@@ -110,6 +110,8 @@ export interface DuetTargetPair {
 export interface DuetPracticeGenerationOptions {
   allowDottedRhythms?: boolean;
   allowSingleStaff?: boolean;
+  /** Level 1 only: alternate the active hand on every onset across measure boundaries. */
+  strictHandAlternation?: boolean;
   startBeat?: number;
   exactCount?: boolean;
   /** Cap generation to this many complete measures, relative to startBeat. */
@@ -239,25 +241,63 @@ function getLevelOneStaffSequence(
   onsetCount: number,
   measureIndex: number,
   seed: number,
-  requiredPrefixCount = onsetCount
+  requiredPrefixCount = onsetCount,
+  strictHandAlternation = false,
+  startingOnsetIndex = 0,
+  precedingStaffSequence: readonly Staff[] = []
 ): Staff[] {
   const channel = 0x68616e64;
-  const sequence = Array.from({ length: onsetCount }, (_, index) =>
-    getMeasureRandom(seed, measureIndex, channel + index * 0x101) < 0.5 ? "treble" : "bass"
-  );
-
-  const ensureBothHands = (prefixCount: number, salt: number): void => {
-    const boundedCount = Math.min(sequence.length, Math.max(0, Math.floor(prefixCount)));
-    if (boundedCount < 2 || new Set(sequence.slice(0, boundedCount)).size > 1) return;
-    const switchIndex = Math.floor(
-      getMeasureRandom(seed, measureIndex, channel ^ salt) * boundedCount
+  const firstStrictStaff = getMeasureRandom(seed, 0, channel) < 0.5 ? "treble" : "bass";
+  if (strictHandAlternation) {
+    return Array.from({ length: onsetCount }, (_, index) =>
+      (startingOnsetIndex + index) % 2 === 0
+        ? firstStrictStaff
+        : firstStrictStaff === "treble"
+          ? "bass"
+          : "treble"
     );
-    sequence[switchIndex] = sequence[0] === "treble" ? "bass" : "treble";
-  };
+  }
 
-  ensureBothHands(requiredPrefixCount, 0x72717569);
-  ensureBothHands(sequence.length, 0x72657061);
-  return sequence;
+  const boundedPrefixCount = Math.min(onsetCount, Math.max(0, Math.floor(requiredPrefixCount)));
+  const candidates: Staff[][] = [];
+  for (let mask = 0; mask < 2 ** onsetCount; mask += 1) {
+    const sequence = Array.from({ length: onsetCount }, (_, index) =>
+      (mask & (1 << index)) === 0 ? "treble" : "bass"
+    );
+    let longestRun = 0;
+    let currentRun = 0;
+    sequence.forEach((staff, index) => {
+      currentRun = index > 0 && sequence[index - 1] === staff ? currentRun + 1 : 1;
+      longestRun = Math.max(longestRun, currentRun);
+    });
+    if (longestRun > 2) continue;
+    if (onsetCount >= 2 && new Set(sequence).size < 2) continue;
+    if (boundedPrefixCount >= 2 && new Set(sequence.slice(0, boundedPrefixCount)).size < 2)
+      continue;
+    const boundarySequence = [...precedingStaffSequence.slice(-2), ...sequence.slice(0, 2)];
+    const createsThreeHandRun = boundarySequence.some(
+      (staff, index) =>
+        index >= 2 && staff === boundarySequence[index - 1] && staff === boundarySequence[index - 2]
+    );
+    if (createsThreeHandRun) continue;
+    // The default pattern is staggered, with occasional repeated hand assignments;
+    // strict left-right alternation is reserved for the advanced option.
+    if (
+      onsetCount >= 3 &&
+      !sequence.some((staff, index) => index > 0 && sequence[index - 1] === staff)
+    ) {
+      continue;
+    }
+    candidates.push(sequence);
+  }
+
+  if (candidates.length === 0) {
+    return Array.from({ length: onsetCount }, (_, index) =>
+      getMeasureRandom(seed, measureIndex, channel + index * 0x101) < 0.5 ? "treble" : "bass"
+    );
+  }
+  const selection = Math.floor(getMeasureRandom(seed, measureIndex, channel) * candidates.length);
+  return candidates[selection] ?? candidates[0]!;
 }
 
 function shuffleLevelOneNoteBag(
@@ -446,7 +486,10 @@ function getMeasureEvents(
   seed: number,
   levelOneNotePools?: LevelOneNotePools,
   levelOneNoteOffsets: LevelOneNoteOffsets = { treble: 0, bass: 0 },
-  levelOneRequiredOnsetCount?: number
+  levelOneRequiredOnsetCount?: number,
+  strictHandAlternation = false,
+  levelOneStartingOnsetIndex = 0,
+  precedingLevelOneStaffSequence: readonly Staff[] = []
 ): MeasureEvent[] {
   const chord = getMeasureChord(measureIndex);
   const quarterMelody = getPhraseMeasure(QUARTER_MELODY_PHRASES, measureIndex);
@@ -469,7 +512,15 @@ function getMeasureEvents(
           : undefined;
     const staffSequence = singleAvailableStaff
       ? Array.from({ length: events.length }, () => singleAvailableStaff)
-      : getLevelOneStaffSequence(events.length, measureIndex, seed, levelOneRequiredOnsetCount);
+      : getLevelOneStaffSequence(
+          events.length,
+          measureIndex,
+          seed,
+          levelOneRequiredOnsetCount,
+          strictHandAlternation,
+          levelOneStartingOnsetIndex,
+          precedingLevelOneStaffSequence
+        );
     const nextNoteOffsets = { ...levelOneNoteOffsets };
 
     return events.map(({ beat, duration }, index) => {
@@ -725,6 +776,8 @@ export function createDuetPracticePage(
     bass: NOTE_NAME_ORDER.filter((noteName) => lookup.get("bass")?.has(noteName) ?? false),
   };
   const levelOneNoteOffsets: LevelOneNoteOffsets = { treble: 0, bass: 0 };
+  let levelOneStartingOnsetIndex = 0;
+  const precedingLevelOneStaffSequence: Staff[] = [];
   const allowDottedRhythms = options.allowDottedRhythms ?? false;
   if (level === "level-1") {
     for (let previousMeasure = 0; previousMeasure < measureIndex; previousMeasure += 1) {
@@ -734,12 +787,19 @@ export function createDuetPracticePage(
         allowDottedRhythms && previousMeasure % 4 === 3,
         seed,
         levelOneNotePools,
-        levelOneNoteOffsets
+        levelOneNoteOffsets,
+        undefined,
+        options.strictHandAlternation,
+        levelOneStartingOnsetIndex,
+        precedingLevelOneStaffSequence
       );
       previousEvents.forEach((event) => {
         levelOneNoteOffsets.treble += event.high.length;
         levelOneNoteOffsets.bass += event.low.length;
+        precedingLevelOneStaffSequence.push(event.high.length > 0 ? "treble" : "bass");
+        if (precedingLevelOneStaffSequence.length > 2) precedingLevelOneStaffSequence.shift();
       });
+      levelOneStartingOnsetIndex += previousEvents.length;
     }
   }
 
@@ -753,8 +813,18 @@ export function createDuetPracticePage(
       seed,
       levelOneNotePools,
       levelOneNoteOffsets,
-      options.exactCount ? requestedCount - events.length : undefined
+      options.exactCount ? requestedCount - events.length : undefined,
+      options.strictHandAlternation,
+      levelOneStartingOnsetIndex,
+      precedingLevelOneStaffSequence
     );
+    if (level === "level-1") {
+      levelOneStartingOnsetIndex += measureEvents.length;
+      measureEvents.forEach((event) => {
+        precedingLevelOneStaffSequence.push(event.high.length > 0 ? "treble" : "bass");
+        if (precedingLevelOneStaffSequence.length > 2) precedingLevelOneStaffSequence.shift();
+      });
+    }
     for (const measureEvent of measureEvents) {
       const generatedHigh = measureEvent.high
         .map((name) => getMeasureNote(lookup, "treble", name, measureIndex))
@@ -846,7 +916,7 @@ export function normalizeDuetPracticeLevel(
 
 export function getDuetPracticeLevelLabel(level: DuetPracticeLevel): string {
   const labels: Record<DuetPracticeLevel, string> = {
-    "level-1": "Level 1 · 左右手随机",
+    "level-1": "Level 1 · 左右手错落",
     "level-2": "Level 2 · 少量同步",
     "level-3": "Level 3 · 大量同步",
     "level-4": "Level 4 · 柱式和弦",
@@ -856,10 +926,14 @@ export function getDuetPracticeLevelLabel(level: DuetPracticeLevel): string {
   return labels[level];
 }
 
-export function getDuetPracticeLevelDescription(level: DuetPracticeLevel): string {
+export function getDuetPracticeLevelDescription(
+  level: DuetPracticeLevel,
+  strictLevelOneHandAlternation = false
+): string {
   const descriptions: Record<DuetPracticeLevel, string> = {
-    "level-1":
-      "每个完整小节左右手各至少弹一次单音，手序随机并允许连续同手；音符在各自音域内均衡轮换，不同时起音。",
+    "level-1": strictLevelOneHandAlternation
+      ? "左右手按每个音符严格轮流出现，并跨小节连续轮换；音符在各自音域内均衡轮换，不同时起音。"
+      : "每个完整小节左右手各至少弹一次单音，手序错落穿插、允许连续同手但不会连续三次；音符在各自音域内均衡轮换，不同时起音。",
     "level-2": "每小节低音出现 1 次的概率为 70%，出现 2 次的概率为 30%；出现两次时会尽量分开。",
     "level-3": "每小节同奏 1/2/3/4 次的概率依次为 20%/50%/20%/10%。",
     "level-4": "左手在强拍弹柱式三和弦，右手继续弹简单旋律。",

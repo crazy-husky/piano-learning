@@ -300,6 +300,7 @@ interface PracticeStaffPageFlowValues {
   blindPractice: boolean;
   rangeExtensionNotes: TargetNote[];
   duetLevel?: DuetPracticeLevel;
+  duetStrictHandAlternation: boolean;
   duetQuestionTargets?: readonly (DuetTargetPair | null)[];
   adaptiveMeasureAreaWidthPx?: number;
   adaptiveMaxMeasuresPerRow?: number;
@@ -363,6 +364,7 @@ export function usePracticeStaffPageFlow({
     blindPractice,
     rangeExtensionNotes,
     duetLevel,
+    duetStrictHandAlternation,
     duetQuestionTargets,
     adaptiveMeasureAreaWidthPx,
     adaptiveMaxMeasuresPerRow,
@@ -546,6 +548,7 @@ export function usePracticeStaffPageFlow({
       const generatedDuetPage = duetLevel
         ? createDuetPracticePage(sourceNotes, duetLevel, duetRequestedCount, {
             allowDottedRhythms,
+            strictHandAlternation: duetLevel === "level-1" && duetStrictHandAlternation,
             allowSingleStaff: duetQuestionTargets !== undefined,
             exactCount: duetExactCount,
             measureCount: duetMeasureCount,
@@ -636,6 +639,7 @@ export function usePracticeStaffPageFlow({
       adaptiveMaxMeasuresPerRow,
       allowDottedRhythms,
       duetLevel,
+      duetStrictHandAlternation,
       duetQuestionTargets,
       fixedCount,
       forceRhythmGeneration,
@@ -803,6 +807,7 @@ export function usePracticeStaffPageFlow({
         const generatedDuetAppend = duetLevel
           ? createDuetPracticePage(enabledNotes, duetLevel, duetAppendRequestedCount, {
               allowDottedRhythms,
+              strictHandAlternation: duetLevel === "level-1" && duetStrictHandAlternation,
               allowSingleStaff: duetQuestionTargets !== undefined,
               startBeat: page.rhythm?.endBeat ?? 0,
               measureCount: duetAppendMeasureCount,
@@ -1006,6 +1011,7 @@ export function usePracticeStaffPageFlow({
       drillNoteNames,
       enabledNotes,
       duetLevel,
+      duetStrictHandAlternation,
       duetQuestionTargets,
       allowDottedRhythms,
       fixedCount,

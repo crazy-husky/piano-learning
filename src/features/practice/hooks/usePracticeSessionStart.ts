@@ -69,6 +69,7 @@ interface PracticeSessionStartValues {
   duetRangePreset: DuetPracticeRangePreset;
   duetRangeGroupIds: DuetPracticeRangeGroupId[];
   duetAllowDottedRhythms: boolean;
+  duetStrictHandAlternation: boolean;
   midi: Pick<MidiInputController, "isConnected">;
   prefersReducedMotion: boolean;
   queueNotes: TargetNote[];
@@ -162,6 +163,7 @@ export function usePracticeSessionStart({
     duetRangePreset,
     duetRangeGroupIds,
     duetAllowDottedRhythms,
+    duetStrictHandAlternation,
     midi,
     prefersReducedMotion,
     queueNotes,
@@ -346,6 +348,11 @@ export function usePracticeSessionStart({
           duetLevel: isDuetPractice ? (duetLevel ?? "level-1") : undefined,
           duetCurriculumVersion: isDuetPractice ? DUET_PRACTICE_CURRICULUM_VERSION : undefined,
           duetAllowDottedRhythms: isDuetPractice ? duetAllowDottedRhythms : undefined,
+          duetStrictHandAlternation:
+            isDuetPractice &&
+            duetLevel === "level-1" &&
+            !isDuetWrongNoteTest &&
+            duetStrictHandAlternation,
           metronomeSync:
             shouldSynchronizeMetronome &&
             (availablePreflightAnswerPitchMode === "exact-pitch" || isBlindPractice),
@@ -483,6 +490,7 @@ export function usePracticeSessionStart({
     duetRangePreset,
     duetRangeGroupIds,
     duetAllowDottedRhythms,
+    duetStrictHandAlternation,
     adaptiveSchedulerRef,
     applySettingsSnapshot,
     beginSessionState,

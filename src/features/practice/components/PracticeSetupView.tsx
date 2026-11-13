@@ -79,6 +79,7 @@ export interface PracticeSetupUiPreferences {
   duetRangeGroupIds: DuetPracticeRangeGroupId[];
   duetCurriculumVersion: number;
   duetAllowDottedRhythms: boolean;
+  duetStrictHandAlternation: boolean;
   autoPlayTarget: boolean;
   midiAutoPlayTarget: boolean;
   chaseEnabled: boolean;
@@ -107,6 +108,7 @@ interface PracticeSetupActions {
   onDuetRangePresetChange: (preset: DuetPracticeRangePreset) => void;
   onDuetRangeGroupIdsChange: (groupIds: DuetPracticeRangeGroupId[]) => void;
   onDuetAllowDottedRhythmsChange: (enabled: boolean) => void;
+  onDuetStrictHandAlternationChange: (enabled: boolean) => void;
   onAutoPlayTargetChange: (enabled: boolean) => void;
   onFixedCountChange: (count: number) => void;
   onFixedDurationSecondsChange: (seconds: number) => void;
@@ -321,6 +323,7 @@ export function PracticeSetupView({
     duetRangePreset,
     duetRangeGroupIds,
     duetAllowDottedRhythms,
+    duetStrictHandAlternation,
     autoPlayTarget: nonMidiAutoPlayTarget,
     midiAutoPlayTarget,
     drillNoteNames,
@@ -357,6 +360,7 @@ export function PracticeSetupView({
     onDuetLevelChange,
     onDuetRangePresetChange,
     onDuetAllowDottedRhythmsChange,
+    onDuetStrictHandAlternationChange,
     onAutoPlayTargetChange: setAutoPlayTarget,
     onFixedCountChange: setFixedCount,
     onFixedDurationSecondsChange: setFixedDurationSeconds,
@@ -856,7 +860,7 @@ export function PracticeSetupView({
                         )}
                       </fieldset>
                       <p className="practice-free-mode-hint">
-                        {getDuetPracticeLevelDescription(duetLevel)}
+                        {getDuetPracticeLevelDescription(duetLevel, duetStrictHandAlternation)}
                       </p>
                     </>
                   ) : null}
@@ -1196,6 +1200,18 @@ export function PracticeSetupView({
                   <section className="practice-free-field practice-free-duet-advanced-field">
                     <span className="control-label">合弹微调</span>
                     <div className="practice-checkbox-options practice-free-duet-advanced-options">
+                      {duetLevel === "level-1" ? (
+                        <label className="practice-checkbox-option">
+                          <input
+                            checked={duetStrictHandAlternation}
+                            type="checkbox"
+                            onChange={(event) =>
+                              onDuetStrictHandAlternationChange(event.currentTarget.checked)
+                            }
+                          />
+                          <span>左右手轮流出现音符（更难）</span>
+                        </label>
+                      ) : null}
                       <label className="practice-checkbox-option">
                         <input
                           checked={duetAllowDottedRhythms}
@@ -1207,6 +1223,11 @@ export function PracticeSetupView({
                         <span>附点节奏挑战</span>
                       </label>
                     </div>
+                    {duetLevel === "level-1" ? (
+                      <small className="practice-free-helper">
+                        开启后，Level 1 的每个音符都会按左右手轮流出现，并跨小节连续轮换。
+                      </small>
+                    ) : null}
                     <small className="practice-free-helper">
                       开启后，每四小节乐句的末小节加入附点节奏；左右手编排仍按所选等级进行。
                     </small>
