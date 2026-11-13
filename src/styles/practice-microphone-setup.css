@@ -2270,6 +2270,33 @@
   font-size: 11px;
 }
 
+.practice-free-duet-advanced-options {
+  align-items: start;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 8px 20px;
+}
+
+.practice-free-duet-advanced-option {
+  align-content: start;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.practice-free-duet-advanced-option .practice-checkbox-option {
+  align-items: flex-start;
+  font-size: 11px;
+}
+
+.practice-free-duet-advanced-option .practice-checkbox-option input {
+  margin-block-start: 2px;
+}
+
+.practice-free-duet-advanced-option .practice-free-helper {
+  padding-inline-start: 24px;
+}
+
 .practice-free-advanced-content .practice-free-strategy-field {
   margin-top: 0;
 }

@@ -1201,36 +1201,38 @@ export function PracticeSetupView({
                     <span className="control-label">合弹微调</span>
                     <div className="practice-checkbox-options practice-free-duet-advanced-options">
                       {duetLevel === "level-1" ? (
+                        <div className="practice-free-duet-advanced-option">
+                          <label className="practice-checkbox-option">
+                            <input
+                              checked={duetStrictHandAlternation}
+                              type="checkbox"
+                              onChange={(event) =>
+                                onDuetStrictHandAlternationChange(event.currentTarget.checked)
+                              }
+                            />
+                            <span>左右手轮流出现音符（更难）</span>
+                          </label>
+                          <small className="practice-free-helper">
+                            开启后，Level 1 的每个音符都严格按左右手轮流出现，并跨小节连续轮换。
+                          </small>
+                        </div>
+                      ) : null}
+                      <div className="practice-free-duet-advanced-option">
                         <label className="practice-checkbox-option">
                           <input
-                            checked={duetStrictHandAlternation}
+                            checked={duetAllowDottedRhythms}
                             type="checkbox"
                             onChange={(event) =>
-                              onDuetStrictHandAlternationChange(event.currentTarget.checked)
+                              onDuetAllowDottedRhythmsChange(event.currentTarget.checked)
                             }
                           />
-                          <span>左右手轮流出现音符（更难）</span>
+                          <span>附点节奏挑战</span>
                         </label>
-                      ) : null}
-                      <label className="practice-checkbox-option">
-                        <input
-                          checked={duetAllowDottedRhythms}
-                          type="checkbox"
-                          onChange={(event) =>
-                            onDuetAllowDottedRhythmsChange(event.currentTarget.checked)
-                          }
-                        />
-                        <span>附点节奏挑战</span>
-                      </label>
+                        <small className="practice-free-helper">
+                          开启后，每四小节乐句的末小节加入附点节奏；左右手编排仍按所选等级进行。
+                        </small>
+                      </div>
                     </div>
-                    {duetLevel === "level-1" ? (
-                      <small className="practice-free-helper">
-                        开启后，Level 1 的每个音符都会按左右手轮流出现，并跨小节连续轮换。
-                      </small>
-                    ) : null}
-                    <small className="practice-free-helper">
-                      开启后，每四小节乐句的末小节加入附点节奏；左右手编排仍按所选等级进行。
-                    </small>
                   </section>
                 ) : null}
 
