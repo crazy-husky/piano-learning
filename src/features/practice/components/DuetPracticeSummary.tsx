@@ -66,7 +66,7 @@ export function DuetPracticeSummary({
               {rateDescription({ correct: handTargets[0], total: handTargets[1] }, "个音")}
             </small>
           </article>
-          {(["treble", "bass"] as const).map((staff) => (
+          {(["bass", "treble"] as const).map((staff) => (
             <article className="duet-summary-metric" key={staff}>
               <span>{handLabel(staff)}首答正确率</span>
               <strong>{formatDuetRate(stats.hands[staff])}</strong>

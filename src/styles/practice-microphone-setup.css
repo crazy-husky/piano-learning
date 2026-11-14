@@ -2053,6 +2053,8 @@
 .practice-free-duet-range-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(56px, auto);
+  align-content: start;
   gap: 8px;
 }
 

@@ -75,7 +75,7 @@ interface StaffPagePromptProps {
   noteLabelsAbove?: readonly (string | undefined)[];
   /** Fixed distance above the staff's top line, shared by every label above a note. */
   noteLabelsAboveStaffTopLinePx?: number;
-  /** Shows a fixed-height triangle above the note currently being answered. */
+  /** Shows a fixed-size triangle above the highest notehead in the active onset. */
   currentNoteIndicatorIndex?: number;
   beatsPerMeasure?: number;
   timeSignature?: string;
@@ -1544,13 +1544,13 @@ function addStaffPageCurrentNoteIndicator(
   parent: SVGElement,
   noteIndex: number,
   x: number,
-  staffTopLineY: number,
+  noteTopY: number,
   scale: number,
   isActive: boolean
 ): SVGPolygonElement {
   const indicator = document.createElementNS(SVG_NAMESPACE, "polygon");
-  const baseY = staffTopLineY - logicalPx(28, scale);
-  const tipY = staffTopLineY - logicalPx(20, scale);
+  const baseY = noteTopY - logicalPx(18, scale);
+  const tipY = noteTopY - logicalPx(10, scale);
   const halfWidth = logicalPx(5, scale);
   indicator.setAttribute("class", "staff-page-current-note-indicator");
   indicator.setAttribute("data-note-index", String(noteIndex));
@@ -1564,6 +1564,26 @@ function addStaffPageCurrentNoteIndicator(
   indicator.style.opacity = isActive ? "1" : "0";
   parent.appendChild(indicator);
   return indicator;
+}
+
+function getHighestStaffPageNoteHeadPosition(
+  tickables: Partial<Record<Staff, StaveNote>> | undefined
+): { x: number; y: number } | undefined {
+  const noteHeads = Object.values(tickables ?? {}).flatMap((staveNote) => {
+    if (!staveNote) return [];
+    const noteYs = staveNote.getYs();
+    return staveNote.noteHeads.flatMap((noteHead, index) => {
+      const y = noteYs[index];
+      return typeof y === "number" && Number.isFinite(y)
+        ? [{ x: noteHead.getAbsoluteX() + noteHead.getWidth() / 2, y }]
+        : [];
+    });
+  });
+
+  return noteHeads.reduce<{ x: number; y: number } | undefined>(
+    (highest, current) => (!highest || current.y < highest.y ? current : highest),
+    undefined
+  );
 }
 
 function getBarlineX(
@@ -3228,11 +3248,14 @@ export function StaffPagePrompt({
               currentNoteIndicatorIndexRef.current !== undefined &&
               noteLabelsAboveStaffTopLinePx !== undefined
             ) {
+              const highestNoteHead = getHighestStaffPageNoteHeadPosition(
+                cursorTickablesBySlot[slotIndex]
+              );
               const indicator = addStaffPageCurrentNoteIndicator(
                 rowGroup,
                 currentNoteIndex,
-                lyricX,
-                trebleTopLineY,
+                highestNoteHead?.x ?? lyricX,
+                highestNoteHead?.y ?? trebleTopLineY,
                 surface.scale,
                 currentNoteIndex === currentNoteIndicatorIndexRef.current
               );

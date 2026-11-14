@@ -18,6 +18,7 @@ export const DUET_PRACTICE_RANGE_GROUPS = [
   { id: "C3-B3", staff: "bass", label: "C3–B3" },
   { id: "C4-B4", staff: "treble", label: "C4–B4" },
   { id: "C5-B5", staff: "treble", label: "C5–B5" },
+  { id: "C6-B6", staff: "treble", label: "C6–B6" },
 ] as const satisfies readonly { id: PracticeGroupId; staff: Staff; label: string }[];
 
 export type DuetPracticeRangeGroupId = (typeof DUET_PRACTICE_RANGE_GROUPS)[number]["id"];
@@ -37,7 +38,7 @@ export function getDuetPracticeGroupIds(
   preset: DuetPracticeRangePreset
 ): DuetPracticeRangeGroupId[] {
   return preset === "extended"
-    ? DUET_PRACTICE_RANGE_GROUPS.map(({ id }) => id)
+    ? ["C2-B2", "C3-B3", "C4-B4", "C5-B5"]
     : [...DEFAULT_DUET_PRACTICE_RANGE_GROUP_IDS];
 }
 
