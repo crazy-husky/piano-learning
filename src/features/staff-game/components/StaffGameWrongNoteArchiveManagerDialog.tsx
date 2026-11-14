@@ -280,6 +280,7 @@ export function StaffGameWrongNoteArchiveManagerDialog({
             <StaffGameWrongNoteTrendPanel
               archives={wrongNoteArchives}
               onChangeRange={onChangeRange}
+              preferenceScope="archive-manager"
               range={range}
               scopeDescription="仅统计已加入错题集的错漏局。"
             />
@@ -295,6 +296,7 @@ export function StaffGameWrongNoteArchiveManagerDialog({
             <StaffGameWrongNoteNoteDiagnosticPanel
               archives={wrongNoteArchives}
               onChangeRange={onChangeRange}
+              preferenceScope="archive-manager"
               range={range}
             />
           </div>

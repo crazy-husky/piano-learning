@@ -79,6 +79,35 @@ const EMPTY_SESSIONS: PracticeSessionRecord[] = [];
 type ProficiencyInputMode = StaffGameProficiencySample["inputMode"];
 type ProficiencyGameModeFilter = "learning" | "arcade" | "all";
 
+function parseProficiencyInputMode(
+  value: unknown,
+  fallback: ProficiencyInputMode
+): ProficiencyInputMode {
+  return value === "microphone" || value === "midi" ? value : fallback;
+}
+
+function parseProficiencyGameMode(
+  value: unknown,
+  fallback: ProficiencyGameModeFilter
+): ProficiencyGameModeFilter {
+  return value === "learning" || value === "arcade" || value === "all" ? value : fallback;
+}
+
+function parsePracticeMicrophoneAlgorithm(
+  value: unknown,
+  fallback: PracticeMicrophoneAlgorithm
+): PracticeMicrophoneAlgorithm {
+  return value === "swiftf0" || value === "yin" ? value : fallback;
+}
+
+function parseSensitivityLevel(value: unknown, fallback: 1 | 2 | 3 | 4 | 5): 1 | 2 | 3 | 4 | 5 {
+  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5 ? value : fallback;
+}
+
+function parseWeakNoteSortMode(value: unknown, fallback: "errors" | "response") {
+  return value === "errors" || value === "response" ? value : fallback;
+}
+
 function LegendSwatch({ color }: { color: string }): JSX.Element {
   return <i className="legend-swatch" style={{ backgroundColor: color }} />;
 }
@@ -125,35 +154,50 @@ export function StatsView({
   const [primaryContentReady, setPrimaryContentReady] = useState(false);
   const [answerEvents, setAnswerEvents] = useState<AnswerEvent[]>([]);
   const [proficiencySamples, setProficiencySamples] = useState<StaffGameProficiencySample[]>([]);
+  const microphoneFilterDefaults = useMemo(() => {
+    try {
+      if (typeof localStorage === "undefined") {
+        return { algorithm: "swiftf0" as const, sensitivityLevel: 3 as const };
+      }
+      const microphonePreferences = parsePracticeMicrophonePreferences(
+        JSON.parse(localStorage.getItem(PRACTICE_MICROPHONE_PREFERENCES_KEY) ?? "null")
+      );
+      return {
+        algorithm: microphonePreferences.algorithm,
+        sensitivityLevel: microphonePreferences.sensitivityLevel,
+      };
+    } catch {
+      return { algorithm: "swiftf0" as const, sensitivityLevel: 3 as const };
+    }
+  }, []);
   const [proficiencyInputMode, setProficiencyInputMode] =
-    useState<ProficiencyInputMode>("microphone");
+    useLocalStorageState<ProficiencyInputMode>(
+      "anki-note.stats.proficiencyInputMode.v1",
+      "microphone",
+      { parse: parseProficiencyInputMode }
+    );
   const [proficiencyGameMode, setProficiencyGameMode] =
-    useState<ProficiencyGameModeFilter>("learning");
-  const [proficiencyAlgorithm, setProficiencyAlgorithm] = useState<PracticeMicrophoneAlgorithm>(
-    () => {
-      try {
-        if (typeof localStorage === "undefined") return "swiftf0";
-        return parsePracticeMicrophonePreferences(
-          JSON.parse(localStorage.getItem(PRACTICE_MICROPHONE_PREFERENCES_KEY) ?? "null")
-        ).algorithm;
-      } catch {
-        return "swiftf0";
-      }
-    }
+    useLocalStorageState<ProficiencyGameModeFilter>(
+      "anki-note.stats.proficiencyGameMode.v1",
+      "learning",
+      { parse: parseProficiencyGameMode }
+    );
+  const [proficiencyAlgorithm, setProficiencyAlgorithm] =
+    useLocalStorageState<PracticeMicrophoneAlgorithm>(
+      "anki-note.stats.proficiencyAlgorithm.v1",
+      microphoneFilterDefaults.algorithm,
+      { parse: parsePracticeMicrophoneAlgorithm }
+    );
+  const [proficiencySensitivityLevel, setProficiencySensitivityLevel] = useLocalStorageState<
+    1 | 2 | 3 | 4 | 5
+  >("anki-note.stats.proficiencySensitivity.v1", microphoneFilterDefaults.sensitivityLevel, {
+    parse: parseSensitivityLevel,
+  });
+  const [weakNoteSortMode, setWeakNoteSortMode] = useLocalStorageState<"errors" | "response">(
+    "anki-note.stats.weakNoteSort.v1",
+    "errors",
+    { parse: parseWeakNoteSortMode }
   );
-  const [proficiencySensitivityLevel, setProficiencySensitivityLevel] = useState<1 | 2 | 3 | 4 | 5>(
-    () => {
-      try {
-        if (typeof localStorage === "undefined") return 3;
-        return parsePracticeMicrophonePreferences(
-          JSON.parse(localStorage.getItem(PRACTICE_MICROPHONE_PREFERENCES_KEY) ?? "null")
-        ).sensitivityLevel;
-      } catch {
-        return 3;
-      }
-    }
-  );
-  const [weakNoteSortMode, setWeakNoteSortMode] = useState<"errors" | "response">("errors");
   const [customRangeDraft, setCustomRangeDraft] = useState(() =>
     String(statsUiPreferences.customRangeDays)
   );

@@ -14,6 +14,7 @@ import type { StaffGameWrongNoteRange } from "../../../domain/staffGameWrongNote
 import { StaffGameWrongNoteNoteDiagnosticPanel } from "../../staff-game/components/StaffGameWrongNoteNoteDiagnosticPanel";
 import { StaffGameWrongNoteTrendPanel } from "../../staff-game/components/StaffGameWrongNoteTrendPanel";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
+import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import type { PlaygroundStatsTab } from "../../../routing/appRoutes";
 
 interface ChallengeProgressSnapshot {
@@ -30,9 +31,27 @@ const EMPTY_CHALLENGE_PROGRESS: ChallengeProgressSnapshot = {
   unlockedLevel: 1,
 };
 
+function parseWrongNoteRange(value: unknown, fallback: StaffGameWrongNoteRange) {
+  return value === 3 || value === 7 || value === 15 || value === 30 || value === "all"
+    ? value
+    : fallback;
+}
+
+function parseChallengeMode(value: unknown, fallback: "learning" | "arcade") {
+  return value === "learning" || value === "arcade" ? value : fallback;
+}
+
+function parseSongStatsMode(value: unknown, fallback: "score" | "bubble") {
+  return value === "score" || value === "bubble" ? value : fallback;
+}
+
 function ChallengeLearningWrongNoteStats(): JSX.Element {
   const { archives, error, loading, retry } = useStaffGameWrongNoteArchives();
-  const [range, setRange] = useState<StaffGameWrongNoteRange>("all");
+  const [range, setRange] = useLocalStorageState<StaffGameWrongNoteRange>(
+    "anki-note.playground.learningWrongNoteRange.v1",
+    "all",
+    { parse: parseWrongNoteRange }
+  );
   const learningArchives = useMemo(
     () => filterStaffGameWrongNoteLearningChallengeArchivesWithErrors(archives),
     [archives]
@@ -87,6 +106,7 @@ function ChallengeLearningWrongNoteStats(): JSX.Element {
             <StaffGameWrongNoteTrendPanel
               archives={learningArchives}
               onChangeRange={setRange}
+              preferenceScope="playground-learning"
               range={range}
               scopeDescription="仅包含学习模式的闯关记录。"
               showRangeControl={false}
@@ -101,6 +121,7 @@ function ChallengeLearningWrongNoteStats(): JSX.Element {
               archives={learningArchives}
               fixedGameMode="learning"
               onChangeRange={setRange}
+              preferenceScope="playground-learning"
               range={range}
               showModeControl={false}
               showRangeControl={false}
@@ -145,7 +166,11 @@ function readChallengeProgress(): ChallengeProgressSnapshot {
 function ChallengeStats({ dataSetId }: { dataSetId: string }): JSX.Element {
   const [events, setEvents] = useState<AnswerEvent[] | null>(null);
   const [progress, setProgress] = useState(readChallengeProgress);
-  const [mode, setMode] = useState<"learning" | "arcade">("learning");
+  const [mode, setMode] = useLocalStorageState<"learning" | "arcade">(
+    "anki-note.playground.challengeMode.v1",
+    "learning",
+    { parse: parseChallengeMode }
+  );
 
   useEffect(() => {
     let active = true;
@@ -326,7 +351,11 @@ export function PlaygroundStatsView({
   onTabChange: (tab: PlaygroundStatsTab) => void;
   showTabs?: boolean;
 }): JSX.Element {
-  const [songStatsMode, setSongStatsMode] = useState<"score" | "bubble">("bubble");
+  const [songStatsMode, setSongStatsMode] = useLocalStorageState<"score" | "bubble">(
+    "anki-note.playground.songStatsMode.v1",
+    "bubble",
+    { parse: parseSongStatsMode }
+  );
 
   return (
     <section

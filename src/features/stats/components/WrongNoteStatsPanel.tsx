@@ -225,6 +225,7 @@ export function WrongNoteStatsPanel({
             <StaffGameWrongNoteTrendPanel
               archives={rangedArchives}
               onChangeRange={() => undefined}
+              preferenceScope="main-stats"
               range="all"
               scopeDescription="所有符合条件的闯关与错题复习都会计入；是否加入错题集不影响练习趋势。"
               showRangeControl={false}
@@ -244,6 +245,7 @@ export function WrongNoteStatsPanel({
             <StaffGameWrongNoteNoteDiagnosticPanel
               archives={trendEligibleArchives}
               onChangeRange={() => undefined}
+              preferenceScope="main-stats"
               range="all"
               showRangeControl={false}
             />

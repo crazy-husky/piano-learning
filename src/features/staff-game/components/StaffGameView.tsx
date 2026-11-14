@@ -50,6 +50,7 @@ import {
 } from "../../../data/db";
 import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
+import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { guideSetupRequirement } from "../../../shared/utils/guideSetupRequirement";
 import { VirtualPianoKeyboard } from "../../../shared/components/VirtualPianoKeyboard";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
@@ -167,6 +168,12 @@ import {
   shouldShowFastPlayingHint,
 } from "../logic/staffGameProficiency";
 import type { GameDifficulty } from "../logic/staffGameRules";
+
+function parseWrongNoteArchiveRange(value: unknown, fallback: StaffGameWrongNoteRange) {
+  return value === 3 || value === 7 || value === 15 || value === 30 || value === "all"
+    ? value
+    : fallback;
+}
 
 function nextWrongNoteRunUpdatedAt(run: StaffGameWrongNoteArchiveRun): string {
   const previous = Date.parse(run.updatedAt ?? run.endedAt);
@@ -898,6 +905,10 @@ export function StaffGameView({
   onSessionActiveChange,
   onRegisterAnswerHandler,
 }: StaffGameViewProps): JSX.Element {
+  const connectMidiIfPermitted = midi.connectIfPermitted;
+  useEffect(() => {
+    void connectMidiIfPermitted?.();
+  }, [connectMidiIfPermitted]);
   const confirmDialog = useConfirmDialog();
   const microphoneError = microphone.error;
   const suppressRecognizedNotes = microphone.suppressRecognizedNotes;
@@ -985,7 +996,9 @@ export function StaffGameView({
   const [wrongNoteReviewRange, setWrongNoteReviewRange] = useState<StaffGameWrongNoteRange>(7);
   const [wrongNoteReviewConditionId, setWrongNoteReviewConditionId] = useState("all-learning");
   const [wrongNoteArchiveManagerRange, setWrongNoteArchiveManagerRange] =
-    useState<StaffGameWrongNoteRange>(7);
+    useLocalStorageState<StaffGameWrongNoteRange>("anki-note.staffGame.archiveManagerRange.v1", 7, {
+      parse: parseWrongNoteArchiveRange,
+    });
   const [wrongNoteStudyRange, setWrongNoteStudyRange] = useState<StaffGameWrongNoteRange | null>(
     null
   );
@@ -3258,12 +3271,11 @@ export function StaffGameView({
   }, []);
 
   const openWrongNoteArchiveManager = useCallback((): void => {
-    setWrongNoteArchiveManagerRange(wrongNoteReviewRange);
     setIsWrongNoteArchiveManagerOpen(true);
     void restoreStaffGameWrongNoteArchiveResponseTimes()
       .then((archives) => setWrongNoteArchives(archives))
       .catch(() => undefined);
-  }, [wrongNoteReviewRange]);
+  }, []);
 
   const closeWrongNoteArchiveManager = useCallback((): void => {
     setIsWrongNoteArchiveManagerOpen(false);

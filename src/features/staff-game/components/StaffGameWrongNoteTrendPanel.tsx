@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import type { StaffGameWrongNoteArchive } from "../../../domain/types";
 import {
   buildStaffGameWrongNoteTrendGroups,
@@ -8,6 +8,7 @@ import {
   type StaffGameWrongNoteTrendSource,
 } from "../../../domain/staffGameWrongNoteTrends";
 import type { StaffGameWrongNoteRange } from "../../../domain/staffGameWrongNoteArchives";
+import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import {
   StaffGameWrongNoteTrendChart,
   type StaffGameWrongNoteTrendMetric,
@@ -47,6 +48,21 @@ const NOTE_SCHEDULING_LABELS: Record<string, string> = {
   system: "重点音优先",
 };
 
+function parseTrendSource(
+  value: unknown,
+  fallback: StaffGameWrongNoteTrendSource
+): StaffGameWrongNoteTrendSource {
+  return value === "review" || value === "challenge" ? value : fallback;
+}
+
+function parseTrendGroupId(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function parseTrendMetric(value: unknown, fallback: StaffGameWrongNoteTrendMetric) {
+  return value === "accuracy" || value === "response" ? value : fallback;
+}
+
 function trendGroupLabel(group: StaffGameWrongNoteTrendGroup): string {
   const parts =
     group.source === "review"
@@ -76,16 +92,30 @@ export function StaffGameWrongNoteTrendPanel({
   range,
   scopeDescription,
   showRangeControl = true,
+  preferenceScope = "default",
 }: {
   archives: readonly StaffGameWrongNoteArchive[];
   range: StaffGameWrongNoteRange;
   onChangeRange: (range: StaffGameWrongNoteRange) => void;
   scopeDescription?: string;
   showRangeControl?: boolean;
+  preferenceScope?: string;
 }): JSX.Element {
-  const [requestedSource, setRequestedSource] = useState<StaffGameWrongNoteTrendSource>("review");
-  const [selectedGroupId, setSelectedGroupId] = useState("");
-  const [metric, setMetric] = useState<StaffGameWrongNoteTrendMetric>("accuracy");
+  const [requestedSource, setRequestedSource] = useLocalStorageState<StaffGameWrongNoteTrendSource>(
+    `anki-note.staffGame.wrongNoteTrend.${preferenceScope}.source.v1`,
+    "review",
+    { parse: parseTrendSource }
+  );
+  const [selectedGroupId, setSelectedGroupId] = useLocalStorageState(
+    `anki-note.staffGame.wrongNoteTrend.${preferenceScope}.group.v1`,
+    "",
+    { parse: parseTrendGroupId }
+  );
+  const [metric, setMetric] = useLocalStorageState<StaffGameWrongNoteTrendMetric>(
+    `anki-note.staffGame.wrongNoteTrend.${preferenceScope}.metric.v1`,
+    "accuracy",
+    { parse: parseTrendMetric }
+  );
   const groups = useMemo(
     () => buildStaffGameWrongNoteTrendGroups(archives, range),
     [archives, range]
@@ -109,7 +139,7 @@ export function StaffGameWrongNoteTrendPanel({
     if (selectedGroup && selectedGroup.id !== selectedGroupId) {
       setSelectedGroupId(selectedGroup.id);
     }
-  }, [selectedGroup, selectedGroupId]);
+  }, [selectedGroup, selectedGroupId, setSelectedGroupId]);
 
   const trend = useMemo(
     () => (selectedGroup ? buildStaffGameWrongNoteTrendPoints(selectedGroup) : null),

@@ -11,6 +11,7 @@ import type { LearningLevelId } from "../../../routing/appRoutes";
 import { db, deletePracticeSessionWithReviews } from "../../../data/db";
 import { buildDuetPracticeSummaryStats, formatDuetRate } from "../../../domain/duetPracticeSummary";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
+import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { LearningPracticeDialog, LearningWeakDetailsDialog } from "./LearningPracticeDialog";
 import { buildDuetWrongNoteTestPlan, type DuetWrongNoteTestPlan } from "../duetWrongNoteTest";
 import {
@@ -48,6 +49,96 @@ interface LearningStatsReturnFilters {
   customEnd: string;
   pitchGroups: string[];
   dimension: string;
+}
+
+interface LearningStatsPreferences {
+  range: LearningStatsRange;
+  customStart: string;
+  customEnd: string;
+  pitchGroups: string[];
+  dimension: string;
+  metric: LearningStatsMetric;
+  managerRange: LearningStatsRange;
+  managerCustomStart: string;
+  managerCustomEnd: string;
+  managerPitchGroups: string[];
+  managerDimension: string;
+  weakSortMode: WeakSortMode;
+}
+
+function parseLearningStatsPreferences(
+  value: unknown,
+  fallback: LearningStatsPreferences,
+  levelId: LearningLevelId
+): LearningStatsPreferences {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return fallback;
+  const stored = value as Partial<LearningStatsPreferences>;
+  const dimensions = getLearningStatsDimensions(levelId);
+  const validDimension = (candidate: unknown, defaultValue: string): string =>
+    typeof candidate === "string" && dimensions.some((option) => option.value === candidate)
+      ? candidate
+      : defaultValue;
+  const validRange = (candidate: unknown, defaultValue: LearningStatsRange): LearningStatsRange =>
+    LEARNING_STATS_RANGES.some((option) => option.value === candidate)
+      ? (candidate as LearningStatsRange)
+      : defaultValue;
+  const validPitchGroups = (candidate: unknown, defaultValue: string[]): string[] => {
+    if (!Array.isArray(candidate)) return defaultValue;
+    const selected = [...new Set(candidate)].filter(
+      (item): item is string =>
+        typeof item === "string" &&
+        LEARNING_STATS_PITCH_OPTIONS.some((option) => option.value === item)
+    );
+    return selected.length ? selected : defaultValue;
+  };
+  const dimension = validDimension(stored.dimension, fallback.dimension);
+  const managerDimension = validDimension(stored.managerDimension, fallback.managerDimension);
+  const metricOptions: LearningStatsMetric[] =
+    levelId === 1
+      ? ["duration", "volume"]
+      : levelId === 6
+        ? [
+            "right-hand",
+            "left-hand",
+            "beat",
+            ...(dimension === "level-1" ? [] : ["both-hands" as const]),
+          ]
+        : ["accuracy", "response", "volume"];
+  return {
+    range: validRange(stored.range, fallback.range),
+    customStart: typeof stored.customStart === "string" ? stored.customStart : fallback.customStart,
+    customEnd: typeof stored.customEnd === "string" ? stored.customEnd : fallback.customEnd,
+    pitchGroups: validPitchGroups(stored.pitchGroups, fallback.pitchGroups),
+    dimension,
+    metric:
+      typeof stored.metric === "string" &&
+      metricOptions.includes(stored.metric as LearningStatsMetric)
+        ? (stored.metric as LearningStatsMetric)
+        : fallback.metric,
+    managerRange: validRange(stored.managerRange, fallback.managerRange),
+    managerCustomStart:
+      typeof stored.managerCustomStart === "string"
+        ? stored.managerCustomStart
+        : fallback.managerCustomStart,
+    managerCustomEnd:
+      typeof stored.managerCustomEnd === "string"
+        ? stored.managerCustomEnd
+        : fallback.managerCustomEnd,
+    managerPitchGroups: validPitchGroups(stored.managerPitchGroups, fallback.managerPitchGroups),
+    managerDimension,
+    weakSortMode:
+      stored.weakSortMode === "frequency" || stored.weakSortMode === "occurrence"
+        ? stored.weakSortMode
+        : fallback.weakSortMode,
+  };
+}
+
+function hasStoredLearningStatsPreferences(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) !== null;
+  } catch {
+    return false;
+  }
 }
 
 function consumeDuetTestReturnFilters(levelId: LearningLevelId): LearningStatsReturnFilters | null {
@@ -151,31 +242,106 @@ export function LearningStatsCenter({
 }): JSX.Element {
   const confirmDialog = useConfirmDialog();
   const [returnFilters] = useState(() => consumeDuetTestReturnFilters(levelId));
+  const filterPreferencesKey = `anki-note.learningStats.${levelId}.filters.v1`;
+  const hadStoredFiltersRef = useRef(
+    hasStoredLearningStatsPreferences(filterPreferencesKey) || returnFilters !== null
+  );
+  const filterPreferencesFallback = useMemo<LearningStatsPreferences>(
+    () => ({
+      range: returnFilters?.range ?? "30",
+      customStart: returnFilters?.customStart ?? "",
+      customEnd: returnFilters?.customEnd ?? "",
+      pitchGroups: returnFilters?.pitchGroups ?? ["all"],
+      dimension: returnFilters?.dimension ?? (levelId === 6 ? "level-1" : "all"),
+      metric: levelId === 1 ? "duration" : levelId === 6 ? "right-hand" : "accuracy",
+      managerRange: "all",
+      managerCustomStart: "",
+      managerCustomEnd: "",
+      managerPitchGroups: ["all"],
+      managerDimension: returnFilters?.dimension ?? (levelId === 6 ? "level-1" : "all"),
+      weakSortMode: "frequency",
+    }),
+    [levelId, returnFilters]
+  );
+  const parseFilterPreferences = useCallback(
+    (value: unknown, fallback: LearningStatsPreferences) =>
+      parseLearningStatsPreferences(value, fallback, levelId),
+    [levelId]
+  );
+  const [filterPreferences, setFilterPreferences] = useLocalStorageState(
+    filterPreferencesKey,
+    filterPreferencesFallback,
+    { parse: parseFilterPreferences }
+  );
+  const {
+    range,
+    customStart,
+    customEnd,
+    pitchGroups,
+    dimension,
+    metric,
+    managerRange,
+    managerCustomStart,
+    managerCustomEnd,
+    managerPitchGroups,
+    managerDimension,
+    weakSortMode,
+  } = filterPreferences;
+  const setRange = useCallback(
+    (value: LearningStatsRange): void =>
+      setFilterPreferences((current) => ({ ...current, range: value })),
+    [setFilterPreferences]
+  );
+  const setCustomStart = useCallback(
+    (value: string): void =>
+      setFilterPreferences((current) => ({ ...current, customStart: value })),
+    [setFilterPreferences]
+  );
+  const setCustomEnd = useCallback(
+    (value: string): void => setFilterPreferences((current) => ({ ...current, customEnd: value })),
+    [setFilterPreferences]
+  );
+  const setDimension = useCallback(
+    (value: string): void => setFilterPreferences((current) => ({ ...current, dimension: value })),
+    [setFilterPreferences]
+  );
+  const setMetric = useCallback(
+    (value: LearningStatsMetric): void =>
+      setFilterPreferences((current) => ({ ...current, metric: value })),
+    [setFilterPreferences]
+  );
+  const setManagerRange = useCallback(
+    (value: LearningStatsRange): void =>
+      setFilterPreferences((current) => ({ ...current, managerRange: value })),
+    [setFilterPreferences]
+  );
+  const setManagerCustomStart = useCallback(
+    (value: string): void =>
+      setFilterPreferences((current) => ({ ...current, managerCustomStart: value })),
+    [setFilterPreferences]
+  );
+  const setManagerCustomEnd = useCallback(
+    (value: string): void =>
+      setFilterPreferences((current) => ({ ...current, managerCustomEnd: value })),
+    [setFilterPreferences]
+  );
+  const setManagerDimension = useCallback(
+    (value: string): void =>
+      setFilterPreferences((current) => ({ ...current, managerDimension: value })),
+    [setFilterPreferences]
+  );
+  const setWeakSortMode = useCallback(
+    (value: WeakSortMode): void =>
+      setFilterPreferences((current) => ({ ...current, weakSortMode: value })),
+    [setFilterPreferences]
+  );
   const [events, setEvents] = useState<AnswerEvent[] | null>(null);
-  const [range, setRange] = useState<LearningStatsRange>(returnFilters?.range ?? "30");
-  const [customStart, setCustomStart] = useState(returnFilters?.customStart ?? "");
-  const [customEnd, setCustomEnd] = useState(returnFilters?.customEnd ?? "");
-  const [pitchGroups, setPitchGroups] = useState<string[]>(returnFilters?.pitchGroups ?? ["all"]);
-  const [dimension, setDimension] = useState(
-    returnFilters?.dimension ?? (levelId === 6 ? "level-1" : "all")
-  );
   const dimensionWasManuallyChangedRef = useRef(false);
-  const [metric, setMetric] = useState<LearningStatsMetric>(
-    levelId === 1 ? "duration" : levelId === 6 ? "right-hand" : "accuracy"
-  );
   const [managerOpen, setManagerOpen] = useState(false);
-  const [managerRange, setManagerRange] = useState<LearningStatsRange>("all");
-  const [managerCustomStart, setManagerCustomStart] = useState("");
-  const [managerCustomEnd, setManagerCustomEnd] = useState("");
-  const [managerPitchGroups, setManagerPitchGroups] = useState<string[]>(["all"]);
   const statsPitchFilterDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const managerPitchFilterDetailsRef = useRef<HTMLDetailsElement | null>(null);
-  const [managerDimension, setManagerDimension] = useState(
-    returnFilters?.dimension ?? (levelId === 6 ? "level-1" : "all")
-  );
   const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
   const [actionMode, setActionMode] = useState<ActionMode | null>(null);
-  const [weakSortMode, setWeakSortMode] = useState<WeakSortMode>("frequency");
   const [weakPage, setWeakPage] = useState(0);
   const [detailItem, setDetailItem] = useState<WeakPracticeItem | null>(null);
   const [busy, setBusy] = useState(false);
@@ -225,6 +391,7 @@ export function LearningStatsCenter({
       levelId !== 6 ||
       events === null ||
       returnFilters !== null ||
+      hadStoredFiltersRef.current ||
       dimensionWasManuallyChangedRef.current
     ) {
       return;
@@ -237,12 +404,21 @@ export function LearningStatsCenter({
       );
     setDimension(latestLevel ?? "level-1");
     setManagerDimension(latestLevel ?? "level-1");
-  }, [dimensions, events, levelId, moduleEvents, returnFilters, sessionsById]);
+  }, [
+    dimensions,
+    events,
+    levelId,
+    moduleEvents,
+    returnFilters,
+    sessionsById,
+    setDimension,
+    setManagerDimension,
+  ]);
   useEffect(() => {
     if (levelId === 6 && dimension === "level-1" && metric === "both-hands") {
       setMetric("right-hand");
     }
-  }, [dimension, levelId, metric]);
+  }, [dimension, levelId, metric, setMetric]);
   const selectedEvents = useMemo(
     () =>
       moduleEvents.filter(
@@ -458,7 +634,6 @@ export function LearningStatsCenter({
 
   const openManager = (): void => {
     setSelectedRecords(new Set());
-    setManagerDimension(dimension);
     setManagerOpen(true);
   };
 
@@ -644,9 +819,10 @@ export function LearningStatsCenter({
                     <input
                       checked={pitchGroups.includes(option.value)}
                       onChange={() =>
-                        setPitchGroups((current) =>
-                          togglePitchGroupSelection(current, option.value)
-                        )
+                        setFilterPreferences((current) => ({
+                          ...current,
+                          pitchGroups: togglePitchGroupSelection(current.pitchGroups, option.value),
+                        }))
                       }
                       type="checkbox"
                     />
@@ -1078,9 +1254,13 @@ export function LearningStatsCenter({
                         <input
                           checked={managerPitchGroups.includes(option.value)}
                           onChange={() =>
-                            setManagerPitchGroups((current) =>
-                              togglePitchGroupSelection(current, option.value)
-                            )
+                            setFilterPreferences((current) => ({
+                              ...current,
+                              managerPitchGroups: togglePitchGroupSelection(
+                                current.managerPitchGroups,
+                                option.value
+                              ),
+                            }))
                           }
                           type="checkbox"
                         />

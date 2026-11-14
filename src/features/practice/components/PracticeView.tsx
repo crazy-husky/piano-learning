@@ -634,8 +634,10 @@ export function PracticeView({
     wrongAnswerCount,
     setCompletedCount,
     setCurrentNote,
+    setSession,
     setPhase,
     summary,
+    setSummary,
     setWrongAnswerCount,
   } = usePracticeSessionState();
   const [feedback, setFeedback] = useState<{
@@ -662,6 +664,7 @@ export function PracticeView({
   const [songInputMode, setSongInputMode] = useState<PracticeInputMode | null>(null);
   const midiConnectedRef = useRef(midi.isConnected);
   midiConnectedRef.current = midi.isConnected;
+  const connectMidiIfPermitted = midi.connectIfPermitted;
   const previousMidiConnectionRef = useRef(midi.isConnected);
   const answerPitchModeSelectionRevisionRef = useRef(0);
   const [isStaffDistanceRunning, setIsStaffDistanceRunning] = useState(false);
@@ -674,6 +677,10 @@ export function PracticeView({
   const [isRestartingPractice, setIsRestartingPractice] = useState(false);
   const [setupStartError, setSetupStartError] = useState<string | null>(null);
   const [setupStartGuideRequest, setSetupStartGuideRequest] = useState(0);
+  useEffect(() => {
+    if (phase === "summary" && !songPracticeSelection) return;
+    void connectMidiIfPermitted?.();
+  }, [connectMidiIfPermitted, phase, practiceTab, songPracticeSelection]);
   const handleStaffDistanceStageChange = useCallback(
     (active: boolean): void => {
       setIsStaffDistanceStageActive(active);
@@ -763,7 +770,7 @@ export function PracticeView({
   const duetStrictHandAlternation = runningStartSnapshot
     ? runningStartSnapshot.practiceConfig.duetStrictHandAlternation === true
     : duetWrongNoteTestPlan
-      ? false
+      ? duetLevel === "level-1" && practiceSetupPreferences.duetStrictHandAlternation
       : practiceSetupPreferences.duetStrictHandAlternation;
   const duetRangePreset = normalizeDuetPracticeRangePreset(
     duetWrongNoteTestPlan?.rangePreset ?? practiceSetupPreferences.duetRangePreset
@@ -2408,20 +2415,40 @@ export function PracticeView({
   const restartCurrentPractice = useCallback(async (): Promise<void> => {
     if (!isLearningRoutePractice || phase !== "running" || isRestartingPractice) return;
     setIsRestartingPractice(true);
+    const showSetupIfRestartDidNotBegin = (): void => {
+      if (sessionRef.current) return;
+      setSession(null);
+      setCurrentNote(null);
+      setSummary(null);
+      setPhase("setup");
+    };
     try {
       await completeSession("manual-stop", "manual-stop", {
         discard: true,
         showSummary: false,
+        updateUi: false,
       });
       sessionReviewsRef.current = [];
       sessionStartSnapshotRef.current = null;
       await startSession();
+      showSetupIfRestartDidNotBegin();
     } catch (error) {
+      showSetupIfRestartDidNotBegin();
       toast.error(`重新开始练习失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsRestartingPractice(false);
     }
-  }, [completeSession, isLearningRoutePractice, isRestartingPractice, phase, startSession]);
+  }, [
+    completeSession,
+    isLearningRoutePractice,
+    isRestartingPractice,
+    phase,
+    setCurrentNote,
+    setPhase,
+    setSession,
+    setSummary,
+    startSession,
+  ]);
   const replayTarget = useCallback(async (): Promise<void> => {
     const prompt = promptRef.current;
     if (!prompt || isPausedRef.current || answerPitchMode === "microphone") {
@@ -2439,6 +2466,25 @@ export function PracticeView({
     }
     await playTargetNote(prompt.note).catch(() => undefined);
   }, [answerPitchMode, markPromptInput]);
+
+  const returnFromPractice = useCallback((): void => {
+    if (endingRef.current) return;
+    if (duetWrongNoteTestPlan && onWrongNoteTestExit) {
+      void completeSession("manual-stop", "manual-stop", {
+        discard: true,
+        showSummary: false,
+        updateUi: false,
+      })
+        .catch((error: unknown) => {
+          toast.error(
+            `退出错题测试失败：${error instanceof Error ? error.message : String(error)}`
+          );
+        })
+        .finally(onWrongNoteTestExit);
+      return;
+    }
+    void completeSession("manual-stop", "manual-stop", { showSummary: false });
+  }, [completeSession, duetWrongNoteTestPlan, endingRef, onWrongNoteTestExit]);
 
   const duetStaffPageNoteCount = isMobileViewport
     ? DUET_MOBILE_STAFF_PAGE_NOTE_COUNT
@@ -3893,16 +3939,14 @@ export function PracticeView({
         <div className="topline-actions">
           <div className="practice-run-core-actions">
             <button
-              aria-label="结束练习并返回配置"
+              aria-label={duetWrongNoteTestPlan ? "结束测试并返回统计" : "结束练习并返回配置"}
               className="practice-return-home"
-              title="结束练习并返回配置"
-              onClick={() =>
-                void completeSession("manual-stop", "manual-stop", { showSummary: false })
-              }
+              title={duetWrongNoteTestPlan ? "返回统计" : "结束练习并返回配置"}
+              onClick={returnFromPractice}
               type="button"
             >
               <ArrowLeft aria-hidden="true" size={18} />
-              结束返回
+              {duetWrongNoteTestPlan ? "返回统计" : "结束返回"}
             </button>
             <button
               title={

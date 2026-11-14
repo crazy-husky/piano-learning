@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AnswerEvent,
   DuetPracticeLevel,
@@ -8,6 +8,7 @@ import type {
 } from "../../../domain/types";
 import { db } from "../../../data/db";
 import { buildDuetPracticeSummaryStats, formatDuetRate } from "../../../domain/duetPracticeSummary";
+import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 
 type ModuleEventKind =
   "name-to-key" | "staff-to-name" | "staff-distance" | "pre-reading" | "duet" | "blind-practice";
@@ -182,10 +183,6 @@ export function ModuleEventStats({
   sessions?: PracticeSessionRecord[];
 }): JSX.Element {
   const [events, setEvents] = useState<AnswerEvent[] | null>(null);
-  const [filterSelection, setFilterSelection] = useState<{
-    kind: ModuleEventKind;
-    value: string;
-  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -203,8 +200,18 @@ export function ModuleEventStats({
   }, []);
 
   const dimensionFilter = DIMENSION_FILTERS[kind];
-  const activeFilter =
-    filterSelection?.kind === kind ? filterSelection.value : dimensionFilter?.options[0]?.value;
+  const parseFilter = useCallback(
+    (value: unknown, fallback: string) =>
+      typeof value === "string" && dimensionFilter?.options.some((option) => option.value === value)
+        ? value
+        : fallback,
+    [dimensionFilter]
+  );
+  const [activeFilter, setActiveFilter] = useLocalStorageState(
+    `anki-note.moduleEventStats.${kind}.filter.v1`,
+    dimensionFilter?.options[0]?.value ?? "",
+    { parse: parseFilter }
+  );
   const sessionsById = useMemo(
     () => new Map(sessions.map((session) => [session.id, session])),
     [sessions]
@@ -321,7 +328,7 @@ export function ModuleEventStats({
                 aria-pressed={activeFilter === option.value}
                 className={activeFilter === option.value ? "is-active" : ""}
                 key={option.value}
-                onClick={() => setFilterSelection({ kind, value: option.value })}
+                onClick={() => setActiveFilter(option.value)}
                 type="button"
               >
                 {option.label}

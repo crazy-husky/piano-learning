@@ -29,6 +29,7 @@ export interface MidiInputDevice {
 
 export interface MidiInputController {
   connect: () => Promise<void>;
+  connectIfPermitted?: () => Promise<boolean>;
   errorMessage?: string;
   inputs: MidiInputDevice[];
   isConnected: boolean;
@@ -98,6 +99,7 @@ export function useMidiInput(): MidiInputController {
   const subscribersRef = useRef(new Set<(event: MidiNoteInputEvent) => void>());
   const inputListenersRef = useRef<Listener[]>([]);
   const webMidiListenersRef = useRef<Listener[]>([]);
+  const autoConnectPromiseRef = useRef<Promise<boolean> | null>(null);
 
   selectedInputIdRef.current = selectedInputId;
   statusRef.current = status;
@@ -255,7 +257,37 @@ export function useMidiInput(): MidiInputController {
     [attachWebMidiListeners, hasNativeMidiAccess, isSecureMidiContext, refreshInputs]
   );
 
-  const connect = useCallback((): Promise<void> => enableMidi(false), [enableMidi]);
+  const connect = useCallback(async (): Promise<void> => {
+    const automaticAttempt = autoConnectPromiseRef.current;
+    if (automaticAttempt) await automaticAttempt;
+    await enableMidi(false);
+  }, [enableMidi]);
+
+  const connectIfPermitted = useCallback((): Promise<boolean> => {
+    if (WebMidi.enabled) {
+      attachWebMidiListeners();
+      refreshInputs();
+      setErrorMessage(undefined);
+      setStatus("ready");
+      return Promise.resolve(true);
+    }
+    if (autoConnectPromiseRef.current) return autoConnectPromiseRef.current;
+
+    const attempt = (async (): Promise<boolean> => {
+      const granted = await isMidiPermissionGranted(
+        typeof navigator === "undefined" ? undefined : navigator.permissions
+      );
+      if (!granted) return false;
+      await enableMidi(true);
+      return WebMidi.enabled;
+    })();
+    autoConnectPromiseRef.current = attempt;
+    const clearInFlight = (): void => {
+      if (autoConnectPromiseRef.current === attempt) autoConnectPromiseRef.current = null;
+    };
+    void attempt.then(clearInFlight, clearInFlight);
+    return attempt;
+  }, [attachWebMidiListeners, enableMidi, refreshInputs]);
 
   const selectInput = useCallback(
     (inputId: string): void => {
@@ -284,21 +316,9 @@ export function useMidiInput(): MidiInputController {
   }, [attachWebMidiListeners, refreshInputs]);
 
   useEffect(() => {
-    if (status !== "idle" || WebMidi.enabled) {
-      return;
-    }
-    let cancelled = false;
-    void isMidiPermissionGranted(
-      typeof navigator === "undefined" ? undefined : navigator.permissions
-    ).then((granted) => {
-      if (!cancelled && granted && statusRef.current === "idle") {
-        void enableMidi(true);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [enableMidi, status]);
+    if (status !== "idle" || WebMidi.enabled) return;
+    void connectIfPermitted();
+  }, [connectIfPermitted, status]);
 
   useEffect(
     () => () => {
@@ -315,6 +335,7 @@ export function useMidiInput(): MidiInputController {
   return useMemo(
     () => ({
       connect,
+      connectIfPermitted,
       errorMessage,
       inputs,
       isConnected: status === "ready" && selectedInput !== undefined,
@@ -327,6 +348,7 @@ export function useMidiInput(): MidiInputController {
     }),
     [
       connect,
+      connectIfPermitted,
       errorMessage,
       inputs,
       lastNote,

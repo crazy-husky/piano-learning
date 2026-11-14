@@ -349,10 +349,7 @@ export function usePracticeSessionStart({
           duetCurriculumVersion: isDuetPractice ? DUET_PRACTICE_CURRICULUM_VERSION : undefined,
           duetAllowDottedRhythms: isDuetPractice ? duetAllowDottedRhythms : undefined,
           duetStrictHandAlternation:
-            isDuetPractice &&
-            duetLevel === "level-1" &&
-            !isDuetWrongNoteTest &&
-            duetStrictHandAlternation,
+            isDuetPractice && duetLevel === "level-1" && duetStrictHandAlternation,
           metronomeSync:
             shouldSynchronizeMetronome &&
             (availablePreflightAnswerPitchMode === "exact-pitch" || isBlindPractice),

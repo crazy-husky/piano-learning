@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { PITCH_OCTAVE_GROUPS } from "../../../domain/notes";
 import type { StaffGameWrongNoteArchive } from "../../../domain/types";
 import {
@@ -7,6 +7,7 @@ import {
   type StaffGameWrongNoteRange,
   type StaffGameWrongNoteGameModeFilter,
 } from "../../../domain/staffGameWrongNoteArchives";
+import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { gameNoteFromMidi, staffGameSolfegeLabel } from "../logic/staffGameRules";
 
 function octaveGroupLabel(octave: number): string {
@@ -17,6 +18,13 @@ function octaveGroupLabel(octave: number): string {
   );
 }
 
+function parseGameMode(
+  value: unknown,
+  fallback: StaffGameWrongNoteGameModeFilter
+): StaffGameWrongNoteGameModeFilter {
+  return value === "learning" || value === "arcade" || value === "all" ? value : fallback;
+}
+
 export function StaffGameWrongNoteNoteDiagnosticPanel({
   archives,
   fixedGameMode,
@@ -24,6 +32,7 @@ export function StaffGameWrongNoteNoteDiagnosticPanel({
   range,
   showModeControl = true,
   showRangeControl = true,
+  preferenceScope = "default",
 }: {
   archives: readonly StaffGameWrongNoteArchive[];
   fixedGameMode?: StaffGameWrongNoteGameModeFilter;
@@ -31,9 +40,14 @@ export function StaffGameWrongNoteNoteDiagnosticPanel({
   onChangeRange: (range: StaffGameWrongNoteRange) => void;
   showModeControl?: boolean;
   showRangeControl?: boolean;
+  preferenceScope?: string;
 }): JSX.Element {
   const [selectedGameMode, setSelectedGameMode] =
-    useState<StaffGameWrongNoteGameModeFilter>("learning");
+    useLocalStorageState<StaffGameWrongNoteGameModeFilter>(
+      `anki-note.staffGame.wrongNoteDiagnostic.${preferenceScope}.mode.v1`,
+      "learning",
+      { parse: parseGameMode }
+    );
   const gameMode = fixedGameMode ?? selectedGameMode;
   const filteredArchives = useMemo(
     () => filterStaffGameWrongNoteArchivesByGameMode(archives, gameMode),
