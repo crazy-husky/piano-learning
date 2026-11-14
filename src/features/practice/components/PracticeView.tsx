@@ -155,6 +155,7 @@ import {
 } from "../logic/practiceInputLifecycle";
 import {
   DEFAULT_DUET_PRACTICE_RANGE_PRESET,
+  DUET_PRACTICE_RANGE_GROUPS,
   getDuetPracticeGroupIds,
   getDuetPracticeRangeGroupSummary,
   getDuetTargetMidis,
@@ -547,7 +548,7 @@ export function PracticeView({
   practiceDistanceMode,
   isLearningRoutePractice = false,
   learningLevelId,
-  duetWrongNoteTestPlan,
+  duetWrongNoteTestPlan: requestedDuetWrongNoteTestPlan,
   onWrongNoteTestExit,
   showPracticeKindTabs = true,
   practiceModeLock,
@@ -555,37 +556,6 @@ export function PracticeView({
 }: PracticeViewProps): JSX.Element {
   const isPreReadingPractice = practiceProfile === "pre-reading";
   const isBlindPractice = practiceProfile === "blind-practice";
-  const freePracticeCopy = duetWrongNoteTestPlan
-    ? {
-        title: "双手协同 · 错题测试",
-        description: `Level ${Number(duetWrongNoteTestPlan.level.slice(-1))} · 错题与同级题混合，共 ${duetWrongNoteTestPlan.questions.length} 题。${
-          midi.isConnected ? "" : "请连接 MIDI 键盘后开始。"
-        }`,
-      }
-    : isPreReadingPractice
-      ? {
-          title: "提前识谱",
-          description: "打破逐音视奏，训练眼睛走在手的前面。",
-        }
-      : isBlindPractice
-        ? {
-            title: "盲弹练习",
-            description: "不看键盘，根据音名在不同音组间找到目标音。",
-          }
-        : practiceModeLock === "single"
-          ? {
-              title: "单音极速反应",
-              description: "看谱后迅速识别音高并作答，练习连续、轻松的单手反应。",
-            }
-          : practiceModeLock === "duet"
-            ? {
-                title: "双手协同",
-                description: "同时跟踪高低声部，让左右手在同一节奏中协作。",
-              }
-            : {
-                title: "自由练习",
-                description: "看到音符后，快速识别音高并找到对应琴键。",
-              };
   const {
     audioError: metronomeAudioError,
     getAudioTime: getMetronomeAudioTime,
@@ -749,6 +719,59 @@ export function PracticeView({
     (session?.schemaVersion === 3 || session?.schemaVersion === 4 || session?.schemaVersion === 5)
       ? session.startSnapshot
       : undefined;
+  const strictWrongNoteTestEnabled = runningStartSnapshot
+    ? runningStartSnapshot.practiceConfig.duetStrictHandAlternation === true
+    : practiceSetupPreferences.duetStrictHandAlternation;
+  const duetWrongNoteTestPlan = useMemo(() => {
+    if (!requestedDuetWrongNoteTestPlan) return null;
+    const selectedStaffs = new Set(
+      DUET_PRACTICE_RANGE_GROUPS.filter(({ id }) =>
+        requestedDuetWrongNoteTestPlan.rangeGroupIds.includes(id)
+      ).map(({ staff }) => staff)
+    );
+    if (
+      requestedDuetWrongNoteTestPlan.level !== "level-1" ||
+      !strictWrongNoteTestEnabled ||
+      selectedStaffs.size < 2
+    ) {
+      return requestedDuetWrongNoteTestPlan;
+    }
+    return {
+      ...requestedDuetWrongNoteTestPlan,
+      questions: requestedDuetWrongNoteTestPlan.strictHandAlternationQuestions,
+    };
+  }, [requestedDuetWrongNoteTestPlan, strictWrongNoteTestEnabled]);
+  const freePracticeCopy = duetWrongNoteTestPlan
+    ? {
+        title: "双手协同 · 错题测试",
+        description: `Level ${Number(duetWrongNoteTestPlan.level.slice(-1))} · 错题与同级题混合，共 ${duetWrongNoteTestPlan.questions.length} 题。${
+          midi.isConnected ? "" : "请连接 MIDI 键盘后开始。"
+        }`,
+      }
+    : isPreReadingPractice
+      ? {
+          title: "提前识谱",
+          description: "打破逐音视奏，训练眼睛走在手的前面。",
+        }
+      : isBlindPractice
+        ? {
+            title: "盲弹练习",
+            description: "不看键盘，根据音名在不同音组间找到目标音。",
+          }
+        : practiceModeLock === "single"
+          ? {
+              title: "单音极速反应",
+              description: "看谱后迅速识别音高并作答，练习连续、轻松的单手反应。",
+            }
+          : practiceModeLock === "duet"
+            ? {
+                title: "双手协同",
+                description: "同时跟踪高低声部，让左右手在同一节奏中协作。",
+              }
+            : {
+                title: "自由练习",
+                description: "看到音符后，快速识别音高并找到对应琴键。",
+              };
   const isDuetPractice = runningStartSnapshot
     ? runningStartSnapshot.practiceConfig.duetLevel !== undefined ||
       runningStartSnapshot.practiceConfig.duetDifficulty !== undefined
@@ -1857,6 +1880,10 @@ export function PracticeView({
       enabledNotes: coreEnabledNotes,
       duetLevel: isDuetPractice ? duetLevel : undefined,
       duetQuestionTargets: duetWrongNoteTestPlan?.questions,
+      duetQuestionStrictHandAlternationStart:
+        duetWrongNoteTestPlan?.level === "level-1" && duetStrictHandAlternation
+          ? duetWrongNoteTestPlan.strictHandAlternationStart
+          : undefined,
       adaptiveMeasureAreaWidthPx:
         isContinuousStaffPage || isDuetPractice ? adaptiveMeasureAreaWidthPx : undefined,
       adaptiveMaxMeasuresPerRow: isContinuousStaffPage

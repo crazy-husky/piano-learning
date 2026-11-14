@@ -302,6 +302,7 @@ interface PracticeStaffPageFlowValues {
   duetLevel?: DuetPracticeLevel;
   duetStrictHandAlternation: boolean;
   duetQuestionTargets?: readonly (DuetTargetPair | null)[];
+  duetQuestionStrictHandAlternationStart?: "treble" | "bass";
   adaptiveMeasureAreaWidthPx?: number;
   adaptiveMaxMeasuresPerRow?: number;
   staffPageRowStartIndices?: readonly number[];
@@ -366,6 +367,7 @@ export function usePracticeStaffPageFlow({
     duetLevel,
     duetStrictHandAlternation,
     duetQuestionTargets,
+    duetQuestionStrictHandAlternationStart,
     adaptiveMeasureAreaWidthPx,
     adaptiveMaxMeasuresPerRow,
     staffPageRowStartIndices,
@@ -549,6 +551,7 @@ export function usePracticeStaffPageFlow({
         ? createDuetPracticePage(sourceNotes, duetLevel, duetRequestedCount, {
             allowDottedRhythms,
             strictHandAlternation: duetLevel === "level-1" && duetStrictHandAlternation,
+            strictHandAlternationStart: duetQuestionStrictHandAlternationStart,
             allowSingleStaff: duetQuestionTargets !== undefined,
             exactCount: duetExactCount,
             measureCount: duetMeasureCount,
@@ -641,6 +644,7 @@ export function usePracticeStaffPageFlow({
       duetLevel,
       duetStrictHandAlternation,
       duetQuestionTargets,
+      duetQuestionStrictHandAlternationStart,
       fixedCount,
       forceRhythmGeneration,
       blindPractice,
@@ -808,6 +812,7 @@ export function usePracticeStaffPageFlow({
           ? createDuetPracticePage(enabledNotes, duetLevel, duetAppendRequestedCount, {
               allowDottedRhythms,
               strictHandAlternation: duetLevel === "level-1" && duetStrictHandAlternation,
+              strictHandAlternationStart: duetQuestionStrictHandAlternationStart,
               allowSingleStaff: duetQuestionTargets !== undefined,
               startBeat: page.rhythm?.endBeat ?? 0,
               measureCount: duetAppendMeasureCount,
@@ -1013,6 +1018,7 @@ export function usePracticeStaffPageFlow({
       duetLevel,
       duetStrictHandAlternation,
       duetQuestionTargets,
+      duetQuestionStrictHandAlternationStart,
       allowDottedRhythms,
       fixedCount,
       isMobileViewport,

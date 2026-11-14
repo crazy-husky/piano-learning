@@ -112,6 +112,8 @@ export interface DuetPracticeGenerationOptions {
   allowSingleStaff?: boolean;
   /** Level 1 only: alternate the active hand on every onset across measure boundaries. */
   strictHandAlternation?: boolean;
+  /** Optional starting hand for a strict Level 1 sequence with fixed targets. */
+  strictHandAlternationStart?: Staff;
   startBeat?: number;
   exactCount?: boolean;
   /** Cap generation to this many complete measures, relative to startBeat. */
@@ -244,10 +246,12 @@ function getLevelOneStaffSequence(
   requiredPrefixCount = onsetCount,
   strictHandAlternation = false,
   startingOnsetIndex = 0,
-  precedingStaffSequence: readonly Staff[] = []
+  precedingStaffSequence: readonly Staff[] = [],
+  strictHandAlternationStart?: Staff
 ): Staff[] {
   const channel = 0x68616e64;
-  const firstStrictStaff = getMeasureRandom(seed, 0, channel) < 0.5 ? "treble" : "bass";
+  const firstStrictStaff =
+    strictHandAlternationStart ?? (getMeasureRandom(seed, 0, channel) < 0.5 ? "treble" : "bass");
   if (strictHandAlternation) {
     return Array.from({ length: onsetCount }, (_, index) =>
       (startingOnsetIndex + index) % 2 === 0
@@ -489,7 +493,8 @@ function getMeasureEvents(
   levelOneRequiredOnsetCount?: number,
   strictHandAlternation = false,
   levelOneStartingOnsetIndex = 0,
-  precedingLevelOneStaffSequence: readonly Staff[] = []
+  precedingLevelOneStaffSequence: readonly Staff[] = [],
+  strictHandAlternationStart?: Staff
 ): MeasureEvent[] {
   const chord = getMeasureChord(measureIndex);
   const quarterMelody = getPhraseMeasure(QUARTER_MELODY_PHRASES, measureIndex);
@@ -519,7 +524,8 @@ function getMeasureEvents(
           levelOneRequiredOnsetCount,
           strictHandAlternation,
           levelOneStartingOnsetIndex,
-          precedingLevelOneStaffSequence
+          precedingLevelOneStaffSequence,
+          strictHandAlternationStart
         );
     const nextNoteOffsets = { ...levelOneNoteOffsets };
 
@@ -791,7 +797,8 @@ export function createDuetPracticePage(
         undefined,
         options.strictHandAlternation,
         levelOneStartingOnsetIndex,
-        precedingLevelOneStaffSequence
+        precedingLevelOneStaffSequence,
+        options.strictHandAlternationStart
       );
       previousEvents.forEach((event) => {
         levelOneNoteOffsets.treble += event.high.length;
@@ -816,7 +823,8 @@ export function createDuetPracticePage(
       options.exactCount ? requestedCount - events.length : undefined,
       options.strictHandAlternation,
       levelOneStartingOnsetIndex,
-      precedingLevelOneStaffSequence
+      precedingLevelOneStaffSequence,
+      options.strictHandAlternationStart
     );
     if (level === "level-1") {
       levelOneStartingOnsetIndex += measureEvents.length;

@@ -1,6 +1,6 @@
 import { ALL_NOTES } from "../../domain/notes";
 import { getTargetMidiNoteNumber } from "../../domain/answerInput";
-import type { AnswerEvent, DuetPracticeLevel, TargetNote } from "../../domain/types";
+import type { AnswerEvent, DuetPracticeLevel, Staff, TargetNote } from "../../domain/types";
 import type { DuetTargetPair } from "../practice/logic/duetPractice";
 import {
   DUET_PRACTICE_RANGE_GROUPS,
@@ -16,6 +16,9 @@ export interface DuetWrongNoteTestPlan {
   rangeGroupIds: DuetPracticeRangeGroupId[];
   /** Null questions use the selected level's normal generated notes as controls. */
   questions: Array<DuetTargetPair | null>;
+  /** Level 1 variant used when the saved strict hand alternation option is enabled. */
+  strictHandAlternationQuestions: Array<DuetTargetPair | null>;
+  strictHandAlternationStart: Staff;
   weakTargetCount: number;
 }
 
@@ -85,6 +88,48 @@ function getSelectedRangeGroupIds(pitchGroups: readonly string[]): DuetPracticeR
   return selectedGroupIds;
 }
 
+function splitTargetPairByStaff(pair: DuetTargetPair): DuetTargetPair[] {
+  const targets: DuetTargetPair[] = [];
+  if (pair.high.length) targets.push({ high: pair.high, low: [] });
+  if (pair.low.length) targets.push({ high: [], low: pair.low });
+  return targets;
+}
+
+function buildStrictAlternationQuestions(
+  weakTargets: readonly DuetTargetPair[],
+  controlCount: number
+): { questions: Array<DuetTargetPair | null>; startingStaff: Staff } {
+  const targetsByStaff: Record<Staff, DuetTargetPair[]> = {
+    treble: [],
+    bass: [],
+  };
+  weakTargets.forEach((target) => {
+    splitTargetPairByStaff(target).forEach((singleStaffTarget) => {
+      const staff = singleStaffTarget.high.length ? "treble" : "bass";
+      targetsByStaff[staff].push(singleStaffTarget, singleStaffTarget);
+    });
+  });
+  targetsByStaff.treble = shuffle(targetsByStaff.treble);
+  targetsByStaff.bass = shuffle(targetsByStaff.bass);
+
+  const startingStaff: Staff =
+    targetsByStaff.treble.length >= targetsByStaff.bass.length ? "treble" : "bass";
+  const questions: Array<DuetTargetPair | null> = [];
+  let staff = startingStaff;
+  while (targetsByStaff.treble.length || targetsByStaff.bass.length) {
+    questions.push(targetsByStaff[staff].shift() ?? null);
+    staff = staff === "treble" ? "bass" : "treble";
+  }
+
+  // Keep the usual one generated control per two weak attempts. Extra nulls above
+  // are generated notes needed to bridge gaps when weak targets use one hand more.
+  for (let index = 0; index < controlCount; index += 1) {
+    questions.push(null);
+  }
+
+  return { questions, startingStaff };
+}
+
 export function buildDuetWrongNoteTestPlan(
   level: DuetPracticeLevel,
   weakItems: readonly WeakPracticeItem[],
@@ -114,11 +159,18 @@ export function buildDuetWrongNoteTestPlan(
     else questions.push(second.target, control);
   }
 
+  const strictAlternation = buildStrictAlternationQuestions(
+    weakQuestions.map((item) => item.target),
+    weakQuestions.length
+  );
+
   return {
     level,
     rangePreset: chooseExtendedRange(questions) ? "extended" : "standard",
     rangeGroupIds,
     questions,
+    strictHandAlternationQuestions: strictAlternation.questions,
+    strictHandAlternationStart: strictAlternation.startingStaff,
     weakTargetCount: weakQuestions.length,
   };
 }
