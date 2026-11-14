@@ -1374,6 +1374,7 @@
 
 .learning-stats-filters,
 .learning-stats-chart-section,
+.learning-stats-summary-section,
 .learning-stats-weak-list {
   min-width: 0;
   padding: 18px;
@@ -1384,6 +1385,7 @@
 
 .learning-stats-filter-heading,
 .learning-stats-chart-section > header,
+.learning-stats-summary-section > header,
 .learning-stats-weak-list > header {
   display: flex;
   align-items: center;
@@ -1393,6 +1395,7 @@
 
 .learning-stats-filter-heading span,
 .learning-stats-chart-section > header > div > span,
+.learning-stats-summary-section > header > div > span,
 .learning-stats-weak-list > header > div > span {
   color: var(--accent);
   font-size: 11px;
@@ -1403,6 +1406,7 @@
 
 .learning-stats-filter-heading h2,
 .learning-stats-chart-section h2,
+.learning-stats-summary-section h2,
 .learning-stats-weak-list h2 {
   margin: 3px 0 0;
   color: var(--text);
@@ -1645,6 +1649,17 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin: 16px 0 0;
+}
+
+.learning-stats-summary.is-three-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.learning-stats-summary-caption {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .learning-stats-summary > div {
@@ -2191,6 +2206,9 @@
   .learning-stats-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .learning-stats-summary.is-three-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .learning-stats-chart {
     height: 190px;
     min-height: 190px;
@@ -2294,6 +2312,7 @@
 @media (max-width: 420px) {
   .learning-stats-filters,
   .learning-stats-chart-section,
+  .learning-stats-summary-section,
   .learning-stats-weak-list {
     padding: 13px;
   }

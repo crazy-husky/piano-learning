@@ -1,5 +1,6 @@
 import type { DuetPracticeLevel, ReviewRecord, Staff } from "../../../domain/types";
 import {
+  buildDuetPracticeSuggestion,
   buildDuetPracticeSummaryStats,
   formatDuetRate,
   type DuetCountRate,
@@ -7,8 +8,12 @@ import {
 
 interface DuetPracticeSummaryProps {
   level: DuetPracticeLevel;
+  metronomeBpm?: number;
   reviews: ReviewRecord[];
   syncEnabled: boolean;
+  strictHandAlternation: boolean;
+  allowDottedRhythms: boolean;
+  wrongNoteTest: boolean;
 }
 
 function rateDescription(rate: DuetCountRate, unit: string): string {
@@ -21,8 +26,12 @@ function handLabel(staff: Staff): string {
 
 export function DuetPracticeSummary({
   level,
+  metronomeBpm,
   reviews,
   syncEnabled,
+  strictHandAlternation,
+  allowDottedRhythms,
+  wrongNoteTest,
 }: DuetPracticeSummaryProps): JSX.Element {
   const stats = buildDuetPracticeSummaryStats(reviews, syncEnabled);
   const handTargets = [
@@ -33,21 +42,14 @@ export function DuetPracticeSummary({
     stats.timing.early + stats.timing.onTime + stats.timing.late + stats.timing.missed;
   const beatRate = { correct: stats.timing.onTime, total: timedTargets };
   const levelNumber = Number(level.slice(-1));
-  const weakerHand: Staff | undefined =
-    stats.hands.treble.total > 0 && stats.hands.bass.total > 0
-      ? stats.hands.treble.correct / stats.hands.treble.total <=
-        stats.hands.bass.correct / stats.hands.bass.total
-        ? "treble"
-        : "bass"
-      : undefined;
-  const suggestion =
-    syncEnabled && stats.timing.correctOffbeatOnsets > 0
-      ? `有 ${stats.timing.correctOffbeatOnsets} 组起音音高正确但没有踩准拍，下一局先跟稳节拍。`
-      : stats.timing.wrongOnTimeAttempts > 0
-        ? `有 ${stats.timing.wrongOnTimeAttempts} 次踩准拍但音高错误，下一局多核对谱面音高。`
-        : weakerHand && stats.hands[weakerHand].total > 0
-          ? `下次可以多留意${handLabel(weakerHand)}。`
-          : "继续保持双手和节拍的稳定。";
+  const suggestion = buildDuetPracticeSuggestion(stats, {
+    allowDottedRhythms,
+    level,
+    metronomeBpm,
+    strictHandAlternation,
+    syncEnabled,
+    wrongNoteTest,
+  });
 
   return (
     <div className="duet-practice-summary">
@@ -89,57 +91,6 @@ export function DuetPracticeSummary({
             </article>
           ) : null}
         </div>
-      </section>
-
-      <section className="summary-section duet-summary-section">
-        <div className="summary-section-heading">
-          <h2>题型表现</h2>
-        </div>
-        <div className="duet-summary-breakdown">
-          <article>
-            <span>{syncEnabled ? "单音准拍首答率" : "单音首答正确率"}</span>
-            <strong>{formatDuetRate(stats.singleNoteEvents)}</strong>
-            <small>{rateDescription(stats.singleNoteEvents, " 组单音")}</small>
-          </article>
-          {levelNumber > 1 ? (
-            <article>
-              <span>{syncEnabled ? "多音同拍完整率" : "多音首答完整率"}</span>
-              <strong>{formatDuetRate(stats.multiNoteEvents)}</strong>
-              <small>{rateDescription(stats.multiNoteEvents, " 组多音")}</small>
-            </article>
-          ) : null}
-          {levelNumber > 1 ? (
-            <article>
-              <span>{syncEnabled ? "双手同拍完整率" : "双手首答完整率"}</span>
-              <strong>{formatDuetRate(stats.bothHandEvents)}</strong>
-              <small>{rateDescription(stats.bothHandEvents, " 组双手合奏")}</small>
-            </article>
-          ) : null}
-          {syncEnabled ? (
-            <>
-              <article>
-                <span>踩准拍的错音</span>
-                <strong>{stats.timing.wrongOnTimeAttempts}</strong>
-                <small>按每组首个输入计数</small>
-              </article>
-              <article>
-                <span>音高正确但偏拍</span>
-                <strong>{stats.timing.correctOffbeatOnsets}</strong>
-                <small>按起音组计数</small>
-              </article>
-              <article>
-                <span>漏拍起音组</span>
-                <strong>{stats.timing.missed}</strong>
-                <small>后一拍边界前没有正确首音</small>
-              </article>
-            </>
-          ) : null}
-        </div>
-        <p className="duet-summary-note">
-          {syncEnabled
-            ? "每组只按第一个输入统计拍点；首音错音后的补正确音仍计入音高完成，不计入本组踩拍结果。"
-            : "本次未开启节拍同步，因此不统计节拍表现。"}
-        </p>
       </section>
 
       <section className="summary-section duet-summary-section duet-summary-suggestion">

@@ -75,7 +75,7 @@ interface StaffPagePromptProps {
   noteLabelsAbove?: readonly (string | undefined)[];
   /** Fixed distance above the staff's top line, shared by every label above a note. */
   noteLabelsAboveStaffTopLinePx?: number;
-  /** Shows a fixed-size triangle above the highest notehead in the active onset. */
+  /** Shows a fixed-size triangle at the active onset, aligned to the row's highest note. */
   currentNoteIndicatorIndex?: number;
   beatsPerMeasure?: number;
   timeSignature?: string;
@@ -167,6 +167,9 @@ const WRONG_COLOR = "#c84c3d";
 const AUTO_FOLLOW_RESUME_DELAY_MS = 2000;
 const STAFF_PAGE_ROW_TOP_CLEARANCE_PX = 16;
 const STAFF_PAGE_NOTE_TOP_CLEARANCE_PX = 20;
+const STAFF_PAGE_CURRENT_NOTE_INDICATOR_TIP_OFFSET_PX = 15;
+const STAFF_PAGE_CURRENT_NOTE_INDICATOR_HEIGHT_PX = 8;
+const STAFF_PAGE_CURRENT_NOTE_INDICATOR_TOP_CLEARANCE_PX = 27;
 const STAFF_PAGE_NOTE_BOTTOM_CLEARANCE_PX = 20;
 const STAFF_PAGE_STAVE_LINE_SPACING_PX = 10;
 const STAFF_PAGE_STAVE_TOP_LINE_OFFSET_PX = 40;
@@ -181,35 +184,41 @@ const STAFF_PAGE_NOTE_NAME_ORDER: Record<TargetNote["noteName"], number> = {
 };
 const STAFF_PAGE_TREBLE_TOP_LINE_ORDER = 5 * 7 + STAFF_PAGE_NOTE_NAME_ORDER.F;
 const STAFF_PAGE_TREBLE_BOTTOM_LINE_ORDER = 4 * 7 + STAFF_PAGE_NOTE_NAME_ORDER.E;
+const STAFF_PAGE_BASS_TOP_LINE_ORDER = 3 * 7 + STAFF_PAGE_NOTE_NAME_ORDER.A;
 const STAFF_PAGE_BASS_BOTTOM_LINE_ORDER = 2 * 7 + STAFF_PAGE_NOTE_NAME_ORDER.G;
 
 function getStaffPageHighNoteTopPaddingPx(
   notes: readonly TargetNote[],
   layout: PracticePageStaffLayoutProfile,
   staffNotationMode: StaffNotationMode,
-  useLedgerGap: boolean
+  useLedgerGap: boolean,
+  noteTopClearancePx = STAFF_PAGE_NOTE_TOP_CLEARANCE_PX
 ): number {
-  if (staffNotationMode === "bass-only") return 0;
+  if (staffNotationMode === "bass-only" && noteTopClearancePx <= STAFF_PAGE_NOTE_TOP_CLEARANCE_PX) {
+    return 0;
+  }
 
-  const trebleNotes =
+  const topStaff: Staff = staffNotationMode === "bass-only" ? "bass" : "treble";
+  const topNotes =
     staffNotationMode === "grand" ? notes.filter((note) => note.staff === "treble") : notes;
-  if (trebleNotes.length === 0) return 0;
+  if (topNotes.length === 0) return 0;
 
-  const trebleTopLineY =
+  const staffTopLineY =
     (staffNotationMode === "grand"
       ? layout.vertical.centerYPx -
         (useLedgerGap ? layout.vertical.ledgerGapPx : layout.vertical.gapPx) / 2
-      : layout.vertical.trebleOnlyYPx) + STAFF_PAGE_STAVE_TOP_LINE_OFFSET_PX;
+      : topStaff === "bass"
+        ? layout.vertical.bassOnlyYPx
+        : layout.vertical.trebleOnlyYPx) + STAFF_PAGE_STAVE_TOP_LINE_OFFSET_PX;
+  const topLineOrder =
+    topStaff === "bass" ? STAFF_PAGE_BASS_TOP_LINE_ORDER : STAFF_PAGE_TREBLE_TOP_LINE_ORDER;
   const highestNoteY = Math.min(
-    ...trebleNotes.map((note) => {
+    ...topNotes.map((note) => {
       const noteOrder = note.octave * 7 + STAFF_PAGE_NOTE_NAME_ORDER[note.noteName];
-      return (
-        trebleTopLineY -
-        (noteOrder - STAFF_PAGE_TREBLE_TOP_LINE_ORDER) * (STAFF_PAGE_STAVE_LINE_SPACING_PX / 2)
-      );
+      return staffTopLineY - (noteOrder - topLineOrder) * (STAFF_PAGE_STAVE_LINE_SPACING_PX / 2);
     })
   );
-  const requiredPadding = Math.max(0, STAFF_PAGE_NOTE_TOP_CLEARANCE_PX - highestNoteY);
+  const requiredPadding = Math.max(0, noteTopClearancePx - highestNoteY);
 
   // Snap the additional row height to a staff half-space so ledger lines stay
   // aligned when the enabled range includes notes above the normal treble staff.
@@ -321,10 +330,6 @@ interface RenderedPreReadingMask {
   index: number;
 }
 interface RenderedPreReadingIndicator {
-  element: SVGPolygonElement;
-  index: number;
-}
-interface RenderedCurrentNoteIndicator {
   element: SVGPolygonElement;
   index: number;
 }
@@ -1220,6 +1225,7 @@ function updateStaffProgressMarkers(
   practiceBeat?: number
 ): void {
   if (!rendererTarget) return;
+  const activePracticeNoteIndices = new Set<number>();
   rendererTarget
     .querySelectorAll<SVGRectElement>("[data-staff-progress-marker]")
     .forEach((marker) => {
@@ -1236,6 +1242,16 @@ function updateStaffProgressMarkers(
               : noteIndex === practiceIndex)
           : type === "playback" && playbackIndex !== null && noteIndex === playbackIndex;
       marker.setAttribute("opacity", active ? (type === "practice" ? "0.32" : "0.34") : "0");
+      if (active && type === "practice" && Number.isInteger(noteIndex)) {
+        activePracticeNoteIndices.add(noteIndex);
+      }
+    });
+  rendererTarget
+    .querySelectorAll<SVGPolygonElement>("[data-staff-current-note-indicator]")
+    .forEach((indicator) => {
+      const noteIndex = Number(indicator.getAttribute("data-note-index"));
+      indicator.style.opacity =
+        practiceMarkerEnabled && activePracticeNoteIndices.has(noteIndex) ? "1" : "0";
     });
 }
 
@@ -1545,12 +1561,11 @@ function addStaffPageCurrentNoteIndicator(
   noteIndex: number,
   x: number,
   noteTopY: number,
-  scale: number,
-  isActive: boolean
+  scale: number
 ): SVGPolygonElement {
   const indicator = document.createElementNS(SVG_NAMESPACE, "polygon");
-  const baseY = noteTopY - logicalPx(18, scale);
-  const tipY = noteTopY - logicalPx(10, scale);
+  const tipY = noteTopY - logicalPx(STAFF_PAGE_CURRENT_NOTE_INDICATOR_TIP_OFFSET_PX, scale);
+  const baseY = tipY - logicalPx(STAFF_PAGE_CURRENT_NOTE_INDICATOR_HEIGHT_PX, scale);
   const halfWidth = logicalPx(5, scale);
   indicator.setAttribute("class", "staff-page-current-note-indicator");
   indicator.setAttribute("data-note-index", String(noteIndex));
@@ -1560,23 +1575,28 @@ function addStaffPageCurrentNoteIndicator(
       `${(x + halfWidth).toFixed(2)},${baseY.toFixed(2)} ` +
       `${x.toFixed(2)},${tipY.toFixed(2)}`
   );
+  indicator.setAttribute("data-staff-current-note-indicator", "");
   indicator.setAttribute("aria-hidden", "true");
-  indicator.style.opacity = isActive ? "1" : "0";
+  indicator.style.opacity = "0";
   parent.appendChild(indicator);
   return indicator;
 }
 
 function getHighestStaffPageNoteHeadPosition(
-  tickables: Partial<Record<Staff, StaveNote>> | undefined
+  tickablesBySlot: readonly Partial<Record<Staff, StaveNote>>[],
+  staff?: Staff
 ): { x: number; y: number } | undefined {
-  const noteHeads = Object.values(tickables ?? {}).flatMap((staveNote) => {
-    if (!staveNote) return [];
-    const noteYs = staveNote.getYs();
-    return staveNote.noteHeads.flatMap((noteHead, index) => {
-      const y = noteYs[index];
-      return typeof y === "number" && Number.isFinite(y)
-        ? [{ x: noteHead.getAbsoluteX() + noteHead.getWidth() / 2, y }]
-        : [];
+  const noteHeads = tickablesBySlot.flatMap((tickables) => {
+    const staveNotes = staff ? [tickables[staff]] : Object.values(tickables);
+    return staveNotes.flatMap((staveNote) => {
+      if (!staveNote) return [];
+      const noteYs = staveNote.getYs();
+      return staveNote.noteHeads.flatMap((noteHead, index) => {
+        const y = noteYs[index];
+        return typeof y === "number" && Number.isFinite(y)
+          ? [{ x: noteHead.getAbsoluteX() + noteHead.getWidth() / 2, y }]
+          : [];
+      });
     });
   });
 
@@ -1860,7 +1880,6 @@ export function StaffPagePrompt({
   const renderedStemsRef = useRef<RenderedStaffPageStem[]>([]);
   const renderedPreReadingMasksRef = useRef<RenderedPreReadingMask[]>([]);
   const renderedPreReadingIndicatorsRef = useRef<RenderedPreReadingIndicator[]>([]);
-  const renderedCurrentNoteIndicatorsRef = useRef<RenderedCurrentNoteIndicator[]>([]);
   const cursorLayersRef = useRef(new Map<string, PlaybackCursorLayer>());
   const cursorTargetsRef = useRef(new Map<number, PlaybackCursorTargets>());
   const cursorRowsRef = useRef(new Map<number, number>());
@@ -1912,19 +1931,25 @@ export function StaffPagePrompt({
     () => noteGroups ?? notes.map((note) => [note]),
     [noteGroups, notes]
   );
+  const noteIndicatorTopClearancePx =
+    currentNoteIndicatorIndex === undefined
+      ? STAFF_PAGE_NOTE_TOP_CLEARANCE_PX
+      : STAFF_PAGE_CURRENT_NOTE_INDICATOR_TOP_CLEARANCE_PX;
   const rowTopPaddingPx = useMemo(
     () =>
       getStaffPageHighNoteTopPaddingPx(
         verticalRangeNotes ?? noteGroups?.flat() ?? notes,
         layout,
         staffNotationMode,
-        useLedgerGap
+        useLedgerGap,
+        noteIndicatorTopClearancePx
       ) + (noteLabelsAbove?.some(Boolean) ? STAFF_PAGE_NOTE_TOP_CLEARANCE_PX : 0),
     [
       layout,
       noteGroups,
       noteLabelsAbove,
       notes,
+      noteIndicatorTopClearancePx,
       staffNotationMode,
       useLedgerGap,
       verticalRangeNotes,
@@ -2540,7 +2565,6 @@ export function StaffPagePrompt({
       renderedStemsRef.current = [];
       renderedPreReadingMasksRef.current = [];
       renderedPreReadingIndicatorsRef.current = [];
-      renderedCurrentNoteIndicatorsRef.current = [];
       cursorLayersRef.current = new Map();
       cursorTargetsRef.current = new Map();
       cursorRowsRef.current = new Map();
@@ -3215,6 +3239,11 @@ export function StaffPagePrompt({
           tuplets.forEach((tuplet) => tuplet.setContext(context).draw());
           ties.forEach((tie) => tie.setContext(context).draw());
 
+          const rowHighestNoteHead = getHighestStaffPageNoteHeadPosition(
+            cursorTickablesBySlot,
+            staffNotationMode === "grand" ? "treble" : undefined
+          );
+          const rowIndicatorY = rowHighestNoteHead?.y ?? trebleTopLineY;
           rowSlots.forEach((note, slotIndex) => {
             if (!note) return;
             const noteLyrics = lyrics?.[rowStartIndex + slotIndex];
@@ -3248,21 +3277,16 @@ export function StaffPagePrompt({
               currentNoteIndicatorIndexRef.current !== undefined &&
               noteLabelsAboveStaffTopLinePx !== undefined
             ) {
-              const highestNoteHead = getHighestStaffPageNoteHeadPosition(
-                cursorTickablesBySlot[slotIndex]
-              );
-              const indicator = addStaffPageCurrentNoteIndicator(
+              const activeOnsetNoteHead = getHighestStaffPageNoteHeadPosition([
+                cursorTickablesBySlot[slotIndex] ?? {},
+              ]);
+              addStaffPageCurrentNoteIndicator(
                 rowGroup,
                 currentNoteIndex,
-                highestNoteHead?.x ?? lyricX,
-                highestNoteHead?.y ?? trebleTopLineY,
-                surface.scale,
-                currentNoteIndex === currentNoteIndicatorIndexRef.current
+                activeOnsetNoteHead?.x ?? lyricX,
+                rowIndicatorY,
+                surface.scale
               );
-              renderedCurrentNoteIndicatorsRef.current.push({
-                element: indicator,
-                index: currentNoteIndex,
-              });
             }
             if (!noteLyrics?.length) return;
             noteLyrics.forEach((text, lineIndex) => {
@@ -4288,12 +4312,6 @@ export function StaffPagePrompt({
     trackedNoteIndex,
     virtualRowWindow,
   ]);
-
-  useLayoutEffect(() => {
-    renderedCurrentNoteIndicatorsRef.current.forEach(({ element, index }) => {
-      element.style.opacity = index === currentNoteIndicatorIndex ? "1" : "0";
-    });
-  }, [currentNoteIndicatorIndex, virtualRowWindow]);
 
   return (
     <div

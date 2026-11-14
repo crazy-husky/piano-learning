@@ -324,7 +324,7 @@
   paint-order: stroke;
   filter: drop-shadow(0 1px 2px rgb(0 0 0 / 48%));
   pointer-events: none;
-  transition: opacity 100ms ease-out;
+  transition: opacity 180ms ease-out;
 }
 
 .pre-reading-focus-control {
@@ -414,7 +414,7 @@
 
 .staff-page-progress-marker {
   pointer-events: none;
-  transition: opacity 90ms linear;
+  transition: opacity 180ms ease-out;
 }
 
 .staff-page-progress-marker.is-practice {

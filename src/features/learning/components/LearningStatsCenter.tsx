@@ -253,7 +253,7 @@ export function LearningStatsCenter({
       customEnd: returnFilters?.customEnd ?? "",
       pitchGroups: returnFilters?.pitchGroups ?? ["all"],
       dimension: returnFilters?.dimension ?? (levelId === 6 ? "level-1" : "all"),
-      metric: levelId === 1 ? "duration" : levelId === 6 ? "right-hand" : "accuracy",
+      metric: levelId === 1 ? "duration" : levelId === 6 ? "left-hand" : "accuracy",
       managerRange: "all",
       managerCustomStart: "",
       managerCustomEnd: "",
@@ -680,8 +680,8 @@ export function LearningStatsCenter({
       ]
     : levelId === 6
       ? [
-          { value: "right-hand" as const, label: "右手首答正确率" },
           { value: "left-hand" as const, label: "左手首答正确率" },
+          { value: "right-hand" as const, label: "右手首答正确率" },
           { value: "beat" as const, label: "节拍命中率" },
           ...(dimension === "level-1"
             ? []
@@ -946,57 +946,7 @@ export function LearningStatsCenter({
                 <p role="status">当前筛选范围暂无图表数据。</p>
               )}
             </div>
-            {levelId === 6 ? (
-              <dl className="learning-stats-summary">
-                <div>
-                  <dt>右手首答正确率</dt>
-                  <dd>
-                    {formatDuetRate(duetSummaryStats.hands.treble)}
-                    <small>
-                      {duetSummaryStats.hands.treble.correct} /{" "}
-                      {duetSummaryStats.hands.treble.total} 个音
-                    </small>
-                  </dd>
-                </div>
-                <div>
-                  <dt>左手首答正确率</dt>
-                  <dd>
-                    {formatDuetRate(duetSummaryStats.hands.bass)}
-                    <small>
-                      {duetSummaryStats.hands.bass.correct} / {duetSummaryStats.hands.bass.total}{" "}
-                      个音
-                    </small>
-                  </dd>
-                </div>
-                <div>
-                  <dt>起音组准拍率</dt>
-                  <dd>
-                    {formatDuetRate({
-                      correct: duetSummaryStats.timing.onTime,
-                      total:
-                        duetSummaryStats.timing.onTime +
-                        duetSummaryStats.timing.early +
-                        duetSummaryStats.timing.late +
-                        duetSummaryStats.timing.missed,
-                    })}
-                    <small>
-                      漏拍起音组 {duetSummaryStats.timing.missed} · 偏拍组{" "}
-                      {duetSummaryStats.timing.early + duetSummaryStats.timing.late}
-                    </small>
-                  </dd>
-                </div>
-                <div>
-                  <dt>双手同拍完整率</dt>
-                  <dd>
-                    {formatDuetRate(duetSummaryStats.bothHandEvents)}
-                    <small>
-                      {duetSummaryStats.bothHandEvents.correct} /{" "}
-                      {duetSummaryStats.bothHandEvents.total} 组
-                    </small>
-                  </dd>
-                </div>
-              </dl>
-            ) : levelId !== 1 ? (
+            {levelId !== 1 && levelId !== 6 ? (
               <dl className="learning-stats-summary">
                 <div>
                   <dt>有效答题数</dt>
@@ -1017,7 +967,7 @@ export function LearningStatsCenter({
                   <dd>{weakItems.length}</dd>
                 </div>
               </dl>
-            ) : (
+            ) : levelId === 1 ? (
               <dl className="learning-stats-summary">
                 <div>
                   <dt>回忆轮数</dt>
@@ -1040,13 +990,87 @@ export function LearningStatsCenter({
                   <dd>{weakItems.length}</dd>
                 </div>
               </dl>
-            )}
-            {levelId === 6 && hasLegacyDuetEvents ? (
-              <p className="learning-stats-hint" role="status">
-                部分历史练习记录没有左右手与拍点明细，不会计入以上细分统计。
-              </p>
             ) : null}
           </section>
+
+          {levelId === 6 ? (
+            <section
+              aria-labelledby="learning-stats-duet-summary-heading"
+              className="learning-stats-summary-section"
+            >
+              <header>
+                <div>
+                  <span>当前筛选范围</span>
+                  <h2 id="learning-stats-duet-summary-heading">双手表现汇总</h2>
+                </div>
+              </header>
+              <p className="learning-stats-summary-caption">
+                汇总当前筛选范围内的数据，不随上方趋势图指标切换。
+              </p>
+              <dl
+                className={
+                  dimension === "level-1"
+                    ? "learning-stats-summary is-three-items"
+                    : "learning-stats-summary"
+                }
+              >
+                <div>
+                  <dt>左手首答正确率</dt>
+                  <dd>
+                    {formatDuetRate(duetSummaryStats.hands.bass)}
+                    <small>
+                      {duetSummaryStats.hands.bass.correct} / {duetSummaryStats.hands.bass.total}{" "}
+                      个音
+                    </small>
+                  </dd>
+                </div>
+                <div>
+                  <dt>右手首答正确率</dt>
+                  <dd>
+                    {formatDuetRate(duetSummaryStats.hands.treble)}
+                    <small>
+                      {duetSummaryStats.hands.treble.correct} /{" "}
+                      {duetSummaryStats.hands.treble.total} 个音
+                    </small>
+                  </dd>
+                </div>
+                <div>
+                  <dt>起音组准拍率</dt>
+                  <dd>
+                    {formatDuetRate({
+                      correct: duetSummaryStats.timing.onTime,
+                      total:
+                        duetSummaryStats.timing.onTime +
+                        duetSummaryStats.timing.early +
+                        duetSummaryStats.timing.late +
+                        duetSummaryStats.timing.missed,
+                    })}
+                    <small>
+                      漏拍起音组 {duetSummaryStats.timing.missed} · 偏拍组{" "}
+                      {duetSummaryStats.timing.early + duetSummaryStats.timing.late}
+                    </small>
+                  </dd>
+                </div>
+                {dimension !== "level-1" ? (
+                  <div>
+                    <dt>双手同拍完整率</dt>
+                    <dd>
+                      {formatDuetRate(duetSummaryStats.bothHandEvents)}
+                      <small>
+                        {duetSummaryStats.bothHandEvents.correct} /{" "}
+                        {duetSummaryStats.bothHandEvents.total} 组
+                      </small>
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+              {hasLegacyDuetEvents ? (
+                <p className="learning-stats-hint" role="status">
+                  部分历史练习记录没有左右手与拍点明细，不会计入以上细分统计。
+                </p>
+              ) : null}
+            </section>
+          ) : null}
 
           <section
             aria-label={isRecallLevel ? "待巩固音" : "薄弱记录"}

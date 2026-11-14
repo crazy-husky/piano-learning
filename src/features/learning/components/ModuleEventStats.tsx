@@ -347,22 +347,22 @@ export function ModuleEventStats({
             {kind === "duet" ? (
               <>
                 <div>
-                  <dt>右手首答正确率</dt>
-                  <dd>
-                    {formatDuetRate(duetSummaryStats.hands.treble)}
-                    <small>
-                      {duetSummaryStats.hands.treble.correct} /{" "}
-                      {duetSummaryStats.hands.treble.total} 个音
-                    </small>
-                  </dd>
-                </div>
-                <div>
                   <dt>左手首答正确率</dt>
                   <dd>
                     {formatDuetRate(duetSummaryStats.hands.bass)}
                     <small>
                       {duetSummaryStats.hands.bass.correct} / {duetSummaryStats.hands.bass.total}{" "}
                       个音
+                    </small>
+                  </dd>
+                </div>
+                <div>
+                  <dt>右手首答正确率</dt>
+                  <dd>
+                    {formatDuetRate(duetSummaryStats.hands.treble)}
+                    <small>
+                      {duetSummaryStats.hands.treble.correct} /{" "}
+                      {duetSummaryStats.hands.treble.total} 个音
                     </small>
                   </dd>
                 </div>

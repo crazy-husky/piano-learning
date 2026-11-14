@@ -11,6 +11,7 @@ import type {
 import type { TargetNoteId } from "../../../domain/types";
 import type { PracticeSessionSummary } from "../hooks/usePracticeSessionState";
 import { DuetPracticeSummary } from "./DuetPracticeSummary";
+import { PracticeWrongNoteSummary } from "./PracticeWrongNoteSummary";
 import {
   SessionProgressChart,
   SessionProgressControls,
@@ -26,6 +27,7 @@ interface PracticeSummaryViewProps {
   historyLimit: number;
   isBusy: boolean;
   isMidiConnected: boolean;
+  metronomeBpm: number;
   mode: SessionProgressMode;
   onAllHistoryChange: (allHistory: boolean) => void;
   onHistoryLimitChange: (limit: number) => void;
@@ -51,6 +53,7 @@ export function PracticeSummaryView({
   historyLimit,
   isBusy,
   isMidiConnected,
+  metronomeBpm,
   mode,
   onAllHistoryChange,
   onHistoryLimitChange,
@@ -104,9 +107,13 @@ export function PracticeSummaryView({
         </div>
         {isDuetSummary ? (
           <DuetPracticeSummary
+            allowDottedRhythms={practiceConfig?.duetAllowDottedRhythms === true}
             level={duetLevel ?? "level-1"}
+            metronomeBpm={metronomeBpm}
             reviews={summary.reviews}
             syncEnabled={practiceConfig?.metronomeSync === true}
+            strictHandAlternation={practiceConfig?.duetStrictHandAlternation === true}
+            wrongNoteTest={practiceConfig?.wrongNoteTest === true}
           />
         ) : (
           <>
@@ -181,6 +188,7 @@ export function PracticeSummaryView({
             ) : null}
           </>
         )}
+        <PracticeWrongNoteSummary reviews={summary.reviews} />
         <div className="action-row">
           <button onClick={onReturnToSetup}>
             {returnButtonLabel === "返回统计" ? (

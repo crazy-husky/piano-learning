@@ -95,6 +95,7 @@ import {
   getQuarterNoteBeats,
   PROMPT_NOTE_DURATIONS,
   type GeneratedStaffPageRhythm,
+  type StaffPageNoteDuration,
 } from "../logic/staffPageNotation";
 import type { ScoreChaseEvent } from "../logic/scoreChase";
 import {
@@ -2090,6 +2091,9 @@ export function PracticeView({
     stopMetronome();
     setMetronomeSyncLocked(false);
   }, [resetPreReadingCountdown, setMetronomeSyncLocked, stopMetronome]);
+  const stopSynchronizedMetronomeForSessionEnd = useCallback((): void => {
+    if (syncSessionRef.current) stopSynchronizedMetronome();
+  }, [stopSynchronizedMetronome]);
   useEffect(
     () =>
       subscribeMetronomeBeat((event) => {
@@ -2179,6 +2183,7 @@ export function PracticeView({
     staffPageNotes.length,
   ]);
   useEffect(() => {
+    if (endingRef.current) return;
     if (!isMetronomeSyncActive) {
       if (syncRunningSeenRef.current && phase !== "running") {
         stopSynchronizedMetronome();
@@ -2311,11 +2316,18 @@ export function PracticeView({
   const sessionLifecycleServices = useMemo(
     () => ({
       stopMicrophone: practiceMicrophone.stop,
+      stopSynchronizedMetronome: stopSynchronizedMetronomeForSessionEnd,
       clearStaffPageScrollSchedule,
       onDataChanged,
       onPracticeFinished,
     }),
-    [clearStaffPageScrollSchedule, onDataChanged, onPracticeFinished, practiceMicrophone.stop]
+    [
+      clearStaffPageScrollSchedule,
+      onDataChanged,
+      onPracticeFinished,
+      practiceMicrophone.stop,
+      stopSynchronizedMetronomeForSessionEnd,
+    ]
   );
   const sessionLifecycleUi = useMemo(
     () => ({
@@ -3196,9 +3208,29 @@ export function PracticeView({
     if (expectedTime === undefined) return undefined;
     const timingWindowMs = getPracticeBeatDurationMs(metronomePreferences.bpm);
     const targetIndex = onset.index;
+    const isFinalFixedCountTarget =
+      mode === "fixed-count" && staffPageFirstNoteOffset + targetIndex + 1 >= fixedCount;
+    const rhythm = staffPageRef.current?.rhythm;
+    const eventDurations = rhythm
+      ? [
+          rhythm.durations[targetIndex],
+          rhythm.staffNoteDurations?.[targetIndex]?.treble,
+          rhythm.staffNoteDurations?.[targetIndex]?.bass,
+        ].filter((duration): duration is StaffPageNoteDuration => duration !== undefined)
+      : [];
+    const finalTargetDurationMs =
+      Math.max(
+        0.0625,
+        eventDurations.length > 0 ? Math.max(...eventDurations.map(getQuarterNoteBeats)) : 1
+      ) * timingWindowMs;
+    const finalTargetTimeoutMs = Math.max(
+      0,
+      finalTargetDurationMs - Math.min(50, finalTargetDurationMs / 4)
+    );
     let isCurrentDeadline = true;
     let timeoutId: number | null = null;
-    const deadlineAudioTime = expectedTime + (timingWindowMs + 5) / 1000;
+    const deadlineAudioTime =
+      expectedTime + (isFinalFixedCountTarget ? finalTargetTimeoutMs : timingWindowMs + 5) / 1000;
     const checkDeadline = (): void => {
       if (
         !isCurrentDeadline ||
@@ -3237,10 +3269,14 @@ export function PracticeView({
     isMetronomeSyncActive,
     isPaused,
     isPreReadingPractice,
+    fixedCount,
+    mode,
     markSynchronizedTargetMissed,
     metronomePreferences.bpm,
     phase,
     preReadingScoreWindow.phase,
+    staffPageFirstNoteOffset,
+    staffPageRef,
     staffPageIndex,
     syncCountInBeat,
   ]);
@@ -3898,6 +3934,7 @@ export function PracticeView({
         historyLimit={summaryHistoryLimit}
         isBusy={showStartingSessionStatus}
         isMidiConnected={midi.isConnected}
+        metronomeBpm={metronomePreferences.bpm}
         mode={summaryProgressMode}
         onAllHistoryChange={setSummaryAllHistory}
         onHistoryLimitChange={setSummaryHistoryLimit}

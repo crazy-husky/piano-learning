@@ -41,6 +41,7 @@ import { MIDI_LATENCY_DIAGNOSTICS_ENABLED } from "../diagnostics/midiLatencyDiag
 import { clearMidiDeviceGuide, MidiDeviceGuideArrow } from "../midi/MidiDeviceGuideArrow";
 import { BackupConflictResolver } from "../shared/components/BackupConflictResolver";
 import { AppStartupSkeleton, RouteLoadingSkeleton } from "../shared/components/LoadingSkeletons";
+import { useConfirmDialog } from "../shared/components/ui/ConfirmDialog";
 import { HomeView } from "../features/home/components/HomeView";
 import { ModuleLayout } from "../features/learning/components/ModuleLayout";
 import { ModuleGuideView } from "../features/learning/components/ModuleGuideView";
@@ -66,6 +67,7 @@ import { useMetronomeController } from "../features/metronome/useMetronomeContro
 import { useMetronomeScreenWakeLock } from "../features/metronome/useMetronomeScreenWakeLock";
 import { useBlurButtonAfterPointerClick } from "./hooks/useBlurButtonAfterPointerClick";
 import { useLocalStorageState } from "../shared/hooks/useLocalStorageState";
+import { installMobileTextInputAutoScroll } from "../shared/utils/mobileTextInputAutoScroll";
 import {
   clearLocalPreferenceStorage,
   LOCAL_STORAGE_PREFERENCE_CHANGE_EVENT,
@@ -114,6 +116,8 @@ import {
   parseSystemPracticeMicrophonePreferences,
   PRACTICE_MICROPHONE_PREFERENCES_KEY,
 } from "../features/vocal-pitch/logic/practiceMicrophonePreferences";
+
+const DUET_PRACTICE_BPM_CHECKED_KEY = "anki-note.duetPracticeBpmChecked";
 
 const SettingsView = lazy(() =>
   import("../features/settings/components/SettingsView").then((module) => ({
@@ -239,6 +243,7 @@ export function App({
   skipPendingAnswerEventRetry?: boolean;
 }): JSX.Element {
   useBlurButtonAfterPointerClick();
+  useEffect(() => installMobileTextInputAutoScroll(), []);
   const appUpdateController = useAppUpdateNotice();
   const midi = useMidiInput();
   const previousMidiStatusRef = useRef({
@@ -338,6 +343,10 @@ export function App({
   const playgroundNavGroupRef = useRef<HTMLDivElement | null>(null);
   const [isHomeMetronomeOpen, setIsHomeMetronomeOpen] = useState(() => route.page === "metronome");
   const metronomeController = useMetronomeController();
+  const currentGlobalMetronomeBpm = metronomeController.preferences.bpm;
+  const setGlobalMetronomeBpm = metronomeController.setBpm;
+  const confirm = useConfirmDialog();
+  const duetMetronomeBpmCheckAttemptedRef = useRef(false);
   const stopMetronome = metronomeController.stop;
   const practiceMetronomeSyncToggleRef = useRef<(() => void) | null>(null);
   const practiceMetronomeSyncPauseRef = useRef<(() => void) | null>(null);
@@ -456,6 +465,31 @@ export function App({
   const ignoreMobileBackClickRef = useRef(false);
   const module = route.levelId ? getLearningModule(route.levelId) : null;
   const moduleTab: LearningModuleTab = route.moduleTab ?? "practice";
+  useEffect(() => {
+    if (module?.id !== 6 || moduleTab !== "practice") return;
+    if (duetMetronomeBpmCheckAttemptedRef.current) return;
+    duetMetronomeBpmCheckAttemptedRef.current = true;
+
+    let alreadyChecked = false;
+    try {
+      alreadyChecked = window.localStorage.getItem(DUET_PRACTICE_BPM_CHECKED_KEY) === "true";
+      if (!alreadyChecked) {
+        window.localStorage.setItem(DUET_PRACTICE_BPM_CHECKED_KEY, "true");
+      }
+    } catch {
+      // Keep the first-entry check available for this session when storage is unavailable.
+    }
+    if (alreadyChecked || currentGlobalMetronomeBpm <= 40) return;
+
+    void confirm({
+      title: "木鱼节拍可能过快",
+      description: `当前全局木鱼节拍为 ${currentGlobalMetronomeBpm} BPM，可能偏快。是否调整为 40 BPM？`,
+      cancelLabel: "保持当前速度",
+      confirmLabel: "调整为 40 BPM",
+    }).then((shouldAdjust) => {
+      if (shouldAdjust) setGlobalMetronomeBpm(40);
+    });
+  }, [confirm, currentGlobalMetronomeBpm, setGlobalMetronomeBpm, module?.id, moduleTab]);
   const view: View =
     route.levelId !== undefined
       ? moduleTab === "stats"

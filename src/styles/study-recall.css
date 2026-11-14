@@ -1093,15 +1093,13 @@ main.has-backup-reminder .setup-grid::after {
   font-weight: 700;
 }
 
-.duet-summary-metrics,
-.duet-summary-breakdown {
+.duet-summary-metrics {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.duet-summary-metric,
-.duet-summary-breakdown article {
+.duet-summary-metric {
   background: color-mix(in srgb, var(--surface-soft) 84%, var(--accent-soft));
   border: 1px solid color-mix(in srgb, var(--border) 72%, var(--accent));
   border-radius: 14px;
@@ -1111,38 +1109,26 @@ main.has-backup-reminder .setup-grid::after {
   padding: 14px 15px;
 }
 
-.duet-summary-metric > span,
-.duet-summary-breakdown article > span {
+.duet-summary-metric > span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
 }
 
-.duet-summary-metric > strong,
-.duet-summary-breakdown article > strong {
+.duet-summary-metric > strong {
   color: var(--success);
   font-size: clamp(20px, 3vw, 26px);
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
 
-.duet-summary-metric > small,
-.duet-summary-breakdown article > small {
+.duet-summary-metric > small {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
-.duet-summary-breakdown {
-  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
-}
-
-.duet-summary-breakdown article > strong {
-  color: var(--text);
-}
-
-.duet-summary-note,
 .duet-summary-suggestion p {
   color: var(--muted);
   font-size: 13px;
@@ -1158,6 +1144,109 @@ main.has-backup-reminder .setup-grid::after {
 .duet-summary-suggestion p {
   color: var(--text);
   font-weight: 650;
+}
+
+.practice-summary-dialog .practice-wrong-note-summary {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+
+.practice-wrong-note-summary-heading {
+  align-items: center;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font-size: 17px;
+  font-weight: 750;
+  gap: 10px;
+  list-style: none;
+  min-height: 32px;
+}
+
+.practice-wrong-note-summary-heading::-webkit-details-marker {
+  display: none;
+}
+
+.practice-wrong-note-summary-heading::after {
+  color: var(--muted);
+  content: "⌄";
+  font-size: 20px;
+  line-height: 1;
+  margin-left: auto;
+  transition: transform 120ms ease;
+}
+
+.practice-wrong-note-summary[open] > .practice-wrong-note-summary-heading::after {
+  transform: rotate(180deg);
+}
+
+.practice-wrong-note-summary-heading:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.practice-wrong-note-summary-heading small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.practice-wrong-note-content {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+  min-width: 0;
+}
+
+.practice-wrong-note-staff-section {
+  min-width: 0;
+}
+
+.practice-wrong-note-staff-section h3 {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+
+.practice-wrong-note-staff-scroll {
+  background: color-mix(in srgb, var(--surface-soft) 65%, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.practice-wrong-note-staff {
+  display: block;
+  min-width: 100%;
+  width: max-content;
+}
+
+.practice-wrong-note-staff-renderer,
+.practice-wrong-note-staff-renderer svg {
+  display: block;
+  max-width: none;
+}
+
+.practice-wrong-note-count {
+  fill: var(--danger);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.practice-wrong-note-empty,
+.practice-wrong-note-unknown {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+
+.practice-wrong-note-unknown {
+  color: var(--danger);
 }
 
 .learning-weakness-action {

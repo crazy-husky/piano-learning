@@ -237,6 +237,12 @@ export function usePracticeAnswerFlow({
         return;
       }
 
+      if (synchronizedPractice && mode === "fixed-count" && nextCompletedCount >= fixedCount) {
+        void completeSession("completed-count");
+        await backupPromise;
+        return;
+      }
+
       const continueAfterResolution = (): void => {
         if (sessionRef.current?.id !== review.sessionId || sessionRef.current.endedAt) {
           return;
@@ -309,6 +315,7 @@ export function usePracticeAnswerFlow({
       startStaffPage,
       startStaffPageIndex,
       startStaffPageScroll,
+      synchronizedPractice,
     ]
   );
 
@@ -425,7 +432,7 @@ export function usePracticeAnswerFlow({
           clipping: answer.clipping,
           inputMode,
           microphoneAlgorithm: answer.microphoneAlgorithm,
-          midiNoteNumber: answer.midiNoteNumber,
+          midiNoteNumber: answerMidi,
         });
         setWrongAnswerCount((count) => count + 1);
         markMidiLatencyStage(diagnosticSampleId, "feedbackRequested");

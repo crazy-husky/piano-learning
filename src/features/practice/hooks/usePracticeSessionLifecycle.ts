@@ -87,6 +87,7 @@ interface PracticeSessionLifecycleRuntime {
 
 interface PracticeSessionLifecycleServices {
   stopMicrophone: () => void;
+  stopSynchronizedMetronome: () => void;
   clearStaffPageScrollSchedule: () => void;
   onDataChanged: () => Promise<void>;
   onPracticeFinished: () => void;
@@ -346,6 +347,7 @@ export function usePracticeSessionLifecycle({
       const updateUi = options.updateUi ?? true;
       runtime.endingRef.current = true;
       try {
+        services.stopSynchronizedMetronome();
         services.stopMicrophone();
         services.clearStaffPageScrollSchedule();
         const unfinishedReview =

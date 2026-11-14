@@ -182,7 +182,8 @@ const LEARNING_MODULES_BY_ID: readonly LearningModuleDefinition[] = [
       levels: ["level-1", "level-2", "level-3", "level-4", "level-5", "level-6"],
       sampleCountPerLevel: 40,
       minFirstTryAccuracy: 0.8,
-      description: "每个 Level 至少完成 40 题，首次答对率达到 80%。",
+      description:
+        "每个 Level 至少完成 40 题，首次答对率达到 80%；所有关卡建议从 40 BPM 开始练习。",
     },
     guide: {
       title: "让双手成为一个节奏单元",
