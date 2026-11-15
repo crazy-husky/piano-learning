@@ -15,6 +15,11 @@ import {
   normalizeAnswerPitchMode,
   type PracticeAnswerInput,
 } from "../../../domain/answerInput";
+import {
+  makeBlackKeyTarget,
+  maybeInfuseBlackKey,
+  normalizeBlackKeyPracticeSettings,
+} from "../../../domain/blackKeyPractice";
 import { createMelodyGenerationState } from "../../../domain/melody";
 import { ANSWER_BUTTONS, getNotesForSelection } from "../../../domain/notes";
 import { getEffectivePracticeNotes } from "../../../domain/practiceComparison";
@@ -28,6 +33,7 @@ import { filterLongTermReviews } from "../../../domain/stats";
 import type {
   AppSettings,
   AnswerPitchMode,
+  BlackKeyPracticeSettings,
   DuetPracticeLevel,
   InterruptReason,
   NoteName,
@@ -67,7 +73,11 @@ import type { PracticePagePreferences } from "../../../shared/preferences/practi
 import type { LearningLevelId, PracticeDistanceMode } from "../../../routing/appRoutes";
 import type { DuetWrongNoteTestPlan } from "../../learning/duetWrongNoteTest";
 import { VirtualPianoKeyboard } from "../../../shared/components/VirtualPianoKeyboard";
-import { isNaturalPianoKey, NATURAL_PIANO_KEYS } from "../../../shared/components/pianoKeyNames";
+import {
+  ALL_PIANO_KEYS,
+  isNaturalPianoKey,
+  NATURAL_PIANO_KEYS,
+} from "../../../shared/components/pianoKeyNames";
 import { StaffPagePrompt } from "./StaffPagePrompt";
 import { StaffPrompt } from "./StaffPrompt";
 import { ReturnToCurrentNoteButton } from "./ReturnToCurrentNoteButton";
@@ -391,6 +401,8 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms: false,
     duetStrictHandAlternation: false,
+    singleBlackKeys: { enabled: false, ratio: 20, spelling: "mixed" },
+    duetBlackKeys: { enabled: false, ratio: 20, spelling: "mixed" },
     autoPlayTarget: settings.autoPlayTarget,
     midiAutoPlayTarget: false,
     chaseEnabled: DEFAULT_SCORE_CHASE_PREFERENCES.enabled,
@@ -461,6 +473,8 @@ function parsePracticeSetupUiPreferences(
       typeof value.duetStrictHandAlternation === "boolean"
         ? value.duetStrictHandAlternation
         : false,
+    singleBlackKeys: normalizeBlackKeyPracticeSettings(value.singleBlackKeys),
+    duetBlackKeys: normalizeBlackKeyPracticeSettings(value.duetBlackKeys),
     autoPlayTarget:
       typeof value.autoPlayTarget === "boolean" ? value.autoPlayTarget : fallback.autoPlayTarget,
     midiAutoPlayTarget:
@@ -616,6 +630,7 @@ export function PracticeView({
     staffPageIndex?: number;
     type: "wrong" | "correct";
     noteName?: NoteName;
+    pianoKeyName?: PianoKeyName;
     staff?: Staff;
   } | null>(null);
   const preReadingAnswerOutcomesRef = useRef(new Map<number, boolean>());
@@ -808,6 +823,17 @@ export function PracticeView({
     : isBlindPractice && configuredAnswerPitchMode === "note-name"
       ? "microphone"
       : configuredAnswerPitchMode;
+  const savedBlackKeySettings = isDuetPractice
+    ? practiceSetupPreferences.duetBlackKeys
+    : practiceSetupPreferences.singleBlackKeys;
+  const blackKeySettings = normalizeBlackKeyPracticeSettings({
+    enabled: runningStartSnapshot?.practiceConfig.includeBlackKeys ?? savedBlackKeySettings.enabled,
+    ratio: runningStartSnapshot?.practiceConfig.blackKeyRatio ?? savedBlackKeySettings.ratio,
+    spelling:
+      runningStartSnapshot?.practiceConfig.blackKeySpelling ?? savedBlackKeySettings.spelling,
+  });
+  const blackKeyFeatureAvailable = learningLevelId === 2 || isDuetPractice;
+  const fuseBlackKeys = blackKeyFeatureAvailable && !isBlindPractice && blackKeySettings.enabled;
   const requiresMidiStaffPage = practiceTab === "free" && answerPitchMode === "exact-pitch";
   const isMetronomeSyncMandatory = practiceTab === "free" && isDuetPractice;
   const supportsMetronomeSyncNoteDurations =
@@ -1080,6 +1106,16 @@ export function PracticeView({
   const setDuetAllowDottedRhythms = (enabled: boolean): void => {
     setPracticeSetupPreferences((current) => ({ ...current, duetAllowDottedRhythms: enabled }));
   };
+  const setBlackKeySettings = (
+    scope: "single" | "duet",
+    nextSettings: BlackKeyPracticeSettings
+  ): void => {
+    setPracticeSetupPreferences((current) =>
+      scope === "duet"
+        ? { ...current, duetBlackKeys: normalizeBlackKeyPracticeSettings(nextSettings) }
+        : { ...current, singleBlackKeys: normalizeBlackKeyPracticeSettings(nextSettings) }
+    );
+  };
   const setMetronomeSyncEnabled = (enabled: boolean): void => {
     if (isPreReadingPractice) {
       setPreReadingMetronomeSyncEnabled(enabled);
@@ -1309,6 +1345,8 @@ export function PracticeView({
         duetCurriculumVersion: current.duetCurriculumVersion,
         duetAllowDottedRhythms: current.duetAllowDottedRhythms,
         duetStrictHandAlternation: current.duetStrictHandAlternation,
+        singleBlackKeys: current.singleBlackKeys,
+        duetBlackKeys: current.duetBlackKeys,
         midiAutoPlayTarget: current.midiAutoPlayTarget,
         midiPlayAnswerNote: current.midiPlayAnswerNote,
         chaseEnabled: current.chaseEnabled,
@@ -1436,8 +1474,19 @@ export function PracticeView({
     [allQueueNotes, coreQueueNotes.length, rangeExtensionNoteIds]
   );
   const effectiveTargetNoteIds = useMemo(
-    () => new Set(allQueueNotes.map((note) => note.id)),
-    [allQueueNotes]
+    () =>
+      new Set(
+        allQueueNotes.flatMap((note) => {
+          if (!fuseBlackKeys) return [note.id];
+          return [
+            note.id,
+            ...(["sharp", "flat"] as const)
+              .map((spelling) => makeBlackKeyTarget(note, spelling)?.id)
+              .filter((id): id is NonNullable<typeof id> => id !== undefined),
+          ];
+        })
+      ),
+    [allQueueNotes, fuseBlackKeys]
   );
   const schedulerReviews = useMemo(() => filterLongTermReviews(reviews), [reviews]);
   const savePracticeSetupSettings = useCallback(
@@ -1568,6 +1617,8 @@ export function PracticeView({
     pausePractice();
   }, [pausePractice]);
 
+  const startPracticeMicrophone = practiceMicrophone.start;
+  const microphoneIsListening = practiceMicrophone.isListening;
   const resumePractice = useCallback(async (): Promise<void> => {
     if (!isPausedRef.current) {
       return;
@@ -1583,8 +1634,8 @@ export function PracticeView({
       try {
         const microphoneReady = await ensurePracticeMicrophoneForResume({
           answerPitchMode,
-          isListening: practiceMicrophone.isListening,
-          startMicrophone: practiceMicrophone.start,
+          isListening: microphoneIsListening,
+          startMicrophone: () => startPracticeMicrophone({ includeAccidentals: fuseBlackKeys }),
         });
         if (!microphoneReady || !isPausedRef.current || endingRef.current) {
           return;
@@ -1636,9 +1687,10 @@ export function PracticeView({
   }, [
     answerPitchMode,
     autoPlayTarget,
+    fuseBlackKeys,
     midi.isConnected,
-    practiceMicrophone.isListening,
-    practiceMicrophone.start,
+    microphoneIsListening,
+    startPracticeMicrophone,
     resumeActiveTimers,
     endingRef,
     isPausedRef,
@@ -1778,10 +1830,14 @@ export function PracticeView({
 
   const startPrompt = useCallback(
     (note: TargetNote, duetTargets?: DuetTargetPair): void => {
+      const promptNote =
+        fuseBlackKeys && !duetTargets && promptDisplayMode === "single-note"
+          ? maybeInfuseBlackKey(note, blackKeySettings)
+          : note;
       const now = performance.now();
       const startsPaused = isPausedRef.current;
       promptRef.current = {
-        note,
+        note: promptNote,
         ...(duetTargets ? { duetTargets } : {}),
         completedDuetStaves: duetTargets
           ? [
@@ -1801,7 +1857,7 @@ export function PracticeView({
         focusLosses: [],
         interrupted: false,
       };
-      setCurrentNote(note);
+      setCurrentNote(promptNote);
       setFeedback(null);
       answerInputLockedRef.current = false;
       if (
@@ -1813,7 +1869,7 @@ export function PracticeView({
             [...duetTargets.low, ...duetTargets.high].map((target) => playTargetNote(target))
           ).catch(() => undefined);
         } else {
-          void playTargetNote(note).catch(() => undefined);
+          void playTargetNote(promptNote).catch(() => undefined);
         }
       }
       const pageIndex = staffPageRef.current?.index;
@@ -1829,7 +1885,7 @@ export function PracticeView({
         }
       }
     },
-    [autoPlayTarget, setCurrentNote]
+    [autoPlayTarget, blackKeySettings, fuseBlackKeys, promptDisplayMode, setCurrentNote]
   );
 
   const adaptiveEventsPerMeasure = Math.max(
@@ -1878,6 +1934,7 @@ export function PracticeView({
   } = usePracticeStaffPageFlow({
     values: {
       drillNoteNames,
+      blackKeySettings: { ...blackKeySettings, enabled: fuseBlackKeys },
       enabledNotes: coreEnabledNotes,
       duetLevel: isDuetPractice ? duetLevel : undefined,
       duetQuestionTargets: duetWrongNoteTestPlan?.questions,
@@ -2382,6 +2439,10 @@ export function PracticeView({
   const { startSession } = usePracticeSessionStart({
     values: {
       answerPitchMode,
+      blackKeySettings: {
+        ...blackKeySettings,
+        enabled: fuseBlackKeys,
+      },
       isDuetPractice,
       isDuetWrongNoteTest: Boolean(duetWrongNoteTestPlan),
       duetWrongNoteTestCount: duetWrongNoteTestPlan?.questions.length,
@@ -3112,6 +3173,7 @@ export function PracticeView({
   const { pressedAnswerKeys } = usePracticeInput({
     answerPitchMode,
     canStartOnMidi: songPracticeSelection === null && practiceTab === "free",
+    allowBlackKeyAnswers: fuseBlackKeys,
     isPausedRef,
     isRunning: phase === "running",
     midi,
@@ -3746,6 +3808,7 @@ export function PracticeView({
         freePracticeTitle={freePracticeCopy.title}
         freePracticeDescription={freePracticeCopy.description}
         blindPractice={isBlindPractice}
+        showBlackKeySettings={blackKeyFeatureAvailable}
         lockPracticeSetup={Boolean(duetWrongNoteTestPlan)}
         showPracticeKindTabs={showPracticeKindTabs}
         showPracticeModeTabs={practiceModeLock === undefined}
@@ -3821,6 +3884,7 @@ export function PracticeView({
           onDuetRangeGroupIdsChange: setDuetRangeGroupIds,
           onDuetAllowDottedRhythmsChange: setDuetAllowDottedRhythms,
           onDuetStrictHandAlternationChange: setDuetStrictHandAlternation,
+          onBlackKeySettingsChange: setBlackKeySettings,
           onAutoPlayTargetChange: setAutoPlayTarget,
           onFixedCountChange: setFixedCount,
           onFixedDurationSecondsChange: setFixedDurationSeconds,
@@ -3861,7 +3925,9 @@ export function PracticeView({
         microphoneStatus={practiceMicrophone.status}
         metronomeError={metronomeAudioError}
         onRetryMicrophone={() =>
-          practiceMicrophone.start({ includeAccidentals: practiceTab === "songs" })
+          practiceMicrophone.start({
+            includeAccidentals: practiceTab === "songs" || fuseBlackKeys,
+          })
         }
         midi={midi}
         preferences={{
@@ -4118,7 +4184,7 @@ export function PracticeView({
             <PracticeMicrophoneRetryButton
               isConnecting={practiceMicrophone.status === "requesting"}
               isPreparingModel={practiceMicrophone.isPreparingSwiftF0}
-              onRetry={() => practiceMicrophone.start()}
+              onRetry={() => practiceMicrophone.start({ includeAccidentals: fuseBlackKeys })}
             />
           ) : null}
           {practiceMicrophone.recoveryReloadAvailable ? (
@@ -4371,15 +4437,28 @@ export function PracticeView({
           className="practice-virtual-piano-keyboard"
           disabled={isPaused || freePlayingRowIndex !== null}
           enabledKeys={
-            answerPitchMode === "note-name" ? NATURAL_PIANO_KEYS : new Set<PianoKeyName>()
+            answerPitchMode === "note-name"
+              ? fuseBlackKeys
+                ? ALL_PIANO_KEYS
+                : NATURAL_PIANO_KEYS
+              : new Set<PianoKeyName>()
           }
           feedback={
-            feedback?.noteName ? { keyName: feedback.noteName, type: feedback.type } : undefined
+            feedback?.pianoKeyName || feedback?.noteName
+              ? {
+                  keyName: feedback.pianoKeyName ?? feedback.noteName!,
+                  type: feedback.type,
+                }
+              : undefined
           }
           getKeyAriaLabel={(keyName) => `${keyName.replace("#", "♯")} 音键`}
           onKeyPress={(keyName) => {
-            if (answerPitchMode === "note-name" && isNaturalPianoKey(keyName)) {
-              submitPracticeAnswer({ noteName: keyName, source: "screen-keyboard" });
+            if (answerPitchMode === "note-name" && (isNaturalPianoKey(keyName) || fuseBlackKeys)) {
+              submitPracticeAnswer({
+                noteName: isNaturalPianoKey(keyName) ? keyName : (keyName[0] as NoteName),
+                pianoKeyName: keyName,
+                source: "screen-keyboard",
+              });
             }
           }}
           onKeyTransitionEnd={
@@ -4388,7 +4467,7 @@ export function PracticeView({
                   const diagnosticSampleId = feedback?.diagnosticSampleId;
                   if (
                     type === feedback?.type &&
-                    feedback?.noteName === keyName &&
+                    (feedback?.pianoKeyName ?? feedback?.noteName) === keyName &&
                     diagnosticSampleId !== undefined &&
                     propertyName.startsWith("border-") &&
                     propertyName.endsWith("-color")

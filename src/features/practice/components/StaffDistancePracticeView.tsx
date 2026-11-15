@@ -23,6 +23,7 @@ import { writeBackupNow } from "../../../data/backup";
 import { db, replacePracticeSessionDiscardingAnswerEvents } from "../../../data/db";
 import { createUuid } from "../../../domain/id";
 import { trackUsageEvent } from "../../../analytics/optionalUsageAnalytics";
+import { normalizeBlackKeyPracticeSettings } from "../../../domain/blackKeyPractice";
 import { getNotesForSelection, getStaffSelectedPitchIds } from "../../../domain/notes";
 import { validateStaffDistancePractice } from "../../../domain/staffDistancePractice";
 import {
@@ -32,6 +33,8 @@ import {
 } from "../../../domain/staffDistanceFinger";
 import type {
   AppSettings,
+  BlackKeyRatio,
+  BlackKeySpelling,
   PitchId,
   PracticeMode,
   PracticeSessionRecord,
@@ -155,6 +158,9 @@ const DEFAULT_PREFERENCES: StaffDistancePreferences = {
   chaseSpeedMultiplier: DEFAULT_SCORE_CHASE_PREFERENCES.speedMultiplier,
   chaseStartCount: DEFAULT_SCORE_CHASE_PREFERENCES.startCount,
   includeUnison: false,
+  includeBlackKeys: false,
+  blackKeyRatio: 20,
+  blackKeySpelling: "mixed",
   inputMethod: "midi",
   computerKeyboardBindings: DEFAULT_STAFF_DISTANCE_COMPUTER_KEYBOARD_BINDINGS,
   lastNonComputerKeyboardInputMethod: "midi",
@@ -226,6 +232,11 @@ function normalizePreferences(value: unknown): StaffDistancePreferences {
   )
     ? savedChaseSpeed
     : DEFAULT_SCORE_CHASE_PREFERENCES.speedMultiplier;
+  const blackKeySettings = normalizeBlackKeyPracticeSettings({
+    enabled: record.includeBlackKeys,
+    ratio: record.blackKeyRatio,
+    spelling: record.blackKeySpelling,
+  });
   return {
     chaseEnabled:
       typeof record.chaseEnabled === "boolean"
@@ -243,6 +254,9 @@ function normalizePreferences(value: unknown): StaffDistancePreferences {
       12
     ),
     includeUnison: typeof record.includeUnison === "boolean" ? record.includeUnison : false,
+    includeBlackKeys: blackKeySettings.enabled,
+    blackKeyRatio: blackKeySettings.ratio,
+    blackKeySpelling: blackKeySettings.spelling,
     maxDistance: numberInRange(record.maxDistance, 2, 1, 7),
     stepTraining: typeof record.stepTraining === "boolean" ? record.stepTraining : false,
     fixedCount: numberInRange(record.fixedCount, 30, 1, 500),
@@ -326,6 +340,10 @@ function createDistanceSession(
       ? "treble-only"
       : "bass-only"
     : settings.staffNotationMode;
+  const includeBlackKeys =
+    !isFingerMode &&
+    preferences.includeBlackKeys === true &&
+    !(preferences.trainingMode === "play" && preferences.inputMethod === "computer-keyboard");
   const startedAt = new Date().toISOString();
   return {
     schemaVersion: 1,
@@ -355,6 +373,13 @@ function createDistanceSession(
       includeInterStaffLedgerSpellings:
         staffNotationMode === "grand" ? false : settings.includeInterStaffLedgerSpellings,
       includeUnison: isFingerMode ? false : preferences.includeUnison,
+      includeBlackKeys,
+      ...(includeBlackKeys
+        ? {
+            blackKeyRatio: preferences.blackKeyRatio ?? 20,
+            blackKeySpelling: preferences.blackKeySpelling ?? "mixed",
+          }
+        : {}),
       stepTraining:
         !isFingerMode && focus?.distance === undefined ? preferences.stepTraining : false,
       inputMethod: preferences.trainingMode !== "look" ? preferences.inputMethod : undefined,
@@ -604,6 +629,9 @@ export function StaffDistancePracticeView({
       : trainingMode !== "finger" && preferences.inputMethod === "virtual-keyboard"
         ? "midi"
         : preferences.inputMethod;
+  const canUseBlackKeysForCurrentInput =
+    trainingMode === "look" ||
+    (trainingMode === "play" && activeInputMethod !== "computer-keyboard");
   useEffect(() => {
     if (
       trainingMode !== "play" ||
@@ -883,7 +911,9 @@ export function StaffDistancePracticeView({
         trainingMode !== "look" &&
         activeInputMethod === "microphone"
       ) {
-        const microphoneReady = await microphone.start({ includeAccidentals: false });
+        const microphoneReady = await microphone.start({
+          includeAccidentals: trainingMode !== "finger" && preferences.includeBlackKeys,
+        });
         if (!microphoneReady) {
           setStartError("请检查麦克风权限或设备");
           guideSetupRequirement('[data-setup-guide-target="distance-microphone-retry"]');
@@ -1139,6 +1169,9 @@ export function StaffDistancePracticeView({
     const sessionSettings = {
       includeUnison: runSession.staffDistance.includeUnison,
       maxDistance: runSession.staffDistance.maxDistance,
+      includeBlackKeys: runSession.staffDistance.includeBlackKeys === true,
+      blackKeyRatio: runSession.staffDistance.blackKeyRatio ?? 20,
+      blackKeySpelling: runSession.staffDistance.blackKeySpelling ?? "mixed",
       stepTraining: runSession.staffDistance.stepTraining ?? false,
       ...(runSession.staffDistance.focusDistance !== undefined
         ? { focusDistance: runSession.staffDistance.focusDistance }
@@ -1786,7 +1819,10 @@ export function StaffDistancePracticeView({
                       isPreparingModel={microphone.isPreparingSwiftF0}
                       setupGuideTarget="distance-microphone-retry"
                       onRetry={async () => {
-                        const connected = await microphone.start({ includeAccidentals: false });
+                        const connected = await microphone.start({
+                          includeAccidentals:
+                            trainingMode !== "finger" && preferences.includeBlackKeys,
+                        });
                         if (connected) setStartError(null);
                         return connected;
                       }}
@@ -1981,7 +2017,7 @@ export function StaffDistancePracticeView({
             <summary className="practice-free-advanced-toggle staff-distance-advanced-toggle">
               <Settings2 aria-hidden="true" size={16} />
               <span>更多设置</span>
-              <span className="practice-free-advanced-count">4组</span>
+              <span className="practice-free-advanced-count">5组</span>
               <ChevronDown
                 aria-hidden="true"
                 className="staff-distance-advanced-chevron"
@@ -1990,6 +2026,77 @@ export function StaffDistancePracticeView({
             </summary>
             <div className="staff-distance-advanced-content">
               <div className="staff-distance-advanced-inner">
+                <section className="staff-distance-advanced-section">
+                  <h2>融入黑键</h2>
+                  <label className="practice-checkbox-option">
+                    <input
+                      checked={preferences.includeBlackKeys ?? false}
+                      disabled={!canUseBlackKeysForCurrentInput}
+                      type="checkbox"
+                      onChange={(event) => {
+                        const includeBlackKeys = event.currentTarget.checked;
+                        setPreferences((current) => ({
+                          ...current,
+                          includeBlackKeys,
+                        }));
+                      }}
+                    />
+                    <span>练习中加入升降音</span>
+                  </label>
+                  {preferences.includeBlackKeys ? (
+                    <div className="practice-free-black-key-options staff-distance-black-key-options">
+                      <label className="practice-black-key-setting">
+                        <span className="control-label">黑键比例</span>
+                        <select
+                          className="practice-black-key-select"
+                          disabled={!canUseBlackKeysForCurrentInput}
+                          value={preferences.blackKeyRatio ?? 20}
+                          onChange={(event) => {
+                            const blackKeyRatio = Number(
+                              event.currentTarget.value
+                            ) as BlackKeyRatio;
+                            setPreferences((current) => ({
+                              ...current,
+                              blackKeyRatio,
+                            }));
+                          }}
+                        >
+                          {[10, 20, 30, 50].map((ratio) => (
+                            <option key={ratio} value={ratio}>
+                              {ratio}%
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="practice-black-key-setting">
+                        <span className="control-label">记谱方式</span>
+                        <select
+                          className="practice-black-key-select"
+                          disabled={!canUseBlackKeysForCurrentInput}
+                          value={preferences.blackKeySpelling ?? "mixed"}
+                          onChange={(event) => {
+                            const blackKeySpelling = event.currentTarget.value as BlackKeySpelling;
+                            setPreferences((current) => ({
+                              ...current,
+                              blackKeySpelling,
+                            }));
+                          }}
+                        >
+                          <option value="mixed">升降混合</option>
+                          <option value="sharp">以升号为主</option>
+                          <option value="flat">以降号为主</option>
+                        </select>
+                      </label>
+                    </div>
+                  ) : null}
+                  <p className="staff-distance-field-hint">
+                    按所选比例随机加入升降音；音距练习保留原谱位关系。
+                    {!canUseBlackKeysForCurrentInput
+                      ? "当前电脑键盘输入仅支持自然音，可切换 MIDI 或麦克风练习升降音。"
+                      : ""}
+                  </p>
+                </section>
+
                 <section className="staff-distance-advanced-section">
                   <GlobalRangeControls
                     allowInterStaffLedgerChoice={false}

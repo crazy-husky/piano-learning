@@ -146,7 +146,7 @@ export function buildDuetPracticeSuggestion(
   options: DuetPracticeSuggestionOptions
 ): string {
   if (options.wrongNoteTest) {
-    return "本轮是错音专项测试，结果用于检查薄弱音，不用于判断关卡进度；建议继续针对这些错音练习。";
+    return "本轮用于检查薄弱音，建议继续针对这些错音进行练习。";
   }
 
   const hands = (["bass", "treble"] as const)
@@ -157,7 +157,7 @@ export function buildDuetPracticeSuggestion(
     }))
     .sort((left, right) => left.rate - right.rate);
   if (hands.length === 0) {
-    return "本次有效首答样本不足，暂时无法判断练习重点；完成一轮后再查看建议。";
+    return "本次练习数据还不足以判断练习重点，建议再完成一轮双手协同练习。";
   }
 
   const weakestHand = hands[0]!;
@@ -166,24 +166,24 @@ export function buildDuetPracticeSuggestion(
     const handNames = weakHands.map(({ staff }) => (staff === "treble" ? "右手" : "左手"));
     const handAdvice =
       handNames.length === 2
-        ? "左右手首答正确率都低于 50%，建议先回到自由练习，分别进行单手单音练习，稳固音高判断。"
-        : `${handNames[0]}首答正确率低于 50%，建议先回到自由练习，选择${handNames[0]}进行单手单音练习，稳固音高判断。`;
+        ? "左右手的音高判断还不够稳定，建议先到 Level 2「单音极速反应」分别进行单手单音练习，稳固认音和找键。"
+        : `${handNames[0]}的音高判断还不够稳定，建议先到 Level 2「单音极速反应」进行单手单音练习，稳固认音和找键。`;
     const tempoAdvice =
       options.syncEnabled && options.metronomeBpm !== undefined && options.metronomeBpm > 40
-        ? `当前全局木鱼速度为 ${options.metronomeBpm} BPM，可能偏快，建议先降到 40 BPM；稳定后再逐步加速。`
+        ? "当前节拍可能偏快，建议适当调慢；稳定后再逐步加快。"
         : "";
     return `${handAdvice}${tempoAdvice ? ` ${tempoAdvice}` : ""}`;
   }
 
   const weakestHandName = weakestHand.staff === "treble" ? "右手" : "左手";
   if (weakestHand.rate < 0.8) {
-    return `表现还不错，但${weakestHandName}首答正确率还未达到 80% 达标线。建议到统计页面针对错音进行复习，优先巩固${weakestHandName}的薄弱音。`;
+    return `整体表现不错，${weakestHandName}的音高判断还有提升空间。建议到统计页面针对薄弱音进行复习，再回到双手协同巩固。`;
   }
   if (hands.length < 2) {
-    return `${weakestHandName}首答正确率表现不错；本次样本尚未覆盖左右手，建议完成包含双手的练习后再查看进阶建议。`;
+    return `${weakestHandName}的表现不错；本次只练习了一只手，建议选择包含左右手的练习后再查看双手建议。`;
   }
   if (weakestHand.rate < 0.9) {
-    return `左右手首答正确率都已达到 80% 达标线，表现很棒；继续巩固${weakestHandName}，向 90% 正确率冲刺。`;
+    return `左右手配合已经很不错，音高判断也比较稳定。继续练习并保持稳定，可以挑战更高的准确度。`;
   }
 
   const nextLevelAdvice: Partial<Record<DuetPracticeLevel, string>> = {
@@ -195,13 +195,13 @@ export function buildDuetPracticeSuggestion(
 
   if (options.level === "level-1") {
     return options.strictHandAlternation
-      ? "左右手轮流挑战中也达到 90% 以上，可以尝试 Level 2「少量同步」，开始练习两手偶尔同时起音。"
-      : "左右手首答正确率已达到 90% 以上，可以开启「左右手轮流出现音符（更难）」，挑战严格的左右手交替。";
+      ? "严格轮流挑战已经完成得很稳，可以尝试 Level 2「少量同步」，开始练习两手偶尔同时起音。"
+      : "双手音高判断已经很稳定，可以开启「左右手轮流出现音符（更难）」，挑战更严格的左右手交替。";
   }
   if (options.level === "level-6") {
     return options.allowDottedRhythms
-      ? "本关已达到 90% 以上。可以继续巩固分解和弦与附点节奏，或尝试更宽的练习音区。"
-      : "本关已达到 90% 以上，可以开启「附点节奏挑战」，继续练习节奏变化。";
+      ? "分解和弦与附点节奏的配合已经比较稳定。可以继续巩固，也可以尝试更宽的练习音区。"
+      : "本关练习表现稳定，可以开启「附点节奏挑战」，继续练习节奏变化。";
   }
   return nextLevelAdvice[options.level] ?? "表现很棒，继续保持稳定的双手协同。";
 }

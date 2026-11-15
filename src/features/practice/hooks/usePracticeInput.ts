@@ -6,7 +6,7 @@ import {
   useState,
   type MutableRefObject,
 } from "react";
-import type { AnswerPitchMode, PianoKeyName } from "../../../domain/types";
+import type { AnswerPitchMode, NoteName, PianoKeyName } from "../../../domain/types";
 import type { PracticeAnswerInput } from "../../../domain/answerInput";
 import { markMidiLatencyStage } from "../../../diagnostics/midiLatencyDiagnostics";
 import { markMidiLatencyAfterPaint } from "../../../diagnostics/midiLatencyPaint";
@@ -20,6 +20,7 @@ import { isNaturalPianoKey } from "../../../shared/components/pianoKeyNames";
 type PracticeInputOptions = {
   answerPitchMode: AnswerPitchMode;
   canStartOnMidi: boolean;
+  allowBlackKeyAnswers?: boolean;
   isPausedRef: MutableRefObject<boolean>;
   isRunning: boolean;
   midi: MidiInputController;
@@ -37,6 +38,7 @@ type PracticeInputHandlers = Pick<
 export function usePracticeInput({
   answerPitchMode,
   canStartOnMidi,
+  allowBlackKeyAnswers = false,
   isPausedRef,
   isRunning,
   midi,
@@ -83,7 +85,9 @@ export function usePracticeInput({
         syncHeldMidiKeys();
         return;
       }
-      if (!isNaturalPianoKey(event.note.keyName)) return;
+      const keyName = event.note.keyName;
+      const isNaturalKey = isNaturalPianoKey(keyName);
+      if (!isNaturalKey && !allowBlackKeyAnswers) return;
       if (event.type === "release") {
         pendingMidiPressDiagnosticSampleIdRef.current = undefined;
         heldMidiInputs.delete(event.note.keyId);
@@ -102,7 +106,8 @@ export function usePracticeInput({
           diagnosticSampleId: event.note.diagnosticSampleId,
           inputTimeMs: event.note.timestamp,
           midiNoteNumber: event.note.midiNoteNumber,
-          noteName: event.note.keyName,
+          noteName: isNaturalKey ? keyName : (keyName[0] as NoteName),
+          pianoKeyName: keyName,
           octave: event.note.octave,
           source: "midi",
         });
@@ -123,7 +128,14 @@ export function usePracticeInput({
       heldMidiInputs.clear();
       setHeldMidiAnswerKeys(new Set());
     };
-  }, [answerPitchMode, canStartOnMidi, isPausedRef, isRunning, subscribeMidi]);
+  }, [
+    allowBlackKeyAnswers,
+    answerPitchMode,
+    canStartOnMidi,
+    isPausedRef,
+    isRunning,
+    subscribeMidi,
+  ]);
 
   useEffect(() => {
     if (!isRunning) return undefined;

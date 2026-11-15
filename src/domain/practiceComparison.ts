@@ -3,6 +3,8 @@ import { buildTargetNoteSetKey } from "./targetNoteSet";
 import type {
   AppSettings,
   AnswerPitchMode,
+  BlackKeyRatio,
+  BlackKeySpelling,
   EffectiveQueueAlgorithm,
   NoteName,
   PracticeQueueStrategy,
@@ -22,6 +24,9 @@ export interface PracticeComparisonSnapshot {
   duetLevel?: DuetPracticeLevel;
   duetCurriculumVersion?: number;
   duetAllowDottedRhythms?: boolean;
+  includeBlackKeys?: boolean;
+  blackKeyRatio?: BlackKeyRatio;
+  blackKeySpelling?: BlackKeySpelling;
   metronomeSync?: boolean;
   effectiveQueueAlgorithm: EffectiveQueueAlgorithm;
   promptDisplayMode: PromptDisplayMode;
@@ -40,6 +45,9 @@ export interface PracticeComparisonInput {
   enabledGroupIds: AppSettings["enabledGroupIds"];
   enabledPitchIds?: AppSettings["enabledPitchIds"];
   includeInterStaffLedgerSpellings: boolean;
+  includeBlackKeys?: boolean;
+  blackKeyRatio?: BlackKeyRatio;
+  blackKeySpelling?: BlackKeySpelling;
   promptDisplayMode: PromptDisplayMode;
   promptNoteDuration: PromptNoteDuration;
   queueStrategy: PracticeQueueStrategy;
@@ -113,6 +121,9 @@ export function buildPracticeComparisonSnapshot({
   enabledGroupIds,
   enabledPitchIds,
   includeInterStaffLedgerSpellings,
+  includeBlackKeys,
+  blackKeyRatio,
+  blackKeySpelling,
   promptDisplayMode,
   promptNoteDuration,
   queueStrategy,
@@ -127,6 +138,7 @@ export function buildPracticeComparisonSnapshot({
     includeInterStaffLedgerSpellings,
     promptDisplayMode,
     promptNoteDuration,
+    ...(includeBlackKeys ? { includeBlackKeys: true, blackKeyRatio, blackKeySpelling } : {}),
     queueStrategy,
     staffNotationMode,
   });
@@ -144,6 +156,9 @@ export function buildPracticeActivitySnapshot({
   enabledGroupIds,
   enabledPitchIds,
   includeInterStaffLedgerSpellings,
+  includeBlackKeys,
+  blackKeyRatio,
+  blackKeySpelling,
   promptDisplayMode,
   promptNoteDuration,
   queueStrategy,
@@ -168,6 +183,7 @@ export function buildPracticeActivitySnapshot({
     practiceMode: "single-hand",
     promptDisplayMode,
     promptNoteDuration,
+    ...(includeBlackKeys ? { includeBlackKeys: true, blackKeyRatio, blackKeySpelling } : {}),
     targetNoteSetKey: buildTargetNoteSetKey(notes.map((note) => note.id)),
   };
 }

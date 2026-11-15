@@ -49,7 +49,7 @@ function collectWrongPitches(reviews: readonly ReviewRecord[]): {
     for (const wrongAnswer of review.wrongAnswers) {
       const midi = wrongAnswer.midiNoteNumber;
       if (midi === undefined || !Number.isInteger(midi) || midi < 0 || midi > 127) {
-        const noteName = wrongAnswer.noteName;
+        const noteName = wrongAnswer.pianoKeyName ?? wrongAnswer.noteName;
         unknown.set(noteName, (unknown.get(noteName) ?? 0) + 1);
         totalOccurrences += 1;
         continue;

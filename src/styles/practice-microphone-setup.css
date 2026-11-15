@@ -2299,6 +2299,57 @@
   padding-inline-start: 24px;
 }
 
+.practice-free-black-key-options {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.practice-black-key-setting {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.practice-black-key-setting .control-label {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.practice-setup-shell .practice-black-key-select {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.practice-black-key-setting:first-child .practice-black-key-select {
+  width: 76px;
+}
+
+.practice-black-key-setting:last-of-type .practice-black-key-select {
+  width: 116px;
+}
+
+.staff-distance-advanced-content .practice-black-key-select {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.staff-distance-black-key-options {
+  margin-block-start: 8px;
+}
+
+.practice-black-key-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .practice-free-advanced-content .practice-free-strategy-field {
   margin-top: 0;
 }

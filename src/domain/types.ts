@@ -5,8 +5,15 @@ export type PianoKeyName = NoteName | "C#" | "D#" | "F#" | "G#" | "A#";
 export type Octave = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type Staff = "treble" | "bass";
 export type StaffNotationMode = "treble-only" | "bass-only" | "grand";
-export type PitchId = `${NoteName}${Octave}`;
+export type PitchId = `${NoteName}${Octave}` | `${NoteName}#${Octave}` | `${NoteName}b${Octave}`;
 export type TargetNoteId = PitchId | `${PitchId}-${Staff}`;
+export type BlackKeyRatio = 10 | 20 | 30 | 50;
+export type BlackKeySpelling = "sharp" | "flat" | "mixed";
+export interface BlackKeyPracticeSettings {
+  enabled: boolean;
+  ratio: BlackKeyRatio;
+  spelling: BlackKeySpelling;
+}
 
 export type PracticeMode = "open-ended" | "fixed-count" | "fixed-duration";
 export type PreReadingBufferSize = 1 | 2 | 3 | 4 | 5;
@@ -38,6 +45,9 @@ export type StaffDistanceFingerInteractionMode = "play" | "no-answer";
 export interface StaffDistancePracticeSettings {
   includeUnison: boolean;
   maxDistance: number;
+  includeBlackKeys?: boolean;
+  blackKeyRatio?: BlackKeyRatio;
+  blackKeySpelling?: BlackKeySpelling;
   /** Emphasizes maxDistance and inserts a smaller interval after one or two repetitions. */
   stepTraining?: boolean;
   /** One-shot focus used by a targeted remedial round; omitted in saved preferences. */
@@ -84,6 +94,8 @@ export interface PracticeGroup {
 
 export interface WrongAnswer {
   noteName: NoteName;
+  /** Pitch class for octave-free virtual-keyboard answers. */
+  pianoKeyName?: PianoKeyName;
   atActiveMs: number;
   /** The outstanding duet target this wrong input was closest to; null means unassigned. */
   duetTargetNoteId?: TargetNoteId | null;
@@ -243,6 +255,8 @@ export interface AnswerEvent {
 export interface AnswerAttempt {
   midi?: number;
   noteName?: NoteName;
+  /** Pitch class for octave-free virtual-keyboard answers. */
+  pianoKeyName?: PianoKeyName;
   atMs: number;
   /** The outstanding duet target this wrong input was closest to; null means unassigned. */
   duetTargetNoteId?: TargetNoteId | null;
@@ -302,6 +316,9 @@ export interface StaffDistancePracticeSessionDetails {
   computerKeyboardBindings?: StaffDistanceComputerKeyboardBindings;
   includeInterStaffLedgerSpellings: boolean;
   includeUnison: boolean;
+  includeBlackKeys?: boolean;
+  blackKeyRatio?: BlackKeyRatio;
+  blackKeySpelling?: BlackKeySpelling;
   inputMethod?: StaffDistanceInputMethod;
   maxDistance: number;
   stepTraining?: boolean;
@@ -353,6 +370,9 @@ export interface PracticeSessionStartSnapshot {
     duetCurriculumVersion?: number;
     duetAllowDottedRhythms?: boolean;
     duetStrictHandAlternation?: boolean;
+    includeBlackKeys?: boolean;
+    blackKeyRatio?: BlackKeyRatio;
+    blackKeySpelling?: BlackKeySpelling;
     metronomeSync?: boolean;
     preReadingBufferSize?: PreReadingBufferSize;
     /** Temporary stats wrong-note tests must not enter regular practice history. */

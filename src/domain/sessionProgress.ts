@@ -4,6 +4,8 @@ import { isStatisticalReview } from "./reviews";
 import { isLongTermStatsEligible } from "./stats";
 import type {
   AnswerPitchMode,
+  BlackKeyRatio,
+  BlackKeySpelling,
   DuetPracticeDifficulty,
   DuetPracticeLevel,
   PracticeSessionRecord,
@@ -36,6 +38,9 @@ export interface SessionProgressGroupKey {
   duetLevel?: DuetPracticeLevel;
   duetCurriculumVersion?: number;
   duetAllowDottedRhythms?: boolean;
+  includeBlackKeys?: boolean;
+  blackKeyRatio?: BlackKeyRatio;
+  blackKeySpelling?: BlackKeySpelling;
   metronomeSync?: boolean;
   queueComparisonFamily: QueueComparisonFamily;
   promptDisplayMode: PromptDisplayMode;
@@ -114,6 +119,10 @@ function sameComparisonSnapshot(
     reference.duetLevel === candidate.duetLevel &&
     reference.duetCurriculumVersion === candidate.duetCurriculumVersion &&
     reference.duetAllowDottedRhythms === candidate.duetAllowDottedRhythms &&
+    (reference.includeBlackKeys === true) === (candidate.includeBlackKeys === true) &&
+    (reference.includeBlackKeys !== true ||
+      ((reference.blackKeyRatio ?? 20) === (candidate.blackKeyRatio ?? 20) &&
+        (reference.blackKeySpelling ?? "mixed") === (candidate.blackKeySpelling ?? "mixed"))) &&
     reference.metronomeSync === candidate.metronomeSync &&
     reference.targetNoteSetKey === candidate.targetNoteSetKey &&
     reference.promptDisplayMode === candidate.promptDisplayMode &&
@@ -132,6 +141,9 @@ export function serializeSessionProgressGroupKey(key: SessionProgressGroupKey): 
     key.duetLevel ?? "",
     key.duetCurriculumVersion ?? "",
     key.duetAllowDottedRhythms ?? "",
+    key.includeBlackKeys === true,
+    key.includeBlackKeys === true ? (key.blackKeyRatio ?? 20) : "",
+    key.includeBlackKeys === true ? (key.blackKeySpelling ?? "mixed") : "",
     key.metronomeSync ?? "",
     key.promptDisplayMode,
     key.queueComparisonFamily,
@@ -154,6 +166,13 @@ export function getSessionProgressGroupKey(
           : {}),
         ...(snapshot.duetAllowDottedRhythms !== undefined
           ? { duetAllowDottedRhythms: snapshot.duetAllowDottedRhythms }
+          : {}),
+        ...(snapshot.includeBlackKeys !== undefined
+          ? { includeBlackKeys: snapshot.includeBlackKeys }
+          : {}),
+        ...(snapshot.blackKeyRatio !== undefined ? { blackKeyRatio: snapshot.blackKeyRatio } : {}),
+        ...(snapshot.blackKeySpelling !== undefined
+          ? { blackKeySpelling: snapshot.blackKeySpelling }
           : {}),
         ...(snapshot.metronomeSync !== undefined ? { metronomeSync: snapshot.metronomeSync } : {}),
         promptDisplayMode: snapshot.promptDisplayMode,

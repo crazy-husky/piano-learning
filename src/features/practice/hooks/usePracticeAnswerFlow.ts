@@ -18,6 +18,7 @@ import type {
   InterruptReason,
   NoteName,
   Octave,
+  PianoKeyName,
   PracticeMode,
   PracticeQueueStrategy,
   PracticeSessionRecord,
@@ -41,6 +42,7 @@ interface PracticeAnswerFeedback {
   staffPageIndex?: number;
   type: "wrong" | "correct";
   noteName?: NoteName;
+  pianoKeyName?: PianoKeyName;
   staff?: Staff;
 }
 
@@ -348,7 +350,7 @@ export function usePracticeAnswerFlow({
           const playbackOctave =
             answerOctave === undefined ? prompt.note.octave : (answerOctave as Octave);
           markMidiLatencyStage(diagnosticSampleId, "audioRequested");
-          void playPianoNote(answer.noteName, playbackOctave).then(
+          void playPianoNote(answer.pianoKeyName ?? answer.noteName, playbackOctave).then(
             () => markMidiLatencyStage(diagnosticSampleId, "audioReady"),
             () => markMidiLatencyStage(diagnosticSampleId, "audioReady")
           );
@@ -411,6 +413,7 @@ export function usePracticeAnswerFlow({
       prompt.answerAttempts.push({
         midi: answerMidi,
         noteName: answer.noteName,
+        ...(answer.pianoKeyName ? { pianoKeyName: answer.pianoKeyName } : {}),
         atMs: atActiveMs,
         ...(duetTargets
           ? { duetTargetNoteId: matchedDuetTargetNoteId ?? duetTargetNoteId ?? null }
@@ -426,6 +429,7 @@ export function usePracticeAnswerFlow({
         completeMidiLatencySample(diagnosticSampleId, "wrong");
         prompt.wrongAnswers.push({
           noteName: answer.noteName,
+          ...(answer.pianoKeyName ? { pianoKeyName: answer.pianoKeyName } : {}),
           atActiveMs,
           ...(duetTargets ? { duetTargetNoteId: duetTargetNoteId ?? null } : {}),
           confidence: answer.confidence,
@@ -441,6 +445,7 @@ export function usePracticeAnswerFlow({
           ...(staffPageRef.current ? { staffPageIndex: staffPageRef.current.index } : {}),
           type: "wrong",
           noteName: answer.noteName,
+          ...(answer.pianoKeyName ? { pianoKeyName: answer.pianoKeyName } : {}),
           ...(duetTargets
             ? { staff: getDuetWrongFeedbackStaff(duetTargetNoteId, duetTargets) }
             : {}),
@@ -489,6 +494,7 @@ export function usePracticeAnswerFlow({
           diagnosticSampleId,
           type: "correct",
           noteName: answer.noteName,
+          ...(answer.pianoKeyName ? { pianoKeyName: answer.pianoKeyName } : {}),
           staff: matchedDuetStaff,
         });
         if (prompt.completedDuetStaves.length < 2) return;
@@ -498,7 +504,12 @@ export function usePracticeAnswerFlow({
       if (!matchedDuetStaff) completeMidiLatencySample(diagnosticSampleId, "correct");
       markMidiLatencyStage(diagnosticSampleId, "feedbackRequested");
       if (!matchedDuetStaff) {
-        setFeedback({ diagnosticSampleId, type: "correct", noteName: answer.noteName });
+        setFeedback({
+          diagnosticSampleId,
+          type: "correct",
+          noteName: answer.noteName,
+          ...(answer.pianoKeyName ? { pianoKeyName: answer.pianoKeyName } : {}),
+        });
       }
       markMidiLatencyStage(diagnosticSampleId, "reviewFinalizeStarted");
       const advanceAudioTime = synchronizedPractice ? getSynchronizedAdvanceAudioTime() : undefined;

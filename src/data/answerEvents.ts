@@ -91,6 +91,7 @@ export function answerEventToReview(event: AnswerEvent): ReviewRecord | null {
     .filter((attempt) => !attempt.isCorrect && !attempt.isLateForPrevious)
     .map((attempt) => ({
       noteName: attempt.noteName ?? event.targetNoteName!,
+      ...(attempt.pianoKeyName ? { pianoKeyName: attempt.pianoKeyName } : {}),
       atActiveMs: attempt.atMs,
       ...(attempt.duetTargetNoteId !== undefined
         ? { duetTargetNoteId: attempt.duetTargetNoteId }

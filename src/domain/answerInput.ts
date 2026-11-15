@@ -1,15 +1,6 @@
-import type { AnswerPitchMode, DuetTimingGrade, NoteName, TargetNote } from "./types";
+import { getTargetNoteMidi, pianoKeySemitone } from "./blackKeyPractice";
+import type { AnswerPitchMode, DuetTimingGrade, NoteName, PianoKeyName, TargetNote } from "./types";
 import type { PracticeMicrophoneAlgorithm } from "../features/vocal-pitch/logic/practiceMicrophonePreferences";
-
-const NOTE_NAME_SEMITONES: Record<NoteName, number> = {
-  C: 0,
-  D: 2,
-  E: 4,
-  F: 5,
-  G: 7,
-  A: 9,
-  B: 11,
-};
 
 export type AnswerInputSource = "computer-keyboard" | "microphone" | "midi" | "screen-keyboard";
 
@@ -19,6 +10,7 @@ export interface PracticeAnswerInput {
   microphoneAlgorithm?: PracticeMicrophoneAlgorithm;
   diagnosticSampleId?: number;
   midiNoteNumber?: number;
+  pianoKeyName?: PianoKeyName;
   inputTimeMs?: number;
   /** Optional onset-based timing result attached by synchronized duet practice. */
   duetTimingGrade?: DuetTimingGrade;
@@ -63,20 +55,25 @@ export function isPracticeAnswerSourceAllowed(
   return true;
 }
 
-export function getTargetMidiNoteNumber(target: Pick<TargetNote, "noteName" | "octave">): number {
-  return (target.octave + 1) * 12 + NOTE_NAME_SEMITONES[target.noteName];
+export function getTargetMidiNoteNumber(
+  target: Pick<TargetNote, "noteName" | "octave" | "accidental">
+): number {
+  return getTargetNoteMidi(target);
 }
 
 export function isPracticeAnswerCorrect(
   answer: PracticeAnswerInput,
-  target: Pick<TargetNote, "noteName" | "octave">,
+  target: Pick<TargetNote, "noteName" | "octave" | "accidental">,
   mode: AnswerPitchMode
 ): boolean {
-  if (answer.noteName !== target.noteName) {
-    return false;
-  }
   if (mode === "note-name") {
-    return true;
+    if (answer.midiNoteNumber !== undefined) {
+      return answer.midiNoteNumber % 12 === getTargetMidiNoteNumber(target) % 12;
+    }
+    if (answer.pianoKeyName) {
+      return pianoKeySemitone(answer.pianoKeyName) === getTargetMidiNoteNumber(target) % 12;
+    }
+    return answer.noteName === target.noteName && !target.accidental;
   }
   return (
     (mode === "microphone" ? answer.source === "microphone" : answer.source === "midi") &&

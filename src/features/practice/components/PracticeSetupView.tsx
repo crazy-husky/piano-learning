@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type {
   AnswerPitchMode,
+  BlackKeyPracticeSettings,
   DuetPracticeLevel,
   AppSettings,
   NoteName,
@@ -80,6 +81,8 @@ export interface PracticeSetupUiPreferences {
   duetCurriculumVersion: number;
   duetAllowDottedRhythms: boolean;
   duetStrictHandAlternation: boolean;
+  singleBlackKeys: BlackKeyPracticeSettings;
+  duetBlackKeys: BlackKeyPracticeSettings;
   autoPlayTarget: boolean;
   midiAutoPlayTarget: boolean;
   chaseEnabled: boolean;
@@ -109,6 +112,7 @@ interface PracticeSetupActions {
   onDuetRangeGroupIdsChange: (groupIds: DuetPracticeRangeGroupId[]) => void;
   onDuetAllowDottedRhythmsChange: (enabled: boolean) => void;
   onDuetStrictHandAlternationChange: (enabled: boolean) => void;
+  onBlackKeySettingsChange: (scope: "single" | "duet", settings: BlackKeyPracticeSettings) => void;
   onAutoPlayTargetChange: (enabled: boolean) => void;
   onFixedCountChange: (count: number) => void;
   onFixedDurationSecondsChange: (seconds: number) => void;
@@ -134,6 +138,7 @@ interface PracticeSetupViewProps {
   freePracticeDescription: string;
   showPracticeKindTabs?: boolean;
   showPracticeModeTabs?: boolean;
+  showBlackKeySettings?: boolean;
   blindPractice?: boolean;
   lockPracticeSetup?: boolean;
   duetRangeSummaryOverride?: string;
@@ -284,6 +289,7 @@ export function PracticeSetupView({
   freePracticeDescription,
   showPracticeKindTabs = true,
   showPracticeModeTabs = true,
+  showBlackKeySettings = false,
   blindPractice = false,
   lockPracticeSetup = false,
   duetRangeSummaryOverride,
@@ -324,6 +330,8 @@ export function PracticeSetupView({
     duetRangeGroupIds,
     duetAllowDottedRhythms,
     duetStrictHandAlternation,
+    singleBlackKeys,
+    duetBlackKeys,
     autoPlayTarget: nonMidiAutoPlayTarget,
     midiAutoPlayTarget,
     drillNoteNames,
@@ -337,6 +345,7 @@ export function PracticeSetupView({
     queueStrategy,
   } = preferences;
   const isDuetPractice = practiceMode === "duet";
+  const blackKeySettings = isDuetPractice ? duetBlackKeys : singleBlackKeys;
   const isCustomDuetRange =
     isDuetPractice && !lockPracticeSetup && isDuetPracticeCustomRangeLevel(duetLevel);
   const selectedDuetRangeGroups = new Set(duetRangeGroupIds);
@@ -361,6 +370,7 @@ export function PracticeSetupView({
     onDuetRangePresetChange,
     onDuetAllowDottedRhythmsChange,
     onDuetStrictHandAlternationChange,
+    onBlackKeySettingsChange,
     onAutoPlayTargetChange: setAutoPlayTarget,
     onFixedCountChange: setFixedCount,
     onFixedDurationSecondsChange: setFixedDurationSeconds,
@@ -1176,14 +1186,20 @@ export function PracticeSetupView({
                 type="button"
                 title={
                   isDuetPractice
-                    ? "出题策略、音符时值、合弹微调"
-                    : "音域加练、出题策略、谱面与节奏、声音"
+                    ? "出题策略、升降音、音符时值、合弹微调"
+                    : "音域加练、出题策略、升降音、谱面与节奏、声音"
                 }
               >
                 <Settings2 aria-hidden="true" size={16} />
                 <span>更多设置</span>
                 <span className="practice-free-advanced-count">
-                  {isDuetPractice ? "3组" : "4组"}
+                  {showBlackKeySettings && !isBlindPractice
+                    ? isDuetPractice
+                      ? "4组"
+                      : "5组"
+                    : isDuetPractice
+                      ? "3组"
+                      : "4组"}
                 </span>
                 <ChevronDown
                   aria-hidden="true"
@@ -1196,6 +1212,69 @@ export function PracticeSetupView({
                 hidden={!isAdvancedOpen}
                 id="practice-free-advanced-options"
               >
+                {showBlackKeySettings && !isBlindPractice ? (
+                  <section className="practice-free-field practice-free-duet-advanced-field">
+                    <span className="control-label">融入黑键</span>
+                    <div className="practice-checkbox-options practice-free-duet-advanced-options">
+                      <label className="practice-checkbox-option">
+                        <input
+                          checked={blackKeySettings.enabled}
+                          type="checkbox"
+                          onChange={(event) =>
+                            onBlackKeySettingsChange(isDuetPractice ? "duet" : "single", {
+                              ...blackKeySettings,
+                              enabled: event.currentTarget.checked,
+                            })
+                          }
+                        />
+                        <span>练习中加入升降音</span>
+                      </label>
+                      {blackKeySettings.enabled ? (
+                        <div className="practice-free-black-key-options">
+                          <label className="practice-black-key-setting">
+                            <span className="control-label">黑键比例</span>
+                            <select
+                              className="practice-black-key-select"
+                              value={blackKeySettings.ratio}
+                              onChange={(event) =>
+                                onBlackKeySettingsChange(isDuetPractice ? "duet" : "single", {
+                                  ...blackKeySettings,
+                                  ratio: Number(event.currentTarget.value) as 10 | 20 | 30 | 50,
+                                })
+                              }
+                            >
+                              {[10, 20, 30, 50].map((ratio) => (
+                                <option key={ratio} value={ratio}>
+                                  {ratio}%
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="practice-black-key-setting">
+                            <span className="control-label">记谱方式</span>
+                            <select
+                              className="practice-black-key-select"
+                              value={blackKeySettings.spelling}
+                              onChange={(event) =>
+                                onBlackKeySettingsChange(isDuetPractice ? "duet" : "single", {
+                                  ...blackKeySettings,
+                                  spelling: event.currentTarget.value as "sharp" | "flat" | "mixed",
+                                })
+                              }
+                            >
+                              <option value="mixed">升降混合</option>
+                              <option value="sharp">以升号为主</option>
+                              <option value="flat">以降号为主</option>
+                            </select>
+                          </label>
+                          <small className="practice-free-helper">
+                            按所选比例随机加入升降音。虚拟键盘按音名识别，不区分八度；双手协同和弦整体移调，保留和弦音程。
+                          </small>
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
+                ) : null}
                 {isDuetPractice ? (
                   <section className="practice-free-field practice-free-duet-advanced-field">
                     <span className="control-label">合弹微调</span>

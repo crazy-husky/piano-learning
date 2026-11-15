@@ -1,8 +1,11 @@
-import { ALL_NOTES, NOTE_NAMES, normalizeCurrentPracticeGroupIds } from "./notes";
+import { ALL_NOTES, findNoteById, normalizeCurrentPracticeGroupIds } from "./notes";
+import { getTargetMidiNoteNumber } from "./answerInput";
+import { pianoKeySemitone } from "./blackKeyPractice";
 import { isCompletedReview, isStatisticalReview } from "./reviews";
 import adaptiveV2Spec from "./adaptiveV2Spec.json";
 import type {
   NoteName,
+  PianoKeyName,
   PracticeGroupId,
   PracticeSessionRecord,
   ReviewRecord,
@@ -28,14 +31,14 @@ export interface NoteStat {
   medianMs?: number;
   p90Ms?: number;
   errorRate: number;
-  commonConfusion?: NoteName;
+  commonConfusion?: PianoKeyName;
   commonConfusions: NoteConfusionStat[];
   weaknessScore: number;
 }
 
 export interface NoteConfusionStat {
   count: number;
-  noteName: NoteName;
+  noteName: PianoKeyName;
 }
 
 export interface PracticeSessionStat {
@@ -204,13 +207,37 @@ function commonConfusions(
   targetNoteId: TargetNoteId,
   targetNoteName: NoteName
 ): NoteConfusionStat[] {
-  const counts = new Map<NoteName, number>();
+  const counts = new Map<PianoKeyName, number>();
+  const targetNote = findNoteById(targetNoteId);
+  const targetPitchClass = targetNote
+    ? ((getTargetMidiNoteNumber(targetNote) % 12) + 12) % 12
+    : pianoKeySemitone(targetNoteName);
+  const keyNamesBySemitone: readonly PianoKeyName[] = [
+    "C",
+    "C#",
+    "D",
+    "D#",
+    "E",
+    "F",
+    "F#",
+    "G",
+    "G#",
+    "A",
+    "A#",
+    "B",
+  ];
   for (const review of reviews) {
     for (const wrongAnswer of getWrongAnswersForTarget(review, targetNoteId)) {
-      if (wrongAnswer.noteName === targetNoteName) {
-        continue;
-      }
-      counts.set(wrongAnswer.noteName, (counts.get(wrongAnswer.noteName) ?? 0) + 1);
+      const pitchClass =
+        wrongAnswer.midiNoteNumber !== undefined
+          ? ((wrongAnswer.midiNoteNumber % 12) + 12) % 12
+          : pianoKeySemitone(wrongAnswer.pianoKeyName ?? wrongAnswer.noteName);
+      if (pitchClass === targetPitchClass) continue;
+      const pianoKeyName =
+        wrongAnswer.pianoKeyName ??
+        (pitchClass === undefined ? undefined : keyNamesBySemitone[pitchClass]) ??
+        wrongAnswer.noteName;
+      counts.set(pianoKeyName, (counts.get(pianoKeyName) ?? 0) + 1);
     }
   }
   return [...counts.entries()]
@@ -218,7 +245,7 @@ function commonConfusions(
     .sort(
       (left, right) =>
         right.count - left.count ||
-        NOTE_NAMES.indexOf(left.noteName) - NOTE_NAMES.indexOf(right.noteName)
+        keyNamesBySemitone.indexOf(left.noteName) - keyNamesBySemitone.indexOf(right.noteName)
     )
     .slice(0, 3);
 }
@@ -525,12 +552,24 @@ export function buildNoteStats(
   reviews: ReviewRecord[],
   groupFilter?: PracticeGroupId[]
 ): NoteStat[] {
+  const statReviews = reviews.filter(isStatisticalReview);
+  const observedBlackNotes = [...new Set(statReviews.flatMap(getReviewTargetNoteIds))]
+    .map((noteId) => findNoteById(noteId))
+    .filter((note): note is NonNullable<typeof note> => note?.accidental !== undefined);
+  const allStatNotes = [...ALL_NOTES, ...observedBlackNotes].sort((left, right) => {
+    const midiDifference = getTargetMidiNoteNumber(left) - getTargetMidiNoteNumber(right);
+    if (midiDifference !== 0) return midiDifference;
+    const leftDefaultStaff = left.octave >= 4 ? "treble" : "bass";
+    const rightDefaultStaff = right.octave >= 4 ? "treble" : "bass";
+    return Number(right.staff === rightDefaultStaff) - Number(left.staff === leftDefaultStaff);
+  });
   const allowedGroups =
     groupFilter && groupFilter.length > 0
       ? new Set(normalizeCurrentPracticeGroupIds(groupFilter))
       : undefined;
-  return ALL_NOTES.filter((note) => !allowedGroups || allowedGroups.has(note.groupId)).map(
-    (note) => {
+  return allStatNotes
+    .filter((note) => !allowedGroups || allowedGroups.has(note.groupId))
+    .map((note) => {
       const noteReviews = reviews.filter(
         (review) =>
           (review.targetNoteId === note.id || review.duetTargetNoteIds?.includes(note.id)) &&
@@ -566,8 +605,7 @@ export function buildNoteStats(
         commonConfusions: confusionStats,
         weaknessScore: speedScore + errorRate * 3 + (noteReviews.length === 0 ? 2 : 0),
       };
-    }
-  );
+    });
 }
 
 export function formatMs(ms?: number): string {

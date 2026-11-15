@@ -1,4 +1,5 @@
 import { staffForSingleClefMode } from "./staffNotation";
+import { makeBlackKeyTarget } from "./blackKeyPractice";
 import type {
   NoteName,
   Octave,
@@ -173,7 +174,12 @@ const CURRENT_GROUP_IDS = CURRENT_PRACTICE_GROUP_IDS;
 const CURRENT_GROUP_ID_SET = new Set<string>(CURRENT_GROUP_IDS);
 const CURRENT_PITCH_ID_SET = new Set<string>(AVAILABLE_PITCH_IDS);
 const ALL_NOTES_BY_ID = new Map<TargetNoteId, TargetNote>(
-  [...ALL_NOTES, ...LEGACY_LOW_NOTES].map((note) => [note.id, note])
+  [...ALL_NOTES, ...LEGACY_LOW_NOTES].flatMap((note) => {
+    const blackVariants = (["sharp", "flat"] as const)
+      .map((spelling) => makeBlackKeyTarget(note, spelling))
+      .filter((variant): variant is TargetNote => variant !== undefined);
+    return [note, ...blackVariants].map((candidate) => [candidate.id, candidate] as const);
+  })
 );
 
 function isCurrentPracticeGroupId(groupId: string): groupId is PracticeGroupId {
@@ -416,7 +422,8 @@ export function formatTargetNoteLabel(
       return note.pitchId;
     }
   }
-  return `${note.pitchId} · ${formatStaffLabel(note.staff)}`;
+  const displayPitch = note.pitchId.replace("#", "♯").replace("b", "♭");
+  return `${displayPitch} · ${formatStaffLabel(note.staff)}`;
 }
 
 export function noteToVexKey(note: TargetNote): string {

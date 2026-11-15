@@ -94,7 +94,7 @@ export function DuetPracticeSummary({
       </section>
 
       <section className="summary-section duet-summary-section duet-summary-suggestion">
-        <h2>下次建议</h2>
+        <h2>建议</h2>
         <p>{suggestion}</p>
       </section>
     </div>

@@ -7,9 +7,11 @@ import {
   type SetStateAction,
 } from "react";
 import { selectNotePage, type AdaptiveNoteScheduler } from "../../../domain/scheduler";
+import { maybeInfuseBlackKey } from "../../../domain/blackKeyPractice";
 import type { MelodyGenerationState } from "../../../domain/melody";
 import type {
   DuetPracticeLevel,
+  BlackKeyPracticeSettings,
   NoteName,
   PracticeMode,
   PracticeQueueStrategy,
@@ -298,6 +300,7 @@ interface PracticeStaffPageFlowValues {
   promptNoteDurations: PromptNoteDuration[];
   forceRhythmGeneration: boolean;
   blindPractice: boolean;
+  blackKeySettings: BlackKeyPracticeSettings;
   rangeExtensionNotes: TargetNote[];
   duetLevel?: DuetPracticeLevel;
   duetStrictHandAlternation: boolean;
@@ -363,6 +366,7 @@ export function usePracticeStaffPageFlow({
     promptNoteDurations,
     forceRhythmGeneration,
     blindPractice,
+    blackKeySettings,
     rangeExtensionNotes,
     duetLevel,
     duetStrictHandAlternation,
@@ -550,6 +554,7 @@ export function usePracticeStaffPageFlow({
       const generatedDuetPage = duetLevel
         ? createDuetPracticePage(sourceNotes, duetLevel, duetRequestedCount, {
             allowDottedRhythms,
+            blackKeySettings,
             strictHandAlternation: duetLevel === "level-1" && duetStrictHandAlternation,
             strictHandAlternationStart: duetQuestionStrictHandAlternationStart,
             allowSingleStaff: duetQuestionTargets !== undefined,
@@ -608,7 +613,11 @@ export function usePracticeStaffPageFlow({
           ? generatedNotes
           : addOccasionalRangeNotes(generatedNotes, rangeExtensionNotes);
       const noteGroups = duetPage?.noteGroups;
-      const notes = duetPage?.notes ?? selectedNotes;
+      const notes =
+        duetPage?.notes ??
+        (!blindPractice && blackKeySettings.enabled
+          ? selectedNotes.map((note) => maybeInfuseBlackKey(note, blackKeySettings))
+          : selectedNotes);
       const rhythm =
         duetPage?.rhythm ??
         (forceRhythmGeneration || promptNoteDurations.length > 1
@@ -641,6 +650,7 @@ export function usePracticeStaffPageFlow({
       adaptiveMeasureAreaWidthPx,
       adaptiveMaxMeasuresPerRow,
       allowDottedRhythms,
+      blackKeySettings,
       duetLevel,
       duetStrictHandAlternation,
       duetQuestionTargets,
@@ -811,6 +821,7 @@ export function usePracticeStaffPageFlow({
         const generatedDuetAppend = duetLevel
           ? createDuetPracticePage(enabledNotes, duetLevel, duetAppendRequestedCount, {
               allowDottedRhythms,
+              blackKeySettings,
               strictHandAlternation: duetLevel === "level-1" && duetStrictHandAlternation,
               strictHandAlternationStart: duetQuestionStrictHandAlternationStart,
               allowSingleStaff: duetQuestionTargets !== undefined,
@@ -850,7 +861,11 @@ export function usePracticeStaffPageFlow({
             ? nextRow
             : addOccasionalRangeNotes(nextRow, rangeExtensionNotes);
         const appendedGroups = duetAppend?.noteGroups;
-        const appendedNotes = duetAppend?.notes ?? selectedAppendedNotes;
+        const appendedNotes =
+          duetAppend?.notes ??
+          (!blindPractice && blackKeySettings.enabled
+            ? selectedAppendedNotes.map((note) => maybeInfuseBlackKey(note, blackKeySettings))
+            : selectedAppendedNotes);
         nextNotes = [...page.notes, ...appendedNotes];
         if (appendedGroups) {
           nextNoteGroups = [...(page.noteGroups ?? []), ...appendedGroups];
@@ -1020,6 +1035,7 @@ export function usePracticeStaffPageFlow({
       duetQuestionTargets,
       duetQuestionStrictHandAlternationStart,
       allowDottedRhythms,
+      blackKeySettings,
       fixedCount,
       isMobileViewport,
       adaptiveMeasureAreaWidthPx,

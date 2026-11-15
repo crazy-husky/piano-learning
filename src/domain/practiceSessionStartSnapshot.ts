@@ -3,6 +3,8 @@ import { normalizeAnswerPitchMode } from "./answerInput";
 import { buildPracticeActivitySnapshot } from "./practiceComparison";
 import type {
   AppSettings,
+  BlackKeyRatio,
+  BlackKeySpelling,
   PracticeMode,
   PracticeSessionRecordV4,
   PracticeSessionRecordV5,
@@ -23,6 +25,9 @@ export interface BuildPracticeSessionStartSnapshotInput {
   duetCurriculumVersion?: number;
   duetAllowDottedRhythms?: boolean;
   duetStrictHandAlternation?: boolean;
+  includeBlackKeys?: boolean;
+  blackKeyRatio?: BlackKeyRatio;
+  blackKeySpelling?: BlackKeySpelling;
   metronomeSync?: boolean;
   preReadingBufferSize?: PreReadingBufferSize;
   wrongNoteTest?: boolean;
@@ -91,6 +96,9 @@ export function buildPracticeSessionStartSnapshot({
   duetCurriculumVersion,
   duetAllowDottedRhythms,
   duetStrictHandAlternation,
+  includeBlackKeys,
+  blackKeyRatio,
+  blackKeySpelling,
   metronomeSync,
   preReadingBufferSize,
   wrongNoteTest,
@@ -102,6 +110,9 @@ export function buildPracticeSessionStartSnapshot({
     enabledGroupIds: settings.enabledGroupIds,
     enabledPitchIds: settings.enabledPitchIds,
     includeInterStaffLedgerSpellings: settings.includeInterStaffLedgerSpellings,
+    includeBlackKeys,
+    blackKeyRatio,
+    blackKeySpelling,
     promptDisplayMode: settings.promptDisplayMode,
     promptNoteDuration: settings.promptNoteDuration,
     queueStrategy: settings.queueStrategy,
@@ -129,6 +140,10 @@ export function buildPracticeSessionStartSnapshot({
           settings.staffNotationMode,
           settings.includeInterStaffLedgerSpellings
         ),
+        includeBlackKeys,
+        ...(includeBlackKeys
+          ? { blackKeyRatio: blackKeyRatio ?? 20, blackKeySpelling: blackKeySpelling ?? "mixed" }
+          : {}),
         mode,
         queueStrategy: settings.queueStrategy,
         staffNotationMode: settings.staffNotationMode,

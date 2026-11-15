@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { getNotesForSelection } from "../../../domain/notes";
+import { getTargetMidiNoteNumber } from "../../../domain/answerInput";
+import { findNoteById, getNotesForSelection, makeNoteId } from "../../../domain/notes";
 import {
   buildDailyStats,
   buildNoteStats,
@@ -92,7 +93,7 @@ export function useStatsViewData({
     [primaryContentReady, reviews]
   );
   const staffNotationMode = settings.staffNotationMode;
-  const activeNotes = useMemo(
+  const selectedNotes = useMemo(
     () =>
       getNotesForSelection(
         settings.enabledGroupIds,
@@ -109,9 +110,37 @@ export function useStatsViewData({
       staffNotationMode,
     ]
   );
+  const activeNotes = useMemo(() => {
+    const selectedNaturalNoteIds = new Set(selectedNotes.map((note) => note.id));
+    const observedBlackNotes = [
+      ...new Set(
+        longTermReviews.flatMap((review) => [
+          review.targetNoteId,
+          ...(review.duetTargetNoteIds ?? []),
+        ])
+      ),
+    ]
+      .map((noteId) => findNoteById(noteId))
+      .filter(
+        (note): note is NonNullable<typeof note> =>
+          note?.accidental !== undefined &&
+          selectedNaturalNoteIds.has(makeNoteId(note.noteName, note.octave, note.staff))
+      );
+    return [...selectedNotes, ...observedBlackNotes].sort((left, right) => {
+      const midiDifference = getTargetMidiNoteNumber(left) - getTargetMidiNoteNumber(right);
+      if (midiDifference !== 0) return midiDifference;
+      const leftDefaultStaff = left.octave >= 4 ? "treble" : "bass";
+      const rightDefaultStaff = right.octave >= 4 ? "treble" : "bass";
+      return Number(right.staff === rightDefaultStaff) - Number(left.staff === leftDefaultStaff);
+    });
+  }, [longTermReviews, selectedNotes]);
   const rangeScopedReviews = useMemo(() => {
     const rangedIds = new Set(activeNotes.map((note) => note.id));
-    return longTermReviews.filter((review) => rangedIds.has(review.targetNoteId));
+    return longTermReviews.filter(
+      (review) =>
+        rangedIds.has(review.targetNoteId) ||
+        review.duetTargetNoteIds?.some((noteId) => rangedIds.has(noteId))
+    );
   }, [activeNotes, longTermReviews]);
   const filteredReviews = useMemo(
     () => filterByRange(rangeScopedReviews, range),
@@ -134,8 +163,8 @@ export function useStatsViewData({
     [activeNotes, longTermReviews, recognitionStatsReady, sessions]
   );
   const recognitionRangeTransitions = useMemo(
-    () => findRecognitionRangeTransitions(sessions, activeNotes, recognitionTrendBySession),
-    [activeNotes, recognitionTrendBySession, sessions]
+    () => findRecognitionRangeTransitions(sessions, selectedNotes, recognitionTrendBySession),
+    [recognitionTrendBySession, selectedNotes, sessions]
   );
   const recognitionTransitionBaselinesBySession = useMemo(
     () =>
@@ -216,7 +245,7 @@ export function useStatsViewData({
     totalNoteCount: activeNotes.length,
   };
   const sessionProgressComparison = useSessionProgressComparison({
-    activeNotes,
+    activeNotes: selectedNotes,
     enabled: sessionProgressStatsReady,
     historyLimit: sessionProgressEffectiveHistoryLimit,
     mode: sessionProgressMode,

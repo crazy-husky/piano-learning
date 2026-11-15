@@ -372,6 +372,11 @@ export function getIncorrectAnswerDisplays(event: AnswerEvent): string[] {
   return [
     ...new Set(
       incorrect.map((attempt) => {
+        if (attempt.pianoKeyName) {
+          return attempt.midi === undefined
+            ? attempt.pianoKeyName
+            : `${attempt.pianoKeyName}${Math.floor(attempt.midi / 12) - 1}`;
+        }
         if (attempt.midi !== undefined) {
           const note = ALL_NOTES.find(
             (candidate) => getTargetMidiNoteNumber(candidate) === attempt.midi

@@ -1,8 +1,13 @@
 import { ArrowLeft, Pause, Play, RotateCcw, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getPianoAudioTime } from "../../../audio/piano";
+import {
+  maybeInfuseBlackKey,
+  normalizeBlackKeyPracticeSettings,
+} from "../../../domain/blackKeyPractice";
 import type {
   AnswerEvent,
+  NoteName,
   StaffDistanceInputMethod,
   PitchId,
   PracticeMode,
@@ -191,16 +196,27 @@ function createStaffDistanceRunSequence(
   extraPitchIds: readonly PitchId[] = [],
   recentNotesByStaff: Partial<Record<TargetNote["staff"], readonly TargetNote[]>> = {}
 ): StaffDistanceRunSequence {
+  const infuseBlackKeys = (sequenceNotes: TargetNote[]): TargetNote[] => {
+    if (!settings.includeBlackKeys) return sequenceNotes;
+    const blackKeySettings = normalizeBlackKeyPracticeSettings({
+      enabled: true,
+      ratio: settings.blackKeyRatio,
+      spelling: settings.blackKeySpelling,
+    });
+    return sequenceNotes.map((note) => maybeInfuseBlackKey(note, blackKeySettings, random));
+  };
   const createSingleStaffSequence = (): StaffDistanceRunSequence => ({
     breakIndices: [],
-    notes: createStaffDistanceSequence(
-      notes,
-      settings,
-      transitionCount,
-      random,
-      initialNote,
-      extraPitchIds,
-      recentNotesByStaff[initialNote?.staff ?? notes[0]?.staff ?? "treble"]
+    notes: infuseBlackKeys(
+      createStaffDistanceSequence(
+        notes,
+        settings,
+        transitionCount,
+        random,
+        initialNote,
+        extraPitchIds,
+        recentNotesByStaff[initialNote?.staff ?? notes[0]?.staff ?? "treble"]
+      )
     ),
   });
   if (staffNotationMode !== "grand" || transitionCount <= 0) {
@@ -258,7 +274,9 @@ function createStaffDistanceRunSequence(
     staff = staff === "treble" ? "bass" : "treble";
   }
 
-  return generatedTransitions === transitionCount ? result : createSingleStaffSequence();
+  return generatedTransitions === transitionCount
+    ? { ...result, notes: infuseBlackKeys(result.notes) }
+    : createSingleStaffSequence();
 }
 
 function limitStaffDistanceRunSequence(
@@ -770,6 +788,7 @@ function StaffDistanceIntervalRun({
       questionAttemptsRef.current.push({
         ...(answer?.midiNoteNumber === undefined ? {} : { midi: answer.midiNoteNumber }),
         ...(answer ? { noteName: answer.noteName } : {}),
+        ...(answer?.pianoKeyName ? { pianoKeyName: answer.pianoKeyName } : {}),
         atMs: responseMs,
         confidence: answer?.confidence,
         inputMode: answer ? answerInputMode(answer.source) : undefined,
@@ -1001,7 +1020,9 @@ function StaffDistanceIntervalRun({
       return;
     }
     if (trainingMode === "play" && inputMethod === "microphone") {
-      const microphoneReady = await microphone.start({ includeAccidentals: false });
+      const microphoneReady = await microphone.start({
+        includeAccidentals: settings.includeBlackKeys === true,
+      });
       if (!microphoneReady) {
         setInputError(microphone.error ?? "麦克风未能重新连接，请检查权限和输入设备。");
         return;
@@ -1014,7 +1035,14 @@ function StaffDistanceIntervalRun({
     isPausedRef.current = false;
     setIsPaused(false);
     schedulePendingAdvance();
-  }, [inputMethod, microphone, midi.isConnected, schedulePendingAdvance, trainingMode]);
+  }, [
+    inputMethod,
+    microphone,
+    midi.isConnected,
+    schedulePendingAdvance,
+    settings.includeBlackKeys,
+    trainingMode,
+  ]);
 
   const toggleHint = (): void => {
     usedHintRef.current = true;
@@ -1024,16 +1052,20 @@ function StaffDistanceIntervalRun({
   useEffect(() => {
     if (trainingMode !== "play" || inputMethod !== "midi") return undefined;
     return subscribeMidi((event) => {
-      if (event.type !== "press" || !isNaturalPianoKey(event.note.keyName)) return;
+      if (event.type !== "press") return;
+      const keyName = event.note.keyName;
+      const isNaturalKey = isNaturalPianoKey(keyName);
+      if (!isNaturalKey && settings.includeBlackKeys !== true) return;
       answerPitch({
         diagnosticSampleId: event.note.diagnosticSampleId,
         midiNoteNumber: event.note.midiNoteNumber,
-        noteName: event.note.keyName,
+        noteName: isNaturalPianoKey(keyName) ? keyName : (keyName[0] as NoteName),
+        pianoKeyName: keyName,
         octave: event.note.octave,
         source: "midi",
       });
     });
-  }, [answerPitch, inputMethod, subscribeMidi, trainingMode]);
+  }, [answerPitch, inputMethod, settings.includeBlackKeys, subscribeMidi, trainingMode]);
 
   useEffect(() => {
     if (trainingMode !== "play" || inputMethod !== "microphone") {
@@ -1406,7 +1438,9 @@ function StaffDistanceIntervalRun({
             <PracticeMicrophoneRetryButton
               isConnecting={microphone.status === "requesting"}
               onRetry={async () => {
-                const connected = await microphone.start({ includeAccidentals: false });
+                const connected = await microphone.start({
+                  includeAccidentals: settings.includeBlackKeys === true,
+                });
                 if (connected) setInputError(null);
                 return connected;
               }}
@@ -1503,7 +1537,9 @@ function StaffDistanceIntervalRun({
               <PracticeMicrophoneRetryButton
                 isConnecting={microphone.status === "requesting"}
                 onRetry={async () => {
-                  const connected = await microphone.start({ includeAccidentals: false });
+                  const connected = await microphone.start({
+                    includeAccidentals: settings.includeBlackKeys === true,
+                  });
                   if (connected) setInputError(null);
                   return connected;
                 }}

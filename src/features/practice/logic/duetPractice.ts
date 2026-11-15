@@ -1,5 +1,7 @@
 import { getTargetMidiNoteNumber } from "../../../domain/answerInput";
+import { maybeInfuseBlackKey, transposeTargetNote } from "../../../domain/blackKeyPractice";
 import type {
+  BlackKeyPracticeSettings,
   DuetPracticeLevel,
   NoteName,
   PracticeGroupId,
@@ -111,6 +113,7 @@ export interface DuetTargetPair {
 export interface DuetPracticeGenerationOptions {
   allowDottedRhythms?: boolean;
   allowSingleStaff?: boolean;
+  blackKeySettings?: BlackKeyPracticeSettings;
   /** Level 1 only: alternate the active hand on every onset across measure boundaries. */
   strictHandAlternation?: boolean;
   /** Optional starting hand for a strict Level 1 sequence with fixed targets. */
@@ -842,8 +845,58 @@ export function createDuetPracticePage(
         .map((name) => getMeasureNote(lookup, "bass", name, measureIndex))
         .filter((note): note is TargetNote => note !== undefined);
       const targetPair = options.targetPairs?.[(options.targetOffset ?? 0) + events.length];
-      const high = targetPair?.high ?? generatedHigh;
-      const low = targetPair?.low ?? generatedLow;
+      let high = targetPair?.high ?? generatedHigh;
+      let low = targetPair?.low ?? generatedLow;
+      const blackKeySettings = options.blackKeySettings;
+      if (blackKeySettings?.enabled && !targetPair) {
+        const absoluteEventIndex = (options.targetOffset ?? 0) + events.length;
+        const group = [...high, ...low];
+        const usesChordPreservingTranspose =
+          level === "level-4" || level === "level-5" || level === "level-6";
+        if (group.length > 0 && usesChordPreservingTranspose) {
+          const infusionRoll = getMeasureRandom(
+            seed,
+            measureIndex,
+            0x626c6163 ^ Math.imul(absoluteEventIndex + 1, 0x45d9f3b)
+          );
+          if (infusionRoll < blackKeySettings.ratio / 100) {
+            const deltaRoll = getMeasureRandom(
+              seed,
+              measureIndex,
+              0x7472616e ^ Math.imul(absoluteEventIndex + 1, 0x119de1f3)
+            );
+            const deltas = deltaRoll < 0.5 ? ([-1, 1] as const) : ([1, -1] as const);
+            const transposed = deltas
+              .map((delta) =>
+                group.map((note) => transposeTargetNote(note, delta, blackKeySettings.spelling))
+              )
+              .find(
+                (candidate) =>
+                  candidate.every(
+                    (note, index) => note !== undefined && note.octave === group[index]?.octave
+                  ) && candidate.some((note) => note?.accidental !== undefined)
+              );
+            if (transposed) {
+              const transposedNotes = transposed as TargetNote[];
+              high = transposedNotes.slice(0, high.length);
+              low = transposedNotes.slice(high.length);
+            }
+          }
+        } else if (group.length > 0) {
+          const infuse = (note: TargetNote, noteIndex: number): TargetNote =>
+            maybeInfuseBlackKey(note, blackKeySettings, () =>
+              getMeasureRandom(
+                seed,
+                measureIndex,
+                0x6e6f7465 ^
+                  Math.imul(absoluteEventIndex + 1, 0x27d4eb2d) ^
+                  Math.imul(noteIndex + 1, 0x165667b1)
+              )
+            );
+          high = high.map(infuse);
+          low = low.map((note, index) => infuse(note, high.length + index));
+        }
+      }
       const group = [...high, ...low];
       if (group.length === 0) continue;
       const onset = measureStart + measureEvent.beat;

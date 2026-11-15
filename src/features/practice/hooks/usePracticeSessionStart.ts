@@ -27,6 +27,7 @@ import { filterLongTermReviews } from "../../../domain/stats";
 import type {
   AppSettings,
   AnswerPitchMode,
+  BlackKeyPracticeSettings,
   DuetPracticeLevel,
   NoteName,
   PracticeQueueStrategy,
@@ -57,6 +58,7 @@ interface PracticeStaffPageStartInput {
 
 interface PracticeSessionStartValues {
   answerPitchMode: AnswerPitchMode;
+  blackKeySettings: BlackKeyPracticeSettings;
   isDuetPractice: boolean;
   isDuetWrongNoteTest: boolean;
   duetWrongNoteTestCount?: number;
@@ -151,6 +153,7 @@ export function usePracticeSessionStart({
 }: UsePracticeSessionStartOptions) {
   const {
     answerPitchMode,
+    blackKeySettings,
     isDuetPractice,
     isDuetWrongNoteTest,
     duetWrongNoteTestCount,
@@ -350,6 +353,9 @@ export function usePracticeSessionStart({
           duetAllowDottedRhythms: isDuetPractice ? duetAllowDottedRhythms : undefined,
           duetStrictHandAlternation:
             isDuetPractice && duetLevel === "level-1" && duetStrictHandAlternation,
+          includeBlackKeys: blackKeySettings.enabled && !isBlindPractice,
+          blackKeyRatio: blackKeySettings.ratio,
+          blackKeySpelling: blackKeySettings.spelling,
           metronomeSync:
             shouldSynchronizeMetronome &&
             (availablePreflightAnswerPitchMode === "exact-pitch" || isBlindPractice),
@@ -383,7 +389,9 @@ export function usePracticeSessionStart({
           if (shouldStartPaused) {
             stopPracticeMicrophone();
           } else {
-            microphoneStarted = await startPracticeMicrophone();
+            microphoneStarted = await startPracticeMicrophone({
+              includeAccidentals: blackKeySettings.enabled && !isBlindPractice,
+            });
             if (!microphoneStarted) {
               onMicrophoneStartFailure?.();
               return;
@@ -477,6 +485,9 @@ export function usePracticeSessionStart({
   };
   const startSession = useCallback(startSessionAction, [
     answerPitchMode,
+    blackKeySettings.enabled,
+    blackKeySettings.ratio,
+    blackKeySettings.spelling,
     isDuetPractice,
     isDuetWrongNoteTest,
     duetWrongNoteTestCount,

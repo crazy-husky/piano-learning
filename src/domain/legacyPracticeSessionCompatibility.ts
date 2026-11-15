@@ -46,6 +46,13 @@ export function getPracticeSessionComparisonSnapshot(
       ...(practiceConfig.duetAllowDottedRhythms !== undefined
         ? { duetAllowDottedRhythms: practiceConfig.duetAllowDottedRhythms }
         : {}),
+      includeBlackKeys: practiceConfig.includeBlackKeys === true,
+      ...(practiceConfig.includeBlackKeys === true
+        ? {
+            blackKeyRatio: practiceConfig.blackKeyRatio ?? 20,
+            blackKeySpelling: practiceConfig.blackKeySpelling ?? "mixed",
+          }
+        : {}),
       ...(practiceConfig.metronomeSync !== undefined
         ? { metronomeSync: practiceConfig.metronomeSync }
         : {}),

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Formatter, Renderer, StaveNote, Voice } from "vexflow";
+import { Accidental, Formatter, Renderer, StaveNote, Voice } from "vexflow";
 import { formatTargetNoteLabel, noteToVexKey } from "../../../domain/notes";
 import { positiveTertileLevel, type NoteConfusionStat } from "../../../domain/stats";
 import type { NoteName, Staff, StaffNotationMode, TargetNote } from "../../../domain/types";
@@ -177,6 +177,9 @@ function makeChord(notes: ColoredStaffHeatNote[], staff: Staff, neutralColor: st
   chord.setLedgerLineStyle({ fillStyle: baseColor, strokeStyle: baseColor });
   notes.forEach((note, index) => {
     chord.setKeyStyle(index, { fillStyle: note.color, strokeStyle: note.color });
+    if (note.note.accidental) {
+      chord.addModifier(new Accidental(note.note.accidental === "sharp" ? "#" : "b"), index);
+    }
   });
   return chord;
 }
