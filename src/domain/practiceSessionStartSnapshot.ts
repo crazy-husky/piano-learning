@@ -22,6 +22,7 @@ export interface BuildPracticeSessionStartSnapshotInput {
   smoothStaffPageScroll: boolean;
   startPausedReading: boolean;
   duetLevel?: DuetPracticeLevel;
+  duetMaxStaffDistance?: number;
   duetCurriculumVersion?: number;
   duetAllowDottedRhythms?: boolean;
   duetStrictHandAlternation?: boolean;
@@ -93,6 +94,7 @@ export function buildPracticeSessionStartSnapshot({
   smoothStaffPageScroll,
   startPausedReading,
   duetLevel,
+  duetMaxStaffDistance,
   duetCurriculumVersion,
   duetAllowDottedRhythms,
   duetStrictHandAlternation,
@@ -151,6 +153,7 @@ export function buildPracticeSessionStartSnapshot({
         ...(duetLevel
           ? {
               duetLevel,
+              ...(duetMaxStaffDistance !== undefined ? { duetMaxStaffDistance } : {}),
               duetCurriculumVersion: duetCurriculumVersion ?? 2,
               duetAllowDottedRhythms: duetAllowDottedRhythms ?? false,
               ...(duetStrictHandAlternation ? { duetStrictHandAlternation: true } : {}),

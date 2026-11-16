@@ -24,6 +24,7 @@ export interface PracticeComparisonSnapshot {
   duetLevel?: DuetPracticeLevel;
   duetCurriculumVersion?: number;
   duetAllowDottedRhythms?: boolean;
+  duetMaxStaffDistance?: number;
   includeBlackKeys?: boolean;
   blackKeyRatio?: BlackKeyRatio;
   blackKeySpelling?: BlackKeySpelling;

@@ -1038,7 +1038,15 @@ function expandTiedDurations(
   rowGroups.forEach((noteGroup, slotIndex) => {
     const primary = primaryTickables[slotIndex];
     const noteOnset = noteOnsets?.[slotIndex];
-    if (noteOnsets && noteGroup.length === 0 && !monophonicGrandStaff) return;
+    if (
+      noteOnsets &&
+      noteGroup.length === 0 &&
+      (!monophonicGrandStaff || (noteOnset !== undefined && noteOnset < cursorBeat - 0.001))
+    ) {
+      // A sustained note already occupies this beat. Adding an invisible
+      // placeholder here would still advance the voice and shift later notes.
+      return;
+    }
     if (noteOnsets && noteOnset !== undefined && noteOnset > cursorBeat + 0.001) {
       const useInvisibleGaps =
         (monophonicGrandStaff || useInvisibleGapRests) && !showGrandStaffRests;

@@ -46,6 +46,9 @@ export function getPracticeSessionComparisonSnapshot(
       ...(practiceConfig.duetAllowDottedRhythms !== undefined
         ? { duetAllowDottedRhythms: practiceConfig.duetAllowDottedRhythms }
         : {}),
+      ...(practiceConfig.duetMaxStaffDistance !== undefined
+        ? { duetMaxStaffDistance: practiceConfig.duetMaxStaffDistance }
+        : {}),
       includeBlackKeys: practiceConfig.includeBlackKeys === true,
       ...(practiceConfig.includeBlackKeys === true
         ? {

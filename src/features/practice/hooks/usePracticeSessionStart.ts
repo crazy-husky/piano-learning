@@ -70,6 +70,7 @@ interface PracticeSessionStartValues {
   duetLevel?: DuetPracticeLevel;
   duetRangePreset: DuetPracticeRangePreset;
   duetRangeGroupIds: DuetPracticeRangeGroupId[];
+  duetMaxStaffDistance: number | null;
   duetAllowDottedRhythms: boolean;
   duetStrictHandAlternation: boolean;
   midi: Pick<MidiInputController, "isConnected">;
@@ -165,6 +166,7 @@ export function usePracticeSessionStart({
     duetLevel,
     duetRangePreset,
     duetRangeGroupIds,
+    duetMaxStaffDistance,
     duetAllowDottedRhythms,
     duetStrictHandAlternation,
     midi,
@@ -349,6 +351,10 @@ export function usePracticeSessionStart({
               : staffPageUiPreferences.smoothStaffPageScroll,
           startPausedReading: isBlindPractice ? false : startPausedReading,
           duetLevel: isDuetPractice ? (duetLevel ?? "level-1") : undefined,
+          duetMaxStaffDistance:
+            isDuetPractice && duetLevel === "level-3"
+              ? (duetMaxStaffDistance ?? undefined)
+              : undefined,
           duetCurriculumVersion: isDuetPractice ? DUET_PRACTICE_CURRICULUM_VERSION : undefined,
           duetAllowDottedRhythms: isDuetPractice ? duetAllowDottedRhythms : undefined,
           duetStrictHandAlternation:
@@ -497,6 +503,7 @@ export function usePracticeSessionStart({
     duetLevel,
     duetRangePreset,
     duetRangeGroupIds,
+    duetMaxStaffDistance,
     duetAllowDottedRhythms,
     duetStrictHandAlternation,
     adaptiveSchedulerRef,

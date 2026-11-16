@@ -1,10 +1,15 @@
 import { getTargetMidiNoteNumber } from "../../../domain/answerInput";
 import { maybeInfuseBlackKey, transposeTargetNote } from "../../../domain/blackKeyPractice";
+import { createAdaptiveNoteScheduler, type AdaptiveNoteScheduler } from "../../../domain/scheduler";
+import { staffDistance } from "../../../domain/staffDistancePractice";
 import type {
   BlackKeyPracticeSettings,
   DuetPracticeLevel,
   NoteName,
+  PracticeQueueStrategy,
+  PracticeSessionRecord,
   PracticeGroupId,
+  ReviewRecord,
   Staff,
   TargetNote,
 } from "../../../domain/types";
@@ -125,6 +130,17 @@ export interface DuetPracticeGenerationOptions {
   /** Optional per-prompt targets used by the focused wrong-note test. */
   targetPairs?: readonly (DuetTargetPair | null)[];
   targetOffset?: number;
+  queueStrategy?: PracticeQueueStrategy;
+  drillNoteNames?: readonly NoteName[];
+  reviews?: readonly ReviewRecord[];
+  sessions?: readonly PracticeSessionRecord[];
+  currentSessionId?: string;
+  /** Targets already planned in the still-visible score page. */
+  plannedTargetNoteIds?: readonly TargetNote["id"][];
+  /** Level 3 only; null/undefined leaves the interval unrestricted. */
+  maxStaffDistance?: number | null;
+  /** Last generated pitch per staff, used when a continuous score page is appended. */
+  previousStaffNotes?: Partial<Record<Staff, TargetNote>>;
   /** Stable for one practice session so appended score buffers continue the same score. */
   seed?: number | string;
 }
@@ -361,10 +377,9 @@ function getSynchronizedEventCount(
 ): number {
   const selection = getMeasureRandom(seed, measureIndex, 0x73796e63);
   if (level === "level-2") return selection < 0.7 ? 1 : 2;
-  if (selection < 0.2) return 1;
-  if (selection < 0.7) return 2;
-  if (selection < 0.9) return 3;
-  // The requested Level 3 percentages total 90%; use the remaining 10% for four syncs.
+  if (selection < 0.1) return 1;
+  if (selection < 0.4) return 2;
+  if (selection < 0.8) return 3;
   return 4;
 }
 
@@ -459,6 +474,16 @@ function getMeasureChord(measureIndex: number): ChordTemplate {
   return CHORD_PROGRESSION[measureIndex % CHORD_PROGRESSION.length]!;
 }
 
+function getLevel3BassScaleNotes(chord: ChordTemplate, measureIndex: number): NoteName[] {
+  const quarterMelody = getPhraseMeasure(QUARTER_MELODY_PHRASES, measureIndex);
+  return [
+    ...new Set([
+      ...chord.chordNotes,
+      ...quarterMelody.filter((noteName) => !chord.chordNotes.includes(noteName)),
+    ]),
+  ].slice(0, 4);
+}
+
 function makeEvent(
   beat: number,
   high: NoteName[] = [],
@@ -498,9 +523,10 @@ function getMeasureEvents(
   strictHandAlternation = false,
   levelOneStartingOnsetIndex = 0,
   precedingLevelOneStaffSequence: readonly Staff[] = [],
-  strictHandAlternationStart?: Staff
+  strictHandAlternationStart?: Staff,
+  chordOverride?: ChordTemplate
 ): MeasureEvent[] {
-  const chord = getMeasureChord(measureIndex);
+  const chord = chordOverride ?? getMeasureChord(measureIndex);
   const quarterMelody = getPhraseMeasure(QUARTER_MELODY_PHRASES, measureIndex);
   const eighthMelody = getPhraseMeasure(EIGHTH_MELODY_PHRASES, measureIndex);
 
@@ -588,12 +614,7 @@ function getMeasureEvents(
       measureIndex,
       seed
     );
-    const bassScaleNotes = [
-      ...new Set([
-        ...chord.chordNotes,
-        ...quarterMelody.filter((noteName) => !chord.chordNotes.includes(noteName)),
-      ]),
-    ].slice(0, 4);
+    const bassScaleNotes = getLevel3BassScaleNotes(chord, measureIndex);
     let bassSyncIndex = 0;
 
     return quarterMelody.map((noteName, beat) => {
@@ -736,6 +757,244 @@ function getMeasureNote(
   return candidates[Math.floor(measureIndex / 2) % candidates.length];
 }
 
+type AdaptiveNoteSelector = (
+  candidates: readonly TargetNote[],
+  previous: TargetNote | undefined,
+  random: number
+) => TargetNote | undefined;
+
+function compatibleChordTemplates(
+  lookup: Map<Staff, Map<NoteName, TargetNote[]>>,
+  strategy: PracticeQueueStrategy,
+  drillNoteNames: readonly NoteName[]
+): ChordTemplate[] {
+  const selectedNames = new Set(drillNoteNames);
+  return CHORD_PROGRESSION.filter((chord) =>
+    chord.chordNotes.every(
+      (name) =>
+        (lookup.get("bass")?.get(name)?.length ?? 0) > 0 &&
+        (strategy !== "note-drill" || selectedNames.has(name))
+    )
+  );
+}
+
+function getLevel3ChordTemplates(
+  lookup: Map<Staff, Map<NoteName, TargetNote[]>>,
+  strategy: PracticeQueueStrategy,
+  drillNoteNames: readonly NoteName[],
+  measureIndex: number
+): ChordTemplate[] {
+  const selectedNames = new Set(drillNoteNames);
+  return CHORD_PROGRESSION.filter((chord) =>
+    getLevel3BassScaleNotes(chord, measureIndex).some(
+      (name) =>
+        (lookup.get("bass")?.get(name)?.length ?? 0) > 0 &&
+        (strategy !== "note-drill" || selectedNames.has(name))
+    )
+  );
+}
+
+function chooseMeasureChord(
+  measureIndex: number,
+  candidates: readonly ChordTemplate[],
+  strategy: PracticeQueueStrategy,
+  lookup: Map<Staff, Map<NoteName, TargetNote[]>>,
+  bassCandidates: readonly TargetNote[],
+  previousBassNote: TargetNote | undefined,
+  seed: number,
+  adaptiveSelect: AdaptiveNoteSelector,
+  maxStaffDistance: number | null
+): ChordTemplate {
+  if (candidates.length === 0) return getMeasureChord(measureIndex);
+  const random = getMeasureRandom(seed, measureIndex, 0x63686f72);
+  const distanceCompatibleCandidates =
+    maxStaffDistance !== null && previousBassNote
+      ? candidates.filter((chord) =>
+          getLevel3BassScaleNotes(chord, measureIndex).some((name) =>
+            (lookup.get("bass")?.get(name) ?? []).some(
+              (note) => staffDistance(previousBassNote, note) <= maxStaffDistance
+            )
+          )
+        )
+      : [...candidates];
+  const availableChords =
+    distanceCompatibleCandidates.length > 0 ? distanceCompatibleCandidates : [...candidates];
+  if (strategy === "melody" && previousBassNote) {
+    const distances = availableChords.map((chord) => {
+      const nearestDistance = chord.chordNotes.reduce((sum, name) => {
+        const variants = lookup.get("bass")?.get(name) ?? [];
+        const nearest = variants.length
+          ? Math.min(...variants.map((note) => staffDistance(previousBassNote, note)))
+          : 100;
+        return sum + nearest;
+      }, 0);
+      return { chord, distance: nearestDistance };
+    });
+    const minimum = Math.min(...distances.map(({ distance }) => distance));
+    const nearest = distances.filter(({ distance }) => distance === minimum);
+    return nearest[Math.min(nearest.length - 1, Math.floor(random * nearest.length))]!.chord;
+  }
+  if (strategy === "adaptive") {
+    const weakAnchor = adaptiveSelect(bassCandidates, previousBassNote, random);
+    const matchingChords = weakAnchor
+      ? availableChords.filter((chord) => chord.chordNotes.includes(weakAnchor.noteName))
+      : [];
+    const pool = matchingChords.length > 0 ? matchingChords : availableChords;
+    return pool[Math.min(pool.length - 1, Math.floor(random * pool.length))]!;
+  }
+  return availableChords[
+    Math.min(availableChords.length - 1, Math.floor(random * availableChords.length))
+  ]!;
+}
+
+function chooseGeneratedNote({
+  candidates,
+  staff,
+  measureNames,
+  intendedName,
+  previous,
+  level,
+  strategy,
+  maxStaffDistance,
+  adaptiveSelect,
+  random,
+}: {
+  candidates: readonly TargetNote[];
+  staff: Staff;
+  measureNames: ReadonlySet<NoteName>;
+  intendedName: NoteName;
+  previous: TargetNote | undefined;
+  level: DuetPracticeLevel;
+  strategy: PracticeQueueStrategy;
+  maxStaffDistance: number | null;
+  adaptiveSelect: AdaptiveNoteSelector;
+  random: number;
+}): TargetNote | undefined {
+  let eligible = candidates.filter((note) => note.staff === staff);
+  if (staff === "bass" && (level === "level-2" || level === "level-3" || level === "level-6")) {
+    const structuralCandidates = eligible.filter((note) => measureNames.has(note.noteName));
+    if (structuralCandidates.length > 0) {
+      eligible = structuralCandidates;
+    } else if (level === "level-3" && maxStaffDistance !== null) {
+      return undefined;
+    }
+  }
+  if (eligible.length === 0) eligible = candidates.filter((note) => note.staff === staff);
+  if (level === "level-3" && maxStaffDistance !== null && previous) {
+    const withinLimit = eligible.filter(
+      (note) => staffDistance(previous, note) <= maxStaffDistance
+    );
+    if (withinLimit.length === 0) return undefined;
+    eligible = withinLimit;
+  }
+  if (eligible.length === 0) return undefined;
+
+  const nonRepeating =
+    previous && eligible.length > 1 ? eligible.filter((note) => note.id !== previous.id) : eligible;
+  const nonRepeatingDistances = new Set(
+    previous ? nonRepeating.map((note) => staffDistance(previous, note)) : []
+  );
+  const allowRepeatForDistanceVariety = Boolean(
+    level === "level-3" &&
+    maxStaffDistance !== null &&
+    previous &&
+    eligible.some((note) => note.id === previous.id) &&
+    nonRepeatingDistances.size < 2 &&
+    random < 0.2
+  );
+  const choicePool =
+    allowRepeatForDistanceVariety || nonRepeating.length === 0 ? eligible : nonRepeating;
+
+  if (strategy === "melody") {
+    if (!previous) {
+      const intended = choicePool.filter((note) => note.noteName === intendedName);
+      const startingNote = intended.length > 0 ? intended : choicePool;
+      return startingNote[
+        Math.min(startingNote.length - 1, Math.floor(random * startingNote.length))
+      ];
+    }
+    const minimumDistance = Math.min(...choicePool.map((note) => staffDistance(previous, note)));
+    const nearest = choicePool.filter((note) => staffDistance(previous, note) === minimumDistance);
+    return nearest[Math.min(nearest.length - 1, Math.floor(random * nearest.length))];
+  }
+
+  if (strategy === "note-drill") {
+    const intended = choicePool.filter((note) => note.noteName === intendedName);
+    const preferred = intended.length > 0 ? intended : choicePool;
+    return preferred[Math.min(preferred.length - 1, Math.floor(random * preferred.length))];
+  }
+
+  return adaptiveSelect(choicePool, allowRepeatForDistanceVariety ? undefined : previous, random);
+}
+
+function isTargetPairCompatible(
+  pair: DuetTargetPair,
+  strategy: PracticeQueueStrategy,
+  drillNoteNames: readonly NoteName[],
+  level: DuetPracticeLevel,
+  maxStaffDistance: number | null,
+  previous: Partial<Record<Staff, TargetNote>>
+): boolean {
+  const selectedNames = new Set(drillNoteNames);
+  const allNotes = [...pair.high, ...pair.low];
+  if (strategy === "note-drill" && allNotes.some((note) => !selectedNames.has(note.noteName))) {
+    return false;
+  }
+  if (level !== "level-3" || maxStaffDistance === null) return true;
+  return (["treble", "bass"] as const).every((staff) => {
+    const targets = staff === "treble" ? pair.high : pair.low;
+    const prior = previous[staff];
+    return !prior || targets.every((note) => staffDistance(prior, note) <= maxStaffDistance);
+  });
+}
+
+export function getDuetPracticeSetupIssue(
+  poolNotes: readonly TargetNote[],
+  level: DuetPracticeLevel,
+  strategy: PracticeQueueStrategy,
+  drillNoteNames: readonly NoteName[],
+  maxStaffDistance: number | null
+): string | undefined {
+  const notes =
+    strategy === "note-drill"
+      ? poolNotes.filter((note) => drillNoteNames.includes(note.noteName))
+      : [...poolNotes];
+  if (strategy === "note-drill" && drillNoteNames.length === 0) {
+    return "请选择强化音名";
+  }
+  for (const staff of ["treble", "bass"] as const) {
+    if (!notes.some((note) => note.staff === staff)) {
+      return "当前指定音名在所选音区中没有可练习音符，请选择其他音名。";
+    }
+  }
+  if (
+    strategy === "note-drill" &&
+    (level === "level-4" || level === "level-5" || level === "level-6")
+  ) {
+    const lookup = createNoteLookup(notes);
+    if (compatibleChordTemplates(lookup, strategy, drillNoteNames).length === 0) {
+      return "当前指定音名无法组成完整和弦或分解和弦，请至少选择一组完整和弦所需的音名。";
+    }
+  }
+  if (level === "level-3" && maxStaffDistance !== null) {
+    for (const staff of ["treble", "bass"] as const) {
+      const staffNotes = notes.filter((note) => note.staff === staff);
+      const possibleDistances = new Set<number>();
+      if (staffNotes.length > 0) possibleDistances.add(0);
+      staffNotes.forEach((from) =>
+        staffNotes.forEach((to) => {
+          const distance = staffDistance(from, to);
+          if (distance > 0 && distance <= maxStaffDistance) possibleDistances.add(distance);
+        })
+      );
+      if (possibleDistances.size < 2) {
+        return `当前音域和指定音名无法让${staff === "treble" ? "右手" : "左手"}形成两种可用音距，请扩大音域、选择更多音名或放宽最大音距。`;
+      }
+    }
+  }
+  return undefined;
+}
+
 /** Builds complete four-beat measures from authored 4-bar phrases and rhythm templates. */
 export function createDuetPracticePage(
   poolNotes: readonly TargetNote[],
@@ -743,9 +1002,18 @@ export function createDuetPracticePage(
   requestedCount: number,
   options: DuetPracticeGenerationOptions = {}
 ): GeneratedDuetPracticePage {
-  const lookup = createNoteLookup(poolNotes);
-  const bassNotes = poolNotes.filter((note) => note.staff === "bass");
-  const trebleNotes = poolNotes.filter((note) => note.staff === "treble");
+  const strategy: PracticeQueueStrategy =
+    options.queueStrategy === "melody" || options.queueStrategy === "note-drill"
+      ? options.queueStrategy
+      : "adaptive";
+  const drillNoteNames = options.drillNoteNames ?? [];
+  const availableNotes =
+    strategy === "note-drill"
+      ? poolNotes.filter((note) => drillNoteNames.includes(note.noteName))
+      : [...poolNotes];
+  const lookup = createNoteLookup(availableNotes);
+  const bassNotes = availableNotes.filter((note) => note.staff === "bass");
+  const trebleNotes = availableNotes.filter((note) => note.staff === "treble");
   if (
     poolNotes.length === 0 ||
     (!options.allowSingleStaff && (bassNotes.length === 0 || trebleNotes.length === 0)) ||
@@ -781,9 +1049,41 @@ export function createDuetPracticePage(
       : measureIndex + Math.max(0, Math.floor(options.measureCount));
   let endBeat = startBeat;
   const seed = hashSeed(options.seed);
-  const levelOneNotePools: LevelOneNotePools = {
+  const adaptiveSchedulers = new Map<string, AdaptiveNoteScheduler>();
+  const plannedTargetNoteIds = [...(options.plannedTargetNoteIds ?? [])];
+  const adaptiveSelect: AdaptiveNoteSelector = (candidates, previous, random) => {
+    if (candidates.length === 0) return undefined;
+    const schedulerNotes = [...new Map(candidates.map((note) => [note.id, note])).values()];
+    const key = schedulerNotes
+      .map((note) => note.id)
+      .sort()
+      .join("|");
+    let scheduler = adaptiveSchedulers.get(key);
+    if (!scheduler) {
+      scheduler = createAdaptiveNoteScheduler({
+        notes: schedulerNotes,
+        reviews: [...(options.reviews ?? [])],
+        sessions: [...(options.sessions ?? [])],
+        currentSessionId: options.currentSessionId,
+        queueStrategy: "adaptive",
+      });
+      adaptiveSchedulers.set(key, scheduler);
+    }
+    return scheduler.select({
+      lastTargetNoteId: previous?.id,
+      plannedTargetNoteIds,
+      rng: () => random,
+    });
+  };
+  const baseLevelOneNotePools: LevelOneNotePools = {
     treble: NOTE_NAME_ORDER.filter((noteName) => lookup.get("treble")?.has(noteName) ?? false),
     bass: NOTE_NAME_ORDER.filter((noteName) => lookup.get("bass")?.has(noteName) ?? false),
+  };
+  const levelOneNotePools = baseLevelOneNotePools;
+  const chordTemplates = compatibleChordTemplates(lookup, strategy, drillNoteNames);
+  const maxStaffDistance = level === "level-3" ? (options.maxStaffDistance ?? null) : null;
+  const previousStaffNotes: Partial<Record<Staff, TargetNote>> = {
+    ...(options.previousStaffNotes ?? {}),
   };
   const levelOneNoteOffsets: LevelOneNoteOffsets = { treble: 0, bass: 0 };
   let levelOneStartingOnsetIndex = 0;
@@ -817,6 +1117,24 @@ export function createDuetPracticePage(
   while (events.length < requestedCount && measureIndex < measureLimit) {
     const measureStart = measureIndex * 4;
     const useDottedTemplate = allowDottedRhythms && measureIndex % 4 === 3;
+    const measureChordTemplates =
+      level === "level-3"
+        ? getLevel3ChordTemplates(lookup, strategy, drillNoteNames, measureIndex)
+        : chordTemplates;
+    const selectedChord =
+      level === "level-1"
+        ? getMeasureChord(measureIndex)
+        : chooseMeasureChord(
+            measureIndex,
+            measureChordTemplates,
+            strategy,
+            lookup,
+            bassNotes,
+            previousStaffNotes.bass,
+            seed,
+            adaptiveSelect,
+            maxStaffDistance
+          );
     const measureEvents = getMeasureEvents(
       level,
       measureIndex,
@@ -828,7 +1146,8 @@ export function createDuetPracticePage(
       options.strictHandAlternation,
       levelOneStartingOnsetIndex,
       precedingLevelOneStaffSequence,
-      options.strictHandAlternationStart
+      options.strictHandAlternationStart,
+      selectedChord
     );
     if (level === "level-1") {
       levelOneStartingOnsetIndex += measureEvents.length;
@@ -837,14 +1156,60 @@ export function createDuetPracticePage(
         if (precedingLevelOneStaffSequence.length > 2) precedingLevelOneStaffSequence.shift();
       });
     }
+    const measureNoteNames: Record<Staff, Set<NoteName>> = {
+      treble: new Set(measureEvents.flatMap((event) => event.high)),
+      bass:
+        level === "level-3" && maxStaffDistance !== null
+          ? new Set(getLevel3BassScaleNotes(selectedChord, measureIndex))
+          : new Set(measureEvents.flatMap((event) => event.low)),
+    };
     for (const measureEvent of measureEvents) {
-      const generatedHigh = measureEvent.high
-        .map((name) => getMeasureNote(lookup, "treble", name, measureIndex))
-        .filter((note): note is TargetNote => note !== undefined);
-      const generatedLow = measureEvent.low
-        .map((name) => getMeasureNote(lookup, "bass", name, measureIndex))
-        .filter((note): note is TargetNote => note !== undefined);
-      const targetPair = options.targetPairs?.[(options.targetOffset ?? 0) + events.length];
+      const selectGeneratedStaffNotes = (
+        names: readonly NoteName[],
+        staff: Staff
+      ): TargetNote[] => {
+        if (names.length > 1) {
+          return names
+            .map((name) => getMeasureNote(lookup, staff, name, measureIndex))
+            .filter((note): note is TargetNote => note !== undefined);
+        }
+        return names
+          .map((name, noteIndex) =>
+            chooseGeneratedNote({
+              candidates: availableNotes,
+              staff,
+              measureNames: measureNoteNames[staff],
+              intendedName: name,
+              previous: previousStaffNotes[staff],
+              level,
+              strategy,
+              maxStaffDistance,
+              adaptiveSelect,
+              random: getMeasureRandom(
+                seed,
+                measureIndex,
+                (staff === "treble" ? 0x74726562 : 0x62617373) ^
+                  Math.imul(events.length + noteIndex + 1, 0x27d4eb2d)
+              ),
+            })
+          )
+          .filter((note): note is TargetNote => note !== undefined);
+      };
+      const generatedHigh = selectGeneratedStaffNotes(measureEvent.high, "treble");
+      const generatedLow = selectGeneratedStaffNotes(measureEvent.low, "bass");
+      const fixedTargetPair = options.targetPairs?.[(options.targetOffset ?? 0) + events.length];
+      const targetPair =
+        fixedTargetPair &&
+        isTargetPairCompatible(
+          fixedTargetPair,
+          strategy,
+          drillNoteNames,
+          level,
+          maxStaffDistance,
+          previousStaffNotes
+        )
+          ? fixedTargetPair
+          : undefined;
       let high = targetPair?.high ?? generatedHigh;
       let low = targetPair?.low ?? generatedLow;
       const blackKeySettings = options.blackKeySettings;
@@ -899,6 +1264,9 @@ export function createDuetPracticePage(
       }
       const group = [...high, ...low];
       if (group.length === 0) continue;
+      if (high.length > 0) previousStaffNotes.treble = high[high.length - 1];
+      if (low.length > 0) previousStaffNotes.bass = low[low.length - 1];
+      plannedTargetNoteIds.push(...group.map((note) => note.id));
       const onset = measureStart + measureEvent.beat;
       const genericDuration = measureEvent.highDuration ?? measureEvent.lowDuration ?? "quarter";
       events.push({ high, low });
@@ -997,7 +1365,7 @@ export function getDuetPracticeLevelDescription(
       ? "左右手按每个音符严格轮流出现，并跨小节连续轮换；音符在各自音域内均衡轮换，不同时起音。"
       : "每个完整小节左右手各至少弹一次单音，手序错落穿插、允许连续同手但不会连续三次；音符在各自音域内均衡轮换，不同时起音。",
     "level-2": "每小节低音出现 1 次的概率为 70%，出现 2 次的概率为 30%；出现两次时会尽量分开。",
-    "level-3": "每小节同奏 1/2/3/4 次的概率依次为 20%/50%/20%/10%。",
+    "level-3": "每小节同奏 1/2/3/4 次的概率依次为 10%/30%/40%/20%。",
     "level-4": "左手在强拍弹柱式三和弦，右手继续弹简单旋律。",
     "level-5": "右手弹均匀八分音符旋律，左手柱式和弦保持。",
     "level-6": "左手按四分音符弹分解和弦，右手继续旋律。",

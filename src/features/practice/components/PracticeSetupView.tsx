@@ -78,6 +78,7 @@ export interface PracticeSetupUiPreferences {
   duetLevel: DuetPracticeLevel;
   duetRangePreset: DuetPracticeRangePreset;
   duetRangeGroupIds: DuetPracticeRangeGroupId[];
+  duetMaxStaffDistance: number | null;
   duetCurriculumVersion: number;
   duetAllowDottedRhythms: boolean;
   duetStrictHandAlternation: boolean;
@@ -110,6 +111,7 @@ interface PracticeSetupActions {
   onDuetLevelChange: (level: DuetPracticeLevel) => void;
   onDuetRangePresetChange: (preset: DuetPracticeRangePreset) => void;
   onDuetRangeGroupIdsChange: (groupIds: DuetPracticeRangeGroupId[]) => void;
+  onDuetMaxStaffDistanceChange: (distance: number | null) => void;
   onDuetAllowDottedRhythmsChange: (enabled: boolean) => void;
   onDuetStrictHandAlternationChange: (enabled: boolean) => void;
   onBlackKeySettingsChange: (scope: "single" | "duet", settings: BlackKeyPracticeSettings) => void;
@@ -328,6 +330,7 @@ export function PracticeSetupView({
     duetLevel,
     duetRangePreset,
     duetRangeGroupIds,
+    duetMaxStaffDistance,
     duetAllowDottedRhythms,
     duetStrictHandAlternation,
     singleBlackKeys,
@@ -428,7 +431,12 @@ export function PracticeSetupView({
   useEffect(() => {
     if (
       setupStartError &&
-      setupStartGuideTarget === '[data-setup-guide-target="practice-note-durations"]'
+      setupStartGuideTarget &&
+      [
+        '[data-setup-guide-target="practice-note-durations"]',
+        '[data-setup-guide-target="duet-max-distance"]',
+        '[data-setup-guide-target="practice-drill-notes"]',
+      ].includes(setupStartGuideTarget)
     ) {
       pendingStartGuideTargetRef.current = setupStartGuideTarget;
       setIsAdvancedOpen(true);
@@ -1195,10 +1203,14 @@ export function PracticeSetupView({
                 <span className="practice-free-advanced-count">
                   {showBlackKeySettings && !isBlindPractice
                     ? isDuetPractice
-                      ? "4组"
+                      ? duetLevel === "level-3"
+                        ? "5组"
+                        : "4组"
                       : "5组"
                     : isDuetPractice
-                      ? "3组"
+                      ? duetLevel === "level-3"
+                        ? "4组"
+                        : "3组"
                       : "4组"}
                 </span>
                 <ChevronDown
@@ -1279,6 +1291,37 @@ export function PracticeSetupView({
                   <section className="practice-free-field practice-free-duet-advanced-field">
                     <span className="control-label">合弹微调</span>
                     <div className="practice-checkbox-options practice-free-duet-advanced-options">
+                      {duetLevel === "level-3" ? (
+                        <div className="practice-free-duet-advanced-option">
+                          <label className="practice-black-key-setting">
+                            <span className="control-label">最大音距</span>
+                            <select
+                              aria-label="Level 3 最大音距"
+                              className="practice-black-key-select"
+                              data-setup-guide-target="duet-max-distance"
+                              value={duetMaxStaffDistance ?? "unlimited"}
+                              onChange={(event) =>
+                                actions.onDuetMaxStaffDistanceChange(
+                                  event.currentTarget.value === "unlimited"
+                                    ? null
+                                    : Number(event.currentTarget.value)
+                                )
+                              }
+                            >
+                              <option value="unlimited">不限</option>
+                              {[1, 2, 3, 4, 5, 6, 7].map((distance) => (
+                                <option key={distance} value={distance}>
+                                  不超过 {distance} 步
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <small className="practice-free-helper">
+                            左右手分别限制相邻音符的谱位距离；每跨一条线或一个间算 1 步，同音重复算
+                            0 步。
+                          </small>
+                        </div>
+                      ) : null}
                       {duetLevel === "level-1" ? (
                         <div className="practice-free-duet-advanced-option">
                           <label className="practice-checkbox-option">

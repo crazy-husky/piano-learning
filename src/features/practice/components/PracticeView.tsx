@@ -168,6 +168,7 @@ import {
   DEFAULT_DUET_PRACTICE_RANGE_PRESET,
   DUET_PRACTICE_RANGE_GROUPS,
   getDuetPracticeGroupIds,
+  getDuetPracticeSetupIssue,
   getDuetPracticeRangeGroupSummary,
   getDuetTargetMidis,
   isDuetPracticeCustomRangeLevel,
@@ -398,6 +399,7 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
     duetLevel: "level-1",
     duetRangePreset: DEFAULT_DUET_PRACTICE_RANGE_PRESET,
     duetRangeGroupIds: getDuetPracticeGroupIds(DEFAULT_DUET_PRACTICE_RANGE_PRESET),
+    duetMaxStaffDistance: null,
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms: false,
     duetStrictHandAlternation: false,
@@ -466,6 +468,13 @@ function parsePracticeSetupUiPreferences(
       value.duetRangeGroupIds,
       getDuetPracticeGroupIds(duetRangePreset)
     ),
+    duetMaxStaffDistance:
+      typeof value.duetMaxStaffDistance === "number" &&
+      Number.isInteger(value.duetMaxStaffDistance) &&
+      value.duetMaxStaffDistance >= 1 &&
+      value.duetMaxStaffDistance <= 7
+        ? value.duetMaxStaffDistance
+        : null,
     duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
     duetAllowDottedRhythms:
       typeof value.duetAllowDottedRhythms === "boolean" ? value.duetAllowDottedRhythms : false,
@@ -811,6 +820,9 @@ export function PracticeView({
     : duetWrongNoteTestPlan
       ? duetLevel === "level-1" && practiceSetupPreferences.duetStrictHandAlternation
       : practiceSetupPreferences.duetStrictHandAlternation;
+  const duetMaxStaffDistance = runningStartSnapshot
+    ? (runningStartSnapshot.practiceConfig.duetMaxStaffDistance ?? null)
+    : practiceSetupPreferences.duetMaxStaffDistance;
   const duetRangePreset = normalizeDuetPracticeRangePreset(
     duetWrongNoteTestPlan?.rangePreset ?? practiceSetupPreferences.duetRangePreset
   );
@@ -1097,6 +1109,9 @@ export function PracticeView({
       duetRangeGroupIds: normalizeDuetPracticeRangeGroupIds(groupIds, current.duetRangeGroupIds),
     }));
   };
+  const setDuetMaxStaffDistance = (distance: number | null): void => {
+    setPracticeSetupPreferences((current) => ({ ...current, duetMaxStaffDistance: distance }));
+  };
   const setDuetStrictHandAlternation = (enabled: boolean): void => {
     setPracticeSetupPreferences((current) => ({
       ...current,
@@ -1342,6 +1357,7 @@ export function PracticeView({
         duetLevel: current.duetLevel,
         duetRangePreset: current.duetRangePreset,
         duetRangeGroupIds: current.duetRangeGroupIds,
+        duetMaxStaffDistance: current.duetMaxStaffDistance,
         duetCurriculumVersion: current.duetCurriculumVersion,
         duetAllowDottedRhythms: current.duetAllowDottedRhythms,
         duetStrictHandAlternation: current.duetStrictHandAlternation,
@@ -1937,6 +1953,7 @@ export function PracticeView({
       blackKeySettings: { ...blackKeySettings, enabled: fuseBlackKeys },
       enabledNotes: coreEnabledNotes,
       duetLevel: isDuetPractice ? duetLevel : undefined,
+      duetMaxStaffDistance,
       duetQuestionTargets: duetWrongNoteTestPlan?.questions,
       duetQuestionStrictHandAlternationStart:
         duetWrongNoteTestPlan?.level === "level-1" && duetStrictHandAlternation
@@ -2454,6 +2471,7 @@ export function PracticeView({
       duetLevel,
       duetRangePreset,
       duetRangeGroupIds: practiceSetupPreferences.duetRangeGroupIds,
+      duetMaxStaffDistance,
       duetAllowDottedRhythms,
       duetStrictHandAlternation,
       midi,
@@ -3433,18 +3451,36 @@ export function PracticeView({
         target: '[data-setup-guide-target="practice-metronome-woodfish"]',
       };
     }
-    if (
-      isDuetPractice &&
-      !duetWrongNoteTestPlan &&
-      queueStrategy === "note-drill" &&
-      drillNoteNames.length === 0
-    ) {
-      return {
-        message: "请选择强化音名",
-        target: '[data-setup-guide-target="practice-drill-notes"]',
-      };
+    if (isDuetPractice && duetLevel) {
+      const duetPreflightNotes = duetWrongNoteTestPlan
+        ? getNotesForSelection(
+            duetWrongNoteTestPlan.rangeGroupIds,
+            undefined,
+            undefined,
+            false,
+            "grand"
+          )
+        : coreEnabledNotes;
+      const issue = getDuetPracticeSetupIssue(
+        duetPreflightNotes,
+        duetLevel,
+        queueStrategy,
+        drillNoteNames,
+        duetMaxStaffDistance
+      );
+      if (issue) {
+        const isDistanceIssue = issue.includes("形成两种可用音距");
+        return {
+          message: issue,
+          target: isDistanceIssue
+            ? '[data-setup-guide-target="duet-max-distance"]'
+            : issue === "请选择强化音名" || queueStrategy === "note-drill"
+              ? '[data-setup-guide-target="practice-drill-notes"]'
+              : '[data-setup-guide-target="practice-note-groups"]',
+        };
+      }
+      return null;
     }
-    if (isDuetPractice) return null;
     if (enabledNotes.length === 0) {
       return {
         message: "请选择练习音组",
@@ -3472,7 +3508,10 @@ export function PracticeView({
     return null;
   }, [
     answerPitchMode,
-    drillNoteNames.length,
+    coreEnabledNotes,
+    drillNoteNames,
+    duetLevel,
+    duetMaxStaffDistance,
     enabledNotes,
     isDuetPractice,
     isBlindPractice,
@@ -3882,6 +3921,7 @@ export function PracticeView({
           onDuetLevelChange: setDuetLevel,
           onDuetRangePresetChange: setDuetRangePreset,
           onDuetRangeGroupIdsChange: setDuetRangeGroupIds,
+          onDuetMaxStaffDistanceChange: setDuetMaxStaffDistance,
           onDuetAllowDottedRhythmsChange: setDuetAllowDottedRhythms,
           onDuetStrictHandAlternationChange: setDuetStrictHandAlternation,
           onBlackKeySettingsChange: setBlackKeySettings,

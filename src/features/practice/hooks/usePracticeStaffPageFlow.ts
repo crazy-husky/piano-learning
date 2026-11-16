@@ -56,6 +56,18 @@ function duetTargetsForGroup(group: readonly TargetNote[] | undefined): DuetTarg
   };
 }
 
+function lastDuetNotesByStaff(
+  groups: readonly (readonly TargetNote[])[] | undefined
+): Partial<Record<Staff, TargetNote>> {
+  const last: Partial<Record<Staff, TargetNote>> = {};
+  groups?.forEach((group) => {
+    group.forEach((note) => {
+      last[note.staff] = note;
+    });
+  });
+  return last;
+}
+
 function getDuetMeasureRowStartIndices(
   notes: readonly TargetNote[],
   measures: readonly number[],
@@ -303,6 +315,7 @@ interface PracticeStaffPageFlowValues {
   blackKeySettings: BlackKeyPracticeSettings;
   rangeExtensionNotes: TargetNote[];
   duetLevel?: DuetPracticeLevel;
+  duetMaxStaffDistance: number | null;
   duetStrictHandAlternation: boolean;
   duetQuestionTargets?: readonly (DuetTargetPair | null)[];
   duetQuestionStrictHandAlternationStart?: "treble" | "bass";
@@ -369,6 +382,7 @@ export function usePracticeStaffPageFlow({
     blackKeySettings,
     rangeExtensionNotes,
     duetLevel,
+    duetMaxStaffDistance,
     duetStrictHandAlternation,
     duetQuestionTargets,
     duetQuestionStrictHandAlternationStart,
@@ -555,6 +569,12 @@ export function usePracticeStaffPageFlow({
         ? createDuetPracticePage(sourceNotes, duetLevel, duetRequestedCount, {
             allowDottedRhythms,
             blackKeySettings,
+            queueStrategy: sourceQueueStrategy,
+            drillNoteNames: sourceDrillNoteNames,
+            reviews: [...sourceReviews, ...sessionReviewsRef.current],
+            sessions,
+            currentSessionId: sessionRef.current?.id,
+            maxStaffDistance: duetLevel === "level-3" ? duetMaxStaffDistance : null,
             strictHandAlternation: duetLevel === "level-1" && duetStrictHandAlternation,
             strictHandAlternationStart: duetQuestionStrictHandAlternationStart,
             allowSingleStaff: duetQuestionTargets !== undefined,
@@ -652,6 +672,7 @@ export function usePracticeStaffPageFlow({
       allowDottedRhythms,
       blackKeySettings,
       duetLevel,
+      duetMaxStaffDistance,
       duetStrictHandAlternation,
       duetQuestionTargets,
       duetQuestionStrictHandAlternationStart,
@@ -667,6 +688,7 @@ export function usePracticeStaffPageFlow({
       rangeExtensionNotes,
       retainHistory,
       sessionRef,
+      sessionReviewsRef,
       sessions,
       startPrompt,
       syncStaffPage,
@@ -822,6 +844,18 @@ export function usePracticeStaffPageFlow({
           ? createDuetPracticePage(enabledNotes, duetLevel, duetAppendRequestedCount, {
               allowDottedRhythms,
               blackKeySettings,
+              queueStrategy,
+              drillNoteNames,
+              reviews: [...schedulerReviews, ...sessionReviewsRef.current],
+              sessions,
+              currentSessionId: sessionRef.current?.id,
+              plannedTargetNoteIds:
+                page.noteGroups
+                  ?.slice(nextIndex)
+                  .flatMap((group) => group.map((note) => note.id)) ??
+                remainingVisibleNotes.map((note) => note.id),
+              maxStaffDistance: duetLevel === "level-3" ? duetMaxStaffDistance : null,
+              previousStaffNotes: lastDuetNotesByStaff(page.noteGroups),
               strictHandAlternation: duetLevel === "level-1" && duetStrictHandAlternation,
               strictHandAlternationStart: duetQuestionStrictHandAlternationStart,
               allowSingleStaff: duetQuestionTargets !== undefined,
@@ -1037,6 +1071,7 @@ export function usePracticeStaffPageFlow({
       allowDottedRhythms,
       blackKeySettings,
       fixedCount,
+      duetMaxStaffDistance,
       isMobileViewport,
       adaptiveMeasureAreaWidthPx,
       adaptiveMaxMeasuresPerRow,

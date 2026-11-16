@@ -21,6 +21,7 @@ export interface SessionProgressSelection {
   duetLevel?: SessionProgressGroupKey["duetLevel"];
   duetCurriculumVersion?: SessionProgressGroupKey["duetCurriculumVersion"];
   duetAllowDottedRhythms?: SessionProgressGroupKey["duetAllowDottedRhythms"];
+  duetMaxStaffDistance?: SessionProgressGroupKey["duetMaxStaffDistance"];
   metronomeSync?: SessionProgressGroupKey["metronomeSync"];
 }
 
@@ -81,6 +82,7 @@ function groupMatchesSelection(
     group.key.duetLevel === selection.duetLevel &&
     group.key.duetCurriculumVersion === selection.duetCurriculumVersion &&
     group.key.duetAllowDottedRhythms === selection.duetAllowDottedRhythms &&
+    group.key.duetMaxStaffDistance === selection.duetMaxStaffDistance &&
     group.key.metronomeSync === selection.metronomeSync &&
     SESSION_PROGRESS_CONDITION_DIMENSIONS.every((dimension) =>
       getSessionProgressSelectionValues(selection, dimension).includes(
@@ -119,6 +121,9 @@ export function createSessionProgressSelection(
       : {}),
     ...(group.key.duetAllowDottedRhythms !== undefined
       ? { duetAllowDottedRhythms: group.key.duetAllowDottedRhythms }
+      : {}),
+    ...(group.key.duetMaxStaffDistance !== undefined
+      ? { duetMaxStaffDistance: group.key.duetMaxStaffDistance }
       : {}),
     ...(group.key.metronomeSync !== undefined ? { metronomeSync: group.key.metronomeSync } : {}),
   };

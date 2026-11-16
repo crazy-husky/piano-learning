@@ -38,6 +38,7 @@ export interface SessionProgressGroupKey {
   duetLevel?: DuetPracticeLevel;
   duetCurriculumVersion?: number;
   duetAllowDottedRhythms?: boolean;
+  duetMaxStaffDistance?: number;
   includeBlackKeys?: boolean;
   blackKeyRatio?: BlackKeyRatio;
   blackKeySpelling?: BlackKeySpelling;
@@ -119,6 +120,7 @@ function sameComparisonSnapshot(
     reference.duetLevel === candidate.duetLevel &&
     reference.duetCurriculumVersion === candidate.duetCurriculumVersion &&
     reference.duetAllowDottedRhythms === candidate.duetAllowDottedRhythms &&
+    reference.duetMaxStaffDistance === candidate.duetMaxStaffDistance &&
     (reference.includeBlackKeys === true) === (candidate.includeBlackKeys === true) &&
     (reference.includeBlackKeys !== true ||
       ((reference.blackKeyRatio ?? 20) === (candidate.blackKeyRatio ?? 20) &&
@@ -141,6 +143,7 @@ export function serializeSessionProgressGroupKey(key: SessionProgressGroupKey): 
     key.duetLevel ?? "",
     key.duetCurriculumVersion ?? "",
     key.duetAllowDottedRhythms ?? "",
+    key.duetMaxStaffDistance ?? "",
     key.includeBlackKeys === true,
     key.includeBlackKeys === true ? (key.blackKeyRatio ?? 20) : "",
     key.includeBlackKeys === true ? (key.blackKeySpelling ?? "mixed") : "",
@@ -166,6 +169,9 @@ export function getSessionProgressGroupKey(
           : {}),
         ...(snapshot.duetAllowDottedRhythms !== undefined
           ? { duetAllowDottedRhythms: snapshot.duetAllowDottedRhythms }
+          : {}),
+        ...(snapshot.duetMaxStaffDistance !== undefined
+          ? { duetMaxStaffDistance: snapshot.duetMaxStaffDistance }
           : {}),
         ...(snapshot.includeBlackKeys !== undefined
           ? { includeBlackKeys: snapshot.includeBlackKeys }

@@ -369,6 +369,7 @@ export interface PracticeSessionStartSnapshot {
     duetLevel?: DuetPracticeLevel;
     duetCurriculumVersion?: number;
     duetAllowDottedRhythms?: boolean;
+    duetMaxStaffDistance?: number;
     duetStrictHandAlternation?: boolean;
     includeBlackKeys?: boolean;
     blackKeyRatio?: BlackKeyRatio;
