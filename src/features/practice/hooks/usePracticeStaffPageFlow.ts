@@ -26,7 +26,6 @@ import {
   PRACTICE_STAFF_WIDTH_TUNING,
   getPracticeStaffMeasureWidthPx,
 } from "../../../shared/staff/staffLayoutProfiles";
-import { getStaffPageRefillCount } from "../logic/staffPageFlow";
 import { generateStaffPageRhythm } from "../logic/staffPageNotation";
 import type { GeneratedStaffPageRhythm } from "../logic/staffPageNotation";
 import {
@@ -36,6 +35,8 @@ import {
   DUET_MOBILE_STAFF_PAGE_NOTE_COUNT,
   chunkStaffPageGroupsByAdaptiveMeasureWidth,
   chunkStaffPageGroupsByMeasure,
+  estimateStaffPageEventsPerRow,
+  getStaffPageRefillCount,
   getStaffPageRowIndex,
 } from "../logic/staffPageFlow";
 import { createDuetPracticePage } from "../logic/duetPractice";
@@ -130,26 +131,6 @@ function getPracticeStaffRowStartIndices(
   return Array.from(
     { length: Math.ceil(notes.length / rowCapacity) },
     (_, rowIndex) => rowIndex * rowCapacity
-  );
-}
-
-function estimateEventsPerStaffRow(
-  notes: readonly TargetNote[],
-  rowStartIndices: readonly number[],
-  fallbackCount: number
-): number {
-  if (rowStartIndices.length <= 1) return Math.max(1, fallbackCount);
-  const rowLengths = rowStartIndices.map((start, index) => {
-    const end = rowStartIndices[index + 1] ?? notes.length;
-    return end - start;
-  });
-  const fullRows = rowLengths.slice(0, -1).filter((length) => length > 0);
-  const samples = fullRows.slice(-5);
-  const source = samples.length > 0 ? samples : rowLengths.filter((length) => length > 0);
-  if (source.length === 0) return Math.max(1, fallbackCount);
-  return Math.max(
-    1,
-    Math.ceil(source.reduce((total, length) => total + length, 0) / source.length)
   );
 }
 
@@ -783,7 +764,7 @@ export function usePracticeStaffPageFlow({
                 adaptiveMeasureAreaWidthPx,
                 adaptiveMaxMeasuresPerRow
               ) * getDuetMaximumEventsPerMeasure(duetLevel)
-            : estimateEventsPerStaffRow(page.notes, staffRowStartIndices ?? [], pageNoteCount) *
+            : estimateStaffPageEventsPerRow(page.notes, staffRowStartIndices ?? [], pageNoteCount) *
               rowsToAppend;
           const availableFutureCount =
             mode === "fixed-count"

@@ -1,4 +1,4 @@
-import { ArrowLeft, Pause, Play, RotateCcw, Settings2, Volume2 } from "lucide-react";
+import { Settings2, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getPianoAudioTime, playMuffledMidiNote, playTargetNote } from "../../../audio/piano";
@@ -142,6 +142,7 @@ import { usePracticeStaffPageFlow } from "../hooks/usePracticeStaffPageFlow";
 import { usePracticeSummaryData } from "../hooks/usePracticeSummaryData";
 import { PracticeSummaryView } from "./PracticeSummaryView";
 import { PracticeFullscreenToggle } from "./PracticeFullscreenFrame";
+import { PracticeSessionFrame, PracticeSessionHeader } from "./PracticeSessionFrame";
 import { StaffDistancePracticeView } from "./StaffDistancePracticeView";
 import {
   PracticeSetupView,
@@ -899,6 +900,7 @@ export function PracticeView({
           practiceSetupPreferences.promptDisplayMode);
   const isContinuousStaffPage =
     practiceTab === "free" && promptDisplayMode === "staff-page" && !isBlindPractice;
+  const isSingleNoteReactionPractice = learningLevelId === 2;
   const isMobileStaffPage = isMobileViewport && promptDisplayMode === "staff-page";
   const isPagedStaffPage = isMobileStaffPage || isBlindPractice;
   const responsivePracticeStaffLayout = isDuetPractice
@@ -921,6 +923,24 @@ export function PracticeView({
         )
       : responsivePracticeStaffLayout.width.maxPx;
   const adaptiveRendererWidthPx = staffPageRendererWidthPx || fallbackRendererWidthPx;
+  const staffPageLayout = useMemo(
+    () =>
+      isContinuousStaffPage && isSingleNoteReactionPractice
+        ? {
+            ...responsivePracticeStaffLayout,
+            width: {
+              ...responsivePracticeStaffLayout.width,
+              maxPx: Math.max(responsivePracticeStaffLayout.width.minPx, adaptiveRendererWidthPx),
+            },
+          }
+        : responsivePracticeStaffLayout,
+    [
+      adaptiveRendererWidthPx,
+      isContinuousStaffPage,
+      isSingleNoteReactionPractice,
+      responsivePracticeStaffLayout,
+    ]
+  );
   const adaptiveMeasureAreaWidthPx = getPracticeStaffMeasureAreaWidthPx(
     adaptiveRendererWidthPx,
     responsivePracticeStaffLayout.horizontal
@@ -3185,9 +3205,6 @@ export function PracticeView({
   );
   submitAnswerRef.current = submitPracticeAnswer;
 
-  const handleExitPractice = useCallback((): void => {
-    void completeSession("manual-stop", "manual-stop");
-  }, [completeSession]);
   const { pressedAnswerKeys } = usePracticeInput({
     answerPitchMode,
     canStartOnMidi: songPracticeSelection === null && practiceTab === "free",
@@ -3665,14 +3682,42 @@ export function PracticeView({
     staffPageRhythm,
   ]);
   const staffPageBarlineAfterNoteIndices = useMemo(() => {
-    if (!visibleStaffPageRhythm) return undefined;
-    return visibleStaffPageRhythm.measures.flatMap((measure, index) =>
+    if (!visibleStaffPageRhythm) {
+      if (!isContinuousStaffPage || !isSingleNoteReactionPractice) return undefined;
+      const eventsPerMeasure = Math.max(
+        1,
+        Math.round(4 / getQuarterNoteBeats(effectivePromptNoteDuration))
+      );
+      return Array.from(
+        { length: Math.floor(staffPageNotes.length / eventsPerMeasure) },
+        (_, index) => (index + 1) * eventsPerMeasure - 1
+      );
+    }
+    const boundaries = visibleStaffPageRhythm.measures.flatMap((measure, index) =>
       index < visibleStaffPageRhythm.measures.length - 1 &&
       visibleStaffPageRhythm.measures[index + 1] !== measure
         ? [index]
         : []
     );
-  }, [visibleStaffPageRhythm]);
+    if (isSingleNoteReactionPractice) {
+      const lastNoteIndex = visibleStaffPageRhythm.durations.length - 1;
+      const lastOnset = visibleStaffPageRhythm.onsets[lastNoteIndex];
+      const lastDuration = visibleStaffPageRhythm.durations[lastNoteIndex];
+      if (lastNoteIndex >= 0 && lastOnset !== undefined && lastDuration !== undefined) {
+        const endBeat = lastOnset + getQuarterNoteBeats(lastDuration);
+        if (Math.abs(endBeat / 4 - Math.round(endBeat / 4)) < 0.001) {
+          boundaries.push(lastNoteIndex);
+        }
+      }
+    }
+    return boundaries;
+  }, [
+    effectivePromptNoteDuration,
+    isContinuousStaffPage,
+    isSingleNoteReactionPractice,
+    staffPageNotes.length,
+    visibleStaffPageRhythm,
+  ]);
   const staffPageNoteCount = isDuetPractice
     ? duetStaffPageNoteCount
     : isPagedStaffPage
@@ -3704,10 +3749,22 @@ export function PracticeView({
         .filter(
           (entry) =>
             entry.noteIndex >= freeCursorIndexOffset &&
-            entry.noteIndex < freeCursorIndexOffset + mobileStaffPageNotes.length
+            entry.noteIndex < freeCursorIndexOffset + mobileStaffPageNotes.length &&
+            !(
+              isDuetPractice &&
+              entry.result === "missed" &&
+              entry.noteIndex > staffPageFirstNoteOffset + staffPageIndex
+            )
         )
         .map((entry) => ({ ...entry, index: entry.noteIndex - freeCursorIndexOffset })),
-    [freeCursorIndexOffset, mobileStaffPageNotes.length, syncTimingFeedback]
+    [
+      freeCursorIndexOffset,
+      isDuetPractice,
+      mobileStaffPageNotes.length,
+      staffPageFirstNoteOffset,
+      staffPageIndex,
+      syncTimingFeedback,
+    ]
   );
   const freeChaseCurrentIndex =
     freeChaseCursor?.staffCursors.treble?.currentEventIndices[0] ??
@@ -4071,11 +4128,12 @@ export function PracticeView({
   }
 
   return (
-    <section
+    <PracticeSessionFrame
       className={[
-        "practice-shell",
         "practice-running-shell",
         isContinuousStaffPage ? "is-free-score-stream" : "",
+        isContinuousStaffPage && isSingleNoteReactionPractice ? "is-single-note-reaction" : "",
+        isDuetPractice ? "is-duet-practice" : "",
         isBlindPractice ? "is-blind-practice" : "",
         isMobileViewport ? "practice-running-mobile" : "",
         isMobileViewport && answerPitchMode !== "note-name"
@@ -4089,12 +4147,15 @@ export function PracticeView({
         .filter(Boolean)
         .join(" ")}
     >
-      <div className="practice-topline">
-        {practiceTab === "free" ? (
-          <h1 className="practice-running-title">{freePracticeCopy.title}</h1>
-        ) : null}
-        <div className="progress-readout">
-          {mode === "open-ended" ? (
+      <PracticeSessionHeader
+        title={practiceTab === "free" ? freePracticeCopy.title : undefined}
+        progressInline={Boolean(
+          practiceTab === "free" &&
+          (isDuetPractice || isSingleNoteReactionPractice) &&
+          mode === "open-ended"
+        )}
+        progress={
+          mode === "open-ended" ? (
             <span>完成 {completedCount}</span>
           ) : mode === "fixed-count" ? (
             <span>
@@ -4104,82 +4165,61 @@ export function PracticeView({
             <span>
               完成 {completedCount} · {formatDuration(remainingMs)}
             </span>
-          )}
-        </div>
-        <div className="topline-actions">
-          <div className="practice-run-core-actions">
-            <button
-              aria-label={duetWrongNoteTestPlan ? "结束测试并返回统计" : "结束练习并返回配置"}
-              className="practice-return-home"
-              title={duetWrongNoteTestPlan ? "返回统计" : "结束练习并返回配置"}
-              onClick={returnFromPractice}
-              type="button"
-            >
-              <ArrowLeft aria-hidden="true" size={18} />
-              {duetWrongNoteTestPlan ? "返回统计" : "结束返回"}
-            </button>
-            <button
-              title={
-                answerPitchMode === "microphone"
-                  ? isPaused
-                    ? "重新连接麦克风并继续"
-                    : "暂停"
-                  : isPaused
-                    ? "继续"
-                    : "暂停"
-              }
-              onClick={togglePause}
-              type="button"
-            >
-              {isPaused ? <Play size={18} /> : <Pause size={18} />}
-              {isPaused ? "继续" : "暂停"}
-            </button>
-            {isLearningRoutePractice && !isPaused ? (
+          )
+        }
+        exitAriaLabel={duetWrongNoteTestPlan ? "结束测试并返回统计" : "结束练习并返回配置"}
+        exitLabel={duetWrongNoteTestPlan ? "返回统计" : "结束返回"}
+        onExit={returnFromPractice}
+        isPaused={isPaused}
+        onPauseToggle={togglePause}
+        pauseTitle={
+          answerPitchMode === "microphone"
+            ? isPaused
+              ? "重新连接麦克风并继续"
+              : "暂停"
+            : isPaused
+              ? "继续"
+              : "暂停"
+        }
+        onRestart={isLearningRoutePractice ? () => void restartCurrentPractice() : undefined}
+        isRestarting={isRestartingPractice}
+        utilityChildren={
+          <>
+            {practiceTab === "free" && promptDisplayMode === "staff-page" ? (
               <button
-                aria-label="重新开始当前练习"
-                disabled={isRestartingPractice}
-                onClick={() => void restartCurrentPractice()}
-                title="重新开始当前练习"
+                aria-label="追逐游戏设置"
+                className="song-chase-settings-button"
+                title="追逐游戏设置"
                 type="button"
+                onClick={() => setIsChaseSettingsOpen(true)}
               >
-                <RotateCcw aria-hidden="true" size={18} />
-                重新开始
+                <Settings2 aria-hidden="true" size={16} />
+                追逐游戏设置
+                <span aria-hidden="true" className="song-chase-new-badge">
+                  NEW
+                </span>
               </button>
             ) : null}
-          </div>
-          {practiceTab !== "free" &&
-          answerPitchMode !== "microphone" &&
-          answerPitchMode !== "note-name" ? (
-            <button title="重播目标音" onClick={() => void replayTarget()}>
-              <Volume2 size={18} />
-              重播
-            </button>
-          ) : null}
-          {practiceTab === "free" && promptDisplayMode === "staff-page" ? (
-            <button
-              aria-label="追逐游戏设置"
-              className="song-chase-settings-button"
-              title="追逐游戏设置"
-              type="button"
-              onClick={() => setIsChaseSettingsOpen(true)}
-            >
-              <Settings2 aria-hidden="true" size={16} />
-              追逐游戏设置
-              <span aria-hidden="true" className="song-chase-new-badge">
-                NEW
-              </span>
-            </button>
-          ) : null}
-          {answerPitchMode === "exact-pitch" ? (
-            <MidiInputControl
-              ariaLabel={`${freePracticeCopy.title} MIDI 输入设备`}
-              className={phase === "running" && !midi.isConnected ? "needs-attention" : undefined}
-              midi={midi}
-            />
-          ) : null}
-          <PracticeFullscreenToggle />
-        </div>
-      </div>
+            {answerPitchMode === "exact-pitch" ? (
+              <MidiInputControl
+                ariaLabel={`${freePracticeCopy.title} MIDI 输入设备`}
+                className={phase === "running" && !midi.isConnected ? "needs-attention" : undefined}
+                midi={midi}
+              />
+            ) : null}
+          </>
+        }
+      >
+        {practiceTab !== "free" &&
+        answerPitchMode !== "microphone" &&
+        answerPitchMode !== "note-name" ? (
+          <button title="重播目标音" onClick={() => void replayTarget()} type="button">
+            <Volume2 aria-hidden="true" size={18} />
+            重播
+          </button>
+        ) : null}
+        <PracticeFullscreenToggle />
+      </PracticeSessionHeader>
 
       {answerPitchMode === "microphone" ? (
         <div className="practice-microphone-status">
@@ -4313,6 +4353,7 @@ export function PracticeView({
               verticalRangeNotes={enabledNotes}
               currentNoteIndicatorIndex={isDuetPractice ? trackedFreeScoreNoteIndex : undefined}
               noteLabelsAboveStaffTopLinePx={isDuetPractice ? 50 : undefined}
+              centerAdaptiveRows={isDuetPractice || isSingleNoteReactionPractice}
               canonicalRowStartIndices={
                 isContinuousStaffPage ? adaptiveStaffRows?.rowStartIndices : undefined
               }
@@ -4363,7 +4404,7 @@ export function PracticeView({
                 mode === "fixed-count" &&
                 staffPageFirstNoteOffset + staffPageNotes.length >= fixedCount
               }
-              layout={responsivePracticeStaffLayout}
+              layout={staffPageLayout}
               noteDuration={effectivePromptNoteDuration}
               noteDurations={visibleStaffPageRhythm?.durations}
               noteMeasures={visibleStaffPageRhythm?.measures}
@@ -4387,7 +4428,11 @@ export function PracticeView({
               maxMeasuresPerRow={
                 isContinuousStaffPage ? adaptiveMeasuresPerRow : duetMaxMeasuresPerRow
               }
-              onToggleRowPlayback={isMetronomeSyncActive ? undefined : toggleFreeScoreRowPlayback}
+              onToggleRowPlayback={
+                isMetronomeSyncActive || isSingleNoteReactionPractice
+                  ? undefined
+                  : toggleFreeScoreRowPlayback
+              }
               scrollDurationMs={staffPageScrollDurationMs}
               followRowAtTop={isContinuousStaffPage}
               staffNotationMode={staffNotationMode}
@@ -4525,7 +4570,6 @@ export function PracticeView({
       </span>
       {isPaused ? (
         <PauseOverlay
-          onExit={handleExitPractice}
           onResume={resumePractice}
           allowBackdropResume={!isMobileViewport}
           resumeBlockedMessage={
@@ -4541,9 +4585,7 @@ export function PracticeView({
                   ? "麦克风已连接，正在继续练习…"
                   : practiceMicrophone.error
                     ? "麦克风重连失败，点击下方按钮重试"
-                    : isMobileViewport
-                      ? "暂停期间麦克风已释放；点击空白处重新连接"
-                      : "暂停期间麦克风已释放；点击空白处重新连接"
+                    : undefined
               : undefined
           }
           recoveryReloadAvailable={practiceMicrophone.recoveryReloadAvailable}
@@ -4583,6 +4625,6 @@ export function PracticeView({
         onClose={() => setIsChaseSettingsOpen(false)}
         onSave={saveFreeChaseSettings}
       />
-    </section>
+    </PracticeSessionFrame>
   );
 }

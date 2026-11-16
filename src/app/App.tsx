@@ -445,6 +445,9 @@ export function App({
   const [practiceVirtualKeyboardActive, setPracticeVirtualKeyboardActive] = useState(false);
   const practiceRunningRef = useRef(false);
   practiceRunningRef.current = practiceRunning;
+  useLayoutEffect(() => {
+    if (practiceRunning) window.scrollTo(0, 0);
+  }, [practiceRunning]);
   const [practiceStageActive, setPracticeStageActive] = useState(false);
   const practiceStageActiveRef = useRef(false);
   practiceStageActiveRef.current = practiceStageActive;

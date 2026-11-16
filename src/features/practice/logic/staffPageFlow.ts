@@ -160,6 +160,26 @@ export function getStaffPageRowIndex(
   return result;
 }
 
+export function estimateStaffPageEventsPerRow<T>(
+  groups: readonly T[],
+  rowStartIndices: readonly number[],
+  fallbackCount: number
+): number {
+  if (rowStartIndices.length <= 1) return Math.max(1, fallbackCount);
+  const rowLengths = rowStartIndices.map((start, index) => {
+    const end = rowStartIndices[index + 1] ?? groups.length;
+    return end - start;
+  });
+  const fullRows = rowLengths.slice(0, -1).filter((length) => length > 0);
+  const samples = fullRows.slice(-5);
+  const source = samples.length > 0 ? samples : rowLengths.filter((length) => length > 0);
+  if (source.length === 0) return Math.max(1, fallbackCount);
+  return Math.max(
+    1,
+    Math.ceil(source.reduce((total, length) => total + length, 0) / source.length)
+  );
+}
+
 export interface StaffPageView<T> {
   completedCount: number;
   currentPage: number;

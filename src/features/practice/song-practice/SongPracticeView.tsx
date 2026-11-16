@@ -1469,6 +1469,14 @@ export function SongPracticeView({
                     NEW
                   </span>
                 </button>
+                <MidiInputControl
+                  ariaLabel="歌曲跟弹 MIDI 输入设备"
+                  className={`${
+                    activeInputMode === "midi" && !midi.isConnected ? "needs-attention " : ""
+                  }song-practice-midi-control`}
+                  disabled={isInputSwitching}
+                  midi={midi}
+                />
               </div>
               <div className="song-practice-heading-main">
                 <h1>{selection.score.title}</h1>
@@ -1479,14 +1487,6 @@ export function SongPracticeView({
                   <span>{arrangement.partName}</span>
                 </div>
               </div>
-              <MidiInputControl
-                ariaLabel="歌曲跟弹 MIDI 输入设备"
-                className={`${
-                  activeInputMode === "midi" && !midi.isConnected ? "needs-attention " : ""
-                }song-practice-midi-control`}
-                disabled={isInputSwitching}
-                midi={midi}
-              />
               <PracticeFullscreenToggle />
             </div>
             <p className="song-practice-reading-note">

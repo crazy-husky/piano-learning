@@ -422,7 +422,6 @@ export function StudyView({
       ) : (
         <StaffRecallView
           onDataChanged={onDataChanged}
-          onExit={enterStudy}
           onFinished={onStaffRecallFinished}
           onRangeLockedChange={setStaffRecallRangeLocked}
           runs={staffRecallRuns}

@@ -46,7 +46,6 @@ import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState
 
 interface StaffRecallViewProps {
   onDataChanged: () => void | Promise<void>;
-  onExit?: () => void;
   onFinished?: () => void;
   onRangeLockedChange: (locked: boolean) => void;
   runs: StaffRecallRunRecord[];
@@ -118,7 +117,6 @@ function formatDeltaSeconds(
 
 export function StaffRecallView({
   onDataChanged,
-  onExit,
   onFinished,
   onRangeLockedChange,
   runs,
@@ -715,11 +713,7 @@ export function StaffRecallView({
         </section>
       ) : null}
       {isPaused ? (
-        <PauseOverlay
-          onExit={onExit}
-          onResume={resumeRecall}
-          showKeyboardShortcuts={!isTouchDevice}
-        />
+        <PauseOverlay onResume={resumeRecall} showKeyboardShortcuts={!isTouchDevice} />
       ) : null}
     </>
   );

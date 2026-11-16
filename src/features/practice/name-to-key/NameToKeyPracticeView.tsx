@@ -1522,10 +1522,12 @@ function NameToKeyPracticeContent({
                   <ArrowLeft aria-hidden="true" size={17} />
                   结束返回
                 </button>
-                <button onClick={() => void togglePause()} type="button">
-                  {isPaused ? <Play size={17} /> : <Pause size={17} />}
-                  {isPaused ? "继续" : "暂停"}
-                </button>
+                {!isPaused ? (
+                  <button onClick={() => void togglePause()} type="button">
+                    <Pause size={17} />
+                    暂停
+                  </button>
+                ) : null}
                 {showRestartControl && !isPaused ? (
                   <button
                     aria-label="重新开始当前练习"
@@ -1631,12 +1633,12 @@ function NameToKeyPracticeContent({
                   {preferences.mode === "fixed-duration" ? "倒计时也暂停了" : "练习进度已暂停"}
                 </span>
                 <button
-                  className="primary practice-pause-resume-button"
+                  className="primary name-key-pause-resume"
                   onClick={() => void togglePause()}
                   type="button"
                 >
                   <Play size={17} />
-                  继续
+                  继续练习
                 </button>
                 {preferences.inputMode === "microphone" &&
                 (microphoneError ||

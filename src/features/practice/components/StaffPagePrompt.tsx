@@ -112,6 +112,7 @@ interface StaffPagePromptProps {
   visibleRowCount?: number;
   virtualizeRows?: boolean;
   adaptiveWidthLayout?: boolean;
+  centerAdaptiveRows?: boolean;
   adaptiveMeasureAreaWidthPx?: number;
   canonicalRowStartIndices?: readonly number[];
   isFiniteScore?: boolean;
@@ -293,6 +294,23 @@ function getStaffPageRowTopY(row: SVGElement, rowStepPx: number): number {
 
   // Fall back to the stave when this row is detached from its SVG surface.
   return firstStave.top - STAFF_PAGE_ROW_TOP_CLEARANCE_PX;
+}
+
+function getPracticeSessionHeader(frame: HTMLElement): HTMLElement | null {
+  return (
+    frame
+      .closest<HTMLElement>(".practice-session-frame")
+      ?.querySelector<HTMLElement>(".practice-session-header") ?? null
+  );
+}
+
+function getStickyPracticeHeaderInsetPx(frame: HTMLElement): number {
+  if (frame.closest<HTMLElement>(".staff-page-scroll-viewport")) return 0;
+  const header = getPracticeSessionHeader(frame);
+  if (!header || window.getComputedStyle(header).position !== "sticky") return 0;
+  const style = window.getComputedStyle(header);
+  const stickyTop = Number.parseFloat(style.top) || 0;
+  return stickyTop + header.getBoundingClientRect().height;
 }
 
 type StaffPageTickable = GhostNote | StaveNote;
@@ -1823,6 +1841,7 @@ export function StaffPagePrompt({
   visibleRowCount = layout.multirow.rows,
   virtualizeRows = false,
   adaptiveWidthLayout = false,
+  centerAdaptiveRows = false,
   adaptiveMeasureAreaWidthPx = 0,
   canonicalRowStartIndices,
   isFiniteScore = false,
@@ -2304,11 +2323,14 @@ export function StaffPagePrompt({
     const viewportBounds =
       isNestedScrollViewport && scrollViewport ? scrollViewport.getBoundingClientRect() : null;
     const viewportTop = viewportBounds ? viewportBounds.top + scrollViewport!.clientTop : 0;
+    const stickyHeaderInset = getStickyPracticeHeaderInsetPx(frame);
     const viewportHeight = viewportBounds ? scrollViewport!.clientHeight : window.innerHeight;
     // Following the continuation hint on a later ResizeObserver/render pass can
     // replace this target and push the newly active row one system too far upward.
     const delta = followRowAtTop
-      ? getStaffPageRowTopY(row, rowViewHeightPx + layout.multirow.rowGapPx) - viewportTop
+      ? getStaffPageRowTopY(row, rowViewHeightPx + layout.multirow.rowGapPx) -
+        viewportTop -
+        stickyHeaderInset
       : getStaffPageRowCenterY(row) - (viewportTop + viewportHeight / 2);
     if (Math.abs(delta) < 1) return;
 
@@ -2431,9 +2453,12 @@ export function StaffPagePrompt({
       const viewportBounds =
         isNestedScrollViewport && scrollViewport ? scrollViewport.getBoundingClientRect() : null;
       const viewportTop = viewportBounds ? viewportBounds.top + scrollViewport!.clientTop : 0;
+      const stickyHeaderInset = getStickyPracticeHeaderInsetPx(frame);
       const viewportHeight = viewportBounds ? scrollViewport!.clientHeight : window.innerHeight;
       const finalRowTarget = followRowAtTop
-        ? getStaffPageRowTopY(finalRow, rowViewHeightPx + layout.multirow.rowGapPx) - viewportTop
+        ? getStaffPageRowTopY(finalRow, rowViewHeightPx + layout.multirow.rowGapPx) -
+          viewportTop -
+          stickyHeaderInset
         : getStaffPageRowCenterY(finalRow) - (viewportTop + viewportHeight / 2);
       const desiredScrollTop =
         (isNestedScrollViewport && scrollViewport ? scrollViewport.scrollTop : window.scrollY) +
@@ -2453,6 +2478,8 @@ export function StaffPagePrompt({
     const resizeObserver = new ResizeObserver(scheduleUpdate);
     resizeObserver.observe(frame);
     resizeObserver.observe(rendererTarget);
+    const practiceHeader = getPracticeSessionHeader(frame);
+    if (practiceHeader) resizeObserver.observe(practiceHeader);
     const scrollViewport = frame.closest<HTMLElement>(".staff-page-scroll-viewport");
     if (scrollViewport) resizeObserver.observe(scrollViewport);
     window.addEventListener("resize", scheduleUpdate, { passive: true });
@@ -2506,6 +2533,20 @@ export function StaffPagePrompt({
         if (svgViewport) {
           intersectBounds(svgViewport.getBoundingClientRect(), true, true);
         }
+        const scoreFrame = frameRef.current;
+        const practiceHeader = scoreFrame
+          ?.closest<HTMLElement>(".practice-session-frame")
+          ?.querySelector<HTMLElement>(".practice-session-header");
+        if (
+          !scoreFrame?.closest<HTMLElement>(".staff-page-scroll-viewport") &&
+          practiceHeader &&
+          window.getComputedStyle(practiceHeader).position === "sticky"
+        ) {
+          visibleBounds.top = Math.max(
+            visibleBounds.top,
+            practiceHeader.getBoundingClientRect().bottom
+          );
+        }
         for (
           let ancestor = svgViewport?.parentElement;
           ancestor && ancestor !== document.documentElement;
@@ -2553,9 +2594,16 @@ export function StaffPagePrompt({
       passive: true,
     });
     window.addEventListener("resize", checkTrackedNoteVisibility, { passive: true });
+    const scoreFrame = frameRef.current;
+    const practiceHeader = scoreFrame ? getPracticeSessionHeader(scoreFrame) : null;
+    const headerResizeObserver = practiceHeader
+      ? new ResizeObserver(checkTrackedNoteVisibility)
+      : null;
+    if (practiceHeader && headerResizeObserver) headerResizeObserver.observe(practiceHeader);
     return () => {
       window.removeEventListener("scroll", checkTrackedNoteVisibility, true);
       window.removeEventListener("resize", checkTrackedNoteVisibility);
+      headerResizeObserver?.disconnect();
       if (animationFrameId !== 0) window.cancelAnimationFrame(animationFrameId);
     };
   }, [trackedNoteIndex]);
@@ -2726,6 +2774,10 @@ export function StaffPagePrompt({
                   (rowOnsets?.find((onset) => onset !== undefined) ?? 0) / beatsPerMeasure
                 ) * beatsPerMeasure
               : 0;
+          const adaptiveStaveWidth = Math.min(
+            frameMetrics.staveWidth,
+            logicalPx(adaptiveRowStaveWidthPx, surface.scale)
+          );
           const beamOptions =
             noteDurations && noteMeasures && noteOnsets
               ? {
@@ -2754,10 +2806,10 @@ export function StaffPagePrompt({
           const rowFrameMetrics = adaptiveWidthLayout
             ? {
                 ...frameMetrics,
-                staveWidth: Math.min(
-                  frameMetrics.staveWidth,
-                  logicalPx(adaptiveRowStaveWidthPx, surface.scale)
-                ),
+                x: centerAdaptiveRows
+                  ? frameMetrics.x + Math.max(0, (frameMetrics.staveWidth - adaptiveStaveWidth) / 2)
+                  : frameMetrics.x,
+                staveWidth: adaptiveStaveWidth,
               }
             : frameMetrics;
           const system = drawStaffSystem({
@@ -3011,8 +3063,8 @@ export function StaffPagePrompt({
             );
             treble.setNoteStartX(noteArea.left);
             bass.setNoteStartX(noteArea.left);
-            treble.setWidth(Math.max(1, noteArea.right - frameMetrics.x));
-            bass.setWidth(Math.max(1, noteArea.right - frameMetrics.x));
+            treble.setWidth(Math.max(1, noteArea.right - rowFrameMetrics.x));
+            bass.setWidth(Math.max(1, noteArea.right - rowFrameMetrics.x));
             const formatter = new Formatter().joinVoices(voices);
             formatter.format(
               voices,
@@ -3147,7 +3199,7 @@ export function StaffPagePrompt({
               beamOptions
             );
             stave.setNoteStartX(noteArea.left);
-            stave.setWidth(Math.max(1, noteArea.right - frameMetrics.x));
+            stave.setWidth(Math.max(1, noteArea.right - rowFrameMetrics.x));
             const formatter = new Formatter().joinVoices([voice]);
             formatter.formatToStave([voice], stave, { context, stave });
             alignConfiguredRowNotes(tickables, rowGroups.length);
@@ -3321,25 +3373,45 @@ export function StaffPagePrompt({
           });
 
           const barlineInterval = getStaffPageBarlineInterval(noteDuration);
+          const isFiniteFinalRow = isFiniteScore && rowIndex === rows.length - 1;
           const explicitBarlineBoundaries = barlineAfterNoteIndices
             ?.map((noteIndex) => noteIndex + 1 - rowStartIndex)
-            .filter((boundaryIndex) => boundaryIndex > 0 && boundaryIndex < rowGroups.length);
-          const barlineBoundaries =
-            explicitBarlineBoundaries ??
-            Array.from(
-              { length: Math.floor(Math.min(rowGroups.length, notesPerRow - 1) / barlineInterval) },
-              (_, index) => (index + 1) * barlineInterval
+            .filter(
+              (boundaryIndex) =>
+                boundaryIndex > 0 &&
+                (boundaryIndex < rowGroups.length ||
+                  (boundaryIndex === rowGroups.length && adaptiveWidthLayout && isFiniteFinalRow))
             );
+          const finalScoreBoundary =
+            isFiniteFinalRow && adaptiveWidthLayout ? [rowGroups.length] : [];
+          const barlineBoundaries =
+            explicitBarlineBoundaries !== undefined
+              ? [...new Set([...explicitBarlineBoundaries, ...finalScoreBoundary])]
+              : [
+                  ...Array.from(
+                    {
+                      length: Math.floor(
+                        Math.min(rowGroups.length, notesPerRow - 1) / barlineInterval
+                      ),
+                    },
+                    (_, index) => (index + 1) * barlineInterval
+                  ),
+                  ...finalScoreBoundary,
+                ];
           for (const boundaryIndex of barlineBoundaries) {
             if (
-              boundaryIndex >=
+              boundaryIndex >
               (keepMeasuresTogether || adaptiveWidthLayout ? rowGroups.length : notesPerRow)
             ) {
               continue;
             }
+            const isTerminalBoundary = boundaryIndex === rowGroups.length;
             const nextTickable = layoutTickables[boundaryIndex];
             const boundaryBeat = rowOnsets?.[boundaryIndex];
-            const boundaryMeasure = noteMeasures?.[rowStartIndex + boundaryIndex];
+            const lastRowMeasure = rowMeasureNumbers[rowMeasureNumbers.length - 1];
+            const boundaryMeasure =
+              noteMeasures?.[rowStartIndex + boundaryIndex] ??
+              (isTerminalBoundary && lastRowMeasure !== undefined ? lastRowMeasure + 1 : undefined);
             const measureOffset =
               boundaryMeasure === undefined ? -1 : boundaryMeasure - rowFirstMeasure;
             const fixedMeasureBarlineX =
@@ -3351,18 +3423,23 @@ export function StaffPagePrompt({
                         .reduce((sum, width) => sum + width, 0)
                     : (measureOffset / rowMeasureCount) * (noteArea.right - noteArea.left))
                 : undefined;
+            const minimumBarlineClearance = logicalPx(8, surface.scale * renderedScale);
+            const previousNote = visibleTickables[boundaryIndex - 1];
+            const terminalBarlineX =
+              isTerminalBoundary && previousNote
+                ? Math.min(
+                    staveNoteHorizontalBounds(previousNote).right + minimumBarlineClearance,
+                    noteArea.right
+                  )
+                : undefined;
             const measuredBarlineX =
               boundaryBeat !== undefined
                 ? getBarlineXAtBeat(boundaryBeat, timedStaveNotes)
                 : undefined;
             const fallbackBarlineX =
+              terminalBarlineX ??
               fixedMeasureBarlineX ??
-              getBarlineX(
-                nextTickable,
-                visibleTickables[boundaryIndex - 1],
-                visibleTickables[boundaryIndex]
-              );
-            const minimumBarlineClearance = logicalPx(8, surface.scale * renderedScale);
+              getBarlineX(nextTickable, previousNote, visibleTickables[boundaryIndex]);
             const barlineX = [measuredBarlineX, fallbackBarlineX].find(
               (candidate): candidate is number =>
                 candidate !== undefined &&
@@ -3730,6 +3807,7 @@ export function StaffPagePrompt({
     visibleRowCount,
     virtualizeRows,
     adaptiveWidthLayout,
+    centerAdaptiveRows,
     adaptiveRowStaveWidthPx,
     adaptiveMeasureAreaWidthPx,
     alignPracticeProgressMarkerToNote,

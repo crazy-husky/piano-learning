@@ -646,16 +646,18 @@
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
 }
 
-.name-key-paused-content .practice-pause-resume-button {
-  width: 132px;
-}
-
 .name-key-paused-content strong {
-  font-size: 36px;
+  font-size: 28px;
 }
 
 .name-key-paused-content span {
   color: var(--muted);
+}
+
+.name-key-paused-content .name-key-pause-resume {
+  min-width: 132px;
+  min-height: 44px;
+  justify-content: center;
 }
 
 .name-key-summary-card {

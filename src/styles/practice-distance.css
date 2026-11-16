@@ -749,12 +749,42 @@
 
 .staff-distance-run-shell {
   position: relative;
-  display: grid;
-  width: min(980px, 100%);
   min-width: 0;
-  gap: 12px;
+}
+
+.practice-running-shell.is-free-score-stream.staff-distance-run-stream {
+  position: fixed;
+  z-index: 1;
+  inset: 0;
+  box-sizing: border-box;
+  width: min(1320px, calc(100vw - 48px));
+  height: 100dvh;
   margin: 0 auto;
-  padding: 12px 0 20px;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.staff-distance-run-stream .staff-distance-run-content {
+  grid-row: 2;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  padding-bottom: max(128px, calc(96px + env(safe-area-inset-bottom)));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 820px) {
+  .practice-running-shell.is-free-score-stream.staff-distance-run-stream {
+    width: 100vw;
+    max-width: none;
+    padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
+  }
 }
 
 .staff-distance-finger-run:is(.is-virtual-keyboard, .is-no-answer-mode) {
@@ -765,42 +795,16 @@
   padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
 }
 
-.staff-distance-run-header {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.staff-distance-run-header h1,
-.staff-distance-run-header p {
-  margin: 0;
-}
-
-.staff-distance-run-header h1 {
-  font-size: 20px;
-}
-
-.staff-distance-run-header p,
 .staff-distance-run-shortcuts {
   color: var(--muted);
   font-size: 12px;
 }
 
-.staff-distance-run-actions,
 .staff-distance-summary-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
-
-.staff-distance-run-actions > .practice-run-core-actions {
-  flex: 0 0 auto;
-}
-
-.staff-distance-run-actions button,
 .staff-distance-summary-actions button {
   display: inline-flex;
   min-height: 40px;
@@ -810,15 +814,19 @@
 }
 
 .staff-distance-score-wrap {
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel-surface);
+  width: 100%;
+  overflow: visible;
+}
+
+.staff-distance-score-wrap .staff-page {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: auto;
 }
 
 .staff-distance-score-wrap .staff-page-renderer > svg {
-  width: auto;
-  max-width: min(600px, 100%);
+  width: 100%;
+  max-width: 100%;
 }
 
 .staff-distance-question-copy {
@@ -1608,51 +1616,6 @@
   text-align: center;
 }
 
-.staff-distance-pause-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.12);
-}
-
-.staff-distance-pause-content {
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: 10px;
-  width: max-content;
-  max-width: 100%;
-  box-sizing: border-box;
-  padding: 18px 24px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
-}
-
-.staff-distance-pause-content strong {
-  font-size: 24px;
-}
-
-.staff-distance-pause-content span {
-  color: var(--muted);
-}
-
-.staff-distance-pause-content button {
-  display: inline-flex;
-  min-height: 44px;
-  align-items: center;
-  gap: 7px;
-}
-
-.staff-distance-pause-content .practice-pause-resume-button {
-  width: 132px;
-}
-
 .staff-distance-summary-shell {
   width: min(760px, 100%);
   margin: 24px auto;
@@ -2070,48 +2033,9 @@
     min-width: 0;
   }
 
-  .staff-distance-run-shell {
-    gap: 10px;
-    padding-top: 6px;
-  }
-
-  .staff-distance-run-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .staff-distance-run-header h1 {
-    font-size: 18px;
-  }
-
   .staff-distance-question-hints {
     padding: 8px 10px;
     font-size: 12px;
-  }
-
-  .staff-distance-run-actions {
-    width: 100%;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: end;
-    gap: 5px;
-  }
-
-  .staff-distance-run-actions > .practice-run-core-actions {
-    flex: 0 0 100%;
-    gap: 5px;
-    justify-content: flex-end;
-  }
-
-  .staff-distance-run-actions button {
-    min-height: 36px;
-    padding-inline: 8px;
-    font-size: 12px;
-  }
-
-  .staff-distance-run-actions > .song-chase-settings-button {
-    margin-left: auto;
   }
 
   .staff-distance-answer-row {

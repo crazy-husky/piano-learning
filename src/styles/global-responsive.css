@@ -74,6 +74,28 @@
   }
 }
 
+body:has(.app-shell-practice-running) {
+  background-attachment: fixed;
+}
+
+body:has(.app-shell-practice-running),
+#root:has(.app-shell-practice-running) {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.app-shell-practice-running {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.app-shell-practice-running main {
+  min-height: 0;
+  overflow: hidden;
+}
+
 @media (max-width: 820px) {
   body:has(.app-shell-game-immersive) {
     height: 100dvh;
@@ -304,6 +326,10 @@
   }
 
   .practice-running-mobile:not(.practice-without-touch-keyboard) .practice-return-home {
+    display: inline-flex;
+  }
+
+  .practice-running-mobile.is-single-note-reaction .practice-return-home {
     display: inline-flex;
   }
 

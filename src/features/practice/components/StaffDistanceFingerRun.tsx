@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleHelp, Pause, Play, RotateCcw, X } from "lucide-react";
+import { CircleHelp, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
@@ -34,8 +34,10 @@ import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { isNaturalPianoKey } from "../../../shared/components/pianoKeyNames";
 import { PRACTICE_STAFF_REFERENCE_NOTE_COLUMN_WIDTH_PX } from "../../../shared/staff/staffLayoutProfiles";
 import { PracticeFullscreenToggle } from "./PracticeFullscreenFrame";
+import { PracticeSessionFrame, PracticeSessionHeader } from "./PracticeSessionFrame";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
+import { PauseOverlay } from "../../../shared/components/PauseOverlay";
 import type { StaffDistanceMicrophoneInput } from "./StaffDistanceRun";
 import { StaffPagePrompt } from "./StaffPagePrompt";
 import { StaffDistanceFingerKeyboard } from "./StaffDistanceFingerKeyboard";
@@ -237,6 +239,18 @@ export function StaffDistanceFingerRun({
   });
   const isNoAnswerMode = session.staffDistance?.fingerInteractionMode === "no-answer";
   const showsFingerKeyboard = inputMethod === "virtual-keyboard" || isNoAnswerMode;
+  const [isTouchDevice, setIsTouchDevice] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      (navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches)
+  );
+  useEffect(() => {
+    const pointerQuery = window.matchMedia("(pointer: coarse)");
+    const updateTouchMode = (): void =>
+      setIsTouchDevice(navigator.maxTouchPoints > 0 || pointerQuery.matches);
+    pointerQuery.addEventListener("change", updateTouchMode);
+    return () => pointerQuery.removeEventListener("change", updateTouchMode);
+  }, []);
   const [isAnswerRevealed, setIsAnswerRevealed] = useState(false);
   const [isNoAnswerComplete, setIsNoAnswerComplete] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
@@ -1058,64 +1072,42 @@ export function StaffDistanceFingerRun({
     deck.cards.find((card) => card.batch === "line")?.reference ?? currentCard.reference;
 
   return (
-    <section
+    <PracticeSessionFrame
       aria-label="音距速推单指专项"
       className={`staff-distance-run-shell staff-distance-finger-run${inputMethod === "virtual-keyboard" ? " is-virtual-keyboard" : ""}${isNoAnswerMode ? " is-no-answer-mode" : ""}`}
       ref={runShellRef}
     >
-      <header className="staff-distance-run-header">
-        <div>
-          <h1>音距速推 · 单指专项</h1>
-          <p>
+      <PracticeSessionHeader
+        title="音距速推 · 单指专项"
+        progress={
+          <>
             {handLabel} · {fingerNumber} 指 · {batchLabel} · 第 {cardNumber} / {FINGER_CARD_COUNT}{" "}
             张
-          </p>
-        </div>
-        <div className="staff-distance-run-actions">
-          <div className="practice-run-core-actions">
-            <button
-              aria-label="结束练习并返回配置"
-              disabled={isPaused}
-              onClick={() => void finish("manual-stop", false)}
-              title="结束练习并返回配置"
-              type="button"
-            >
-              <ArrowLeft aria-hidden="true" size={16} />
-              结束返回
-            </button>
-            {!isNoAnswerMode ? (
-              <button disabled={isPaused} onClick={() => void togglePause()} type="button">
-                {isPaused ? <Play size={16} /> : <Pause size={16} />}
-                {isPaused ? "继续" : "暂停"}
-              </button>
-            ) : null}
-            {onRestart && !isPaused ? (
-              <button
-                aria-label="重新开始当前练习"
-                disabled={isRestarting}
-                onClick={() => void restart()}
-                title="重新开始当前练习"
-                type="button"
-              >
-                <RotateCcw aria-hidden="true" size={16} />
-                重新开始
-              </button>
-            ) : null}
-            <button aria-haspopup="dialog" onClick={() => setShowInstructions(true)} type="button">
-              <CircleHelp aria-hidden="true" size={16} />
-              操作说明
-            </button>
-          </div>
-          {!isNoAnswerMode && inputMethod === "midi" ? (
+          </>
+        }
+        exitAriaLabel="结束练习并返回配置"
+        onExit={() => void finish("manual-stop", false)}
+        onPauseToggle={() => void togglePause()}
+        isPaused={isPaused}
+        showPauseAction={!isNoAnswerMode}
+        onRestart={onRestart ? () => void restart() : undefined}
+        isRestarting={isRestarting}
+        utilityChildren={
+          !isNoAnswerMode && inputMethod === "midi" ? (
             <MidiInputControl
               ariaLabel="单指专项 MIDI 输入设备"
               className={`${!midi.isConnected ? "needs-attention " : ""}staff-distance-run-midi-control`}
               midi={midi}
             />
-          ) : null}
-          <PracticeFullscreenToggle />
-        </div>
-      </header>
+          ) : null
+        }
+      >
+        <button aria-haspopup="dialog" onClick={() => setShowInstructions(true)} type="button">
+          <CircleHelp aria-hidden="true" size={16} />
+          操作说明
+        </button>
+        <PracticeFullscreenToggle />
+      </PracticeSessionHeader>
 
       <div className="staff-distance-finger-card">
         <div className="staff-distance-finger-card-meta">
@@ -1295,42 +1287,38 @@ export function StaffDistanceFingerRun({
         </div>
       ) : null}
       {isPaused && !isNoAnswerMode ? (
-        <div className="staff-distance-pause-overlay">
-          <div className="staff-distance-pause-content" role="status">
-            <strong>已暂停</strong>
-            <span>
-              {inputError ? (
-                inputError
-              ) : showResumeConnecting ? (
-                <LoadingActivityText kind="dots">
-                  {microphone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风"}
-                </LoadingActivityText>
-              ) : (
-                `计时已停止，当前卡片还剩 ${progressText}`
-              )}
-            </span>
-            <button
-              className="primary practice-pause-resume-button"
-              disabled={isResumeConnecting}
-              onClick={() => void togglePause()}
-              type="button"
-            >
-              <Play size={16} />
-              继续
-            </button>
-            {inputMethod === "microphone" && (microphone.error || microphone.status === "error") ? (
-              <PracticeMicrophoneRetryButton
-                isConnecting={false}
-                isPreparingModel={microphone.isPreparingSwiftF0}
-                onRetry={async () => {
+        <PauseOverlay
+          allowBackdropResume={false}
+          onResume={() => void togglePause()}
+          resumeDisabled={isResumeConnecting}
+          resumeMessage={isTouchDevice ? undefined : "按空格继续练习"}
+          showKeyboardShortcuts={!isTouchDevice}
+          statusMessage={
+            showResumeConnecting
+              ? undefined
+              : (inputError ?? `计时已停止，当前卡片还剩 ${progressText}`)
+          }
+          microphoneError={
+            inputMethod === "microphone"
+              ? (microphone.error ??
+                (microphone.status === "error" ? "麦克风连接失败，请重试连接" : null))
+              : null
+          }
+          microphoneConnecting={
+            inputMethod === "microphone" &&
+            (isResumeConnecting || microphone.status === "requesting")
+          }
+          microphoneIsPreparingModel={microphone.isPreparingSwiftF0}
+          onRetryMicrophone={
+            inputMethod === "microphone"
+              ? async () => {
                   const ready = await microphone.start({ includeAccidentals: false });
                   if (ready) setInputError(null);
                   return ready;
-                }}
-              />
-            ) : null}
-          </div>
-        </div>
+                }
+              : undefined
+          }
+        />
       ) : null}
       {isViewportBlocked ? (
         <div className="staff-distance-orientation-overlay" role="status">
@@ -1414,6 +1402,6 @@ export function StaffDistanceFingerRun({
           </button>
         </dialog>
       ) : null}
-    </section>
+    </PracticeSessionFrame>
   );
 }

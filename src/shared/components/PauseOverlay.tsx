@@ -3,11 +3,12 @@ import { PracticeMicrophoneRetryButton } from "./PracticeMicrophoneRetryButton";
 import { LoadingActivityText } from "./LoadingActivity";
 
 interface PauseOverlayProps {
-  onExit?: () => void;
   onResume: () => void;
   allowBackdropResume?: boolean;
+  resumeDisabled?: boolean;
   resumeBlockedMessage?: string;
   resumeMessage?: string;
+  statusMessage?: string;
   recoveryReloadAvailable?: boolean;
   onReloadAfterRecoveryFailure?: () => void;
   microphoneError?: string | null;
@@ -18,11 +19,12 @@ interface PauseOverlayProps {
 }
 
 export function PauseOverlay({
-  onExit,
   onResume,
   allowBackdropResume = true,
+  resumeDisabled = false,
   resumeBlockedMessage,
   resumeMessage,
+  statusMessage,
   recoveryReloadAvailable = false,
   onReloadAfterRecoveryFailure,
   microphoneError,
@@ -31,13 +33,15 @@ export function PauseOverlay({
   onRetryMicrophone,
   showKeyboardShortcuts = true,
 }: PauseOverlayProps): JSX.Element {
+  const isResumeDisabled = resumeDisabled || Boolean(resumeBlockedMessage);
+
   return (
     <div aria-label="练习已暂停" aria-modal="true" className="pause-overlay" role="dialog">
       {allowBackdropResume ? (
         <button
           aria-label="点击空白处继续练习"
           className="pause-overlay-backdrop"
-          disabled={Boolean(resumeBlockedMessage)}
+          disabled={isResumeDisabled}
           onClick={onResume}
           type="button"
         />
@@ -64,6 +68,7 @@ export function PauseOverlay({
             />
           </div>
         ) : null}
+        {statusMessage ? <small>{statusMessage}</small> : null}
         {showKeyboardShortcuts ? (
           <small>
             {resumeBlockedMessage ??
@@ -76,34 +81,15 @@ export function PauseOverlay({
               ))}
           </small>
         ) : null}
-        {showKeyboardShortcuts ? (
-          <button
-            className="primary pause-overlay-resume practice-pause-resume-button"
-            disabled={Boolean(resumeBlockedMessage)}
-            onClick={onResume}
-            type="button"
-          >
-            <Play aria-hidden="true" size={17} />
-            继续
-          </button>
-        ) : null}
-        {!showKeyboardShortcuts ? (
-          <div className="pause-overlay-touch-actions">
-            {onExit ? (
-              <button className="pause-overlay-exit" onClick={onExit} type="button">
-                退出练习
-              </button>
-            ) : null}
-            <button
-              className="primary pause-overlay-resume practice-pause-resume-button"
-              disabled={Boolean(resumeBlockedMessage)}
-              onClick={onResume}
-              type="button"
-            >
-              继续
-            </button>
-          </div>
-        ) : null}
+        <button
+          className="primary pause-overlay-resume"
+          disabled={isResumeDisabled}
+          onClick={onResume}
+          type="button"
+        >
+          <Play aria-hidden="true" size={17} />
+          继续练习
+        </button>
         {showKeyboardShortcuts && recoveryReloadAvailable && onReloadAfterRecoveryFailure ? (
           <button
             className="practice-microphone-recovery-reload"
