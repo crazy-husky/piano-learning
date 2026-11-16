@@ -75,7 +75,7 @@ interface StaffPagePromptProps {
   noteLabelsAbove?: readonly (string | undefined)[];
   /** Fixed distance above the staff's top line, shared by every label above a note. */
   noteLabelsAboveStaffTopLinePx?: number;
-  /** Shows a fixed-size triangle at the active onset, aligned to the row's highest note. */
+  /** Shows a fixed-size triangle at the active onset, positioned from the row's highest staff note. */
   currentNoteIndicatorIndex?: number;
   beatsPerMeasure?: number;
   timeSignature?: string;
@@ -1560,11 +1560,11 @@ function addStaffPageCurrentNoteIndicator(
   parent: SVGElement,
   noteIndex: number,
   x: number,
-  noteTopY: number,
+  anchorY: number,
   scale: number
 ): SVGPolygonElement {
   const indicator = document.createElementNS(SVG_NAMESPACE, "polygon");
-  const tipY = noteTopY - logicalPx(STAFF_PAGE_CURRENT_NOTE_INDICATOR_TIP_OFFSET_PX, scale);
+  const tipY = anchorY - logicalPx(STAFF_PAGE_CURRENT_NOTE_INDICATOR_TIP_OFFSET_PX, scale);
   const baseY = tipY - logicalPx(STAFF_PAGE_CURRENT_NOTE_INDICATOR_HEIGHT_PX, scale);
   const halfWidth = logicalPx(5, scale);
   indicator.setAttribute("class", "staff-page-current-note-indicator");
@@ -1851,6 +1851,7 @@ export function StaffPagePrompt({
   const frameRef = useRef<HTMLDivElement | null>(null);
   const rendererTargetRef = useRef<HTMLDivElement | null>(null);
   const [virtualRowWindow, setVirtualRowWindow] = useState({ start: 0, end: 6 });
+  const [staffPageRenderedScale, setStaffPageRenderedScale] = useState(1);
   const [rowPlaybackButtonCenters, setRowPlaybackButtonCenters] = useState<readonly number[]>([]);
   const [playbackFollowDelayComplete, setPlaybackFollowDelayComplete] = useState(true);
   const previousFollowRowIndexRef = useRef<number | undefined>(undefined);
@@ -1935,6 +1936,10 @@ export function StaffPagePrompt({
     currentNoteIndicatorIndex === undefined
       ? STAFF_PAGE_NOTE_TOP_CLEARANCE_PX
       : STAFF_PAGE_CURRENT_NOTE_INDICATOR_TOP_CLEARANCE_PX;
+  const scaledNoteIndicatorTopClearancePx =
+    currentNoteIndicatorIndex === undefined
+      ? noteIndicatorTopClearancePx
+      : noteIndicatorTopClearancePx / staffPageRenderedScale;
   const rowTopPaddingPx = useMemo(
     () =>
       getStaffPageHighNoteTopPaddingPx(
@@ -1942,14 +1947,14 @@ export function StaffPagePrompt({
         layout,
         staffNotationMode,
         useLedgerGap,
-        noteIndicatorTopClearancePx
+        scaledNoteIndicatorTopClearancePx
       ) + (noteLabelsAbove?.some(Boolean) ? STAFF_PAGE_NOTE_TOP_CLEARANCE_PX : 0),
     [
       layout,
       noteGroups,
       noteLabelsAbove,
       notes,
-      noteIndicatorTopClearancePx,
+      scaledNoteIndicatorTopClearancePx,
       staffNotationMode,
       useLedgerGap,
       verticalRangeNotes,
@@ -2577,6 +2582,10 @@ export function StaffPagePrompt({
         minDisplayWidthPx,
         Math.min(layout.width.maxPx, containerWidth)
       );
+      const renderedScale = containerWidth / displayWidth;
+      setStaffPageRenderedScale((current) =>
+        Math.abs(current - renderedScale) > 0.001 ? renderedScale : current
+      );
       const surface = createStaffRenderSurface(
         rendererTarget,
         displayWidth,
@@ -2586,7 +2595,6 @@ export function StaffPagePrompt({
       // The SVG is styled to fill its render target, including when a layout's
       // max width is narrower than the available container. Keep the clipped
       // frame height and row-follow distance in that same rendered scale.
-      const renderedScale = containerWidth / displayWidth;
       const rowStepPx = (rowViewHeightPx + layout.multirow.rowGapPx) * renderedScale;
       const clampedVisibleRowCount = Math.max(1, Math.min(visibleRowCount, rowCount));
       const visibleHeight =
@@ -3243,7 +3251,9 @@ export function StaffPagePrompt({
             cursorTickablesBySlot,
             staffNotationMode === "grand" ? "treble" : undefined
           );
-          const rowIndicatorY = rowHighestNoteHead?.y ?? trebleTopLineY;
+          // Keep the marker above the staff when notes stay within its lines;
+          // move it above the highest note only when that note rises above the top line.
+          const rowIndicatorY = Math.min(rowHighestNoteHead?.y ?? trebleTopLineY, trebleTopLineY);
           rowSlots.forEach((note, slotIndex) => {
             if (!note) return;
             const noteLyrics = lyrics?.[rowStartIndex + slotIndex];
@@ -3285,7 +3295,7 @@ export function StaffPagePrompt({
                 currentNoteIndex,
                 activeOnsetNoteHead?.x ?? lyricX,
                 rowIndicatorY,
-                surface.scale
+                surface.scale * renderedScale
               );
             }
             if (!noteLyrics?.length) return;
