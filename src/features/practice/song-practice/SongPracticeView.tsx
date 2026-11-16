@@ -30,6 +30,7 @@ import { ReturnToCurrentNoteButton } from "../components/ReturnToCurrentNoteButt
 import { useNightMode } from "../../../shared/appearance/pageAppearance";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { useSongRowPlayback, type SongRowPlaybackNote } from "./useSongRowPlayback";
+import { useTrackedStaffNoteVisibility } from "../hooks/useTrackedStaffNoteVisibility";
 import {
   resolveSongPracticeArrangement,
   simplifySongPracticeArrangement,
@@ -264,7 +265,6 @@ export function SongPracticeView({
   const initialHandMode =
     selection.handMode === "both" && !midi.isConnected ? "right" : selection.handMode;
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isCurrentTargetVisible, setIsCurrentTargetVisible] = useState(true);
   const currentTargetVisibleRef = useRef(true);
   const [activeHandMode, setActiveHandMode] = useState(initialHandMode);
   const [activeInputMode, setActiveInputMode] = useState(initialInputMode);
@@ -542,6 +542,20 @@ export function SongPracticeView({
   currentIndexRef.current = currentIndex;
   const isFinished =
     hasStarted && currentIndex >= arrangement.targets.length && !isQuestionLimitReached;
+  const clearHeldMidiNumbers = useCallback((): void => {
+    heldMidiNumbersRef.current.clear();
+  }, []);
+  const {
+    isVisible: isCurrentTargetVisible,
+    onVisibilityChange: handleCurrentTargetVisibilityChange,
+    resetVisibility: resetCurrentTargetVisibility,
+  } = useTrackedStaffNoteVisibility({
+    enabled: hasStarted && !isFinished && Boolean(currentTarget),
+    noteKey: currentIndex,
+    toastId: "song-practice-current-note-visibility",
+    onHidden: clearHeldMidiNumbers,
+    visibilityRef: currentTargetVisibleRef,
+  });
   const meter = selection.score.meter;
   useEffect(() => {
     onFullscreenAvailabilityChange(hasStarted && !isFinished && !isQuestionLimitReached);
@@ -589,25 +603,6 @@ export function SongPracticeView({
       ? Math.max(...animatedCursorRows)
       : Math.floor(currentIndex / NOTES_PER_ROW),
     scoreRowCount - 1
-  );
-  const handleCurrentTargetVisibilityChange = useCallback(
-    (isVisible: boolean): void => {
-      if (!hasStarted || isFinished || !currentTarget) {
-        currentTargetVisibleRef.current = true;
-        setIsCurrentTargetVisible(true);
-        return;
-      }
-      if (currentTargetVisibleRef.current === isVisible) return;
-
-      currentTargetVisibleRef.current = isVisible;
-      setIsCurrentTargetVisible(isVisible);
-      if (!isVisible) heldMidiNumbersRef.current.clear();
-      toast.message(
-        isVisible ? "当前音符已回到视野，可以继续弹奏。" : "当前音符已滚出视野，输入已暂停。",
-        { id: "song-practice-current-note-visibility", duration: 2000 }
-      );
-    },
-    [currentTarget, hasStarted, isFinished]
   );
   const getCurrentNoteTarget = useCallback((): SVGElement | null => {
     const currentNoteHead = document.querySelector<SVGElement>(
@@ -867,8 +862,7 @@ export function SongPracticeView({
     answerLockedRef.current = false;
     heldMidiNumbersRef.current.clear();
     targetAttemptsRef.current = [];
-    currentTargetVisibleRef.current = true;
-    setIsCurrentTargetVisible(true);
+    resetCurrentTargetVisibility();
     setFeedback(null);
     setIsChaseSettingsOpen(false);
     resetSongChase();
@@ -906,6 +900,7 @@ export function SongPracticeView({
     microphone.error,
     microphoneStart,
     notifyMicrophoneError,
+    resetCurrentTargetVisibility,
     resetSongChase,
   ]);
 

@@ -43,6 +43,7 @@ import {
 import { appendStaffDistanceRhythm, createStaffDistanceRhythm } from "../logic/staffDistanceRhythm";
 import { StaffPagePrompt } from "./StaffPagePrompt";
 import { ReturnToCurrentNoteButton } from "./ReturnToCurrentNoteButton";
+import { useTrackedStaffNoteVisibility } from "../hooks/useTrackedStaffNoteVisibility";
 import {
   chunkStaffPageGroupsByAdaptiveMeasureWidth,
   estimateStaffPageEventsPerRow,
@@ -453,10 +454,6 @@ function StaffDistanceIntervalRun({
   const scoreWrapRef = useRef<HTMLDivElement | null>(null);
   const [scoreWidth, setScoreWidth] = useState(0);
   const [scoreRendererWidth, setScoreRendererWidth] = useState(0);
-  const [trackedScoreVisibility, setTrackedScoreVisibility] = useState<{
-    questionIndex: number;
-    visible: boolean;
-  } | null>(null);
   const resultsRef = useRef(session.staffDistance?.questionResults ?? []);
   const firstResponseRef = useRef<{ correct: boolean; responseMs: number } | null>(null);
   const questionAttemptsRef = useRef<AnswerAttempt[]>([]);
@@ -634,12 +631,15 @@ function StaffDistanceIntervalRun({
   const currentFrom = sequence[questionIndex];
   const currentTo = sequence[questionIndex + 1];
   const returnNoteIndex = trackedScoreNoteIndex ?? activePairStartIndex;
-  const handleTrackedScoreVisibilityChange = useCallback(
-    (visible: boolean): void => {
-      setTrackedScoreVisibility({ questionIndex, visible });
-    },
-    [questionIndex]
-  );
+  const {
+    isVisible: isTrackedScoreNoteVisible,
+    visibilityRef: trackedScoreNoteVisibilityRef,
+    onVisibilityChange: handleTrackedScoreVisibilityChange,
+  } = useTrackedStaffNoteVisibility({
+    enabled: isContinuousScore,
+    noteKey: `${questionIndex}:${returnNoteIndex}`,
+    toastId: "staff-distance-current-note-visibility",
+  });
   const getCurrentScoreNoteTarget = useCallback((): SVGElement | null => {
     const note = scoreWrapRef.current?.querySelector<SVGElement>(
       `[data-staff-page-note-index="${returnNoteIndex}"]`
@@ -650,8 +650,7 @@ function StaffDistanceIntervalRun({
     );
     return note ?? row ?? null;
   }, [returnNoteIndex, scoreRowStartIndices]);
-  const isCurrentScoreNoteVisible =
-    trackedScoreVisibility?.questionIndex !== questionIndex || trackedScoreVisibility.visible;
+  const isCurrentScoreNoteVisible = !isContinuousScore || isTrackedScoreNoteVisible;
   const answerOptions = Array.from({ length: details.maxDistance + 1 }, (_, index) => index).filter(
     (distance) => distance > 0 || details.includeUnison
   );
@@ -1051,7 +1050,13 @@ function StaffDistanceIntervalRun({
 
   const answerPitch = useCallback(
     (answer: PracticeAnswerInput): void => {
-      if (trainingMode !== "play" || isPausedRef.current || endingRef.current || !currentTo) {
+      if (
+        trainingMode !== "play" ||
+        isPausedRef.current ||
+        endingRef.current ||
+        !currentTo ||
+        !trackedScoreNoteVisibilityRef.current
+      ) {
         return;
       }
       const answerMode = inputMethod === "midi" ? "exact-pitch" : "microphone";
@@ -1095,7 +1100,7 @@ function StaffDistanceIntervalRun({
       }
       void submitAnswer(matchesTarget(currentTo), answer);
     },
-    [currentTo, inputMethod, sequence, submitAnswer, trainingMode]
+    [currentTo, inputMethod, sequence, submitAnswer, trackedScoreNoteVisibilityRef, trainingMode]
   );
 
   const togglePause = useCallback(async (): Promise<void> => {

@@ -139,6 +139,7 @@ import {
 import { usePreReadingPracticeController } from "../hooks/usePreReadingPracticeController";
 import { usePreReadingPracticePreferences } from "../hooks/usePreReadingPracticePreferences";
 import { usePracticeStaffPageFlow } from "../hooks/usePracticeStaffPageFlow";
+import { useTrackedStaffNoteVisibility } from "../hooks/useTrackedStaffNoteVisibility";
 import { usePracticeSummaryData } from "../hooks/usePracticeSummaryData";
 import { PracticeSummaryView } from "./PracticeSummaryView";
 import { PracticeFullscreenToggle } from "./PracticeFullscreenFrame";
@@ -710,10 +711,7 @@ export function PracticeView({
   const [staffPageIndex, setStaffPageIndex] = useState(0);
   const [staffPageCompletedCount, setStaffPageCompletedCount] = useState(0);
   const [staffPageFirstNoteOffset, setStaffPageFirstNoteOffset] = useState(0);
-  const [freeTrackedNoteVisibility, setFreeTrackedNoteVisibility] = useState<{
-    noteOffset: number;
-    visible: boolean;
-  } | null>(null);
+  const freeTrackedNoteVisibilityRef = useRef(true);
   const staffPagePromptContainerRef = useRef<HTMLDivElement | null>(null);
   const [staffPageRendererWidthPx, setStaffPageRendererWidthPx] = useState(0);
   const [syncCountInBeat, setSyncCountInBeat] = useState<number | null>(null);
@@ -900,6 +898,7 @@ export function PracticeView({
           practiceSetupPreferences.promptDisplayMode);
   const isContinuousStaffPage =
     practiceTab === "free" && promptDisplayMode === "staff-page" && !isBlindPractice;
+  const isStaffPagePractice = practiceTab === "free" && promptDisplayMode === "staff-page";
   const isSingleNoteReactionPractice = learningLevelId === 2;
   const isMobileStaffPage = isMobileViewport && promptDisplayMode === "staff-page";
   const isPagedStaffPage = isMobileStaffPage || isBlindPractice;
@@ -2947,6 +2946,7 @@ export function PracticeView({
   const submitPracticeAnswer = useCallback(
     (answer: PracticeAnswerInput): void => {
       if (isPausedRef.current) return;
+      if (isStaffPagePractice && !freeTrackedNoteVisibilityRef.current) return;
       if (freeRowPlaybackActiveRef.current !== null) return;
       if (isPreReadingPractice && preReadingScoreWindow.phase !== "training") return;
       let answerWithTiming = answer;
@@ -3190,10 +3190,12 @@ export function PracticeView({
     },
     [
       answerInputLockedRef,
+      freeTrackedNoteVisibilityRef,
       getCurrentSyncOnset,
       getSyncOnsetAtIndex,
       isBlindPractice,
       isMetronomeSyncActive,
+      isStaffPagePractice,
       isPreReadingPractice,
       preReadingScoreWindow.phase,
       metronomePreferences.bpm,
@@ -3821,15 +3823,15 @@ export function PracticeView({
     isPagedStaffPage && !isContinuousStaffPage
       ? (staffPageView?.noteIndexInPage ?? staffPageIndex - mobileStaffPageStartIndex)
       : staffPageIndex;
-  const handleFreeTrackedNoteVisibilityChange = useCallback(
-    (visible: boolean): void => {
-      setFreeTrackedNoteVisibility({
-        noteOffset: staffPageFirstNoteOffset,
-        visible,
-      });
-    },
-    [staffPageFirstNoteOffset]
-  );
+  const {
+    isVisible: isFreeTrackedScoreNoteVisible,
+    onVisibilityChange: handleFreeTrackedNoteVisibilityChange,
+  } = useTrackedStaffNoteVisibility({
+    enabled: isStaffPagePractice,
+    noteKey: `${staffPageFirstNoteOffset}:${trackedFreeScoreNoteIndex}`,
+    toastId: "practice-current-note-visibility",
+    visibilityRef: freeTrackedNoteVisibilityRef,
+  });
   const getFreeCurrentNoteTarget = useCallback((): SVGElement | null => {
     const prompt = staffPagePromptContainerRef.current;
     const note = prompt?.querySelector<SVGElement>(
@@ -4506,13 +4508,7 @@ export function PracticeView({
         ) : null}
       </div>
 
-      {phase === "running" &&
-      practiceTab === "free" &&
-      promptDisplayMode === "staff-page" &&
-      !isPaused &&
-      freeTrackedNoteVisibility !== null &&
-      freeTrackedNoteVisibility.noteOffset === staffPageFirstNoteOffset &&
-      !freeTrackedNoteVisibility.visible ? (
+      {phase === "running" && isStaffPagePractice && !isPaused && !isFreeTrackedScoreNoteVisible ? (
         <ReturnToCurrentNoteButton getTarget={getFreeCurrentNoteTarget} />
       ) : null}
 
