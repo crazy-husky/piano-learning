@@ -1224,8 +1224,10 @@ main.has-backup-reminder .setup-grid::after {
 }
 
 .duet-staff-column-annotation {
+  fill: var(--muted);
   font-size: 12px;
   font-weight: 700;
+  stroke: none;
 }
 
 .practice-wrong-note-staff-section {

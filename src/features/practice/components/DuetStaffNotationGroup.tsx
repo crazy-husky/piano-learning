@@ -242,6 +242,7 @@ export function DuetStaffNotationGroup({
           annotation.setAttribute("class", "duet-staff-column-annotation");
           annotation.setAttribute("text-anchor", "middle");
           annotation.setAttribute("fill", colors.muted);
+          annotation.setAttribute("stroke", "none");
           annotation.setAttribute("x", (noteCenters[columnIndex] ?? noteAreaLeft).toFixed(2));
           annotation.setAttribute("y", (bass.getYForLine(4) + 44).toFixed(2));
           annotation.textContent = column.annotation;
