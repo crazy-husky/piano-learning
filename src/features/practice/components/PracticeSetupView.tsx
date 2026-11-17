@@ -75,6 +75,7 @@ export interface PracticeSetupUiPreferences {
   practiceMode: "single" | "duet";
   metronomeSyncEnabled: boolean;
   blindPracticeMetronomeSyncEnabled: boolean;
+  duetMetronomeSyncEnabled: boolean;
   duetLevel: DuetPracticeLevel;
   duetRangePreset: DuetPracticeRangePreset;
   duetRangeGroupIds: DuetPracticeRangeGroupId[];
@@ -1133,17 +1134,22 @@ export function PracticeSetupView({
               >
                 <div className="practice-free-field">
                   <span className="control-label">节拍同步</span>
-                  {!isDuetPractice ? (
-                    <label className="practice-checkbox-option">
-                      <input
-                        checked={metronomeSyncEnabled}
-                        type="checkbox"
-                        onChange={(event) =>
-                          onMetronomeSyncEnabledChange(event.currentTarget.checked)
-                        }
-                      />
-                      <span>{isBlindPractice ? "木鱼与练习同步" : "木鱼与谱面同步"}</span>
-                    </label>
+                  <label className="practice-checkbox-option">
+                    <input
+                      checked={metronomeSyncEnabled}
+                      type="checkbox"
+                      onChange={(event) =>
+                        onMetronomeSyncEnabledChange(event.currentTarget.checked)
+                      }
+                    />
+                    <span>{isBlindPractice ? "木鱼与练习同步" : "木鱼与谱面同步"}</span>
+                  </label>
+                  {isDuetPractice ? (
+                    <small className="practice-free-helper">
+                      {metronomeSyncEnabled
+                        ? "按木鱼拍点推进并判定节拍。"
+                        : "按音高推进；双手同组需接近同时按下。木鱼默认不播放，可手动开启作参考。"}
+                    </small>
                   ) : null}
                   {isBlindPractice ? (
                     <small className="practice-free-helper">盲弹练习固定使用四分音符。</small>

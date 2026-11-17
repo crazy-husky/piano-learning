@@ -198,6 +198,31 @@ import {
 
 const FREE_STAFF_ROW_PREVIEW_TEMPO_BPM = 60;
 const BLIND_PRACTICE_NOTE_DURATIONS: PromptNoteDuration[] = ["quarter"];
+const DUET_HAND_SIMULTANEITY_WINDOW_MS = 150;
+const DUET_HAND_SIMULTANEITY_TIMER_GRACE_MS = 25;
+const DUET_FEEDBACK_MIN_INTERVAL_MS = 1_500;
+
+interface PendingDuetHandPair {
+  prompt: PromptRuntime;
+  firstStaff: Staff;
+  firstInputAtMs: number;
+  timeoutId: number | null;
+}
+
+interface DuetWrongHintBatch {
+  prompt: PromptRuntime | null;
+  hands: Set<Staff>;
+  timeoutId: number | null;
+}
+
+interface DuetHintContent {
+  key: string;
+  message: string;
+}
+
+interface PendingDuetHintRequest extends DuetHintContent {
+  prompt: PromptRuntime;
+}
 
 interface PracticeViewProps {
   midi: MidiInputController;
@@ -335,6 +360,34 @@ function pickRangeExtensionNote(
   return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : undefined;
 }
 
+function getDuetFeedbackStaff(answerMidi: number | undefined, prompt: PromptRuntime): Staff | null {
+  const targets = [...(prompt.duetTargets?.high ?? []), ...(prompt.duetTargets?.low ?? [])].filter(
+    (target) => !prompt.completedDuetTargetNoteIds.includes(target.id)
+  );
+  if (targets.length === 0) return null;
+  if (answerMidi === undefined) {
+    return targets.length === 1 ? targets[0]!.staff : null;
+  }
+  return targets.reduce((closest, target) =>
+    Math.abs(getTargetMidiNoteNumber(target) - answerMidi) <
+    Math.abs(getTargetMidiNoteNumber(closest) - answerMidi)
+      ? target
+      : closest
+  ).staff;
+}
+
+function getDuetPairHint(firstStaff: Staff, lateStaff?: Staff): DuetHintContent {
+  if (lateStaff && lateStaff !== firstStaff) {
+    return lateStaff === "bass"
+      ? { key: "late:bass", message: "左手按晚了，请左右手同时下键" }
+      : { key: "late:treble", message: "右手按晚了，请左右手同时下键" };
+  }
+  const missingStaff = firstStaff === "bass" ? "treble" : "bass";
+  return missingStaff === "bass"
+    ? { key: "missed:bass", message: "左手漏弹，请与右手同时下键" }
+    : { key: "missed:treble", message: "右手漏弹，请与左手同时下键" };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -398,6 +451,7 @@ function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeS
     practiceMode: "single",
     metronomeSyncEnabled: false,
     blindPracticeMetronomeSyncEnabled: false,
+    duetMetronomeSyncEnabled: true,
     duetLevel: "level-1",
     duetRangePreset: DEFAULT_DUET_PRACTICE_RANGE_PRESET,
     duetRangeGroupIds: getDuetPracticeGroupIds(DEFAULT_DUET_PRACTICE_RANGE_PRESET),
@@ -461,6 +515,10 @@ function parsePracticeSetupUiPreferences(
       typeof value.blindPracticeMetronomeSyncEnabled === "boolean"
         ? value.blindPracticeMetronomeSyncEnabled
         : false,
+    duetMetronomeSyncEnabled:
+      typeof value.duetMetronomeSyncEnabled === "boolean"
+        ? value.duetMetronomeSyncEnabled
+        : fallback.duetMetronomeSyncEnabled,
     duetLevel: normalizeDuetPracticeLevel(
       value.duetLevel ?? value.duetDifficulty,
       duetCurriculumVersion
@@ -846,7 +904,6 @@ export function PracticeView({
   const blackKeyFeatureAvailable = learningLevelId === 2 || isDuetPractice;
   const fuseBlackKeys = blackKeyFeatureAvailable && !isBlindPractice && blackKeySettings.enabled;
   const requiresMidiStaffPage = practiceTab === "free" && answerPitchMode === "exact-pitch";
-  const isMetronomeSyncMandatory = practiceTab === "free" && isDuetPractice;
   const supportsMetronomeSyncNoteDurations =
     isBlindPractice ||
     (practiceSetupPreferences.promptNoteDurations.length > 0 &&
@@ -855,14 +912,15 @@ export function PracticeView({
       ));
   const isMetronomeSyncSelected =
     practiceTab === "free" &&
-    !isDuetPractice &&
     (answerPitchMode === "exact-pitch" || isBlindPractice) &&
     (isPreReadingPractice
       ? preReadingMetronomeSyncEnabled
       : isBlindPractice
         ? practiceSetupPreferences.blindPracticeMetronomeSyncEnabled
-        : practiceSetupPreferences.metronomeSyncEnabled);
-  const shouldSynchronizeMetronome = isMetronomeSyncMandatory || isMetronomeSyncSelected;
+        : isDuetPractice
+          ? practiceSetupPreferences.duetMetronomeSyncEnabled
+          : practiceSetupPreferences.metronomeSyncEnabled);
+  const shouldSynchronizeMetronome = isMetronomeSyncSelected;
   const activePracticeInputMode: PracticeInputMode | null =
     practiceTab === "free"
       ? answerPitchMode === "microphone"
@@ -1162,6 +1220,13 @@ export function PracticeView({
       }));
       return;
     }
+    if (isDuetPractice) {
+      setPracticeSetupPreferences((current) => ({
+        ...current,
+        duetMetronomeSyncEnabled: enabled,
+      }));
+      return;
+    }
     setPracticeSetupPreferences((current) => ({ ...current, metronomeSyncEnabled: enabled }));
   };
   const setPromptDisplayMode = (nextPromptDisplayMode: PromptDisplayMode): void => {
@@ -1231,6 +1296,16 @@ export function PracticeView({
   const pendingSyncAnswersRef = useRef<Array<{ targetIndex: number; answer: PracticeAnswerInput }>>(
     []
   );
+  const pendingDuetHandPairRef = useRef<PendingDuetHandPair | null>(null);
+  const acceptedDuetHandPairPromptRef = useRef<PromptRuntime | null>(null);
+  const duetWrongHintBatchRef = useRef<DuetWrongHintBatch>({
+    prompt: null,
+    hands: new Set(),
+    timeoutId: null,
+  });
+  const pendingDuetHintsRef = useRef<PendingDuetHintRequest[]>([]);
+  const duetHintTimeoutRef = useRef<number | null>(null);
+  const lastDuetHintAtRef = useRef(Number.NEGATIVE_INFINITY);
   const firstSyncInputByOnsetRef = useRef(
     new Map<number, { answer: PracticeAnswerInput; timingGrade?: PracticeTimingGrade }>()
   );
@@ -1240,7 +1315,7 @@ export function PracticeView({
   const syncSessionRef = useRef(false);
   const syncRunningSeenRef = useRef(false);
   const syncStartInFlightRef = useRef(false);
-  const preReadingSyncStartPendingRef = useRef(false);
+  const syncStartPendingRef = useRef(false);
   const syncAllowBeatWhilePausedRef = useRef(false);
   const startSynchronizedMetronomeRef = useRef<() => Promise<boolean>>(async () => false);
   const syncCountInStartSequenceRef = useRef<number | null>(null);
@@ -1371,6 +1446,7 @@ export function PracticeView({
         practiceMode: current.practiceMode,
         metronomeSyncEnabled: current.metronomeSyncEnabled,
         blindPracticeMetronomeSyncEnabled: current.blindPracticeMetronomeSyncEnabled,
+        duetMetronomeSyncEnabled: current.duetMetronomeSyncEnabled,
         queueStrategy: current.queueStrategy,
         queueStrategyPreferenceVersion: current.queueStrategyPreferenceVersion,
         duetLevel: current.duetLevel,
@@ -1962,6 +2038,7 @@ export function PracticeView({
     clearStaffPageScrollSchedule,
     markCurrentStaffPageNoteComplete,
     markCurrentStaffPageStaffNoteComplete,
+    markCurrentStaffPageStaffNoteIncomplete,
     startStaffPage,
     startStaffPageIndex,
     startStaffPageScroll,
@@ -2120,17 +2197,16 @@ export function PracticeView({
     syncStartInFlightRef.current = true;
     stopMetronome();
 
-    const shouldDeferPreReadingStart =
-      isPreReadingPractice &&
-      (phase !== "running" ||
-        staffPageNotes.length === 0 ||
-        preReadingScoreWindow.openingSecondsRemaining > 0);
-    if (shouldDeferPreReadingStart) {
-      preReadingSyncStartPendingRef.current = true;
+    const shouldDeferSyncStart =
+      phase !== "running" ||
+      staffPageNotes.length === 0 ||
+      (isPreReadingPractice && preReadingScoreWindow.openingSecondsRemaining > 0);
+    if (shouldDeferSyncStart) {
+      syncStartPendingRef.current = true;
       try {
         const prepared = await prepareMetronome();
         if (!prepared) {
-          preReadingSyncStartPendingRef.current = false;
+          syncStartPendingRef.current = false;
           syncSessionRef.current = false;
           setSyncProgressMarkerLeadEnabled(false);
           setSyncCountInBeat(null);
@@ -2142,7 +2218,7 @@ export function PracticeView({
       }
     }
 
-    preReadingSyncStartPendingRef.current = false;
+    syncStartPendingRef.current = false;
     try {
       const started = await startMetronome();
       if (!started) {
@@ -2178,7 +2254,7 @@ export function PracticeView({
     syncCountInStartSequenceRef.current = null;
     syncTempoAnchorsRef.current = [];
     resetPreReadingCountdown();
-    preReadingSyncStartPendingRef.current = false;
+    syncStartPendingRef.current = false;
     setSyncProgressMarkerLeadEnabled(false);
     setSyncCountInBeat(null);
     stopMetronome();
@@ -2252,10 +2328,9 @@ export function PracticeView({
   useEffect(() => {
     if (
       !isMetronomeSyncActive ||
-      !isPreReadingPractice ||
       isPaused ||
-      !preReadingSyncStartPendingRef.current ||
-      preReadingScoreWindow.openingSecondsRemaining > 0 ||
+      !syncStartPendingRef.current ||
+      (isPreReadingPractice && preReadingScoreWindow.openingSecondsRemaining > 0) ||
       staffPageNotes.length === 0 ||
       isMetronomePlaying ||
       syncStartInFlightRef.current
@@ -2297,7 +2372,7 @@ export function PracticeView({
       !isPaused &&
       !isMetronomePlaying &&
       !syncStartInFlightRef.current &&
-      !(isPreReadingPractice && preReadingSyncStartPendingRef.current)
+      !syncStartPendingRef.current
     ) {
       pausePractice("manual-pause");
     }
@@ -2943,12 +3018,212 @@ export function PracticeView({
       setWrongAnswerCount,
     },
   });
+  const showDuetHint = useCallback((prompt: PromptRuntime, key: string, message: string): void => {
+    const pendingHints = pendingDuetHintsRef.current;
+    const currentHints = pendingHints.filter((hint) => hint.prompt === prompt);
+    pendingHints.splice(0, pendingHints.length, ...currentHints);
+    if (!pendingHints.some((hint) => hint.prompt === prompt && hint.key === key)) {
+      pendingHints.push({ key, message, prompt });
+    }
+
+    const scheduleNextHint = (): void => {
+      if (duetHintTimeoutRef.current !== null || pendingHints.length === 0) return;
+      const delayMs = Math.max(
+        0,
+        DUET_FEEDBACK_MIN_INTERVAL_MS - (performance.now() - lastDuetHintAtRef.current)
+      );
+      duetHintTimeoutRef.current = window.setTimeout(() => {
+        duetHintTimeoutRef.current = null;
+        const nextHint = pendingHints.shift();
+        if (nextHint && promptRef.current === nextHint.prompt) {
+          toast.message(nextHint.message, {
+            id: "duet-practice-feedback",
+            duration: DUET_FEEDBACK_MIN_INTERVAL_MS,
+          });
+          lastDuetHintAtRef.current = performance.now();
+        }
+        scheduleNextHint();
+      }, delayMs);
+    };
+
+    scheduleNextHint();
+  }, []);
+  const queueDuetWrongHint = useCallback(
+    (prompt: PromptRuntime, staff: Staff | null): void => {
+      if (!staff) {
+        showDuetHint(prompt, "wrong:unknown", "音符不对，请检查当前谱面目标");
+        return;
+      }
+
+      const batch = duetWrongHintBatchRef.current;
+      if (batch.prompt !== prompt) {
+        if (batch.timeoutId !== null) window.clearTimeout(batch.timeoutId);
+        batch.prompt = prompt;
+        batch.hands = new Set();
+        batch.timeoutId = null;
+      }
+      batch.hands.add(staff);
+      if (batch.timeoutId !== null) return;
+      batch.timeoutId = window.setTimeout(() => {
+        batch.timeoutId = null;
+        if (promptRef.current !== prompt) {
+          batch.hands.clear();
+          return;
+        }
+        const hands = [...batch.hands].sort();
+        batch.hands.clear();
+        const handKey = hands.join("-");
+        const message =
+          hands.length > 1
+            ? "左右手音符不对，请检查两手"
+            : hands[0] === "bass"
+              ? "左手音符不对，请检查左手"
+              : "右手音符不对，请检查右手";
+        showDuetHint(prompt, `wrong:${handKey}`, message);
+      }, 100);
+    },
+    [showDuetHint]
+  );
+  const resetIncompleteDuetHandPair = useCallback(
+    (prompt: PromptRuntime): void => {
+      if (promptRef.current !== prompt) return;
+      prompt.completedDuetMidis = [];
+      prompt.completedDuetTargetNoteIds = [];
+      prompt.completedDuetStaves = [];
+      markCurrentStaffPageStaffNoteIncomplete("treble");
+      markCurrentStaffPageStaffNoteIncomplete("bass");
+      setFeedback(null);
+    },
+    [markCurrentStaffPageStaffNoteIncomplete, setFeedback]
+  );
+  const armDuetHandPairTimeout = useCallback(
+    (pending: PendingDuetHandPair): void => {
+      if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
+      pending.timeoutId = window.setTimeout(() => {
+        pending.timeoutId = null;
+        if (
+          pendingDuetHandPairRef.current !== pending ||
+          promptRef.current !== pending.prompt ||
+          isPausedRef.current
+        ) {
+          return;
+        }
+        resetIncompleteDuetHandPair(pending.prompt);
+        pendingDuetHandPairRef.current = null;
+        acceptedDuetHandPairPromptRef.current = null;
+        const hint = getDuetPairHint(pending.firstStaff);
+        showDuetHint(pending.prompt, hint.key, hint.message);
+      }, DUET_HAND_SIMULTANEITY_WINDOW_MS + DUET_HAND_SIMULTANEITY_TIMER_GRACE_MS);
+    },
+    [resetIncompleteDuetHandPair, showDuetHint]
+  );
+
+  useEffect(() => {
+    const pending = pendingDuetHandPairRef.current;
+    if (!pending) return;
+    if (phase !== "running" || isMetronomeSyncActive || pending.prompt !== promptRef.current) {
+      if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
+      pendingDuetHandPairRef.current = null;
+      acceptedDuetHandPairPromptRef.current = null;
+      return;
+    }
+    if (isPaused) {
+      if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
+      pending.timeoutId = null;
+      return;
+    }
+    if (pending.timeoutId === null) {
+      pending.firstInputAtMs = performance.now();
+      armDuetHandPairTimeout(pending);
+    }
+  }, [armDuetHandPairTimeout, currentNote?.id, isMetronomeSyncActive, isPaused, phase]);
+
+  useEffect(
+    () => () => {
+      const pending = pendingDuetHandPairRef.current;
+      if (pending?.timeoutId !== null && pending?.timeoutId !== undefined) {
+        window.clearTimeout(pending.timeoutId);
+      }
+      const wrongHint = duetWrongHintBatchRef.current;
+      if (wrongHint.timeoutId !== null) window.clearTimeout(wrongHint.timeoutId);
+      if (duetHintTimeoutRef.current !== null) window.clearTimeout(duetHintTimeoutRef.current);
+    },
+    []
+  );
+
   const submitPracticeAnswer = useCallback(
     (answer: PracticeAnswerInput): void => {
       if (isPausedRef.current) return;
       if (isStaffPagePractice && !freeTrackedNoteVisibilityRef.current) return;
       if (freeRowPlaybackActiveRef.current !== null) return;
       if (isPreReadingPractice && preReadingScoreWindow.phase !== "training") return;
+
+      const currentPrompt = promptRef.current;
+      const duetTargets = currentPrompt?.duetTargets;
+      const isUnsynchronizedDuetPrompt =
+        isDuetPractice && !shouldSynchronizeMetronome && duetTargets !== undefined;
+      const isDuetTwoHandGroup =
+        duetTargets !== undefined && duetTargets.high.length > 0 && duetTargets.low.length > 0;
+      if (isUnsynchronizedDuetPrompt && currentPrompt && duetTargets) {
+        const answerMidi = answer.midiNoteNumber;
+        const targetMidis = getDuetTargetMidis(duetTargets);
+        const matchedStaff: Staff | undefined = (["treble", "bass"] as const).find(
+          (staff) =>
+            targetMidis[staff].includes(answerMidi ?? Number.NaN) &&
+            !currentPrompt.completedDuetMidis.includes(answerMidi ?? Number.NaN)
+        );
+
+        if (!matchedStaff) {
+          queueDuetWrongHint(currentPrompt, getDuetFeedbackStaff(answerMidi, currentPrompt));
+        } else if (isDuetTwoHandGroup && acceptedDuetHandPairPromptRef.current !== currentPrompt) {
+          let pending = pendingDuetHandPairRef.current;
+          if (pending && pending.prompt !== currentPrompt) {
+            if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
+            pendingDuetHandPairRef.current = null;
+            pending = null;
+          }
+
+          const inputAtMs = Number.isFinite(answer.inputTimeMs)
+            ? answer.inputTimeMs!
+            : performance.now();
+          if (pending) {
+            const elapsedMs = Math.abs(inputAtMs - pending.firstInputAtMs);
+            if (elapsedMs > DUET_HAND_SIMULTANEITY_WINDOW_MS) {
+              const firstStaff = pending.firstStaff;
+              if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
+              resetIncompleteDuetHandPair(currentPrompt);
+              pendingDuetHandPairRef.current = null;
+              pending = null;
+              acceptedDuetHandPairPromptRef.current = null;
+              const hint = getDuetPairHint(
+                firstStaff,
+                matchedStaff !== firstStaff ? matchedStaff : undefined
+              );
+              showDuetHint(currentPrompt, hint.key, hint.message);
+              return;
+            } else if (matchedStaff !== pending.firstStaff) {
+              if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
+              pendingDuetHandPairRef.current = null;
+              acceptedDuetHandPairPromptRef.current = currentPrompt;
+            }
+          }
+
+          if (
+            !pendingDuetHandPairRef.current &&
+            acceptedDuetHandPairPromptRef.current !== currentPrompt
+          ) {
+            const nextPending: PendingDuetHandPair = {
+              prompt: currentPrompt,
+              firstStaff: matchedStaff,
+              firstInputAtMs: inputAtMs,
+              timeoutId: null,
+            };
+            pendingDuetHandPairRef.current = nextPending;
+            armDuetHandPairTimeout(nextPending);
+          }
+        }
+      }
+
       let answerWithTiming = answer;
       if (
         isMetronomeSyncActive &&
@@ -3189,17 +3464,23 @@ export function PracticeView({
       void submitAnswer(answerWithTiming);
     },
     [
+      armDuetHandPairTimeout,
       answerInputLockedRef,
       freeTrackedNoteVisibilityRef,
       getCurrentSyncOnset,
       getSyncOnsetAtIndex,
       isBlindPractice,
+      isDuetPractice,
       isMetronomeSyncActive,
       isStaffPagePractice,
       isPreReadingPractice,
       preReadingScoreWindow.phase,
       metronomePreferences.bpm,
       performanceTimeToAudioTime,
+      queueDuetWrongHint,
+      resetIncompleteDuetHandPair,
+      shouldSynchronizeMetronome,
+      showDuetHint,
       staffPageFirstNoteOffset,
       submitAnswer,
       setSyncTimingFeedback,
@@ -3393,7 +3674,7 @@ export function PracticeView({
         !prompt.interrupted
       ) {
         if (prompt.duetTargets) {
-          if (getPromptActiveMs() >= DUET_PROMPT_TIMEOUT_MS) {
+          if (shouldSynchronizeMetronome && getPromptActiveMs() >= DUET_PROMPT_TIMEOUT_MS) {
             void handleDuetTimeout();
           }
         } else {
@@ -3423,6 +3704,7 @@ export function PracticeView({
     markInterrupted,
     mode,
     phase,
+    shouldSynchronizeMetronome,
     settings.inactivityThresholdSeconds,
   ]);
 
@@ -4035,7 +4317,9 @@ export function PracticeView({
             ? preReadingMetronomeSyncEnabled
             : isBlindPractice
               ? practiceSetupPreferences.blindPracticeMetronomeSyncEnabled
-              : practiceSetupPreferences.metronomeSyncEnabled,
+              : isDuetPractice
+                ? practiceSetupPreferences.duetMetronomeSyncEnabled
+                : practiceSetupPreferences.metronomeSyncEnabled,
           practiceMode: practiceModeLock ?? practiceSetupPreferences.practiceMode,
           ...(isPreReadingPractice ? { promptDisplayMode: "staff-page" as const } : {}),
           ...(isBlindPractice

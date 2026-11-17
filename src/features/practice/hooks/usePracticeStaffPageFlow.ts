@@ -489,6 +489,19 @@ export function usePracticeStaffPageFlow({
     [staffPageRef, syncStaffPage]
   );
 
+  const markCurrentStaffPageStaffNoteIncomplete = useCallback(
+    (staff: Staff): void => {
+      const page = staffPageRef.current;
+      if (!page) return;
+      const completedStaffNoteIndices = { ...page.completedStaffNoteIndices };
+      completedStaffNoteIndices[staff] = (completedStaffNoteIndices[staff] ?? []).filter(
+        (index) => index !== page.index
+      );
+      syncStaffPage({ ...page, completedStaffNoteIndices });
+    },
+    [staffPageRef, syncStaffPage]
+  );
+
   const startStaffPageIndex = useCallback(
     (index: number): boolean => {
       const page = staffPageRef.current;
@@ -1086,6 +1099,7 @@ export function usePracticeStaffPageFlow({
     clearStaffPageScrollSchedule,
     markCurrentStaffPageNoteComplete,
     markCurrentStaffPageStaffNoteComplete,
+    markCurrentStaffPageStaffNoteIncomplete,
     startStaffPage,
     startStaffPageIndex,
     startStaffPageScroll,
