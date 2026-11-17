@@ -1129,6 +1129,18 @@ main.has-backup-reminder .setup-grid::after {
   overflow-wrap: anywhere;
 }
 
+.duet-summary-hand-rates {
+  display: grid;
+  gap: 4px;
+}
+
+.duet-summary-hand-rates > small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .duet-summary-suggestion p {
   color: var(--muted);
   font-size: 13px;
@@ -1233,6 +1245,11 @@ main.has-backup-reminder .setup-grid::after {
 
 .practice-wrong-note-count {
   fill: var(--danger);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.duet-wrong-note-count {
   font-size: 13px;
   font-weight: 800;
 }

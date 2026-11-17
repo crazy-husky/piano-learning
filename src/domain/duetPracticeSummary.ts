@@ -5,6 +5,12 @@ export interface DuetCountRate {
   total: number;
 }
 
+export type DuetStaffCountRates = Record<Staff, DuetCountRate>;
+
+export interface DuetEventCountRate extends DuetCountRate {
+  hands: DuetStaffCountRates;
+}
+
 export interface DuetPracticeSummaryStats {
   hands: Record<Staff, DuetCountRate & { completed: number }>;
   timing: {
@@ -15,8 +21,8 @@ export interface DuetPracticeSummaryStats {
     wrongOnTimeAttempts: number;
     correctOffbeatOnsets: number;
   };
-  singleNoteEvents: DuetCountRate;
-  multiNoteEvents: DuetCountRate;
+  singleNoteEvents: DuetEventCountRate;
+  multiNoteEvents: DuetEventCountRate;
   bothHandEvents: DuetCountRate;
 }
 
@@ -56,10 +62,26 @@ function isCompleteOnFirstTry(
   );
 }
 
+function isPitchCompleteOnFirstTry(
+  performance: NonNullable<ReviewRecord["duetPerformance"]>
+): boolean {
+  return (
+    performance.targets.length > 0 && performance.targets.every((target) => target.firstTryCorrect)
+  );
+}
+
 export function buildDuetPracticeSummaryStats(
   reviews: DuetSummaryRecord[],
   syncEnabledFallback = false
 ): DuetPracticeSummaryStats {
+  const createEventRate = (): DuetEventCountRate => ({
+    correct: 0,
+    total: 0,
+    hands: {
+      treble: { correct: 0, total: 0 },
+      bass: { correct: 0, total: 0 },
+    },
+  });
   const stats: DuetPracticeSummaryStats = {
     hands: {
       treble: { correct: 0, total: 0, completed: 0 },
@@ -73,8 +95,8 @@ export function buildDuetPracticeSummaryStats(
       wrongOnTimeAttempts: 0,
       correctOffbeatOnsets: 0,
     },
-    singleNoteEvents: { correct: 0, total: 0 },
-    multiNoteEvents: { correct: 0, total: 0 },
+    singleNoteEvents: createEventRate(),
+    multiNoteEvents: createEventRate(),
     bothHandEvents: { correct: 0, total: 0 },
   };
 
@@ -119,12 +141,17 @@ export function buildDuetPracticeSummaryStats(
       continue;
     }
 
-    if (performance.targets.length === 1) {
-      stats.singleNoteEvents.total += 1;
-      stats.singleNoteEvents.correct += Number(isCompleteOnFirstTry(performance, syncEnabled));
-    } else if (performance.targets.length > 1) {
-      stats.multiNoteEvents.total += 1;
-      stats.multiNoteEvents.correct += Number(isCompleteOnFirstTry(performance, syncEnabled));
+    if (performance.targets.length > 0) {
+      const eventRate =
+        performance.targets.length === 1 ? stats.singleNoteEvents : stats.multiNoteEvents;
+      const eventCorrect = isPitchCompleteOnFirstTry(performance);
+      eventRate.total += 1;
+      eventRate.correct += Number(eventCorrect);
+      for (const target of performance.targets) {
+        const handRate = eventRate.hands[target.staff];
+        handRate.total += 1;
+        handRate.correct += Number(target.firstTryCorrect);
+      }
     }
 
     const staves = new Set(performance.targets.map((target) => target.staff));

@@ -534,3 +534,11 @@
 - 决策：练习结算的“错漏音汇总”使用标准五线谱渲染器，先展示高音谱/右手，再展示低音谱/左手；按声部和精确 MIDI 音高去重。红色音符右侧 5px 处仅在次数大于 1 时显示“×n”，颜色随主题变化。双手协同结算不展示“题型表现”整块，只保留总体、左右手、节拍表现和下次建议。双手协同所有关卡的导读都建议从 40 BPM 开始；首次进入双手协同练习时读取当前全局木鱼速度，若高于 40 BPM 则提示用户速度可能偏快，并询问是否改为 40 BPM；确认后才修改全局速度，取消则保留当前速度。该提示只检查一次，不改变全局默认速度。同步练习完成最后一个目标后立即停止木鱼，不再补响该小节余下的空拍。手机和平板聚焦到文本、数字、日期等可编辑输入框时，根据软键盘后的可视区域滚动最近的可滚动容器或页面，使输入框位于键盘上方；桌面设备和非文本控件不触发此行为。
 - 理由：让错漏音谱面顺序和次数标注更易读，并清除用户不需要的题型拆分；为所有双手协同关卡提供统一的练习速度建议；避免练习完成后节拍器继续播放空拍；移动端输入时保持当前字段及光标区域可见，不让软键盘遮住输入内容。
 - 影响文件：`src/features/practice/components/PracticeWrongNoteSummary.tsx`、`src/features/practice/components/DuetPracticeSummary.tsx`、`src/features/practice/hooks/usePracticeSessionLifecycle.ts`、`src/features/practice/components/PracticeView.tsx`、`src/features/learning/learningModules.ts`、`src/shared/utils/mobileTextInputAutoScroll.ts`、`src/app/App.tsx`
+
+### 双手协同错漏音汇总使用双谱表并优先展示高频错误
+
+- 日期：2026-11-17
+- 决策：双手协同结算的错漏音汇总在同一组高音谱和低音谱上显示，不按左右手拆成两个区块。单音排在同时起音的多音组之前；两类都按错误次数从高到低排序。错误音用红色，双手同时起音的组中首答正确音用绿色；重复项继续在音符旁标注“×n”。其他练习继续使用通用错漏音汇总样式。
+- 双手协同 Level 2、3 的结算指标依次为整体正确率、准拍率、单音正确率和双音正确率。单音、双音卡片分别显示左手和右手的正确数/总数及正确率；其他关卡的结算指标布局保持原样。
+- 理由：让双手同时起音的错误与正确音在同一谱面上对应查看，并突出高频错误；Level 2、3 的单音和双音表现需要分别比较左右手。
+- 影响文件：`src/features/practice/components/DuetWrongNoteSummary.tsx`、`src/features/practice/components/PracticeSummaryView.tsx`、`src/features/practice/components/DuetPracticeSummary.tsx`、`src/domain/duetPracticeSummary.ts`、`src/styles/study-recall.css`

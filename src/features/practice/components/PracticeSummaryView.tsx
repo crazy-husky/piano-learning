@@ -11,6 +11,7 @@ import type {
 import type { TargetNoteId } from "../../../domain/types";
 import type { PracticeSessionSummary } from "../hooks/usePracticeSessionState";
 import { DuetPracticeSummary } from "./DuetPracticeSummary";
+import { DuetWrongNoteSummary } from "./DuetWrongNoteSummary";
 import { PracticeWrongNoteSummary } from "./PracticeWrongNoteSummary";
 import {
   SessionProgressChart,
@@ -188,7 +189,11 @@ export function PracticeSummaryView({
             ) : null}
           </>
         )}
-        <PracticeWrongNoteSummary reviews={summary.reviews} />
+        {isDuetSummary ? (
+          <DuetWrongNoteSummary reviews={summary.reviews} />
+        ) : (
+          <PracticeWrongNoteSummary reviews={summary.reviews} />
+        )}
         <div className="action-row">
           <button onClick={onReturnToSetup}>
             {returnButtonLabel === "返回统计" ? (
