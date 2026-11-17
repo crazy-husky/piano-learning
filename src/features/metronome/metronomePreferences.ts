@@ -8,6 +8,8 @@ export interface MetronomePreferences {
 }
 
 export const METRONOME_PREFERENCES_KEY = "anki-note.metronomePreferences";
+export const METRONOME_BPM_MIN = 10;
+export const METRONOME_BPM_MAX = 240;
 
 export const DEFAULT_METRONOME_PREFERENCES: MetronomePreferences = {
   bpm: 80,
@@ -71,7 +73,9 @@ export function parseMetronomePreferences(
       : fallback.beatsPerBar;
 
   return {
-    bpm: Number.isFinite(bpm) ? Math.round(Math.min(240, Math.max(30, bpm))) : fallback.bpm,
+    bpm: Number.isFinite(bpm)
+      ? Math.round(Math.min(METRONOME_BPM_MAX, Math.max(METRONOME_BPM_MIN, bpm)))
+      : fallback.bpm,
     beatsPerBar: normalizedBeatsPerBar,
     beatSounds: isPreviousDefaultBeatPattern(candidate.beatSounds, normalizedBeatsPerBar)
       ? defaultBeatSounds(normalizedBeatsPerBar)

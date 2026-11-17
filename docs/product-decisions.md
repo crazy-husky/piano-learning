@@ -436,6 +436,14 @@
 - 理由：需要时可快速展开完整控制，平时缩短占用空间，且不打断正在播放的节拍。
 - 不要改回：自动缩小不能以是否播放作为条件；练习页界面收起不能隐式停止节拍器；不要移除首页弹窗关闭键。
 
+### 木鱼速度支持低至 10 BPM 并可直接编辑
+
+- 日期：2026-11-17
+- 决策：木鱼节拍速度范围为 10–240 BPM。练习页浮动木鱼的长条状态和展开状态都允许直接输入 BPM，速度数字要呈现可编辑输入框样式；触屏输入时临时移动浮动控件，确保软键盘打开后数字仍在可视区域内。
+- 理由：支持更慢的节拍练习，并让直接输入能力和移动端输入状态清晰可见。
+- 影响文件：`src/features/metronome/metronomePreferences.ts`、`src/features/metronome/useMetronomeController.ts`、`src/features/metronome/components/MetronomeCore.tsx`、`src/features/metronome/components/MetronomeFloating.tsx`、`src/features/metronome/components/MetronomeDialog.tsx`、`src/features/metronome/useMetronomeTempoInputViewportLift.ts`、`src/shared/utils/mobileTextInputAutoScroll.ts`、`src/styles/metronome.css`
+- 不要改回：节拍速度下限不能恢复为 30 BPM；展开状态的数字不能仅靠提示文字表达可编辑；输入框被软键盘遮挡时不能滚动背景页面代替调整浮动木鱼位置。
+
 ### 木鱼播放时防息屏并在无操作 20 分钟后暂停
 
 - 日期：2026-10-29
@@ -542,6 +550,14 @@
 - 双手协同 Level 2、3 的结算指标依次为整体正确率、准拍率、单音正确率和双音正确率。单音、双音卡片分别显示左手和右手的正确数/总数及正确率；其他关卡的结算指标布局保持原样。
 - 理由：让双手同时起音的错误与正确音在同一谱面上对应查看，并突出高频错误；Level 2、3 的单音和双音表现需要分别比较左右手。
 - 影响文件：`src/features/practice/components/DuetWrongNoteSummary.tsx`、`src/features/practice/components/PracticeSummaryView.tsx`、`src/features/practice/components/DuetPracticeSummary.tsx`、`src/domain/duetPracticeSummary.ts`、`src/styles/study-recall.css`
+
+### 双手协同结算按五线谱展示音符表现排名
+
+- 日期：2026-11-17
+- 决策：双手协同结算在“错漏音汇总”前增加默认收起的“本次音符表现排名”，内部按单音和同时合弹分组，使用高低音双谱表呈现音高。表现指标只看首答音高是否正确，准拍情况仍由节拍统计单独呈现；同时合弹组以整组首答全部正确计为一次正确。
+- 排名：音符或合弹组出现至少 2 次才参与排名，按首答正确率从高到低排列；正确率相同时，按出现次数从多到少，再按音高从高到低排列。仅出现 1 次的项目不显示。
+- 理由：用谱面位置比较重复出现音符的首答正确率，避免一次偶然结果直接参与排名；节拍能力和音高判断分开展示。
+- 影响文件：`src/features/practice/components/DuetPerformanceRanking.tsx`、`src/features/practice/components/DuetStaffNotationGroup.tsx`、`src/features/practice/components/DuetWrongNoteSummary.tsx`、`src/features/practice/components/PracticeSummaryView.tsx`、`src/styles/study-recall.css`
 
 ### 双手协同节拍同步可选且默认开启
 

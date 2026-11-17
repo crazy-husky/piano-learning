@@ -139,7 +139,9 @@ interface UsePracticeSessionStartOptions {
 }
 
 interface StartOptions {
+  beforeSessionStart?: () => Promise<void>;
   focusTargetNoteIds?: TargetNote["id"][];
+  shouldCancel?: () => boolean;
 }
 
 function newSessionId(): string {
@@ -229,14 +231,18 @@ export function usePracticeSessionStart({
     let microphoneStarted = false;
     let sessionStarted = false;
     let synchronizedMetronomeStarted = false;
+    const wasCancelled = (): boolean => options?.shouldCancel?.() === true;
     try {
       await runSessionStart(async () => {
+        if (wasCancelled()) return;
         void unlockAudio().catch(() => undefined);
         const preflightResult = await onBeforePracticeStart();
+        if (wasCancelled()) return;
         if (!preflightResult.proceed) {
           return;
         }
         const loadedPreflightSettings = preflightResult.settings ?? (await persistConfig());
+        if (wasCancelled()) return;
         const preflightSettings =
           !isDuetPractice && loadedPreflightSettings.answerPitchMode !== answerPitchMode
             ? { ...loadedPreflightSettings, answerPitchMode }
@@ -253,6 +259,7 @@ export function usePracticeSessionStart({
             : preflightSettings;
         if (!isDuetPractice && nextSettings !== preflightSettings) {
           await onSettingsSaved(nextSettings, { feedback: false });
+          if (wasCancelled()) return;
         }
         const nextMode = isDuetWrongNoteTest ? "fixed-count" : nextSettings.defaultMode;
         const nextQueueStrategy = isBlindPractice ? "adaptive" : resolveQueueStrategy(nextSettings);
@@ -373,6 +380,8 @@ export function usePracticeSessionStart({
         }
         const { snapshot: startSnapshot } = builtStartSnapshot;
         const { practiceConfig, presentationConfig } = startSnapshot;
+        await options?.beforeSessionStart?.();
+        if (wasCancelled()) return;
         const nextEnabledNotes = builtStartSnapshot.notes;
         const rangeExtensionPitchIds = new Set(practiceConfig.crossGroupPitchIds ?? []);
         const candidateExtensionNotes = nextEnabledNotes.filter((note) =>
@@ -389,6 +398,7 @@ export function usePracticeSessionStart({
           presentationConfig.startPausedReading;
         if (practiceConfig.metronomeSync && !shouldStartPaused) {
           synchronizedMetronomeStarted = await startSynchronizedMetronome();
+          if (wasCancelled()) return;
           if (!synchronizedMetronomeStarted) return;
         }
         if (availablePreflightAnswerPitchMode === "microphone") {
@@ -398,6 +408,7 @@ export function usePracticeSessionStart({
             microphoneStarted = await startPracticeMicrophone({
               includeAccidentals: blackKeySettings.enabled && !isBlindPractice,
             });
+            if (wasCancelled()) return;
             if (!microphoneStarted) {
               onMicrophoneStartFailure?.();
               return;
@@ -413,6 +424,12 @@ export function usePracticeSessionStart({
         });
         if (!isDuetWrongNoteTest) {
           await db.practiceSessions.put(nextSession);
+        }
+        if (wasCancelled()) {
+          if (!isDuetWrongNoteTest) {
+            await db.practiceSessions.delete(nextSession.id);
+          }
+          return;
         }
         resetPracticeMicrophoneCapture();
         sessionRef.current = nextSession;

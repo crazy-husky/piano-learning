@@ -201,6 +201,7 @@ const BLIND_PRACTICE_NOTE_DURATIONS: PromptNoteDuration[] = ["quarter"];
 const DUET_HAND_SIMULTANEITY_WINDOW_MS = 150;
 const DUET_HAND_SIMULTANEITY_TIMER_GRACE_MS = 25;
 const DUET_FEEDBACK_MIN_INTERVAL_MS = 1_500;
+const DUET_WRONG_NOTE_TEST_MIN_STARTING_DURATION_MS = 1_000;
 
 interface PendingDuetHandPair {
   prompt: PromptRuntime;
@@ -327,7 +328,7 @@ function DuetWrongNoteMidiDialog({
     >
       <div className="duet-wrong-note-midi-dialog">
         <h2 id="duet-wrong-note-midi-title">选择 MIDI 输入设备</h2>
-        <p>
+        <p aria-live="polite" role="status">
           双手协同错题测试需要 MIDI。
           {getMidiPracticeStartWarning(midi, "midi-required") ?? "设备连接后会自动开始测试。"}
         </p>
@@ -784,6 +785,7 @@ export function PracticeView({
   >([]);
   const [isStaffPageScrolling, setIsStaffPageScrolling] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isVisibilityPaused, setIsVisibilityPaused] = useState(false);
   const [isQuestionLimitReached, setIsQuestionLimitReached] = useState(false);
   const questionLimitReachedRef = useRef(false);
   const [isMobileViewport, setIsMobileViewport] = useState(
@@ -1312,6 +1314,9 @@ export function PracticeView({
   const sessionRef = useRef<PracticeSessionRecord | null>(null);
   const sessionStartSnapshotRef = useRef<PracticeSessionStartSnapshot | null>(null);
   const duetWrongNoteTestAutoStartRef = useRef<string | null>(null);
+  const duetWrongNoteTestStartCancelledRef = useRef(false);
+  const duetWrongNoteTestStartInFlightRef = useRef(false);
+  const practiceViewMountedRef = useRef(false);
   const syncSessionRef = useRef(false);
   const syncRunningSeenRef = useRef(false);
   const syncStartInFlightRef = useRef(false);
@@ -1330,6 +1335,7 @@ export function PracticeView({
   const staffPageRef = useRef<StaffPageRuntime | null>(null);
   const endingRef = useRef(false);
   const isPausedRef = useRef(false);
+  const visibilityPausedRef = useRef(false);
   const pendingAfterPauseRef = useRef<(() => void) | null>(null);
   const answerInputLockedRef = useRef(false);
   const lastBackupCompletedRef = useRef(0);
@@ -1426,6 +1432,13 @@ export function PracticeView({
     const onChange = (): void => setIsMobileViewport(mediaQuery.matches);
     mediaQuery.addEventListener("change", onChange);
     return () => mediaQuery.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    practiceViewMountedRef.current = true;
+    return () => {
+      practiceViewMountedRef.current = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -1691,6 +1704,8 @@ export function PracticeView({
       if (interruptReason) {
         markInterrupted(interruptReason);
       }
+      visibilityPausedRef.current = false;
+      setIsVisibilityPaused(false);
       releasePracticeMicrophoneOnPause(answerPitchMode, () =>
         stopPracticeMicrophone({
           captureStopReason: "practice-paused",
@@ -1698,10 +1713,8 @@ export function PracticeView({
         })
       );
       pauseActiveTimers();
-      if (!isPausedRef.current) {
-        isPausedRef.current = true;
-        setIsPaused(true);
-      }
+      isPausedRef.current = true;
+      setIsPaused(true);
       if (syncSessionRef.current) {
         syncCountInStartSequenceRef.current = null;
         syncTempoAnchorsRef.current = [];
@@ -1721,6 +1734,22 @@ export function PracticeView({
     ]
   );
 
+  const pauseForTrackedNoteHidden = useCallback((): void => {
+    if (
+      !isStaffPagePractice ||
+      phase !== "running" ||
+      isPausedRef.current ||
+      visibilityPausedRef.current
+    ) {
+      return;
+    }
+    // Reuse the normal pause path so microphone capture, timers, and the pause
+    // controls all reflect that input is unavailable while the note is hidden.
+    pausePractice();
+    visibilityPausedRef.current = true;
+    setIsVisibilityPaused(true);
+  }, [isStaffPagePractice, pausePractice, phase]);
+
   const pauseAtQuestionLimit = useCallback((): void => {
     if (questionLimitReachedRef.current) return;
     questionLimitReachedRef.current = true;
@@ -1731,6 +1760,9 @@ export function PracticeView({
   const startPracticeMicrophone = practiceMicrophone.start;
   const microphoneIsListening = practiceMicrophone.isListening;
   const resumePractice = useCallback(async (): Promise<void> => {
+    if (isStaffPagePractice && !freeTrackedNoteVisibilityRef.current) {
+      return;
+    }
     if (!isPausedRef.current) {
       return;
     }
@@ -1748,7 +1780,19 @@ export function PracticeView({
           isListening: microphoneIsListening,
           startMicrophone: () => startPracticeMicrophone({ includeAccidentals: fuseBlackKeys }),
         });
-        if (!microphoneReady || !isPausedRef.current || endingRef.current) {
+        const trackedNoteIsVisible = !isStaffPagePractice || freeTrackedNoteVisibilityRef.current;
+        if (
+          !microphoneReady ||
+          !isPausedRef.current ||
+          endingRef.current ||
+          !trackedNoteIsVisible
+        ) {
+          if (microphoneReady && !trackedNoteIsVisible) {
+            stopPracticeMicrophone({
+              captureStopReason: "practice-paused",
+              preserveError: practiceMicrophoneStatus === "error",
+            });
+          }
           return;
         }
       } finally {
@@ -1766,12 +1810,16 @@ export function PracticeView({
       }
       syncAllowBeatWhilePausedRef.current = true;
       const metronomeStarted = await startSynchronizedMetronomeRef.current();
-      if (!metronomeStarted || !isPausedRef.current || endingRef.current) {
+      const trackedNoteIsVisible = !isStaffPagePractice || freeTrackedNoteVisibilityRef.current;
+      if (!metronomeStarted || !isPausedRef.current || endingRef.current || !trackedNoteIsVisible) {
         syncAllowBeatWhilePausedRef.current = false;
+        if (!trackedNoteIsVisible) stopMetronome();
         return;
       }
     }
     isPausedRef.current = false;
+    visibilityPausedRef.current = false;
+    setIsVisibilityPaused(false);
     setIsPaused(false);
     syncAllowBeatWhilePausedRef.current = false;
     const pendingAfterPause = pendingAfterPauseRef.current;
@@ -1799,9 +1847,14 @@ export function PracticeView({
     answerPitchMode,
     autoPlayTarget,
     fuseBlackKeys,
+    freeTrackedNoteVisibilityRef,
+    isStaffPagePractice,
     midi.isConnected,
     microphoneIsListening,
+    practiceMicrophoneStatus,
     startPracticeMicrophone,
+    stopMetronome,
+    stopPracticeMicrophone,
     resumeActiveTimers,
     endingRef,
     isPausedRef,
@@ -2164,7 +2217,7 @@ export function PracticeView({
     currentNoteIndex: preReadingCurrentNoteIndex,
     enabled: isPreReadingPractice,
     isMetronomeSyncActive,
-    isPaused,
+    isPaused: isPaused || isVisibilityPaused,
     notesReady: staffPageNotes.length > 0,
     phaseRunning: phase === "running",
     replaceTempoAnchor: replaceSynchronizedTempoAnchor,
@@ -2220,7 +2273,14 @@ export function PracticeView({
 
     syncStartPendingRef.current = false;
     try {
-      const started = await startMetronome();
+      const scoreBeat = getCurrentSyncScoreBeat();
+      const initialBeatIndex = ((Math.floor(scoreBeat + 0.001) % 4) + 4) % 4;
+      const started = await startMetronome({ initialBeatIndex });
+      if (isStaffPagePractice && !freeTrackedNoteVisibilityRef.current) {
+        pauseForTrackedNoteHidden();
+        stopMetronome();
+        return started;
+      }
       if (!started) {
         syncSessionRef.current = false;
         setSyncProgressMarkerLeadEnabled(false);
@@ -2233,11 +2293,14 @@ export function PracticeView({
     }
   }, [
     getCurrentSyncScoreBeat,
+    freeTrackedNoteVisibilityRef,
+    isStaffPagePractice,
     isPreReadingPractice,
     metronomePreferences.beatsPerBar,
     phase,
     preReadingScoreWindow.openingSecondsRemaining,
     prepareMetronome,
+    pauseForTrackedNoteHidden,
     resetPreReadingCountdown,
     setMetronomeSyncLocked,
     setSyncCountInBeat,
@@ -2267,13 +2330,18 @@ export function PracticeView({
     () =>
       subscribeMetronomeBeat((event) => {
         if (!syncSessionRef.current) return;
+        if (isStaffPagePractice && !freeTrackedNoteVisibilityRef.current) {
+          pauseForTrackedNoteHidden();
+          return;
+        }
         if (isPausedRef.current && !syncAllowBeatWhilePausedRef.current) return;
         if (isPreReadingPractice) {
           handlePreReadingBeat(event);
           return;
         }
         if (syncCountInStartSequenceRef.current === null) {
-          if (event.beatIndex !== 0) return;
+          // The clock starts at the score's current metrical phase. Count in
+          // from that phase so its next downbeat remains aligned with the bar.
           syncCountInStartSequenceRef.current = event.sequence;
           syncCountInBaseBeatRef.current = getCurrentSyncScoreBeat();
           return;
@@ -2293,7 +2361,9 @@ export function PracticeView({
         const countInElapsed = event.sequence - syncCountInStartSequenceRef.current;
         if (countInElapsed < 4) {
           if (countInElapsed === 3 && event.bpm > 0) {
-            const firstScoreBeatAudioTime = event.audioTime + 60 / event.bpm;
+            const scoreBeat = syncCountInBaseBeatRef.current;
+            const beatFraction = Math.max(0, scoreBeat - Math.floor(scoreBeat + 0.001));
+            const firstScoreBeatAudioTime = event.audioTime + (60 / event.bpm) * (1 + beatFraction);
             syncTempoAnchorsRef.current = [
               {
                 audioTime: firstScoreBeatAudioTime,
@@ -2320,6 +2390,9 @@ export function PracticeView({
       appendSynchronizedTempoAnchor,
       getCurrentSyncScoreBeat,
       handlePreReadingBeat,
+      freeTrackedNoteVisibilityRef,
+      isStaffPagePractice,
+      pauseForTrackedNoteHidden,
       isPreReadingPractice,
       scheduleAtAudioTime,
       subscribeMetronomeBeat,
@@ -2329,7 +2402,9 @@ export function PracticeView({
     if (
       !isMetronomeSyncActive ||
       isPaused ||
+      isVisibilityPaused ||
       !syncStartPendingRef.current ||
+      (isStaffPagePractice && !freeTrackedNoteVisibilityRef.current) ||
       (isPreReadingPractice && preReadingScoreWindow.openingSecondsRemaining > 0) ||
       staffPageNotes.length === 0 ||
       isMetronomePlaying ||
@@ -2339,12 +2414,15 @@ export function PracticeView({
     }
 
     void startSynchronizedMetronomeRef.current().then((started) => {
-      if (!started) pausePractice("manual-pause");
+      if (!started && !visibilityPausedRef.current) pausePractice("manual-pause");
     });
   }, [
     isMetronomeSyncActive,
     isPreReadingPractice,
+    freeTrackedNoteVisibilityRef,
+    isStaffPagePractice,
     isPaused,
+    isVisibilityPaused,
     isMetronomePlaying,
     pausePractice,
     preReadingScoreWindow.openingSecondsRemaining,
@@ -2364,15 +2442,17 @@ export function PracticeView({
     syncRunningSeenRef.current = true;
     syncSessionRef.current = true;
     setMetronomeSyncLocked(true);
-    if (isPaused && isMetronomePlaying && !syncStartInFlightRef.current) {
+    if ((isPaused || isVisibilityPaused) && isMetronomePlaying && !syncStartInFlightRef.current) {
       stopMetronome();
       return;
     }
     if (
       !isPaused &&
+      !isVisibilityPaused &&
       !isMetronomePlaying &&
       !syncStartInFlightRef.current &&
-      !syncStartPendingRef.current
+      !syncStartPendingRef.current &&
+      !visibilityPausedRef.current
     ) {
       pausePractice("manual-pause");
     }
@@ -2380,12 +2460,14 @@ export function PracticeView({
     isMetronomeSyncActive,
     isPausedRef,
     isPaused,
+    isVisibilityPaused,
     isMetronomePlaying,
     isPreReadingPractice,
     setMetronomeSyncLocked,
     stopMetronome,
     pausePractice,
     phase,
+    freeTrackedNoteVisibilityRef,
     preReadingScoreWindow.openingSecondsRemaining,
     stopSynchronizedMetronome,
   ]);
@@ -2800,6 +2882,7 @@ export function PracticeView({
     if (
       phase === "running" &&
       !isPaused &&
+      !isVisibilityPaused &&
       practiceTab === "free" &&
       promptDisplayMode === "staff-page"
     ) {
@@ -2807,7 +2890,7 @@ export function PracticeView({
     }
     freeRowPlaybackActiveRef.current = null;
     cancelFreeRowPlayback();
-  }, [cancelFreeRowPlayback, isPaused, phase, practiceTab, promptDisplayMode]);
+  }, [cancelFreeRowPlayback, isPaused, isVisibilityPaused, phase, practiceTab, promptDisplayMode]);
 
   const freeChaseEvents = useMemo<ScoreChaseEvent[]>(
     () =>
@@ -2840,7 +2923,7 @@ export function PracticeView({
     enabled: isFreeScoreChaseEnabled,
     events: freeChaseEvents,
     getAudioTime: getPianoAudioTime,
-    paused: isPaused || phase !== "running" || freePlayingRowIndex !== null,
+    paused: isPaused || isVisibilityPaused || phase !== "running" || freePlayingRowIndex !== null,
     segmentDurationSeconds: uniformFreePracticeChaseSegmentDuration,
     speedMultiplier: practiceSetupPreferences.chaseSpeedMultiplier,
     startCount: practiceSetupPreferences.chaseStartCount,
@@ -2907,13 +2990,22 @@ export function PracticeView({
     [getMetronomeAudioTime]
   );
   const getSynchronizedProgressBeat = useCallback((): number | undefined => {
-    if (!isMetronomeSyncActive || isPaused) return undefined;
+    if (!isMetronomeSyncActive || isPaused || isVisibilityPaused || isPausedRef.current) {
+      return undefined;
+    }
     return getPracticeBeatAtAudioTime(
       getMetronomeAudioTime() + PRACTICE_PROGRESS_MARKER_LEAD_SECONDS,
       syncTempoAnchorsRef.current,
       metronomePreferences.bpm
     );
-  }, [getMetronomeAudioTime, isMetronomeSyncActive, isPaused, metronomePreferences.bpm]);
+  }, [
+    getMetronomeAudioTime,
+    isMetronomeSyncActive,
+    isPaused,
+    isVisibilityPaused,
+    isPausedRef,
+    metronomePreferences.bpm,
+  ]);
   const markSynchronizedTargetMissed = useCallback((): void => {
     const prompt = promptRef.current;
     const page = staffPageRef.current;
@@ -3127,7 +3219,7 @@ export function PracticeView({
       acceptedDuetHandPairPromptRef.current = null;
       return;
     }
-    if (isPaused) {
+    if (isPaused || isVisibilityPaused) {
       if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
       pending.timeoutId = null;
       return;
@@ -3136,7 +3228,14 @@ export function PracticeView({
       pending.firstInputAtMs = performance.now();
       armDuetHandPairTimeout(pending);
     }
-  }, [armDuetHandPairTimeout, currentNote?.id, isMetronomeSyncActive, isPaused, phase]);
+  }, [
+    armDuetHandPairTimeout,
+    currentNote?.id,
+    isMetronomeSyncActive,
+    isPaused,
+    isVisibilityPaused,
+    phase,
+  ]);
 
   useEffect(
     () => () => {
@@ -3309,7 +3408,7 @@ export function PracticeView({
             Math.abs(left.deltaMs) - Math.abs(right.deltaMs) || left.index - right.index
         )[0];
 
-        if (selectedCandidate && page && selectedCandidate.index > page.index) {
+        if (selectedCandidate?.matchedTarget && page && selectedCandidate.index > page.index) {
           const targetIndex = selectedCandidate.index;
           const targetNoteIndex = staffPageFirstNoteOffset + targetIndex;
           const targetKey = targetNoteIndex;
@@ -3327,41 +3426,24 @@ export function PracticeView({
           }
 
           const target = selectedCandidate.matchedTarget;
-          const targetStaves = [...new Set(selectedCandidate.targets.map((item) => item.staff))];
-          if (target) {
-            setSyncTimingFeedback((current) => {
-              const next = current.filter(
-                (entry) =>
-                  entry.noteIndex !== targetNoteIndex ||
-                  entry.staff !== target.staff ||
-                  (entry.midi !== undefined && entry.midi !== answerMidi)
-              );
-              if (!isFirstInput) return next;
-              return [
-                ...next,
-                {
-                  noteIndex: targetNoteIndex,
-                  staff: target.staff,
-                  midi: answerMidi,
-                  result: selectedCandidate.grade === "on-time" ? "matched" : "offbeat",
-                },
-              ];
-            });
-          } else if (isFirstInput) {
-            setSyncTimingFeedback((current) => [
-              ...current.filter(
-                (entry) =>
-                  entry.noteIndex !== targetNoteIndex ||
-                  !targetStaves.includes(entry.staff) ||
-                  entry.midi !== undefined
-              ),
-              ...targetStaves.map((staff) => ({
+          setSyncTimingFeedback((current) => {
+            const next = current.filter(
+              (entry) =>
+                entry.noteIndex !== targetNoteIndex ||
+                entry.staff !== target.staff ||
+                (entry.midi !== undefined && entry.midi !== answerMidi)
+            );
+            if (!isFirstInput) return next;
+            return [
+              ...next,
+              {
                 noteIndex: targetNoteIndex,
-                staff,
-                result: "missed" as const,
-              })),
-            ]);
-          }
+                staff: target.staff,
+                midi: answerMidi,
+                result: selectedCandidate.grade === "on-time" ? "matched" : "offbeat",
+              },
+            ];
+          });
 
           const isDuplicateQueuedInput = pendingSyncAnswersRef.current.some(
             (entry) =>
@@ -3571,6 +3653,7 @@ export function PracticeView({
       !isMetronomeSyncActive ||
       phase !== "running" ||
       isPaused ||
+      isVisibilityPaused ||
       (isPreReadingPractice && preReadingScoreWindow.phase !== "training") ||
       syncCountInBeat !== null ||
       syncTempoAnchorsRef.current.length === 0
@@ -3648,6 +3731,7 @@ export function PracticeView({
     handleSynchronizedTimeout,
     isMetronomeSyncActive,
     isPaused,
+    isVisibilityPaused,
     isPreReadingPractice,
     fixedCount,
     mode,
@@ -3829,6 +3913,10 @@ export function PracticeView({
     duetWrongNoteTestPlan,
   ]);
   const setupDisabledReason = setupStartIssue?.message;
+  const returnFromDuetWrongNoteTestStart = useCallback((): void => {
+    duetWrongNoteTestStartCancelledRef.current = true;
+    onWrongNoteTestExit?.();
+  }, [onWrongNoteTestExit]);
   const attemptStartSession = useCallback((): void => {
     if (setupStartIssue) {
       setSetupStartError(setupStartIssue.message);
@@ -3838,9 +3926,56 @@ export function PracticeView({
       }
       return;
     }
+    const isWrongNoteTestStart = Boolean(duetWrongNoteTestPlan);
+    if (isWrongNoteTestStart && duetWrongNoteTestStartInFlightRef.current) return;
+    if (isWrongNoteTestStart) {
+      duetWrongNoteTestStartInFlightRef.current = true;
+    }
+    const startAttemptedAt = performance.now();
     setSetupStartError(null);
-    void startSession();
-  }, [setupStartIssue, startSession]);
+    duetWrongNoteTestStartCancelledRef.current = false;
+    void startSession(
+      isWrongNoteTestStart
+        ? {
+            shouldCancel: () =>
+              duetWrongNoteTestStartCancelledRef.current || !practiceViewMountedRef.current,
+            beforeSessionStart: async () => {
+              const remainingMs =
+                DUET_WRONG_NOTE_TEST_MIN_STARTING_DURATION_MS -
+                (performance.now() - startAttemptedAt);
+              if (remainingMs > 0) {
+                await new Promise<void>((resolve) => window.setTimeout(resolve, remainingMs));
+              }
+            },
+          }
+        : undefined
+    )
+      .then(() => {
+        if (
+          isWrongNoteTestStart &&
+          !duetWrongNoteTestStartCancelledRef.current &&
+          practiceViewMountedRef.current &&
+          phase === "setup" &&
+          !sessionRef.current
+        ) {
+          setSetupStartError("错题测试尚未开始，可以重试或返回统计。");
+        }
+      })
+      .catch((error: unknown) => {
+        if (duetWrongNoteTestStartCancelledRef.current || !practiceViewMountedRef.current) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        setSetupStartError(
+          isWrongNoteTestStart ? `错题测试启动失败：${message}` : `练习启动失败：${message}`
+        );
+      })
+      .finally(() => {
+        if (isWrongNoteTestStart) {
+          duetWrongNoteTestStartInFlightRef.current = false;
+        }
+      });
+  }, [duetWrongNoteTestPlan, phase, setupStartIssue, startSession]);
 
   useEffect(() => {
     setSetupStartError(null);
@@ -4111,9 +4246,37 @@ export function PracticeView({
   } = useTrackedStaffNoteVisibility({
     enabled: isStaffPagePractice,
     noteKey: `${staffPageFirstNoteOffset}:${trackedFreeScoreNoteIndex}`,
+    hiddenMessage: "当前音符已滚出视野，节拍与进度已暂停。",
+    onHidden: pauseForTrackedNoteHidden,
     toastId: "practice-current-note-visibility",
+    visibleMessage: "当前音符已回到视野，正在恢复练习。",
     visibilityRef: freeTrackedNoteVisibilityRef,
   });
+  useEffect(() => {
+    if (phase !== "running") {
+      visibilityPausedRef.current = false;
+      setIsVisibilityPaused(false);
+      return;
+    }
+    if (!visibilityPausedRef.current || !isFreeTrackedScoreNoteVisible) {
+      return;
+    }
+    void resumePractice().then(() => {
+      if (
+        visibilityPausedRef.current &&
+        isPausedRef.current &&
+        freeTrackedNoteVisibilityRef.current
+      ) {
+        pausePractice();
+      }
+    });
+  }, [
+    freeTrackedNoteVisibilityRef,
+    isFreeTrackedScoreNoteVisible,
+    pausePractice,
+    phase,
+    resumePractice,
+  ]);
   const getFreeCurrentNoteTarget = useCallback((): SVGElement | null => {
     const prompt = staffPagePromptContainerRef.current;
     const note = prompt?.querySelector<SVGElement>(
@@ -4178,6 +4341,43 @@ export function PracticeView({
         onRegisterMicrophoneAnswer={registerSongPracticeMicrophoneAnswer}
         selection={songPracticeSelection}
       />
+    );
+  }
+
+  if (phase === "setup" && duetWrongNoteTestPlan) {
+    return (
+      <>
+        <section
+          aria-label="双手协同错题测试准备中"
+          className="practice-shell practice-session-frame duet-wrong-note-test-starting"
+        >
+          <div className="duet-wrong-note-test-starting-content">
+            <h1 className="practice-session-title">双手协同 · 错题测试</h1>
+            <p aria-live="polite" role={setupStartError ? "alert" : "status"}>
+              {setupStartError ?? (
+                <LoadingActivityText kind="dots">正在准备练习</LoadingActivityText>
+              )}
+            </p>
+            <div className="duet-wrong-note-test-starting-actions">
+              {setupStartError ? (
+                <button className="primary" onClick={attemptStartSession} type="button">
+                  重试
+                </button>
+              ) : null}
+              <button
+                className="secondary"
+                onClick={returnFromDuetWrongNoteTestStart}
+                type="button"
+              >
+                返回统计
+              </button>
+            </div>
+          </div>
+        </section>
+        {!midi.isConnected ? (
+          <DuetWrongNoteMidiDialog midi={midi} onReturnToStats={returnFromDuetWrongNoteTestStart} />
+        ) : null}
+      </>
     );
   }
 
@@ -4705,9 +4905,7 @@ export function PracticeView({
               noteBeamGroups={visibleStaffPageRhythm?.noteBeamGroups}
               staffNoteDurations={visibleStaffPageRhythm?.staffNoteDurations}
               monophonicGrandStaff
-              showGrandStaffRests={
-                isDuetPractice && (duetLevel === "level-1" || duetLevel === "level-2")
-              }
+              showGrandStaffRests={isDuetPractice}
               keepMeasuresTogether={
                 isDuetPractice || (isContinuousStaffPage && visibleStaffPageRhythm !== undefined)
               }
@@ -4800,7 +4998,7 @@ export function PracticeView({
         <VirtualPianoKeyboard
           ariaLabel="答案琴键"
           className="practice-virtual-piano-keyboard"
-          disabled={isPaused || freePlayingRowIndex !== null}
+          disabled={isPaused || isVisibilityPaused || freePlayingRowIndex !== null}
           enabledKeys={
             answerPitchMode === "note-name"
               ? fuseBlackKeys

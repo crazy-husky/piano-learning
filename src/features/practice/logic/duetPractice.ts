@@ -13,6 +13,7 @@ import type {
   Staff,
   TargetNote,
 } from "../../../domain/types";
+import { getQuarterNoteBeats } from "./staffPageNotation";
 import type { GeneratedStaffPageRhythm, StaffPageNoteDuration } from "./staffPageNotation";
 
 export const DUET_PROMPT_TIMEOUT_MS = 3_500;
@@ -423,6 +424,41 @@ function getDurationForBeatSpan(beatSpan: number): StaffPageNoteDuration {
     4: "whole",
   };
   return durationByBeatSpan[normalizedSpan] ?? "quarter";
+}
+
+const DUET_DURATION_CANDIDATES: readonly StaffPageNoteDuration[] = [
+  "dotted-whole",
+  "whole",
+  "dotted-half",
+  "half",
+  "triplet-half",
+  "double-dotted-quarter",
+  "dotted-quarter",
+  "quarter-plus-sixteenth",
+  "quarter",
+  "dotted-eighth",
+  "eighth",
+  "dotted-sixteenth",
+  "triplet-eighth",
+  "sixteenth",
+  "thirty-second",
+  "sixty-fourth",
+];
+
+function capDurationToBeatSpan(
+  duration: StaffPageNoteDuration,
+  maximumBeatSpan: number
+): StaffPageNoteDuration {
+  const durationBeats = getQuarterNoteBeats(duration);
+  if (durationBeats <= maximumBeatSpan + 0.001) return duration;
+  return (
+    DUET_DURATION_CANDIDATES.filter(
+      (candidate) =>
+        getQuarterNoteBeats(candidate) <= maximumBeatSpan + 0.001 &&
+        getQuarterNoteBeats(candidate) < durationBeats - 0.001
+    ).sort((left, right) => getQuarterNoteBeats(right) - getQuarterNoteBeats(left))[0] ??
+    "sixty-fourth"
+  );
 }
 
 const CHORD_PROGRESSION: readonly ChordTemplate[] = [
@@ -1116,6 +1152,7 @@ export function createDuetPracticePage(
 
   while (events.length < requestedCount && measureIndex < measureLimit) {
     const measureStart = measureIndex * 4;
+    const firstEventIndexInMeasure = events.length;
     const useDottedTemplate = allowDottedRhythms && measureIndex % 4 === 3;
     const measureChordTemplates =
       level === "level-3"
@@ -1287,6 +1324,36 @@ export function createDuetPracticePage(
         levelOneNoteOffsets.bass += measureEvent.low.length;
       }
       if (events.length >= requestedCount && options.exactCount) break;
+    }
+    // Wrong-note questions can replace one hand's generated onset pattern while
+    // retaining the level's rhythm template. Keep each staff note from crossing
+    // the next actual onset on that staff; otherwise a generated half/whole note
+    // can overlap a fixed target and push the voice past the 4/4 barline.
+    for (let eventIndex = firstEventIndexInMeasure; eventIndex < events.length; eventIndex += 1) {
+      const event = events[eventIndex]!;
+      const onset = onsets[eventIndex]!;
+      for (const staff of ["treble", "bass"] as const) {
+        const targets = staff === "treble" ? event.high : event.low;
+        if (targets.length === 0) continue;
+        let nextOnset = measureStart + 4;
+        for (let nextIndex = eventIndex + 1; nextIndex < events.length; nextIndex += 1) {
+          if (measures[nextIndex] !== measureIndex) break;
+          const nextEvent = events[nextIndex]!;
+          const nextTargets = staff === "treble" ? nextEvent.high : nextEvent.low;
+          if (nextTargets.length > 0) {
+            nextOnset = onsets[nextIndex]!;
+            break;
+          }
+        }
+        const existingDuration = staffNoteDurations[eventIndex]?.[staff] ?? durations[eventIndex]!;
+        const cappedDuration = capDurationToBeatSpan(existingDuration, nextOnset - onset);
+        if (cappedDuration !== existingDuration) {
+          staffNoteDurations[eventIndex] = {
+            ...staffNoteDurations[eventIndex],
+            [staff]: cappedDuration,
+          };
+        }
+      }
     }
     measureIndex += 1;
     endBeat = measureIndex * 4;

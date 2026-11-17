@@ -76,21 +76,24 @@ export function usePreReadingPracticeController({
       }
 
       if (!countdownCompleteRef.current) {
-        // The metronome clock restarts at beat zero. Use that first tick to
-        // place the current score note directly on the downbeat.
-        if (event.beatIndex !== 0) return;
+        // Synchronized restarts preserve the score's current bar phase. Delay
+        // fractional onsets until their position between quarter-note ticks.
+        const scoreBeat = getCurrentScoreBeat();
+        const beatFraction = Math.max(0, scoreBeat - Math.floor(scoreBeat + 0.001));
+        const firstScoreBeatAudioTime =
+          event.audioTime + (event.bpm > 0 ? (60 / event.bpm) * beatFraction : 0);
         clearPendingAnswers();
         countdownGenerationRef.current += 1;
         const generation = countdownGenerationRef.current;
         countdownCompleteRef.current = true;
-        replaceTempoAnchor(event.audioTime, getCurrentScoreBeat(), event.bpm);
+        replaceTempoAnchor(firstScoreBeatAudioTime, scoreBeat, event.bpm);
         scheduleAtAudioTime(() => {
           if (!syncSessionRef.current || countdownGenerationRef.current !== generation) {
             return;
           }
           setCountdownComplete(true);
           setProgressMarkerLeadEnabled(true);
-        }, event.audioTime);
+        }, firstScoreBeatAudioTime);
         return;
       }
 

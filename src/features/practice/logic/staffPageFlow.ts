@@ -58,7 +58,8 @@ export function chunkStaffPageGroupsByMeasure<T>(
   while (groupIndex < groups.length && rows.length < maxRowCount) {
     const rowStartIndex = groupIndex;
     const row: T[] = [];
-    const rowMeasures = new Set<number>();
+    let rowMeasureCount = 0;
+    let lastMeasure: number | undefined;
 
     while (groupIndex < groups.length) {
       const measure = measures[groupIndex];
@@ -68,15 +69,19 @@ export function chunkStaffPageGroupsByMeasure<T>(
       }
 
       const measureEventCount = measureEndIndex - groupIndex;
+      const addedMeasureCount =
+        lastMeasure === undefined ? 1 : Math.max(1, Math.floor(measure - lastMeasure));
       if (
         row.length > 0 &&
-        (row.length + measureEventCount > capacity || rowMeasures.size >= maxMeasuresPerRow)
+        (row.length + measureEventCount > capacity ||
+          rowMeasureCount + addedMeasureCount > maxMeasuresPerRow)
       ) {
         break;
       }
 
       row.push(...groups.slice(groupIndex, measureEndIndex));
-      rowMeasures.add(measure);
+      rowMeasureCount += addedMeasureCount;
+      lastMeasure = measure;
       groupIndex = measureEndIndex;
       if (measureEventCount > capacity) break;
     }
@@ -109,6 +114,7 @@ export function chunkStaffPageGroupsByAdaptiveMeasureWidth<T>(
     const row: T[] = [];
     let rowWidth = 0;
     let rowMeasureCount = 0;
+    let lastMeasure: number | undefined;
 
     while (groupIndex < groups.length) {
       const measure = measures[groupIndex];
@@ -119,16 +125,30 @@ export function chunkStaffPageGroupsByAdaptiveMeasureWidth<T>(
 
       const measureWidth =
         measureWidths.get(measure) ?? getPracticeStaffMeasureWidthPx([], beatsPerMeasure);
+      const addedMeasureCount =
+        lastMeasure === undefined ? 1 : Math.max(1, Math.floor(measure - lastMeasure));
+      const addedMeasureWidth =
+        lastMeasure === undefined
+          ? measureWidth
+          : Array.from({ length: addedMeasureCount }, (_, index) => {
+              const measureNumber = lastMeasure! + index + 1;
+              return (
+                measureWidths.get(measureNumber) ??
+                getPracticeStaffMeasureWidthPx([], beatsPerMeasure)
+              );
+            }).reduce((total, width) => total + width, 0);
       if (
         row.length > 0 &&
-        (rowMeasureCount >= measureLimit || rowWidth + measureWidth > widthBudget)
+        (rowMeasureCount + addedMeasureCount > measureLimit ||
+          rowWidth + addedMeasureWidth > widthBudget)
       ) {
         break;
       }
 
       row.push(...groups.slice(groupIndex, measureEndIndex));
-      rowWidth += measureWidth;
-      rowMeasureCount += 1;
+      rowWidth += addedMeasureWidth;
+      rowMeasureCount += addedMeasureCount;
+      lastMeasure = measure;
       groupIndex = measureEndIndex;
     }
 

@@ -17,6 +17,7 @@ const INPUT_SAFE_INSET_PX = 18;
 
 function isTextEntryTarget(target: EventTarget | null): target is HTMLElement {
   if (!(target instanceof HTMLElement) || target.matches(":disabled")) return false;
+  if (target.closest("[data-mobile-input-visibility-managed='true']")) return false;
   if (target instanceof HTMLTextAreaElement) return !target.readOnly;
   if (target instanceof HTMLInputElement) {
     return !target.readOnly && TEXT_INPUT_TYPES.has(target.type.toLowerCase());

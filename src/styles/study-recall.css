@@ -1212,6 +1212,22 @@ main.has-backup-reminder .setup-grid::after {
   min-width: 0;
 }
 
+.duet-performance-ranking-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 0 0 2px;
+}
+
+.duet-performance-ranking .practice-wrong-note-empty {
+  margin-top: 0;
+}
+
+.duet-staff-column-annotation {
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .practice-wrong-note-staff-section {
   min-width: 0;
 }

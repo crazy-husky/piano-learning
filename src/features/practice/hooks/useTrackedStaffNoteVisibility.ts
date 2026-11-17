@@ -6,6 +6,8 @@ interface UseTrackedStaffNoteVisibilityOptions {
   noteKey: string | number;
   toastId: string;
   onHidden?: () => void;
+  hiddenMessage?: string;
+  visibleMessage?: string;
   visibilityRef?: MutableRefObject<boolean>;
 }
 
@@ -14,6 +16,8 @@ export function useTrackedStaffNoteVisibility({
   noteKey,
   toastId,
   onHidden,
+  hiddenMessage = "当前音符已滚出视野，输入已暂停。",
+  visibleMessage = "当前音符已回到视野，可以继续弹奏。",
   visibilityRef: externalVisibilityRef,
 }: UseTrackedStaffNoteVisibilityOptions): {
   isVisible: boolean;
@@ -46,12 +50,12 @@ export function useTrackedStaffNoteVisibility({
       visibilityRef.current = nextIsVisible;
       setIsVisible(nextIsVisible);
       if (!nextIsVisible) onHidden?.();
-      toast.message(
-        nextIsVisible ? "当前音符已回到视野，可以继续弹奏。" : "当前音符已滚出视野，输入已暂停。",
-        { id: toastId, duration: 2000 }
-      );
+      toast.message(nextIsVisible ? visibleMessage : hiddenMessage, {
+        id: toastId,
+        duration: 2000,
+      });
     },
-    [enabled, onHidden, toastId, visibilityRef]
+    [enabled, hiddenMessage, onHidden, toastId, visibilityRef, visibleMessage]
   );
 
   return { isVisible, visibilityRef, onVisibilityChange, resetVisibility };

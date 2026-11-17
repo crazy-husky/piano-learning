@@ -4,6 +4,8 @@ import { useLocalStorageState } from "../../shared/hooks/useLocalStorageState";
 import {
   defaultBeatSounds,
   DEFAULT_METRONOME_PREFERENCES,
+  METRONOME_BPM_MAX,
+  METRONOME_BPM_MIN,
   normalizeBeatSounds,
   parseMetronomePreferences,
   METRONOME_PREFERENCES_KEY,
@@ -42,7 +44,7 @@ export interface MetronomeController {
   cycleBeatSound: (beatIndex: number) => void;
   setVolume: (value: number) => void;
   prepare: () => Promise<boolean>;
-  start: () => Promise<boolean>;
+  start: (options?: { initialBeatIndex?: number }) => Promise<boolean>;
   stop: () => void;
 }
 
@@ -84,7 +86,7 @@ export function useMetronomeController(): MetronomeController {
   const setBpm = useCallback(
     (value: number): void => {
       if (!Number.isFinite(value)) return;
-      const bpm = Math.round(Math.min(240, Math.max(30, value)));
+      const bpm = Math.round(Math.min(METRONOME_BPM_MAX, Math.max(METRONOME_BPM_MIN, value)));
       setPreferences((current) => (current.bpm === bpm ? current : { ...current, bpm }));
     },
     [setPreferences]
@@ -94,7 +96,7 @@ export function useMetronomeController(): MetronomeController {
     (amount: number): void => {
       setPreferences((current) => ({
         ...current,
-        bpm: Math.min(240, Math.max(30, current.bpm + amount)),
+        bpm: Math.min(METRONOME_BPM_MAX, Math.max(METRONOME_BPM_MIN, current.bpm + amount)),
       }));
     },
     [setPreferences]
@@ -196,69 +198,77 @@ export function useMetronomeController(): MetronomeController {
     }
   }, [loadSamples]);
 
-  const start = useCallback(async (): Promise<boolean> => {
-    if (isPlayingRef.current) return true;
-    if (isLoadingRef.current) return false;
-    const startToken = ++startTokenRef.current;
-    isLoadingRef.current = true;
-    setIsLoading(true);
-    setAudioError(null);
+  const start = useCallback(
+    async (options?: { initialBeatIndex?: number }): Promise<boolean> => {
+      if (isPlayingRef.current) return true;
+      if (isLoadingRef.current) return false;
+      const startToken = ++startTokenRef.current;
+      isLoadingRef.current = true;
+      setIsLoading(true);
+      setAudioError(null);
 
-    try {
-      await Tone.start();
-      if (startToken !== startTokenRef.current) return false;
-      await loadSamples();
-      if (startToken !== startTokenRef.current) return false;
-      Object.values(playersRef.current).forEach((player) => {
-        if (player) player.volume.value = volumeToDecibels(preferencesRef.current.volume);
-      });
-      beatIndexRef.current = 0;
+      try {
+        await Tone.start();
+        if (startToken !== startTokenRef.current) return false;
+        await loadSamples();
+        if (startToken !== startTokenRef.current) return false;
+        Object.values(playersRef.current).forEach((player) => {
+          if (player) player.volume.value = volumeToDecibels(preferencesRef.current.volume);
+        });
+        const beatsPerBar = preferencesRef.current.beatsPerBar;
+        const requestedBeatIndex = options?.initialBeatIndex;
+        beatIndexRef.current =
+          requestedBeatIndex !== undefined && Number.isFinite(requestedBeatIndex)
+            ? ((Math.trunc(requestedBeatIndex) % beatsPerBar) + beatsPerBar) % beatsPerBar
+            : 0;
 
-      const clock = new Tone.Clock((time) => {
-        if (!isPlayingRef.current) return;
-        const currentPreferences = preferencesRef.current;
-        const currentIndex = beatIndexRef.current % currentPreferences.beatsPerBar;
-        const sound = currentPreferences.beatSounds[currentIndex] ?? "woodfish2";
-        const currentPlayer = sound === "mute" ? undefined : playersRef.current[sound];
-        // Clock catches up ticks after a blocked main thread. Starting a sample
-        // at a past audio time plays it immediately and can bunch beats together.
-        const isTooLate = time < Tone.getContext().immediate() - LATE_BEAT_TOLERANCE_SECONDS;
-        const nextIndex = (currentIndex + 1) % currentPreferences.beatsPerBar;
-        if (isTooLate) {
-          // Keep the bar position in sync with Tone.Clock, but don't let stale
-          // ticks trigger visuals, merit pops, or synchronized-practice input.
+        const clock = new Tone.Clock((time) => {
+          if (!isPlayingRef.current) return;
+          const currentPreferences = preferencesRef.current;
+          const currentIndex = beatIndexRef.current % currentPreferences.beatsPerBar;
+          const sound = currentPreferences.beatSounds[currentIndex] ?? "woodfish2";
+          const currentPlayer = sound === "mute" ? undefined : playersRef.current[sound];
+          // Clock catches up ticks after a blocked main thread. Starting a sample
+          // at a past audio time plays it immediately and can bunch beats together.
+          const isTooLate = time < Tone.getContext().immediate() - LATE_BEAT_TOLERANCE_SECONDS;
+          const nextIndex = (currentIndex + 1) % currentPreferences.beatsPerBar;
+          if (isTooLate) {
+            // Keep the bar position in sync with Tone.Clock, but don't let stale
+            // ticks trigger visuals, merit pops, or synchronized-practice input.
+            beatIndexRef.current = nextIndex;
+            return;
+          }
+          if (currentPlayer && currentPreferences.volume > 0) {
+            currentPlayer.start(time);
+          }
+          const sequence = beatSequenceRef.current + 1;
+          beatSequenceRef.current = sequence;
+          const beatEvent: MetronomeBeatEvent = {
+            audioTime: time,
+            beatIndex: currentIndex,
+            beatsPerBar: currentPreferences.beatsPerBar,
+            bpm: currentPreferences.bpm,
+            sequence,
+          };
+          beatListenersRef.current.forEach((listener) => listener(beatEvent));
           beatIndexRef.current = nextIndex;
-          return;
-        }
-        if (currentPlayer && currentPreferences.volume > 0) {
-          currentPlayer.start(time);
-        }
-        const sequence = beatSequenceRef.current + 1;
-        beatSequenceRef.current = sequence;
-        const beatEvent: MetronomeBeatEvent = {
-          audioTime: time,
-          beatIndex: currentIndex,
-          beatsPerBar: currentPreferences.beatsPerBar,
-          bpm: currentPreferences.bpm,
-          sequence,
-        };
-        beatListenersRef.current.forEach((listener) => listener(beatEvent));
-        beatIndexRef.current = nextIndex;
-      }, preferencesRef.current.bpm / 60);
+        }, preferencesRef.current.bpm / 60);
 
-      clockRef.current = clock;
-      isPlayingRef.current = true;
-      setIsPlaying(true);
-      clock.start();
-      return true;
-    } catch (error) {
-      setAudioError(error instanceof Error ? error.message : "木鱼音效加载失败，请重试。");
-      return false;
-    } finally {
-      isLoadingRef.current = false;
-      setIsLoading(false);
-    }
-  }, [loadSamples]);
+        clockRef.current = clock;
+        isPlayingRef.current = true;
+        setIsPlaying(true);
+        clock.start();
+        return true;
+      } catch (error) {
+        setAudioError(error instanceof Error ? error.message : "木鱼音效加载失败，请重试。");
+        return false;
+      } finally {
+        isLoadingRef.current = false;
+        setIsLoading(false);
+      }
+    },
+    [loadSamples]
+  );
 
   const beatSequenceRef = useRef(0);
 

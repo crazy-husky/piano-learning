@@ -581,7 +581,7 @@
   left: 50%;
   width: min(370px, calc(100vw - 28px));
   max-height: calc(100dvh - 32px);
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, calc(-50% - var(--metronome-keyboard-lift, 0px)));
 }
 
 .metronome-dialog-window.is-minimized {
@@ -617,6 +617,7 @@
   justify-items: end;
   gap: 12px;
   pointer-events: none;
+  transform: translateY(calc(-1 * var(--metronome-keyboard-lift, 0px)));
 }
 
 .metronome-floating > * {
@@ -853,6 +854,31 @@
 
 .metronome-core-panel .metronome-page-bpm {
   font-size: 43px;
+  min-width: 3.25em;
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 5px 12px;
+  cursor: text;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.metronome-core-panel button.metronome-page-bpm:hover,
+.metronome-core-panel button.metronome-page-bpm:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+  outline: none;
+}
+
+.metronome-core-panel .metronome-page-bpm.metronome-tempo-input {
+  border-color: var(--accent);
+  background: var(--surface-soft);
 }
 
 .metronome-core-panel .metronome-tempo-slider-wrap {

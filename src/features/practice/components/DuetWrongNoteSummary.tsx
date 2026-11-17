@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
-import { Accidental, Formatter, GhostNote, StaveNote, Voice } from "vexflow";
+import { useMemo } from "react";
 import { getTargetMidiNoteNumber } from "../../../domain/answerInput";
 import { findNoteById } from "../../../domain/notes";
 import type {
@@ -9,30 +8,18 @@ import type {
   TargetNoteId,
   WrongAnswer,
 } from "../../../domain/types";
-import { useNightMode, getPageThemeColor } from "../../../shared/appearance/pageAppearance";
 import {
-  createStaffRenderSurface,
-  drawGrandStaff,
-  getFixedStaffFrame,
-  getGrandStaffAnchors,
-} from "../../../shared/staff/staffGeometry";
+  DuetStaffNotationGroup,
+  type DuetStaffNotationColumn,
+  type DuetStaffNotationNote,
+  type DuetStaffNoteTone,
+} from "./DuetStaffNotationGroup";
 
-type NoteTone = "danger" | "success" | "neutral";
+type NoteTone = DuetStaffNoteTone;
+type ScoreNote = DuetStaffNotationNote;
 
-interface ScoreNote {
-  accidental: "sharp" | "flat" | undefined;
-  count: number;
-  midi: number;
-  noteName: string;
-  octave: number;
-  staff: Staff;
-  tone: NoteTone;
-}
-
-interface ScoreColumn {
+interface ScoreColumn extends DuetStaffNotationColumn {
   errorCount: number;
-  key: string;
-  notes: ScoreNote[];
   occurrenceCount: number;
 }
 
@@ -85,11 +72,6 @@ function noteFromTarget(target: TargetNote, tone: NoteTone, count: number): Scor
     staff: target.staff,
     tone,
   };
-}
-
-function formatScoreNote(note: ScoreNote): string {
-  const accidental = note.accidental === "sharp" ? "♯" : note.accidental === "flat" ? "♭" : "";
-  return `${note.noteName}${accidental}${note.octave}`;
 }
 
 function targetIdsForReview(review: ReviewRecord): TargetNoteId[] {
@@ -332,204 +314,6 @@ function collectDuetWrongNoteGroups(reviews: readonly ReviewRecord[]): DuetWrong
   };
 }
 
-function makeVexKey(note: ScoreNote): string {
-  const accidental = note.accidental === "sharp" ? "#" : note.accidental === "flat" ? "b" : "";
-  return `${note.noteName.toLowerCase()}${accidental}/${note.octave}`;
-}
-
-function noteToneColor(
-  tone: NoteTone,
-  colors: { danger: string; ink: string; success: string }
-): string {
-  if (tone === "danger") return colors.danger;
-  if (tone === "success") return colors.success;
-  return colors.ink;
-}
-
-function makeStaffTickable(
-  notes: readonly ScoreNote[],
-  staff: Staff,
-  colors: { danger: string; ink: string; success: string }
-): StaveNote | GhostNote {
-  if (notes.length === 0) return new GhostNote("q");
-  const tickable = new StaveNote({
-    clef: staff,
-    duration: "q",
-    keys: notes.map(makeVexKey),
-  });
-  tickable.setLedgerLineStyle({ fillStyle: colors.ink, strokeStyle: colors.ink });
-  notes.forEach((note, index) => {
-    const color = noteToneColor(note.tone, colors);
-    tickable.setKeyStyle(index, { fillStyle: color, strokeStyle: color });
-    if (note.accidental) {
-      tickable.addModifier(new Accidental(note.accidental === "sharp" ? "#" : "b"), index);
-    }
-  });
-  return tickable;
-}
-
-function createCountLabel(
-  note: ScoreNote,
-  tickable: StaveNote,
-  noteIndex: number,
-  svg: SVGSVGElement,
-  colors: { danger: string; ink: string; success: string }
-): void {
-  if (note.count <= 1) return;
-  const noteHead = tickable.noteHeads[noteIndex];
-  const noteY = tickable.getYs()[noteIndex];
-  if (!noteHead || typeof noteY !== "number" || !Number.isFinite(noteY)) return;
-
-  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  const color = noteToneColor(note.tone, colors);
-  label.setAttribute("class", "duet-wrong-note-count");
-  label.setAttribute("text-anchor", "start");
-  label.setAttribute("x", (noteHead.getAbsoluteX() + noteHead.getWidth() + 5).toFixed(2));
-  label.setAttribute("y", (noteY + 4).toFixed(2));
-  label.setAttribute("fill", color);
-  label.setAttribute("stroke", "none");
-  label.textContent = `×${note.count}`;
-  svg.appendChild(label);
-}
-
-function GrandStaffGroup({
-  columns,
-  label,
-}: {
-  columns: readonly ScoreColumn[];
-  label: string;
-}): JSX.Element {
-  const staffFrameRef = useRef<HTMLDivElement | null>(null);
-  const rendererTargetRef = useRef<HTMLDivElement | null>(null);
-  const isNightMode = useNightMode();
-  const ariaLabel = useMemo(
-    () =>
-      columns
-        .flatMap((column) =>
-          column.notes.map(
-            (note) =>
-              `${formatScoreNote(note)} ${note.tone === "success" ? "正确" : note.tone === "danger" ? "错误" : "未作答"}${note.count > 1 ? ` ×${note.count}` : ""}`
-          )
-        )
-        .join("、"),
-    [columns]
-  );
-
-  useEffect(() => {
-    const staffFrame = staffFrameRef.current;
-    const rendererTarget = rendererTargetRef.current;
-    if (!staffFrame || !rendererTarget) return undefined;
-
-    let renderFrame = 0;
-    const render = (): void => {
-      const measuredWidth = Math.floor(staffFrame.clientWidth);
-      if (measuredWidth <= 0) return;
-
-      const width = Math.max(measuredWidth, 190 + columns.length * 92);
-      const height = 280;
-      rendererTarget.replaceChildren();
-      const surface = createStaffRenderSurface(rendererTarget, width, height);
-      const { context, svg } = surface;
-      const frame = getFixedStaffFrame(surface, 14);
-      const anchors = getGrandStaffAnchors(surface.scale, 112, 96);
-      const { bass, treble } = drawGrandStaff(context, frame, anchors, {
-        brace: true,
-        showRightConnector: true,
-      });
-      const colors = {
-        danger: getPageThemeColor("--danger", "#c84c3d"),
-        ink: getPageThemeColor("--notation-ink", "#211c18"),
-        success: getPageThemeColor("--success", "#2f8f58"),
-      };
-      const trebleTickables = columns.map((column) =>
-        makeStaffTickable(
-          column.notes.filter((note) => note.staff === "treble"),
-          "treble",
-          colors
-        )
-      );
-      const bassTickables = columns.map((column) =>
-        makeStaffTickable(
-          column.notes.filter((note) => note.staff === "bass"),
-          "bass",
-          colors
-        )
-      );
-      const voiceOptions = { beatValue: 4, numBeats: Math.max(1, columns.length) };
-      const trebleVoice = new Voice(voiceOptions).setStrict(false).addTickables(trebleTickables);
-      const bassVoice = new Voice(voiceOptions).setStrict(false).addTickables(bassTickables);
-      const noteStartX = frame.x + 84;
-      treble.setNoteStartX(noteStartX);
-      bass.setNoteStartX(noteStartX);
-      treble.setWidth(Math.max(1, frame.staveWidth - 84));
-      bass.setWidth(Math.max(1, frame.staveWidth - 84));
-      new Formatter()
-        .joinVoices([trebleVoice, bassVoice])
-        .formatToStave([trebleVoice, bassVoice], treble, { context, stave: treble });
-      trebleVoice.draw(context, treble);
-      bassVoice.draw(context, bass);
-
-      columns.forEach((column, columnIndex) => {
-        const trebleTickable = trebleTickables[columnIndex];
-        const bassTickable = bassTickables[columnIndex];
-        if (trebleTickable instanceof StaveNote) {
-          column.notes
-            .filter((note) => note.staff === "treble")
-            .forEach((note, noteIndex) =>
-              createCountLabel(note, trebleTickable, noteIndex, svg, colors)
-            );
-        }
-        if (bassTickable instanceof StaveNote) {
-          column.notes
-            .filter((note) => note.staff === "bass")
-            .forEach((note, noteIndex) =>
-              createCountLabel(note, bassTickable, noteIndex, svg, colors)
-            );
-        }
-      });
-
-      const noteYs = [...trebleTickables, ...bassTickables]
-        .filter((tickable): tickable is StaveNote => tickable instanceof StaveNote)
-        .flatMap((tickable) => tickable.getYs().filter((y) => Number.isFinite(y)));
-      const minimumY = Math.min(treble.getYForLine(0) - 28, ...noteYs.map((y) => y - 26));
-      const maximumY = Math.max(bass.getYForLine(4) + 28, ...noteYs.map((y) => y + 24));
-      const renderedHeight = Math.max(1, Math.ceil(maximumY - minimumY));
-      svg.setAttribute("viewBox", `0 ${minimumY} ${width} ${renderedHeight}`);
-      svg.setAttribute("width", String(width));
-      svg.setAttribute("height", String(renderedHeight));
-      svg.setAttribute("role", "img");
-      svg.setAttribute("aria-label", ariaLabel);
-      svg.setAttribute("focusable", "false");
-    };
-    const scheduleRender = (): void => {
-      if (renderFrame !== 0) return;
-      renderFrame = window.requestAnimationFrame(() => {
-        renderFrame = 0;
-        render();
-      });
-    };
-
-    render();
-    const observer = new ResizeObserver(scheduleRender);
-    observer.observe(staffFrame);
-    return () => {
-      window.cancelAnimationFrame(renderFrame);
-      observer.disconnect();
-    };
-  }, [ariaLabel, columns, isNightMode]);
-
-  return (
-    <section className="practice-wrong-note-staff-section duet-wrong-note-group">
-      <h3>{label}</h3>
-      <div className="practice-wrong-note-staff-scroll">
-        <div className="practice-wrong-note-staff" ref={staffFrameRef}>
-          <div className="practice-wrong-note-staff-renderer" ref={rendererTargetRef} />
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export function DuetWrongNoteSummary({
   reviews,
 }: {
@@ -550,9 +334,11 @@ export function DuetWrongNoteSummary({
         <p className="practice-wrong-note-empty">本次没有错音或漏音。</p>
       ) : (
         <div className="practice-wrong-note-content">
-          {singles.length > 0 ? <GrandStaffGroup columns={singles} label="单音" /> : null}
+          {singles.length > 0 ? (
+            <DuetStaffNotationGroup columns={singles} compactColumns label="单音" />
+          ) : null}
           {simultaneous.length > 0 ? (
-            <GrandStaffGroup columns={simultaneous} label="双音合弹" />
+            <DuetStaffNotationGroup columns={simultaneous} label="双音合弹" />
           ) : null}
           {unknown.size > 0 ? (
             <p className="practice-wrong-note-unknown">

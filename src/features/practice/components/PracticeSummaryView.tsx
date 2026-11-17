@@ -10,6 +10,7 @@ import type {
 } from "../../../domain/sessionProgress";
 import type { TargetNoteId } from "../../../domain/types";
 import type { PracticeSessionSummary } from "../hooks/usePracticeSessionState";
+import { DuetPerformanceRanking } from "./DuetPerformanceRanking";
 import { DuetPracticeSummary } from "./DuetPracticeSummary";
 import { DuetWrongNoteSummary } from "./DuetWrongNoteSummary";
 import { PracticeWrongNoteSummary } from "./PracticeWrongNoteSummary";
@@ -190,7 +191,10 @@ export function PracticeSummaryView({
           </>
         )}
         {isDuetSummary ? (
-          <DuetWrongNoteSummary reviews={summary.reviews} />
+          <>
+            <DuetPerformanceRanking reviews={summary.reviews} />
+            <DuetWrongNoteSummary reviews={summary.reviews} />
+          </>
         ) : (
           <PracticeWrongNoteSummary reviews={summary.reviews} />
         )}

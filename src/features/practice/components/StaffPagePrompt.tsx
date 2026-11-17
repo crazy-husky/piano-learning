@@ -719,6 +719,16 @@ function setEllipsePoint(
   ellipse.setAttribute("ry", (point.ry + paddingY).toFixed(2));
 }
 
+function getContiguousMeasureNumbers(measures: readonly (number | undefined)[]): number[] {
+  const definedMeasures = measures
+    .filter((measure): measure is number => measure !== undefined && Number.isFinite(measure))
+    .map((measure) => Math.floor(measure));
+  if (definedMeasures.length === 0) return [];
+  const firstMeasure = Math.min(...definedMeasures);
+  const lastMeasure = Math.max(...definedMeasures);
+  return Array.from({ length: lastMeasure - firstMeasure + 1 }, (_, index) => firstMeasure + index);
+}
+
 function playbackEventKey(rowIndex: number, eventIndices: readonly number[]): string {
   return `${rowIndex}:${eventIndices.join(",")}`;
 }
@@ -1059,10 +1069,12 @@ function expandTiedDurations(
     if (
       noteOnsets &&
       noteGroup.length === 0 &&
-      (!monophonicGrandStaff || (noteOnset !== undefined && noteOnset < cursorBeat - 0.001))
+      (showGrandStaffRests ||
+        !monophonicGrandStaff ||
+        (noteOnset !== undefined && noteOnset < cursorBeat - 0.001))
     ) {
-      // A sustained note already occupies this beat. Adding an invisible
-      // placeholder here would still advance the voice and shift later notes.
+      // Let the next real note create a rest for the full elapsed gap. Per-event
+      // placeholders can use the other staff's duration and shift this voice.
       return;
     }
     if (noteOnsets && noteOnset !== undefined && noteOnset > cursorBeat + 0.001) {
@@ -1221,11 +1233,16 @@ function addStaffProgressMarker(
   type: "practice" | "playback",
   width: number,
   beatRange?: { endBeat: number; startBeat: number },
-  alignPracticeProgressMarkerToNote = false
+  alignPracticeProgressMarkerToNote = false,
+  centerPracticeMarkerOnAnchor = false
 ): void {
   const marker = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   const offset =
-    type === "playback" ? width * 0.22 : alignPracticeProgressMarkerToNote ? 0 : -width * 0.22;
+    type === "playback"
+      ? width * 0.22
+      : alignPracticeProgressMarkerToNote || centerPracticeMarkerOnAnchor
+        ? 0
+        : -width * 0.22;
   marker.setAttribute("class", `staff-page-progress-marker is-${type}`);
   marker.setAttribute("data-staff-progress-marker", "");
   marker.setAttribute("data-progress-type", type);
@@ -1761,8 +1778,10 @@ function alignTickablesToMeasureColumns(
       effectiveDisplayScale
     );
     if (targetCenter === undefined) return;
+    // Notes and rests need the same absolute SVG coordinate basis. TickContext
+    // X alone is relative to the stave start and shifts rest-only contexts.
     const representative = [...tickContext.getTickables()].find(
-      (tickable): tickable is StaveNote => tickable instanceof StaveNote && !tickable.isRest()
+      (tickable): tickable is StaveNote => tickable instanceof StaveNote
     );
     const currentCenter = representative ? staveNoteCenterX(representative) : tickContext.getX();
     tickContext.setX(tickContext.getX() + targetCenter - currentCenter);
@@ -2065,13 +2084,9 @@ export function StaffPagePrompt({
 
     return rows.reduce((widestRowWidthPx, rowGroups, rowIndex) => {
       const rowStartIndex = rowStartIndices[rowIndex] ?? rowIndex * notesPerRow;
-      const rowMeasureNumbers = [
-        ...new Set(
-          noteMeasures
-            ?.slice(rowStartIndex, rowStartIndex + rowGroups.length)
-            .filter((measure): measure is number => measure !== undefined)
-        ),
-      ];
+      const rowMeasureNumbers = getContiguousMeasureNumbers(
+        noteMeasures?.slice(rowStartIndex, rowStartIndex + rowGroups.length) ?? []
+      );
       const rowMeasureWidths = getStaffPageMeasureWidthsPx(
         noteMeasures?.slice(rowStartIndex, rowStartIndex + rowGroups.length) ?? [],
         noteOnsets?.slice(rowStartIndex, rowStartIndex + rowGroups.length),
@@ -2707,13 +2722,9 @@ export function StaffPagePrompt({
             (_, slotIndex) => rowGroups[slotIndex] ?? []
           );
           const rowSlots = visibleRowGroups.map((group) => group[0]);
-          const rowMeasureNumbers = [
-            ...new Set(
-              noteMeasures
-                ?.slice(rowStartIndex, rowStartIndex + rowGroups.length)
-                .filter((measure): measure is number => measure !== undefined)
-            ),
-          ];
+          const rowMeasureNumbers = getContiguousMeasureNumbers(
+            noteMeasures?.slice(rowStartIndex, rowStartIndex + rowGroups.length) ?? []
+          );
           const defaultEventsPerMeasure = Math.max(
             1,
             Math.round(4 / getQuarterNoteBeats(noteDuration))
@@ -2908,18 +2919,7 @@ export function StaffPagePrompt({
                       durations[slotIndex]!,
                       (target) => getColor(slotIndex, staff, getTargetMidiNoteNumber(target))
                     ).setStave(stave)
-                  : showGrandStaffRests
-                    ? makeStaveRest(
-                        durations[slotIndex]!,
-                        staff,
-                        stave,
-                        durations[slotIndex] === "triplet-eighth" ||
-                          durations[slotIndex] === "triplet-half"
-                          ? [2, 3]
-                          : undefined,
-                        palette.ink
-                      )
-                    : makeStaffGhostNote(durations[slotIndex]!).setStave(stave)
+                  : makeStaffGhostNote(durations[slotIndex]!).setStave(stave)
               );
             const trebleTickables = makeStaffTickables(
               trebleGroups,
@@ -3030,9 +3030,10 @@ export function StaffPagePrompt({
             const ticksPerQuarter = new Voice({ numBeats: 1, beatValue: 4 })
               .getTotalTicks()
               .value();
-            const isFiniteFinalRow = isFiniteScore && rowIndex === rows.length - 1;
+            // Keep the final partial measure on the same 4/4 grid as earlier
+            // measures; these trailing rests are visual and add no answer targets.
             const measureAlignedEndBeat =
-              showGrandStaffRests && beatsPerMeasure && !isFiniteFinalRow
+              showGrandStaffRests && beatsPerMeasure
                 ? getMeasureAlignedEndBeat(rowOnsets ?? [], beatsPerMeasure)
                 : undefined;
             const targetVoiceTicks =
@@ -3469,27 +3470,9 @@ export function StaffPagePrompt({
                       startBeat + quarterBeatsForDuration(rowSelectedDurations[slotIndex]!),
                       rowEndBeat
                     );
-              const noteheadCenterX =
+              const markerX =
                 staveNotes.reduce((total, staveNote) => total + staveNoteCenterX(staveNote), 0) /
                 staveNotes.length;
-              // In pre-reading, the moving beat marker is the user's visual anchor,
-              // so keep it on the actual notehead instead of interpolating by beat.
-              const alignedBeatX =
-                !alignPracticeProgressMarkerToNote &&
-                keepMeasuresTogether &&
-                beatsPerMeasure &&
-                rowMeasureCount > 0
-                  ? getMeasureAlignedBeatX(
-                      startBeat,
-                      rowStartBeat,
-                      beatsPerMeasure,
-                      rowMeasureCount,
-                      noteArea,
-                      adaptiveWidthLayout ? fittedMeasureWidthsInSvgUnits : undefined,
-                      surface.scale * renderedScale
-                    )
-                  : undefined;
-              const markerX = alignedBeatX ?? noteheadCenterX;
               addStaffProgressMarker(
                 rowGroup,
                 noteIndex,
@@ -3499,7 +3482,8 @@ export function StaffPagePrompt({
                 "practice",
                 logicalPx(14, surface.scale),
                 { startBeat, endBeat: Math.max(startBeat + 0.001, endBeat) },
-                alignPracticeProgressMarkerToNote
+                alignPracticeProgressMarkerToNote,
+                true
               );
             });
           } else if (timedStaveNotes.length > 0) {
@@ -3535,7 +3519,8 @@ export function StaffPagePrompt({
                 "practice",
                 logicalPx(14, surface.scale),
                 { startBeat, endBeat: Math.max(startBeat + 0.001, nextStartBeat) },
-                alignPracticeProgressMarkerToNote
+                alignPracticeProgressMarkerToNote,
+                true
               );
             });
           }
@@ -3565,7 +3550,8 @@ export function StaffPagePrompt({
                 startBeat !== undefined && endBeat !== undefined
                   ? { startBeat, endBeat }
                   : undefined,
-                alignPracticeProgressMarkerToNote
+                alignPracticeProgressMarkerToNote,
+                true
               );
             }
             addStaffProgressMarker(

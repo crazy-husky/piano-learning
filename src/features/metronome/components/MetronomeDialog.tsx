@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { MetronomeController } from "../useMetronomeController";
 import { useDraggableMetronomeFloating } from "../useDraggableMetronomeFloating";
+import { useMetronomeTempoInputViewportLift } from "../useMetronomeTempoInputViewportLift";
 import { MetronomeCore } from "./MetronomeCore";
 
 const DIALOG_POSITION_KEY = "anki-note.metronomeDialogPosition";
@@ -14,17 +15,24 @@ export function MetronomeDialog({
   onClose: () => void;
 }): JSX.Element {
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isTempoEditing, setIsTempoEditing] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const stopMetronome = controller.stop;
   const dragHandlers = useDraggableMetronomeFloating({
     rootRef: dialogRef,
-    enabled: true,
+    enabled: !isTempoEditing,
     expanded: !isMinimized,
     initialPosition: "center",
     onLongPress: () => undefined,
     positionKey: isMinimized ? DIALOG_COMPACT_POSITION_KEY : DIALOG_POSITION_KEY,
     fallbackPositionKey: DIALOG_POSITION_KEY,
   });
+  const keyboardLiftPx = useMetronomeTempoInputViewportLift(dialogRef, isTempoEditing);
+  const dialogStyle = {
+    ...dragHandlers.style,
+    "--metronome-keyboard-lift": `${keyboardLiftPx}px`,
+    ...(dragHandlers.style ? { transform: `translateY(-${keyboardLiftPx}px)` } : {}),
+  } as CSSProperties;
 
   useEffect(() => {
     if (isMinimized) return undefined;
@@ -79,13 +87,14 @@ export function MetronomeDialog({
         onPointerMove={dragHandlers.onPointerMove}
         onPointerUp={dragHandlers.onPointerUp}
         ref={dialogRef}
-        style={dragHandlers.style}
+        style={dialogStyle}
       >
         {isMinimized ? (
           <MetronomeCore
             controller={controller}
             onClose={onClose}
             onExpand={() => setIsMinimized(false)}
+            onTempoEditingChange={setIsTempoEditing}
             variant="compact"
           />
         ) : (
@@ -99,6 +108,7 @@ export function MetronomeDialog({
               controller={controller}
               onClose={onClose}
               onMinimize={minimize}
+              onTempoEditingChange={setIsTempoEditing}
               variant="panel"
             />
           </section>

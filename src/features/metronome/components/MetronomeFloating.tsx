@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import type { MetronomeController } from "../useMetronomeController";
 import { useDraggableMetronomeFloating } from "../useDraggableMetronomeFloating";
 import { METRONOME_HIDDEN_UNTIL_KEY } from "../metronomeVisibility";
+import { useMetronomeTempoInputViewportLift } from "../useMetronomeTempoInputViewportLift";
 import { MetronomeCore } from "./MetronomeCore";
 import { WoodfishIllustration } from "./WoodfishIllustration";
 
@@ -181,7 +182,7 @@ export function MetronomeFloating({
 
   const dragHandlers = useDraggableMetronomeFloating({
     rootRef,
-    enabled: isVisible,
+    enabled: isVisible && !isTempoEditing,
     expanded: isExpanded || isCompact,
     onLongPress: openMenu,
     positionKey: isExpanded
@@ -191,6 +192,7 @@ export function MetronomeFloating({
         : FLOATING_ICON_POSITION_KEY,
     fallbackPositionKey: FLOATING_PANEL_POSITION_KEY,
   });
+  const keyboardLiftPx = useMetronomeTempoInputViewportLift(rootRef, isTempoEditing);
   const snapToNearestHorizontalEdge = dragHandlers.snapToNearestHorizontalEdge;
 
   useEffect(() => {
@@ -222,6 +224,8 @@ export function MetronomeFloating({
   const floatingStyle = {
     ...dragHandlers.style,
     "--mini-dock-offset-x": `${miniDockOffsetX}px`,
+    "--metronome-keyboard-lift": `${keyboardLiftPx}px`,
+    ...(dragHandlers.style ? { transform: `translateY(-${keyboardLiftPx}px)` } : {}),
   } as CSSProperties;
 
   useEffect(() => {
@@ -402,6 +406,7 @@ export function MetronomeFloating({
         <MetronomeCore
           controller={controller}
           onSynchronizedToggle={onSyncPauseToggle}
+          onTempoEditingChange={setIsTempoEditing}
           onStarted={returnExpandedPanelToCompactBar}
           onMinimize={returnExpandedPanelToCompactBar}
           onOpenMenu={toggleMenu}

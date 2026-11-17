@@ -637,6 +637,40 @@
   padding-top: 15px;
 }
 
+.duet-wrong-note-test-starting {
+  box-sizing: border-box;
+  min-height: calc(100dvh - 32px);
+  place-items: center;
+  text-align: center;
+}
+
+.duet-wrong-note-test-starting-content {
+  width: min(100%, 520px);
+  display: grid;
+  justify-items: center;
+  gap: clamp(16px, 3vh, 24px);
+}
+
+.duet-wrong-note-test-starting-content p {
+  min-height: 24px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.duet-wrong-note-test-starting-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.duet-wrong-note-test-starting-actions > button {
+  min-width: 124px;
+  min-height: 44px;
+  padding-inline: 18px;
+}
+
 .practice-session-header {
   position: sticky;
   top: 15px;

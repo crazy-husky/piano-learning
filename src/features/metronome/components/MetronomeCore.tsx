@@ -10,7 +10,11 @@ import {
   type WheelEvent,
 } from "react";
 import type { MetronomeController } from "../useMetronomeController";
-import type { MetronomeBeatSound } from "../metronomePreferences";
+import {
+  METRONOME_BPM_MAX,
+  METRONOME_BPM_MIN,
+  type MetronomeBeatSound,
+} from "../metronomePreferences";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { WoodfishIllustration } from "./WoodfishIllustration";
 
@@ -37,8 +41,8 @@ interface MetronomeCoreProps {
   variant: MetronomeCoreVariant;
 }
 
-const TEMPO_MIN = 30;
-const TEMPO_MAX = 240;
+const TEMPO_MIN = METRONOME_BPM_MIN;
+const TEMPO_MAX = METRONOME_BPM_MAX;
 const TEMPO_PRESETS = [40, 50, 60, 90, 120, 150] as const;
 const MERIT_POP_MAX_RATE_INTERVAL_MS = 500;
 const MERIT_POP_MAX_RATE_INTERVAL_SECONDS = MERIT_POP_MAX_RATE_INTERVAL_MS / 1000;
@@ -103,6 +107,7 @@ function TempoValue({
     <input
       aria-label="每分钟节拍数 BPM"
       className={`${className} metronome-tempo-input`}
+      data-mobile-input-visibility-managed={onEditingChange ? "true" : undefined}
       inputMode="numeric"
       max={TEMPO_MAX}
       min={TEMPO_MIN}

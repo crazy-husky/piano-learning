@@ -246,6 +246,9 @@ export function App({
   useEffect(() => installMobileTextInputAutoScroll(), []);
   const appUpdateController = useAppUpdateNotice();
   const midi = useMidiInput();
+  const [duetWrongNoteTestPlan, setDuetWrongNoteTestPlan] = useState<DuetWrongNoteTestPlan | null>(
+    null
+  );
   const previousMidiStatusRef = useRef({
     initialized: false,
     inputId: midi.selectedInputId,
@@ -261,7 +264,9 @@ export function App({
       status: midi.status,
     };
 
-    if (previous.initialized) {
+    const waitingForMidiInDuetWrongNoteTest = duetWrongNoteTestPlan !== null && !midi.isConnected;
+
+    if (previous.initialized && !waitingForMidiInDuetWrongNoteTest) {
       if (!previous.isConnected && next.isConnected) {
         const name = midi.selectedInput?.name;
         toast.success(name ? `MIDI 已连接：${name}` : "MIDI 已连接", {
@@ -306,6 +311,7 @@ export function App({
     midi.selectedInput?.name,
     midi.selectedInputId,
     midi.status,
+    duetWrongNoteTestPlan,
   ]);
 
   useEffect(() => {
@@ -326,9 +332,6 @@ export function App({
   }, []);
 
   const [route, setRoute] = useState<AppRoute>(() => appRouteFromHash(window.location.hash));
-  const [duetWrongNoteTestPlan, setDuetWrongNoteTestPlan] = useState<DuetWrongNoteTestPlan | null>(
-    null
-  );
   useEffect(() => {
     if (duetWrongNoteTestPlan && !(route.levelId === 6 && route.moduleTab === "practice")) {
       setDuetWrongNoteTestPlan(null);
