@@ -207,6 +207,8 @@ interface PendingDuetHandPair {
   prompt: PromptRuntime;
   firstStaff: Staff;
   firstInputAtMs: number;
+  wrongStaves: Set<Staff>;
+  hasUnknownWrong: boolean;
   timeoutId: number | null;
 }
 
@@ -387,6 +389,38 @@ function getDuetPairHint(firstStaff: Staff, lateStaff?: Staff): DuetHintContent 
   return missingStaff === "bass"
     ? { key: "missed:bass", message: "左手漏弹，请与右手同时下键" }
     : { key: "missed:treble", message: "右手漏弹，请与左手同时下键" };
+}
+
+function getDuetWrongHint(
+  staves: readonly Staff[],
+  hasUnknownWrong: boolean
+): DuetHintContent | null {
+  if (hasUnknownWrong) {
+    return { key: "wrong:unknown", message: "音符不对，请检查当前谱面目标" };
+  }
+  const hands = [...new Set(staves)].sort();
+  if (hands.length === 0) return null;
+  const handKey = hands.join("-");
+  const message =
+    hands.length > 1
+      ? "左右手音符不对，请检查两手"
+      : hands[0] === "bass"
+        ? "左手音符不对，请检查左手"
+        : "右手音符不对，请检查右手";
+  return { key: `wrong:${handKey}`, message };
+}
+
+function combineDuetPairHint(
+  pairHint: DuetHintContent,
+  wrongStaves: readonly Staff[],
+  hasUnknownWrong: boolean
+): DuetHintContent {
+  const wrongHint = getDuetWrongHint(wrongStaves, hasUnknownWrong);
+  if (!wrongHint) return pairHint;
+  return {
+    key: `combined:${wrongHint.key}:${pairHint.key}`,
+    message: `${wrongHint.message.split("，")[0]}；${pairHint.message}`,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -3142,6 +3176,13 @@ export function PracticeView({
   }, []);
   const queueDuetWrongHint = useCallback(
     (prompt: PromptRuntime, staff: Staff | null): void => {
+      const pendingPair = pendingDuetHandPairRef.current;
+      if (pendingPair?.prompt === prompt) {
+        if (staff) pendingPair.wrongStaves.add(staff);
+        else pendingPair.hasUnknownWrong = true;
+        return;
+      }
+
       if (!staff) {
         showDuetHint(prompt, "wrong:unknown", "音符不对，请检查当前谱面目标");
         return;
@@ -3164,14 +3205,8 @@ export function PracticeView({
         }
         const hands = [...batch.hands].sort();
         batch.hands.clear();
-        const handKey = hands.join("-");
-        const message =
-          hands.length > 1
-            ? "左右手音符不对，请检查两手"
-            : hands[0] === "bass"
-              ? "左手音符不对，请检查左手"
-              : "右手音符不对，请检查右手";
-        showDuetHint(prompt, `wrong:${handKey}`, message);
+        const hint = getDuetWrongHint(hands, false);
+        if (hint) showDuetHint(prompt, hint.key, hint.message);
       }, 100);
     },
     [showDuetHint]
@@ -3204,7 +3239,12 @@ export function PracticeView({
         pendingDuetHandPairRef.current = null;
         acceptedDuetHandPairPromptRef.current = null;
         const hint = getDuetPairHint(pending.firstStaff);
-        showDuetHint(pending.prompt, hint.key, hint.message);
+        const combinedHint = combineDuetPairHint(
+          hint,
+          [...pending.wrongStaves],
+          pending.hasUnknownWrong
+        );
+        showDuetHint(pending.prompt, combinedHint.key, combinedHint.message);
       }, DUET_HAND_SIMULTANEITY_WINDOW_MS + DUET_HAND_SIMULTANEITY_TIMER_GRACE_MS);
     },
     [resetIncompleteDuetHandPair, showDuetHint]
@@ -3289,6 +3329,8 @@ export function PracticeView({
             const elapsedMs = Math.abs(inputAtMs - pending.firstInputAtMs);
             if (elapsedMs > DUET_HAND_SIMULTANEITY_WINDOW_MS) {
               const firstStaff = pending.firstStaff;
+              const wrongStaves = [...pending.wrongStaves];
+              const hasUnknownWrong = pending.hasUnknownWrong;
               if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
               resetIncompleteDuetHandPair(currentPrompt);
               pendingDuetHandPairRef.current = null;
@@ -3298,12 +3340,17 @@ export function PracticeView({
                 firstStaff,
                 matchedStaff !== firstStaff ? matchedStaff : undefined
               );
-              showDuetHint(currentPrompt, hint.key, hint.message);
+              const combinedHint = combineDuetPairHint(hint, wrongStaves, hasUnknownWrong);
+              showDuetHint(currentPrompt, combinedHint.key, combinedHint.message);
               return;
             } else if (matchedStaff !== pending.firstStaff) {
+              const wrongHint = getDuetWrongHint([...pending.wrongStaves], pending.hasUnknownWrong);
               if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
               pendingDuetHandPairRef.current = null;
               acceptedDuetHandPairPromptRef.current = currentPrompt;
+              if (wrongHint) {
+                showDuetHint(currentPrompt, wrongHint.key, wrongHint.message);
+              }
             }
           }
 
@@ -3315,6 +3362,8 @@ export function PracticeView({
               prompt: currentPrompt,
               firstStaff: matchedStaff,
               firstInputAtMs: inputAtMs,
+              wrongStaves: new Set(),
+              hasUnknownWrong: false,
               timeoutId: null,
             };
             pendingDuetHandPairRef.current = nextPending;
