@@ -34,7 +34,11 @@ import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { isNaturalPianoKey } from "../../../shared/components/pianoKeyNames";
 import { PRACTICE_STAFF_REFERENCE_NOTE_COLUMN_WIDTH_PX } from "../../../shared/staff/staffLayoutProfiles";
 import { PracticeFullscreenToggle } from "./PracticeFullscreenFrame";
-import { PracticeSessionFrame, PracticeSessionHeader } from "./PracticeSessionFrame";
+import {
+  formatPracticeQuestionProgress,
+  PracticeSessionFrame,
+  PracticeSessionHeader,
+} from "./PracticeSessionFrame";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { PauseOverlay } from "../../../shared/components/PauseOverlay";
@@ -1079,12 +1083,7 @@ export function StaffDistanceFingerRun({
     >
       <PracticeSessionHeader
         title="音距速推 · 单指专项"
-        progress={
-          <>
-            {handLabel} · {fingerNumber} 指 · {batchLabel} · 第 {cardNumber} / {FINGER_CARD_COUNT}{" "}
-            张
-          </>
-        }
+        progress={formatPracticeQuestionProgress(cardIndex, FINGER_CARD_COUNT)}
         exitAriaLabel="结束练习并返回配置"
         onExit={() => void finish("manual-stop", false)}
         onPauseToggle={() => void togglePause()}

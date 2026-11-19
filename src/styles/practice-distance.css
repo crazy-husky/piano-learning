@@ -8,6 +8,10 @@
   min-width: 0;
 }
 
+.staff-distance-page.is-learning-module-practice .staff-distance-mode-tabs {
+  margin-top: 0;
+}
+
 .staff-distance-description,
 .staff-distance-field-hint,
 .staff-distance-summary-next-step {
@@ -36,6 +40,9 @@
 }
 
 .staff-distance-mode-panel {
+  display: grid;
+  align-content: start;
+  gap: 16px;
   min-width: 0;
 }
 

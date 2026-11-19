@@ -134,7 +134,11 @@ export function StaffPrompt({
             : system.bass
           : system.stave;
       const { noteArea } = system;
-      const noteCenter = getEvenlySpacedCenters(1, noteArea.left, noteArea.right);
+      const noteCenter = getEvenlySpacedCenters(
+        1,
+        targetStave.getX(),
+        targetStave.getX() + targetStave.getWidth()
+      );
       const drawNote = (targetNote: TargetNote, color: string): void => {
         const staveNote = makePromptNote(targetNote, noteDuration, color, showAccidental).setStave(
           targetStave

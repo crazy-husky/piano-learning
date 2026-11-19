@@ -127,6 +127,9 @@ export function evaluateLearningProgress({
   const preReading = answerEvents.filter((event) => event.mode === "pre-reading");
   const duetEvents = answerEvents.filter(isDuetEvent);
   const blindPracticeEvents = answerEvents.filter((event) => event.mode === "blind-practice");
+  const chordTrainingEvents = answerEvents.filter(
+    (event) => event.mode === "chord-training" && event.learningLevelId === 8
+  );
   const staffRecallCriteria = getGraduationCriteria(1, "staff-recall");
   const staffRecallTarget = staffRecallCriteria.completedRuns;
   const matchingRecallRuns = [...new Set(staffRecallRuns.map(getStaffRecallTargetNoteSetKey))]
@@ -211,6 +214,12 @@ export function evaluateLearningProgress({
     blindPracticeCriteria.sampleCount,
     blindPracticeCriteria.minFirstTryAccuracy
   );
+  const chordCriteria = getGraduationCriteria(8, "chord-training");
+  const levelEightMastered = isWithinCriteria(
+    chordTrainingEvents,
+    chordCriteria.sampleCount,
+    chordCriteria.minFirstTryAccuracy
+  );
 
   const activityByLevel = [
     levelOneActivity,
@@ -220,6 +229,7 @@ export function evaluateLearningProgress({
     preReading.length > 0,
     duetEvents.length > 0,
     blindPracticeEvents.length > 0,
+    chordTrainingEvents.length > 0,
   ];
   const masteredByLevel = [
     levelOneMastered,
@@ -229,6 +239,7 @@ export function evaluateLearningProgress({
     levelFiveMastered,
     levelSixMastered,
     levelSevenMastered,
+    levelEightMastered,
   ];
   const sampleCount = (events: readonly AnswerEvent[]): number =>
     events.filter(isPracticeSample).length;
@@ -250,10 +261,11 @@ export function evaluateLearningProgress({
       .join(" · ") + `（首次答对需 ${formatPercent(preReadingAccuracyTarget)}）`,
     `${duetLevels.filter((level) => isWithinCriteria(duetByLevel.get(level) ?? [], duetTarget, duetAccuracyTarget)).length}/${duetLevels.length} 个难度达标`,
     `${countProgress(blindPracticeEvents, blindPracticeCriteria.sampleCount)} 题 · 首次答对 ${formatPercent(firstTryAccuracy(blindPracticeEvents))}（需 ${formatPercent(blindPracticeCriteria.minFirstTryAccuracy)}）`,
+    `${countProgress(chordTrainingEvents, chordCriteria.sampleCount)} 组 · 首次答对 ${formatPercent(firstTryAccuracy(chordTrainingEvents))}（需 ${formatPercent(chordCriteria.minFirstTryAccuracy)}）`,
   ];
 
   const result = {} as Record<LearningLevelId, LearningProgressSummary>;
-  for (let index = 0; index < 7; index += 1) {
+  for (let index = 0; index < 8; index += 1) {
     const level = (index + 1) as LearningLevelId;
     const status = masteredByLevel[index]
       ? "mastered"

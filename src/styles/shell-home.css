@@ -655,6 +655,7 @@
 }
 
 @media (min-width: 821px) {
+  .learning-module-header,
   .learning-module-tabs,
   .learning-module-panel {
     width: calc(100% - 56px);

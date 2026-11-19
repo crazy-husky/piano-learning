@@ -130,6 +130,7 @@ interface DistanceFocus {
 interface StaffDistancePracticeViewProps {
   isActive: boolean;
   showRestartControl?: boolean;
+  hidePageHeading?: boolean;
   learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   distanceMode?: PracticeDistanceMode;
   midi: MidiInputController;
@@ -436,6 +437,7 @@ function formatMedianResponse(session: PracticeSessionRecord): string {
 export function StaffDistancePracticeView({
   isActive,
   showRestartControl = false,
+  hidePageHeading = false,
   learningLevelId,
   distanceMode,
   midi,
@@ -1466,35 +1468,52 @@ export function StaffDistancePracticeView({
   }
 
   return (
-    <div className="practice-free-page practice-setup-framed-page staff-distance-page">
-      <header className="practice-free-page-header">
-        <div className="practice-free-heading-copy">
-          <h1 id="staff-distance-title">音距速推</h1>
-          <div className="practice-setup-description-row">
-            <p className="practice-panel-description staff-distance-description">
-              {trainingMode === "finger"
-                ? isFingerNoAnswerSelected
-                  ? "看谱判断目标音与建议指法，再查看答案核对。"
-                  : "选择练习方式、左右手和手指，先按参考音定位，再弹奏目标音。"
-                : trainingMode === "play"
-                  ? "根据谱面依次弹奏音符，练习从读谱到找到琴键。"
-                  : "看清当前音与下一个音的音距，练习快速判断并找到下一个琴键。"}
-            </p>
-            {trainingMode !== "look" && activeInputMethod === "midi" ? (
-              <div className="practice-setup-heading-meta">
-                <div className="practice-midi-heading-status staff-distance-midi-status">
-                  <MidiInputControl
-                    ariaLabel="音距速推 MIDI 输入设备"
-                    className={isMidiConnectionAttentionActive ? "needs-attention" : undefined}
-                    midi={midi}
-                    setupGuideTarget="distance-midi-device"
-                  />
-                </div>
-              </div>
-            ) : null}
+    <div
+      className={`practice-free-page practice-setup-framed-page staff-distance-page${hidePageHeading ? " is-learning-module-practice" : ""}`}
+    >
+      {hidePageHeading ? (
+        trainingMode !== "look" && activeInputMethod === "midi" ? (
+          <div className="practice-free-page-header is-actions-only">
+            <div className="practice-midi-heading-status staff-distance-midi-status">
+              <MidiInputControl
+                ariaLabel="音距速推 MIDI 输入设备"
+                className={isMidiConnectionAttentionActive ? "needs-attention" : undefined}
+                midi={midi}
+                setupGuideTarget="distance-midi-device"
+              />
+            </div>
           </div>
-        </div>
-      </header>
+        ) : null
+      ) : (
+        <header className="practice-free-page-header">
+          <div className="practice-free-heading-copy">
+            <h1 id="staff-distance-title">音距速推</h1>
+            <div className="practice-setup-description-row">
+              <p className="practice-panel-description staff-distance-description">
+                {trainingMode === "finger"
+                  ? isFingerNoAnswerSelected
+                    ? "看谱判断目标音与建议指法，再查看答案核对。"
+                    : "选择练习方式、左右手和手指，先按参考音定位，再弹奏目标音。"
+                  : trainingMode === "play"
+                    ? "根据谱面依次弹奏音符，练习从读谱到找到琴键。"
+                    : "看清当前音与下一个音的音距，练习快速判断并找到下一个琴键。"}
+              </p>
+              {trainingMode !== "look" && activeInputMethod === "midi" ? (
+                <div className="practice-setup-heading-meta">
+                  <div className="practice-midi-heading-status staff-distance-midi-status">
+                    <MidiInputControl
+                      ariaLabel="音距速推 MIDI 输入设备"
+                      className={isMidiConnectionAttentionActive ? "needs-attention" : undefined}
+                      midi={midi}
+                      setupGuideTarget="distance-midi-device"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </header>
+      )}
 
       <div
         aria-label="音距速推训练方式"
@@ -1547,6 +1566,68 @@ export function StaffDistancePracticeView({
           className={`practice-free-basics-grid staff-distance-basic-settings is-${trainingMode}-mode`}
           data-setup-guide-target={trainingMode === "finger" ? "distance-finger-setup" : undefined}
         >
+          {trainingMode !== "finger" ? (
+            <div className="practice-free-field staff-distance-setting-block staff-distance-interval-block">
+              <div className="staff-distance-setting-heading">
+                <span className="control-label">最大音距</span>
+                <div aria-label="步数说明" className="staff-distance-rule-summary">
+                  <span>C→E = 2 步 · 音距就像手指要移动的格数 · 同音 = 0</span>
+                  <DismissibleHelpPopover
+                    ariaLabel="查看步数规则"
+                    className="staff-distance-rule-help"
+                  >
+                    每跨一个相邻线位或间位算 1 步；方向只决定上行或下行，音距步数相同；同音重复算 0
+                    步。
+                  </DismissibleHelpPopover>
+                </div>
+              </div>
+              <div className="staff-distance-setting-content">
+                <div
+                  aria-label="最大音距"
+                  className="staff-distance-range-options"
+                  data-setup-guide-target="distance-max-interval"
+                  role="group"
+                >
+                  {Array.from({ length: 7 }, (_, index) => index + 1).map((distance) => (
+                    <button
+                      aria-pressed={preferences.maxDistance === distance}
+                      className={preferences.maxDistance === distance ? "is-selected" : ""}
+                      key={distance}
+                      onClick={() =>
+                        setPreferences((current) => ({ ...current, maxDistance: distance }))
+                      }
+                      type="button"
+                    >
+                      <span className="staff-distance-step-number">{distance}</span>
+                      <span>步</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="staff-distance-focus-option">
+                  <label className="practice-checkbox-option">
+                    <input
+                      checked={preferences.stepTraining}
+                      type="checkbox"
+                      onChange={(event) =>
+                        setPreferences((current) => ({
+                          ...current,
+                          stepTraining: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span>步数专训</span>
+                  </label>
+                  <DismissibleHelpPopover
+                    ariaLabel="查看步数专训说明"
+                    className="staff-distance-focus-help"
+                  >
+                    练习会尽可能多地安排你选定的最大步数，帮助你通过反复练习形成下意识反应。最大音距为
+                    1 步时，会按普通练习出题。
+                  </DismissibleHelpPopover>
+                </div>
+              </div>
+            </div>
+          ) : null}
           {trainingMode !== "look" ? (
             <div className="practice-free-field staff-distance-setting-block staff-distance-training-block">
               <span className="control-label">
@@ -1829,69 +1910,6 @@ export function StaffDistancePracticeView({
                     />
                   </div>
                 ) : null}
-              </div>
-            </div>
-          ) : null}
-
-          {trainingMode !== "finger" ? (
-            <div className="practice-free-field staff-distance-setting-block staff-distance-interval-block">
-              <div className="staff-distance-setting-heading">
-                <span className="control-label">最大音距</span>
-                <div aria-label="步数说明" className="staff-distance-rule-summary">
-                  <span>C→E = 2 步 · 音距就像手指要移动的格数 · 同音 = 0</span>
-                  <DismissibleHelpPopover
-                    ariaLabel="查看步数规则"
-                    className="staff-distance-rule-help"
-                  >
-                    每跨一个相邻线位或间位算 1 步；方向只决定上行或下行，音距步数相同；同音重复算 0
-                    步。
-                  </DismissibleHelpPopover>
-                </div>
-              </div>
-              <div className="staff-distance-setting-content">
-                <div
-                  aria-label="最大音距"
-                  className="staff-distance-range-options"
-                  data-setup-guide-target="distance-max-interval"
-                  role="group"
-                >
-                  {Array.from({ length: 7 }, (_, index) => index + 1).map((distance) => (
-                    <button
-                      aria-pressed={preferences.maxDistance === distance}
-                      className={preferences.maxDistance === distance ? "is-selected" : ""}
-                      key={distance}
-                      onClick={() =>
-                        setPreferences((current) => ({ ...current, maxDistance: distance }))
-                      }
-                      type="button"
-                    >
-                      <span className="staff-distance-step-number">{distance}</span>
-                      <span>步</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="staff-distance-focus-option">
-                  <label className="practice-checkbox-option">
-                    <input
-                      checked={preferences.stepTraining}
-                      type="checkbox"
-                      onChange={(event) =>
-                        setPreferences((current) => ({
-                          ...current,
-                          stepTraining: event.target.checked,
-                        }))
-                      }
-                    />
-                    <span>步数专训</span>
-                  </label>
-                  <DismissibleHelpPopover
-                    ariaLabel="查看步数专训说明"
-                    className="staff-distance-focus-help"
-                  >
-                    练习会尽可能多地安排你选定的最大步数，帮助你通过反复练习形成下意识反应。最大音距为
-                    1 步时，会按普通练习出题。
-                  </DismissibleHelpPopover>
-                </div>
               </div>
             </div>
           ) : null}

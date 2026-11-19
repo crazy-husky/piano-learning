@@ -30,6 +30,7 @@ import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { getMidiPracticeStartWarning } from "../../../midi/midiPracticeWarning";
 import { getMidiUnavailableNotice } from "../../../midi/midiUnavailableNotice";
 import { PracticeFullscreenToggle } from "../components/PracticeFullscreenFrame";
+import { formatPracticeQuestionProgress } from "../components/PracticeSessionFrame";
 import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInput";
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
@@ -92,6 +93,7 @@ interface NameToKeyMicrophone {
 interface NameToKeyPracticeViewProps {
   isActive: boolean;
   showRestartControl?: boolean;
+  hidePageHeading?: boolean;
   learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   midi: MidiInputController;
   microphone: NameToKeyMicrophone;
@@ -235,6 +237,7 @@ function NameKeyReferenceDialog({ isOpen, onClose }: NameKeyReferenceDialogProps
 function NameToKeyPracticeContent({
   isActive,
   showRestartControl = false,
+  hidePageHeading = false,
   learningLevelId,
   midi,
   microphone,
@@ -1048,24 +1051,39 @@ function NameToKeyPracticeContent({
       {stage === "setup" ? (
         <>
           <div className="name-key-setup-card">
-            <header className="name-key-header">
-              <div className="name-key-heading-copy">
-                <h1>音名找键</h1>
-                <div className="practice-setup-description-row">
-                  <p>看到音名，直接找到琴键，练到一眼就知道该按哪里。</p>
-                  {preferences.inputMode === "midi" ? (
-                    <div className="practice-midi-heading-status">
-                      <MidiInputControl
-                        ariaLabel="音名找键 MIDI 输入设备"
-                        className={isMidiConnectionAttentionActive ? "needs-attention" : undefined}
-                        midi={midi}
-                        setupGuideTarget="name-key-midi-device"
-                      />
-                    </div>
-                  ) : null}
+            {hidePageHeading ? (
+              preferences.inputMode === "midi" ? (
+                <div className="name-key-setup-device-row">
+                  <MidiInputControl
+                    ariaLabel="音名找键 MIDI 输入设备"
+                    className={isMidiConnectionAttentionActive ? "needs-attention" : undefined}
+                    midi={midi}
+                    setupGuideTarget="name-key-midi-device"
+                  />
                 </div>
-              </div>
-            </header>
+              ) : null
+            ) : (
+              <header className="name-key-header">
+                <div className="name-key-heading-copy">
+                  <h1>音名找键</h1>
+                  <div className="practice-setup-description-row">
+                    <p>看到音名，直接找到琴键，练到一眼就知道该按哪里。</p>
+                    {preferences.inputMode === "midi" ? (
+                      <div className="practice-midi-heading-status">
+                        <MidiInputControl
+                          ariaLabel="音名找键 MIDI 输入设备"
+                          className={
+                            isMidiConnectionAttentionActive ? "needs-attention" : undefined
+                          }
+                          midi={midi}
+                          setupGuideTarget="name-key-midi-device"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </header>
+            )}
 
             {statusMessage &&
             !(
@@ -1088,6 +1106,68 @@ function NameToKeyPracticeContent({
             ) : null}
 
             <div className="name-key-settings-grid">
+              <section
+                className="name-key-setting-block name-key-range-block"
+                data-setup-guide-target="name-key-range"
+              >
+                <h2>音名范围</h2>
+                <div className="name-key-setting-content name-key-range-content">
+                  <label aria-label="包含八度数字" className="name-key-option">
+                    <input
+                      checked={preferences.includeOctaveNumbers}
+                      onChange={(event) => {
+                        setStatusMessage("");
+                        setPreferences((current) => ({
+                          ...current,
+                          includeOctaveNumbers: event.target.checked,
+                        }));
+                      }}
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>包含八度数字</strong>
+                      <small>开启后在 F1–B6 全音域出题，请用 MIDI 键盘或麦克风作答。</small>
+                    </span>
+                  </label>
+                  <label aria-label="包含黑键" className="name-key-option">
+                    <input
+                      checked={preferences.includeBlackKeys}
+                      onChange={(event) =>
+                        setPreferences((current) => ({
+                          ...current,
+                          includeBlackKeys: event.target.checked,
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>包含黑键</strong>
+                      <small>开启后加入升号音名。</small>
+                    </span>
+                  </label>
+                  <label aria-label="随机展示等音" className="name-key-option">
+                    <input
+                      checked={preferences.randomEnharmonics}
+                      disabled={!preferences.includeBlackKeys}
+                      onChange={(event) =>
+                        setPreferences((current) => ({
+                          ...current,
+                          randomEnharmonics: event.target.checked,
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>随机展示等音（如 C# 和 Db 混合出题）</strong>
+                      <small>关闭时，黑键统一用升号显示。</small>
+                    </span>
+                  </label>
+                  <p className="name-key-setting-hint">
+                    当前音域：{preferences.includeOctaveNumbers ? "F1–B6" : "C4–B4"} ·{" "}
+                    {preferences.includeBlackKeys ? "包含黑键" : "仅白键"}
+                  </p>
+                </div>
+              </section>
               <section className="name-key-setting-block name-key-answer-block">
                 <h2>输入方式</h2>
                 <div className="name-key-setting-content">
@@ -1314,68 +1394,6 @@ function NameToKeyPracticeContent({
                   ) : null}
                 </div>
               </section>
-              <section
-                className="name-key-setting-block name-key-range-block"
-                data-setup-guide-target="name-key-range"
-              >
-                <h2>音名范围</h2>
-                <div className="name-key-setting-content name-key-range-content">
-                  <label aria-label="包含八度数字" className="name-key-option">
-                    <input
-                      checked={preferences.includeOctaveNumbers}
-                      onChange={(event) => {
-                        setStatusMessage("");
-                        setPreferences((current) => ({
-                          ...current,
-                          includeOctaveNumbers: event.target.checked,
-                        }));
-                      }}
-                      type="checkbox"
-                    />
-                    <span>
-                      <strong>包含八度数字</strong>
-                      <small>开启后在 F1–B6 全音域出题，请用 MIDI 键盘或麦克风作答。</small>
-                    </span>
-                  </label>
-                  <label aria-label="包含黑键" className="name-key-option">
-                    <input
-                      checked={preferences.includeBlackKeys}
-                      onChange={(event) =>
-                        setPreferences((current) => ({
-                          ...current,
-                          includeBlackKeys: event.target.checked,
-                        }))
-                      }
-                      type="checkbox"
-                    />
-                    <span>
-                      <strong>包含黑键</strong>
-                      <small>开启后加入升号音名。</small>
-                    </span>
-                  </label>
-                  <label aria-label="随机展示等音" className="name-key-option">
-                    <input
-                      checked={preferences.randomEnharmonics}
-                      disabled={!preferences.includeBlackKeys}
-                      onChange={(event) =>
-                        setPreferences((current) => ({
-                          ...current,
-                          randomEnharmonics: event.target.checked,
-                        }))
-                      }
-                      type="checkbox"
-                    />
-                    <span>
-                      <strong>随机展示等音（如 C# 和 Db 混合出题）</strong>
-                      <small>关闭时，黑键统一用升号显示。</small>
-                    </span>
-                  </label>
-                  <p className="name-key-setting-hint">
-                    当前音域：{preferences.includeOctaveNumbers ? "F1–B6" : "C4–B4"} ·{" "}
-                    {preferences.includeBlackKeys ? "包含黑键" : "仅白键"}
-                  </p>
-                </div>
-              </section>
             </div>
           </div>
           <footer
@@ -1445,6 +1463,12 @@ function NameToKeyPracticeContent({
           <header className="name-key-run-header">
             <div>
               <h1>音名找键</h1>
+              <strong className="name-key-run-progress">
+                {formatPracticeQuestionProgress(
+                  roundEvents.length,
+                  preferences.mode === "fixed-count" ? preferences.fixedCount : undefined
+                )}
+              </strong>
               {preferences.inputMode === "microphone" ? (
                 <div className="practice-microphone-status name-key-run-microphone">
                   <span
@@ -1503,13 +1527,6 @@ function NameToKeyPracticeContent({
                   aria-label={`剩余 ${formatRemainingTime(remainingMs)}`}
                 >
                   {formatRemainingTime(remainingMs)}
-                </strong>
-              ) : preferences.mode === "fixed-count" ? (
-                <strong
-                  className="name-key-countdown"
-                  aria-label={`已完成 ${roundEvents.length} 题，共 ${preferences.fixedCount} 题`}
-                >
-                  {roundEvents.length}/{preferences.fixedCount}
                 </strong>
               ) : null}
               <div className="practice-run-core-actions">
@@ -1839,6 +1856,7 @@ export function NameToKeyPracticeView({
           <StaffToNamePracticeView
             isActive={viewProps.isActive}
             showRestartControl={viewProps.showRestartControl}
+            hidePageHeading={viewProps.hidePageHeading}
             learningLevelId={viewProps.learningLevelId}
             navigationExitRequest={viewProps.navigationExitRequest}
             onBeforePracticeStart={viewProps.onBeforePracticeStart}

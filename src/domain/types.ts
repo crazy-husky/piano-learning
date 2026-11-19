@@ -158,6 +158,7 @@ export interface ReviewRecord {
 
 export type AnswerEventMode =
   | "free-practice"
+  | "chord-training"
   | "blind-practice"
   | "pre-reading"
   | "staff-game"
@@ -180,7 +181,7 @@ export interface AnswerEvent {
   promptEndedAt?: string;
   mode: AnswerEventMode;
   /** Learning route that produced this prompt; used to scope level statistics and deletion. */
-  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
   /** Challenge subtype; absent for songs, review rounds, and legacy events. */
   gameMode?: StaffGameChallengeMode | null;
   staffGameSource?: "challenge" | "review";
@@ -221,6 +222,36 @@ export interface AnswerEvent {
     lengthMode: PracticeMode;
     fixedCount: number;
     fixedDurationSeconds: number;
+  };
+  chordTraining?: {
+    task: "recognize" | "block" | "arpeggio";
+    keyId: string;
+    chordId: string;
+    chordName: string;
+    degree: number;
+    quality:
+      | "major-triad"
+      | "minor-triad"
+      | "diminished-triad"
+      | "major-seventh"
+      | "minor-seventh"
+      | "dominant-seventh"
+      | "half-diminished-seventh";
+    inversion: number;
+    noteDuration: "8" | "q" | "h" | "w";
+    targetMidiNotes: number[];
+    enteredMidiNotes?: number[];
+    selectedChordId?: string;
+    selectedRootName?: string;
+    selectedQuality?:
+      | "major-triad"
+      | "minor-triad"
+      | "diminished-triad"
+      | "major-seventh"
+      | "minor-seventh"
+      | "dominant-seventh"
+      | "half-diminished-seventh";
+    selectedInversion?: number;
   };
   recognizedMidi?: number;
   confidence?: number;

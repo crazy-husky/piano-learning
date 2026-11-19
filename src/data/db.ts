@@ -83,12 +83,14 @@ function isPendingAnswerEvent(value: unknown): value is AnswerEvent {
     typeof event.occurredAt === "string" &&
     Number.isFinite(Date.parse(event.occurredAt)) &&
     (event.mode === "free-practice" ||
+      event.mode === "blind-practice" ||
       event.mode === "pre-reading" ||
       event.mode === "staff-game" ||
       event.mode === "song" ||
       event.mode === "staff-distance" ||
       event.mode === "name-to-key" ||
-      event.mode === "staff-to-name") &&
+      event.mode === "staff-to-name" ||
+      event.mode === "chord-training") &&
     Array.isArray(event.attempts)
   );
 }

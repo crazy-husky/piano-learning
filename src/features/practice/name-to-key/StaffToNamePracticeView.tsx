@@ -20,6 +20,7 @@ import { LoadingActivityText } from "../../../shared/components/LoadingActivity"
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { guideSetupRequirement } from "../../../shared/utils/guideSetupRequirement";
 import { StaffPrompt } from "../components/StaffPrompt";
+import { formatPracticeQuestionProgress } from "../components/PracticeSessionFrame";
 import { PRACTICE_FIXED_COUNT_PRESETS } from "../logic/practiceLengthOptions";
 import staffReadingTipsOverview from "./assets/staff-reading-tips/staff-reading-tips-overview.png";
 import staffSpacesFace from "./assets/staff-reading-tips/staff-spaces-face.png";
@@ -52,6 +53,7 @@ interface StaffToNamePreferences {
 interface StaffToNamePracticeViewProps {
   isActive: boolean;
   showRestartControl?: boolean;
+  hidePageHeading?: boolean;
   learningLevelId?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   navigationExitRequest?: {
     id: number;
@@ -161,6 +163,7 @@ function formatDuration(milliseconds: number | null): string {
 export function StaffToNamePracticeView({
   isActive,
   showRestartControl = false,
+  hidePageHeading = false,
   learningLevelId,
   navigationExitRequest,
   onBeforePracticeStart,
@@ -704,12 +707,14 @@ export function StaffToNamePracticeView({
     <section aria-label="看谱认音练习" className="staff-to-name-practice">
       {stage === "setup" ? (
         <div className="staff-to-name-setup-card">
-          <header>
-            <div>
-              <h1>看谱认音</h1>
-              <p>看五线谱上的音符，按下对应的音名。</p>
-            </div>
-          </header>
+          {!hidePageHeading ? (
+            <header>
+              <div>
+                <h1>看谱认音</h1>
+                <p>看五线谱上的音符，按下对应的音名。</p>
+              </div>
+            </header>
+          ) : null}
 
           <StaffReadingTips />
 
@@ -901,9 +906,11 @@ export function StaffToNamePracticeView({
           <header className="staff-to-name-run-header">
             <div>
               <span>看谱认音</span>
-              <strong>
-                {roundEvents.length}
-                {preferences.mode === "fixed-count" ? ` / ${preferences.fixedCount}` : " 题"}
+              <strong aria-live="off">
+                {formatPracticeQuestionProgress(
+                  roundEvents.length,
+                  preferences.mode === "fixed-count" ? preferences.fixedCount : undefined
+                )}
               </strong>
             </div>
             {preferences.mode === "fixed-duration" ? (

@@ -139,6 +139,7 @@ interface PracticeSetupViewProps {
   activeTab: PracticeSetupTab;
   freePracticeTitle: string;
   freePracticeDescription: string;
+  hidePageHeading?: boolean;
   showPracticeKindTabs?: boolean;
   showPracticeModeTabs?: boolean;
   showBlackKeySettings?: boolean;
@@ -290,6 +291,7 @@ export function PracticeSetupView({
   activeTab,
   freePracticeTitle,
   freePracticeDescription,
+  hidePageHeading = false,
   showPracticeKindTabs = true,
   showPracticeModeTabs = true,
   showBlackKeySettings = false,
@@ -680,26 +682,41 @@ export function PracticeSetupView({
         aria-labelledby="practice-free-tab"
       >
         <div className="practice-free-page practice-setup-framed-page">
-          <div className="practice-free-page-header">
-            <div className="practice-free-heading-copy">
-              <h1>{freePracticeTitle}</h1>
-              <div className="practice-setup-description-row">
-                <p className="practice-panel-description">{freePracticeDescription}</p>
-                {activeAnswerPitchMode === "exact-pitch" ? (
-                  <div className="practice-setup-heading-meta">
-                    <div className="practice-midi-heading-status">
-                      <MidiInputControl
-                        ariaLabel={`${freePracticeTitle} MIDI 输入设备`}
-                        className={isMidiConnectAttentionActive ? "needs-attention" : undefined}
-                        midi={midi}
-                        setupGuideTarget="practice-midi-device"
-                      />
+          {hidePageHeading ? (
+            activeAnswerPitchMode === "exact-pitch" ? (
+              <div className="practice-free-page-header is-actions-only">
+                <div className="practice-midi-heading-status">
+                  <MidiInputControl
+                    ariaLabel={`${freePracticeTitle} MIDI 输入设备`}
+                    className={isMidiConnectAttentionActive ? "needs-attention" : undefined}
+                    midi={midi}
+                    setupGuideTarget="practice-midi-device"
+                  />
+                </div>
+              </div>
+            ) : null
+          ) : (
+            <div className="practice-free-page-header">
+              <div className="practice-free-heading-copy">
+                <h1>{freePracticeTitle}</h1>
+                <div className="practice-setup-description-row">
+                  <p className="practice-panel-description">{freePracticeDescription}</p>
+                  {activeAnswerPitchMode === "exact-pitch" ? (
+                    <div className="practice-setup-heading-meta">
+                      <div className="practice-midi-heading-status">
+                        <MidiInputControl
+                          ariaLabel={`${freePracticeTitle} MIDI 输入设备`}
+                          className={isMidiConnectAttentionActive ? "needs-attention" : undefined}
+                          midi={midi}
+                          setupGuideTarget="practice-midi-device"
+                        />
+                      </div>
                     </div>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
+          )}
           <div
             aria-disabled={lockPracticeSetup || undefined}
             className={`practice-free-config-content${lockPracticeSetup ? " is-locked" : ""}`}
@@ -714,7 +731,7 @@ export function PracticeSetupView({
                 data-setup-guide-target="practice-hand-mode"
               >
                 <div className="practice-free-field">
-                  <span className="control-label">练习方式</span>
+                  {showPracticeModeTabs ? <span className="control-label">练习方式</span> : null}
                   {showPracticeModeTabs ? (
                     <div
                       aria-label="练习方式"
@@ -903,8 +920,128 @@ export function PracticeSetupView({
               </section>
             ) : null}
 
+            {activeTab === "free" &&
+            preReadingBufferSize !== undefined &&
+            onPreReadingBufferSizeChange ? (
+              <section aria-label="预读音数" className="practice-free-section">
+                <label className="practice-free-field pre-reading-focus-control">
+                  <span className="control-label">预读提前量</span>
+                  <select
+                    aria-label="预读提前量"
+                    value={preReadingBufferSize}
+                    onChange={(event) =>
+                      onPreReadingBufferSizeChange(
+                        Number(event.currentTarget.value) as PreReadingBufferSize
+                      )
+                    }
+                  >
+                    {([1, 2, 3, 4, 5] as const).map((bufferSize) => (
+                      <option key={bufferSize} value={bufferSize}>
+                        预读 {bufferSize} 个音
+                      </option>
+                    ))}
+                  </select>
+                  <small className="practice-free-helper">
+                    选择需要记住的未来音符数量，数字越大，记忆缓冲区越长。
+                  </small>
+                </label>
+              </section>
+            ) : null}
+
             <section aria-label="基础设置" className="practice-free-basics-section">
               <div className="practice-free-basics-grid">
+                <div className="practice-free-field practice-free-answer-field">
+                  <span className="control-label">输入方式</span>
+                  <div
+                    aria-label="输入方式"
+                    className={`practice-free-answer-options${isDuetPractice ? " is-duet" : ""}`}
+                    data-setup-guide-target="practice-answer-mode"
+                  >
+                    {!isDuetPractice ? (
+                      <button
+                        aria-pressed={activeAnswerPitchMode === "microphone"}
+                        className={activeAnswerPitchMode === "microphone" ? "is-selected" : ""}
+                        onClick={() => setAnswerPitchMode("microphone")}
+                        type="button"
+                      >
+                        <Mic aria-hidden="true" size={16} />
+                        <span className="practice-free-answer-option-copy">
+                          <span className="practice-free-answer-option-heading">
+                            <strong>麦克风</strong>
+                          </span>
+                          <small>不用连线，直接弹奏即可</small>
+                        </span>
+                      </button>
+                    ) : null}
+                    <button
+                      aria-pressed={activeAnswerPitchMode === "exact-pitch"}
+                      className={activeAnswerPitchMode === "exact-pitch" ? "is-selected" : ""}
+                      disabled={isDuetPractice && !canShowMidiAttention}
+                      onClick={handleMidiAnswerModeClick}
+                      type="button"
+                    >
+                      <Music2 aria-hidden="true" size={16} />
+                      <span className="practice-free-answer-option-copy">
+                        <span className="practice-free-answer-option-heading">
+                          <strong>MIDI 键盘</strong>
+                          {!isDuetPractice && recommendedAnswerMode === "exact-pitch" ? (
+                            <small className="practice-free-recommended">推荐</small>
+                          ) : null}
+                        </span>
+                        <small>
+                          {midi.isConnected
+                            ? "音高与八度精准识别，练习中可切换设备"
+                            : getMidiUnavailableNotice(midi.status)
+                              ? "需要支持 MIDI 输入的浏览器和设备"
+                              : "连接后可精准识别音高与八度"}
+                        </small>
+                      </span>
+                    </button>
+                    {!isDuetPractice && !isBlindPractice ? (
+                      <button
+                        aria-pressed={activeAnswerPitchMode === "note-name"}
+                        className={activeAnswerPitchMode === "note-name" ? "is-selected" : ""}
+                        onClick={() => setAnswerPitchMode("note-name")}
+                        type="button"
+                      >
+                        <Keyboard aria-hidden="true" size={16} />
+                        <span className="practice-free-answer-option-copy">
+                          <span className="practice-free-answer-option-heading">
+                            <strong>虚拟键盘</strong>
+                          </span>
+                          <small>无需连接乐器，点击虚拟键盘或敲击键盘作答</small>
+                        </span>
+                      </button>
+                    ) : null}
+                  </div>
+                  {activeAnswerPitchMode === "microphone" &&
+                  (microphoneError ||
+                    microphoneStatus === "error" ||
+                    microphoneStatus === "requesting" ||
+                    microphoneIsPreparingModel) ? (
+                    <div
+                      className="practice-microphone-error-actions practice-free-warning"
+                      aria-live="polite"
+                    >
+                      <span>
+                        {microphoneStatus === "requesting" ? (
+                          <LoadingActivityText kind="dots">
+                            {microphoneIsPreparingModel ? "正在准备识别模型" : "正在连接麦克风"}
+                          </LoadingActivityText>
+                        ) : (
+                          (microphoneError ?? "麦克风连接失败，请检查权限和输入设备后重试。")
+                        )}
+                      </span>
+                      <PracticeMicrophoneRetryButton
+                        isConnecting={microphoneStatus === "requesting"}
+                        isPreparingModel={microphoneIsPreparingModel}
+                        onRetry={onRetryMicrophone}
+                        setupGuideTarget="practice-microphone-retry"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="practice-free-field practice-free-length-field">
                   <span className="control-label">练习长度</span>
                   <div className="practice-free-mode-row">
@@ -1031,98 +1168,6 @@ export function PracticeSetupView({
                     </div>
                   </div>
                 </div>
-
-                <div className="practice-free-field practice-free-answer-field">
-                  <span className="control-label">输入方式</span>
-                  <div
-                    aria-label="输入方式"
-                    className={`practice-free-answer-options${isDuetPractice ? " is-duet" : ""}`}
-                    data-setup-guide-target="practice-answer-mode"
-                  >
-                    {!isDuetPractice ? (
-                      <button
-                        aria-pressed={activeAnswerPitchMode === "microphone"}
-                        className={activeAnswerPitchMode === "microphone" ? "is-selected" : ""}
-                        onClick={() => setAnswerPitchMode("microphone")}
-                        type="button"
-                      >
-                        <Mic aria-hidden="true" size={16} />
-                        <span className="practice-free-answer-option-copy">
-                          <span className="practice-free-answer-option-heading">
-                            <strong>麦克风</strong>
-                          </span>
-                          <small>不用连线，直接弹奏即可</small>
-                        </span>
-                      </button>
-                    ) : null}
-                    <button
-                      aria-pressed={activeAnswerPitchMode === "exact-pitch"}
-                      className={activeAnswerPitchMode === "exact-pitch" ? "is-selected" : ""}
-                      disabled={isDuetPractice && !canShowMidiAttention}
-                      onClick={handleMidiAnswerModeClick}
-                      type="button"
-                    >
-                      <Music2 aria-hidden="true" size={16} />
-                      <span className="practice-free-answer-option-copy">
-                        <span className="practice-free-answer-option-heading">
-                          <strong>MIDI 键盘</strong>
-                          {!isDuetPractice && recommendedAnswerMode === "exact-pitch" ? (
-                            <small className="practice-free-recommended">推荐</small>
-                          ) : null}
-                        </span>
-                        <small>
-                          {midi.isConnected
-                            ? "音高与八度精准识别，练习中可切换设备"
-                            : getMidiUnavailableNotice(midi.status)
-                              ? "需要支持 MIDI 输入的浏览器和设备"
-                              : "连接后可精准识别音高与八度"}
-                        </small>
-                      </span>
-                    </button>
-                    {!isDuetPractice && !isBlindPractice ? (
-                      <button
-                        aria-pressed={activeAnswerPitchMode === "note-name"}
-                        className={activeAnswerPitchMode === "note-name" ? "is-selected" : ""}
-                        onClick={() => setAnswerPitchMode("note-name")}
-                        type="button"
-                      >
-                        <Keyboard aria-hidden="true" size={16} />
-                        <span className="practice-free-answer-option-copy">
-                          <span className="practice-free-answer-option-heading">
-                            <strong>虚拟键盘</strong>
-                          </span>
-                          <small>无需连接乐器，点击虚拟键盘或敲击键盘作答</small>
-                        </span>
-                      </button>
-                    ) : null}
-                  </div>
-                  {activeAnswerPitchMode === "microphone" &&
-                  (microphoneError ||
-                    microphoneStatus === "error" ||
-                    microphoneStatus === "requesting" ||
-                    microphoneIsPreparingModel) ? (
-                    <div
-                      className="practice-microphone-error-actions practice-free-warning"
-                      aria-live="polite"
-                    >
-                      <span>
-                        {microphoneStatus === "requesting" ? (
-                          <LoadingActivityText kind="dots">
-                            {microphoneIsPreparingModel ? "正在准备识别模型" : "正在连接麦克风"}
-                          </LoadingActivityText>
-                        ) : (
-                          (microphoneError ?? "麦克风连接失败，请检查权限和输入设备后重试。")
-                        )}
-                      </span>
-                      <PracticeMicrophoneRetryButton
-                        isConnecting={microphoneStatus === "requesting"}
-                        isPreparingModel={microphoneIsPreparingModel}
-                        onRetry={onRetryMicrophone}
-                        setupGuideTarget="practice-microphone-retry"
-                      />
-                    </div>
-                  ) : null}
-                </div>
               </div>
             </section>
 
@@ -1160,34 +1205,6 @@ export function PracticeSetupView({
                     </small>
                   ) : null}
                 </div>
-              </section>
-            ) : null}
-
-            {activeTab === "free" &&
-            preReadingBufferSize !== undefined &&
-            onPreReadingBufferSizeChange ? (
-              <section aria-label="预读音数" className="practice-free-section">
-                <label className="practice-free-field pre-reading-focus-control">
-                  <span className="control-label">预读提前量</span>
-                  <select
-                    aria-label="预读提前量"
-                    value={preReadingBufferSize}
-                    onChange={(event) =>
-                      onPreReadingBufferSizeChange(
-                        Number(event.currentTarget.value) as PreReadingBufferSize
-                      )
-                    }
-                  >
-                    {([1, 2, 3, 4, 5] as const).map((bufferSize) => (
-                      <option key={bufferSize} value={bufferSize}>
-                        预读 {bufferSize} 个音
-                      </option>
-                    ))}
-                  </select>
-                  <small className="practice-free-helper">
-                    选择需要记住的未来音符数量，数字越大，记忆缓冲区越长。
-                  </small>
-                </label>
               </section>
             ) : null}
 

@@ -39,18 +39,18 @@ const SIGHT_READING_STEPS = [
     id: "intermediate",
     index: "02",
     label: "进阶",
-    title: "看出音距，协调双手",
-    description: "判断音符的方向和跨距，逐步读懂常见音型、节奏与双手关系。",
-    moduleIds: [4, 6] as const,
+    title: "看出音距，理解和弦",
+    description: "先判断音符的方向和跨距，再尝试辨认纵向叠起的调内和弦。",
+    moduleIds: [4, 8] as const,
     comingSoon: ["调号与临时记号"] as const,
   },
   {
     id: "advanced",
     index: "03",
     label: "高阶目标",
-    title: "提前读谱，拓展整体视野",
-    description: "适度提前看后续音符，逐步练习在新谱中保持连贯。",
-    moduleIds: [5, 7] as const,
+    title: "提前读谱，协调双手",
+    description: "把视线放到后续音符，并在双手协作中保持连续；盲弹可作为额外挑战。",
+    moduleIds: [5, 6, 7] as const,
     comingSoon: ["错音后继续弹奏"] as const,
   },
 ] as const;
@@ -268,7 +268,7 @@ export function HomeView({
           </button>
         </div>
       </nav>
-      <ol aria-label="七个学习阶段" className="learning-path-list">
+      <ol aria-label="八个学习阶段" className="learning-path-list">
         {LEARNING_MODULES.map((module, index) => {
           const Icon = module.icon;
           const progress = moduleProgress?.[module.id];

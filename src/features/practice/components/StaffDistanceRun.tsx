@@ -75,7 +75,11 @@ import {
 import { PracticeQuestionLimitDialog } from "../../../shared/components/PracticeQuestionLimitDialog";
 import { PauseOverlay } from "../../../shared/components/PauseOverlay";
 import { StaffDistanceFingerRun } from "./StaffDistanceFingerRun";
-import { PracticeSessionFrame, PracticeSessionHeader } from "./PracticeSessionFrame";
+import {
+  formatPracticeQuestionProgress,
+  PracticeSessionFrame,
+  PracticeSessionHeader,
+} from "./PracticeSessionFrame";
 
 interface PracticeNavigationExitRequest {
   id: number;
@@ -1351,19 +1355,13 @@ function StaffDistanceIntervalRun({
 
   const currentQuestionNumber = resultsRef.current.length + 1;
   const progressLabel = (() => {
-    if (trainingMode === "play") {
-      const completedQuestionCount = resultsRef.current.length;
-      if (mode === "fixed-count") {
-        return `完成 ${completedQuestionCount} / ${fixedCount}`;
-      }
-      if (mode === "fixed-duration") {
-        return `完成 ${completedQuestionCount} · 剩余 ${durationLabel(remainingTime ?? 0)}`;
-      }
-      return `完成 ${completedQuestionCount}`;
-    }
-    if (mode === "fixed-count") return `第 ${currentQuestionNumber} / ${fixedCount} 题`;
-    if (mode === "fixed-duration") return `剩余 ${durationLabel(remainingTime ?? 0)}`;
-    return `第 ${currentQuestionNumber} 题`;
+    const questionProgress = formatPracticeQuestionProgress(
+      resultsRef.current.length,
+      mode === "fixed-count" ? fixedCount : undefined
+    );
+    return mode === "fixed-duration"
+      ? `${questionProgress} · ${durationLabel(remainingTime ?? 0)} 剩余`
+      : questionProgress;
   })();
   const liveQuestionLabel =
     trainingMode === "look"

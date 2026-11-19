@@ -1126,6 +1126,11 @@
   min-width: 0;
 }
 
+.practice-free-page-header.is-actions-only {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .practice-free-heading-copy {
   min-width: 0;
   width: 100%;

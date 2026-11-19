@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { BookOpen, Eye, EyeOff, Keyboard, Ruler, Users, Zap } from "lucide-react";
+import { BookOpen, Eye, EyeOff, Keyboard, Music2, Ruler, Users, Zap } from "lucide-react";
 import type { LearningLevelId } from "../../routing/appRoutes";
 import type { DuetPracticeLevel, PreReadingBufferSize } from "../../domain/types";
 
@@ -40,6 +40,12 @@ export type GraduationCriteria =
     }
   | {
       kind: "blind-practice";
+      sampleCount: number;
+      minFirstTryAccuracy: number;
+      description: string;
+    }
+  | {
+      kind: "chord-training";
       sampleCount: number;
       minFirstTryAccuracy: number;
       description: string;
@@ -231,12 +237,38 @@ const LEARNING_MODULES_BY_ID: readonly LearningModuleDefinition[] = [
       ],
     },
   },
+  {
+    id: 8,
+    name: "和弦训练",
+    summary: "看懂调内和弦，在谱面上辨认并用 MIDI 弹出完整和弦。",
+    icon: Music2,
+    optional: true,
+    graduationCriteria: {
+      kind: "chord-training",
+      sampleCount: 30,
+      minFirstTryAccuracy: 0.8,
+      description: "完成至少 30 组和弦，首次答对率达到 80%。",
+    },
+    guide: {
+      title: "从音符堆叠中认出和弦",
+      goal: "看懂大调调内三和弦与七和弦，并能在键盘上找到和弦音。",
+      principle:
+        "和弦不是几个互不相关的音，而是按三度叠起来的一组音。先观察谱面中音符的线间位置，再判断根音和和弦性质；演奏时关注整组和弦的音高关系。",
+      highlight: "先找根音，再看三度叠加的音程；弹奏时让整组音清楚、稳定地落下。",
+      steps: [
+        "从五线谱读出和弦的根音和叠加音",
+        "判断大三、小三、减三、大七、小七或属七等和弦性质",
+        "通过 MIDI 同时弹下柱式和弦，或按从低到高的顺序弹出分解和弦",
+      ],
+    },
+  },
 ];
 
 export const LEARNING_MODULES: readonly LearningModuleDefinition[] = [
   ...LEARNING_MODULES_BY_ID.slice(0, 4),
-  LEARNING_MODULES_BY_ID[5]!,
+  LEARNING_MODULES_BY_ID[7]!,
   LEARNING_MODULES_BY_ID[4]!,
+  LEARNING_MODULES_BY_ID[5]!,
   LEARNING_MODULES_BY_ID[6]!,
 ];
 

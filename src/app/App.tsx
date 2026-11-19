@@ -46,6 +46,8 @@ import { HomeView } from "../features/home/components/HomeView";
 import { ModuleLayout } from "../features/learning/components/ModuleLayout";
 import { ModuleGuideView } from "../features/learning/components/ModuleGuideView";
 import { LearningModuleStatsView } from "../features/learning/components/LearningModuleStatsView";
+import { ChordTrainingView } from "../features/chord-training/components/ChordTrainingView";
+import { ChordTrainingStatsView } from "../features/chord-training/components/ChordTrainingStatsView";
 import type { DuetWrongNoteTestPlan } from "../features/learning/duetWrongNoteTest";
 import {
   PlaygroundLayout,
@@ -1634,7 +1636,25 @@ export function App({
                     />
                   )
                 ) : null}
-                {moduleTab === "practice" && route.levelId > 1 ? (
+                {moduleTab === "practice" && route.levelId === 8 ? (
+                  <PracticeFullscreenFrame enabled>
+                    <ChordTrainingView
+                      dataSetId={data.settings.dataSetId}
+                      midi={midi}
+                      navigationExitRequest={practiceExitRequest}
+                      onBeforePracticeStart={preflightBeforePracticeStart}
+                      onDataChanged={refreshPracticeHistory}
+                      onNavigationExit={(targetView) => {
+                        setDuetWrongNoteTestPlan(null);
+                        handleNavigationExit(targetView);
+                      }}
+                      onPracticeFinished={showBackupReminderAfterActivity}
+                      onPracticeStageChange={setPracticeStageActive}
+                      onRunningChange={setPracticeRunning}
+                    />
+                  </PracticeFullscreenFrame>
+                ) : null}
+                {moduleTab === "practice" && route.levelId > 1 && route.levelId < 8 ? (
                   data.practiceHistoryLoaded ? (
                     <PracticeFullscreenFrame enabled={practiceFullscreenAvailable}>
                       <PracticeView
@@ -1723,7 +1743,10 @@ export function App({
                     />
                   )
                 ) : null}
-                {moduleTab === "stats" ? (
+                {moduleTab === "stats" && route.levelId === 8 ? (
+                  <ChordTrainingStatsView dataSetId={data.settings.dataSetId} />
+                ) : null}
+                {moduleTab === "stats" && route.levelId !== 8 ? (
                   (
                     route.levelId === 1 ? data.staffRecallHistoryLoaded : data.practiceHistoryLoaded
                   ) ? (

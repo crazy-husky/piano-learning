@@ -55,6 +55,12 @@
   container-type: inline-size;
 }
 
+.name-key-setup-device-row {
+  display: flex;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
 .name-key-header {
   display: block;
 }
@@ -80,8 +86,8 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-areas:
-    "answer length"
-    "range range";
+    "range range"
+    "answer length";
   align-items: start;
   gap: 14px 18px;
 }
@@ -361,9 +367,9 @@
   .name-key-settings-grid {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
+      "range"
       "answer"
-      "length"
-      "range";
+      "length";
     gap: 14px;
   }
 }
@@ -372,9 +378,9 @@
   .name-key-settings-grid {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
+      "range"
       "answer"
-      "length"
-      "range";
+      "length";
     gap: 14px;
   }
 }
@@ -408,6 +414,15 @@
   justify-content: flex-start;
   margin-top: 8px;
   width: fit-content;
+}
+
+.name-key-run-progress {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .name-key-run-actions {

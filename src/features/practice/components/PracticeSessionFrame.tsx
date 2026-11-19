@@ -1,6 +1,18 @@
 import { ArrowLeft, Pause, RotateCcw } from "lucide-react";
 import { forwardRef, type ReactNode } from "react";
 
+export function formatPracticeQuestionProgress(
+  completedCount: number,
+  fixedCount?: number
+): string {
+  const completed = Number.isFinite(completedCount) ? Math.max(0, Math.floor(completedCount)) : 0;
+  const total =
+    typeof fixedCount === "number" && Number.isFinite(fixedCount)
+      ? Math.max(0, Math.floor(fixedCount))
+      : "无限";
+  return `${completed} / ${total} 题`;
+}
+
 interface PracticeSessionFrameProps {
   "aria-label"?: string;
   children: ReactNode;

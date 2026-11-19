@@ -143,7 +143,11 @@ import { useTrackedStaffNoteVisibility } from "../hooks/useTrackedStaffNoteVisib
 import { usePracticeSummaryData } from "../hooks/usePracticeSummaryData";
 import { PracticeSummaryView } from "./PracticeSummaryView";
 import { PracticeFullscreenToggle } from "./PracticeFullscreenFrame";
-import { PracticeSessionFrame, PracticeSessionHeader } from "./PracticeSessionFrame";
+import {
+  formatPracticeQuestionProgress,
+  PracticeSessionFrame,
+  PracticeSessionHeader,
+} from "./PracticeSessionFrame";
 import { StaffDistancePracticeView } from "./StaffDistancePracticeView";
 import {
   PracticeSetupView,
@@ -673,6 +677,7 @@ export function PracticeView({
   practiceModeLock,
   practiceProfile,
 }: PracticeViewProps): JSX.Element {
+  const legacyLearningLevelId = learningLevelId === 8 ? undefined : learningLevelId;
   const isPreReadingPractice = practiceProfile === "pre-reading";
   const isBlindPractice = practiceProfile === "blind-practice";
   const {
@@ -2627,7 +2632,7 @@ export function PracticeView({
     timers: sessionLifecycleTimers,
     services: sessionLifecycleServices,
     ui: sessionLifecycleUi,
-    learningLevelId,
+    learningLevelId: legacyLearningLevelId,
   });
   prepareMicrophoneRecoveryReloadRef.current = async (): Promise<void> => {
     if (!sessionRef.current) return;
@@ -4436,6 +4441,7 @@ export function PracticeView({
         activeTab={practiceTab}
         freePracticeTitle={freePracticeCopy.title}
         freePracticeDescription={freePracticeCopy.description}
+        hidePageHeading={isLearningRoutePractice}
         blindPractice={isBlindPractice}
         showBlackKeySettings={blackKeyFeatureAvailable}
         lockPracticeSetup={Boolean(duetWrongNoteTestPlan)}
@@ -4448,7 +4454,8 @@ export function PracticeView({
           <StaffDistancePracticeView
             isActive={practiceTab === "distance"}
             showRestartControl={isLearningRoutePractice}
-            learningLevelId={learningLevelId}
+            hidePageHeading={isLearningRoutePractice}
+            learningLevelId={legacyLearningLevelId}
             midi={midi}
             microphone={{
               error: practiceMicrophone.error,
@@ -4480,7 +4487,8 @@ export function PracticeView({
           <NameToKeyPracticeView
             isActive={practiceTab === "name-key"}
             showRestartControl={isLearningRoutePractice}
-            learningLevelId={learningLevelId}
+            hidePageHeading={isLearningRoutePractice}
+            learningLevelId={legacyLearningLevelId}
             midi={midi}
             navigationExitRequest={navigationExitRequest}
             microphone={{
@@ -4690,15 +4698,16 @@ export function PracticeView({
           mode === "open-ended"
         )}
         progress={
-          mode === "open-ended" ? (
-            <span>完成 {completedCount}</span>
-          ) : mode === "fixed-count" ? (
+          mode === "fixed-duration" ? (
             <span>
-              音符：{completedCount}/{fixedCount}
+              {formatPracticeQuestionProgress(completedCount)} · {formatDuration(remainingMs)} 剩余
             </span>
           ) : (
             <span>
-              完成 {completedCount} · {formatDuration(remainingMs)}
+              {formatPracticeQuestionProgress(
+                completedCount,
+                mode === "fixed-count" ? fixedCount : undefined
+              )}
             </span>
           )
         }
