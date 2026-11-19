@@ -124,6 +124,14 @@ export function parseChordTrainingConfig(value: unknown): ChordTrainingConfig {
       typeof stored.requireInversionAnswer === "boolean"
         ? stored.requireInversionAnswer
         : DEFAULT_CHORD_TRAINING_CONFIG.requireInversionAnswer,
+    highlightRoot:
+      typeof stored.highlightRoot === "boolean"
+        ? stored.highlightRoot
+        : DEFAULT_CHORD_TRAINING_CONFIG.highlightRoot,
+    metronomeSyncEnabled:
+      typeof stored.metronomeSyncEnabled === "boolean"
+        ? stored.metronomeSyncEnabled
+        : DEFAULT_CHORD_TRAINING_CONFIG.metronomeSyncEnabled,
     lengthMode,
     fixedCount: clampInteger(stored.fixedCount, 30, 1, 500),
     fixedDurationSeconds: clampInteger(stored.fixedDurationSeconds, 90, 60, 60 * 120),

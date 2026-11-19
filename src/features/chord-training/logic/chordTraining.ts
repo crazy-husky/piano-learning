@@ -58,6 +58,8 @@ export interface ChordTrainingConfig {
   inversions: number[];
   arpeggioPatterns: ChordArpeggioPatternId[];
   requireInversionAnswer: boolean;
+  highlightRoot: boolean;
+  metronomeSyncEnabled: boolean;
   lengthMode: ChordLengthMode;
   fixedCount: number;
   fixedDurationSeconds: number;
@@ -145,6 +147,8 @@ export const DEFAULT_CHORD_TRAINING_CONFIG: ChordTrainingConfig = {
   inversions: [0],
   arpeggioPatterns: CHORD_ARPEGGIO_PATTERN_OPTIONS.map(({ id }) => id),
   requireInversionAnswer: true,
+  highlightRoot: true,
+  metronomeSyncEnabled: false,
   lengthMode: "fixed-count",
   fixedCount: 30,
   fixedDurationSeconds: 90,

@@ -59,6 +59,12 @@ export function ChordTrainingSetup({
   onStart: () => void;
 }): JSX.Element {
   const [isMoreConfigOpen, setIsMoreConfigOpen] = useState(false);
+  const isPerformanceTask = config.task !== "recognize";
+  const moreConfigCount =
+    1 +
+    Number(isPerformanceTask) +
+    Number(config.task === "recognize") +
+    (config.task === "arpeggio" ? CHORD_ARPEGGIO_PATTERN_OPTIONS.length : 0);
   const canUseThirdInversion =
     config.qualities.includes("seventh") && !config.qualities.includes("triad");
 
@@ -137,6 +143,8 @@ export function ChordTrainingSetup({
     `${config.chordDegrees.length} 组和弦`,
     config.qualities.map((kind) => (kind === "triad" ? "三和弦" : "七和弦")).join("、"),
     `${config.inversions.length} 种转位`,
+    config.highlightRoot ? "高亮根音" : "根音不高亮",
+    ...(isPerformanceTask && config.metronomeSyncEnabled ? ["节拍同步"] : []),
     ...(config.task === "recognize"
       ? [config.requireInversionAnswer ? "答题要求转位" : "答题不要求转位"]
       : []),
@@ -462,31 +470,62 @@ export function ChordTrainingSetup({
           </div>
         </div>
 
-        {config.task === "recognize" || config.task === "arpeggio" ? (
-          <section className="practice-free-advanced-disclosure chord-training-advanced-disclosure">
-            <button
-              aria-controls="chord-training-advanced-options"
-              aria-expanded={isMoreConfigOpen}
-              className="practice-free-advanced-toggle"
-              onClick={() => setIsMoreConfigOpen((open) => !open)}
-              type="button"
-            >
-              <Settings2 aria-hidden="true" size={16} />
-              <span>更多配置</span>
-              <span className="practice-free-advanced-count">
-                {config.task === "recognize" ? "1项" : `${CHORD_ARPEGGIO_PATTERN_OPTIONS.length}项`}
-              </span>
-              <ChevronDown
-                aria-hidden="true"
-                className={isMoreConfigOpen ? "is-open" : ""}
-                size={16}
-              />
-            </button>
-            <div
-              className="practice-free-advanced-content chord-training-advanced-content"
-              hidden={!isMoreConfigOpen}
-              id="chord-training-advanced-options"
-            >
+        <section className="practice-free-advanced-disclosure chord-training-advanced-disclosure">
+          <button
+            aria-controls="chord-training-advanced-options"
+            aria-expanded={isMoreConfigOpen}
+            className="practice-free-advanced-toggle"
+            onClick={() => setIsMoreConfigOpen((open) => !open)}
+            type="button"
+          >
+            <Settings2 aria-hidden="true" size={16} />
+            <span>更多配置</span>
+            <span className="practice-free-advanced-count">{moreConfigCount}项</span>
+            <ChevronDown
+              aria-hidden="true"
+              className={isMoreConfigOpen ? "is-open" : ""}
+              size={16}
+            />
+          </button>
+          <div
+            className="practice-free-advanced-content chord-training-advanced-content"
+            hidden={!isMoreConfigOpen}
+            id="chord-training-advanced-options"
+          >
+            <div className="chord-training-advanced-options">
+              <label className="practice-checkbox-option chord-training-root-highlight-option">
+                <input
+                  aria-label="高亮根音"
+                  checked={config.highlightRoot}
+                  onChange={(event) =>
+                    onChange({ ...config, highlightRoot: event.currentTarget.checked })
+                  }
+                  type="checkbox"
+                />
+                <span>高亮根音</span>
+                <small>谱面以金色标记</small>
+              </label>
+              {isPerformanceTask ? (
+                <div
+                  className="chord-training-sync-setting"
+                  data-setup-guide-target="chord-metronome-sync"
+                >
+                  <label className="practice-checkbox-option">
+                    <input
+                      aria-label="木鱼与谱面同步"
+                      checked={config.metronomeSyncEnabled}
+                      onChange={(event) =>
+                        onChange({ ...config, metronomeSyncEnabled: event.currentTarget.checked })
+                      }
+                      type="checkbox"
+                    />
+                    <span>木鱼与谱面同步</span>
+                  </label>
+                  {config.metronomeSyncEnabled ? (
+                    <small>按木鱼拍点弹奏并判定时机，谱面为 4/4 拍。</small>
+                  ) : null}
+                </div>
+              ) : null}
               {config.task === "recognize" ? (
                 <label className="practice-checkbox-option chord-training-inversion-answer-option">
                   <input
@@ -499,7 +538,8 @@ export function ChordTrainingSetup({
                   />
                   <span>答题时选择转位</span>
                 </label>
-              ) : (
+              ) : null}
+              {config.task === "arpeggio" ? (
                 <fieldset
                   aria-label="分解和弦伴奏型"
                   className="chord-training-option-list chord-training-pattern-list"
@@ -526,10 +566,10 @@ export function ChordTrainingSetup({
                     );
                   })}
                 </fieldset>
-              )}
+              ) : null}
             </div>
-          </section>
-        ) : null}
+          </div>
+        </section>
 
         <footer aria-label="当前练习设置" className="practice-free-action-dock">
           <div aria-label="当前配置摘要" className="practice-free-config-summary">

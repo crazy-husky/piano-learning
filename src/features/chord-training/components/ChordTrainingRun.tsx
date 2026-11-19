@@ -4,12 +4,24 @@ import type { AnswerEvent } from "../../../domain/types";
 import { createUuid } from "../../../domain/id";
 import { answerDeviceInfo } from "../../../data/answerEvents";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import { MidiInputControl } from "../../../midi/MidiInputControl";
 import { PauseOverlay } from "../../../shared/components/PauseOverlay";
 import { PracticeFullscreenToggle } from "../../practice/components/PracticeFullscreenFrame";
+import { PracticeSessionFrame } from "../../practice/components/PracticeSessionFrame";
 import {
   formatPracticeQuestionProgress,
   PracticeSessionHeader,
 } from "../../practice/components/PracticeSessionFrame";
+import type { MetronomeController } from "../../metronome/useMetronomeController";
+import {
+  getPracticeAudioTimeAtBeat,
+  getPracticeBeatDurationMs,
+  getPracticeBeatAtAudioTime,
+  getPracticeTimingGrade,
+  getPracticeTimingWindowMs,
+  type PracticeTempoAnchor,
+  type PracticeTimingGrade,
+} from "../../practice/logic/practiceMetronomeSync";
 import {
   chordNotesMatch,
   CHORD_INVERSION_OPTIONS,
@@ -30,6 +42,7 @@ import { ChordStaffPrompt } from "./ChordStaffPrompt";
 
 const CHORD_INPUT_WINDOW_MS = 280;
 const ANSWER_FEEDBACK_MS = 850;
+const SYNC_MAX_OFFSET_BEATS = 0.5;
 const CHORD_QUALITY_ORDER: readonly ChordQuality[] = [
   "major-triad",
   "minor-triad",
@@ -59,6 +72,17 @@ const CHORD_QUALITY_KIND: Record<ChordQuality, "triad" | "seventh"> = {
 };
 
 type ChordRecognitionStep = "root" | "quality" | "inversion";
+type ChordScoreEventFeedback = "correct" | "early" | "late" | "wrong" | "missed";
+
+function chordDurationInBeats(duration: ChordPrompt["noteEvents"][number]["duration"]): number {
+  return duration === "8" ? 0.5 : duration === "h" ? 2 : duration === "w" ? 4 : 1;
+}
+
+function chordEventBeatOffset(prompt: ChordPrompt, index: number): number {
+  return prompt.noteEvents
+    .slice(0, index)
+    .reduce((total, event) => total + chordDurationInBeats(event.duration), 0);
+}
 
 interface ChordAnswerFeedback {
   correct: boolean;
@@ -73,6 +97,9 @@ export function ChordTrainingRun({
   config,
   dataSetId,
   midi,
+  metronomeController,
+  onMetronomeSyncToggleChange,
+  onMetronomeSyncPauseChange,
   onExit,
   onFinish,
   onPauseChange,
@@ -81,6 +108,9 @@ export function ChordTrainingRun({
   config: ChordTrainingConfig;
   dataSetId: string;
   midi: MidiInputController;
+  metronomeController: MetronomeController;
+  onMetronomeSyncToggleChange?: (toggle: (() => void) | undefined) => void;
+  onMetronomeSyncPauseChange?: (pause: (() => void) | undefined) => void;
   onExit: () => void;
   onFinish: (result: { completed: boolean; elapsedMs: number; events: AnswerEvent[] }) => void;
   onPauseChange: (paused: boolean) => void;
@@ -98,6 +128,23 @@ export function ChordTrainingRun({
   const [selectedInversion, setSelectedInversion] = useState<number | null>(null);
   const [isPromptHintVisible, setIsPromptHintVisible] = useState(false);
   const [rootFeedback, setRootFeedback] = useState<ChordRootFeedback | null>(null);
+  const [syncCountInBeat, setSyncCountInBeat] = useState<number | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [activeEventIndex, setActiveEventIndex] = useState(0);
+  const [scoreEventFeedback, setScoreEventFeedback] = useState<ChordScoreEventFeedback[]>([]);
+  const syncEnabled = config.task !== "recognize" && config.metronomeSyncEnabled;
+  const {
+    getAudioTime: getMetronomeAudioTime,
+    performanceTimeToAudioTime,
+    preferences: metronomePreferences,
+    scheduleAtAudioTime,
+    setSyncLocked: setMetronomeSyncLocked,
+    start: startMetronome,
+    stop: stopMetronome,
+    subscribeBeat: subscribeMetronomeBeat,
+  } = metronomeController;
+  const metronomePreferencesRef = useRef(metronomePreferences);
+  metronomePreferencesRef.current = metronomePreferences;
 
   const keyChords = useMemo(
     () =>
@@ -143,16 +190,29 @@ export function ChordTrainingRun({
   const enteredMidiNotesRef = useRef<number[]>([]);
   const pendingBlockNotesRef = useRef(new Set<number>());
   const blockTimerRef = useRef<number | null>(null);
+  const syncMissTimerRef = useRef<number | null>(null);
+  const syncStartSequenceRef = useRef<number | null>(null);
+  const syncSessionRef = useRef(false);
+  const promptStartAudioTimeRef = useRef<number | null>(null);
+  const syncTempoAnchorsRef = useRef<PracticeTempoAnchor[]>([]);
+  const syncScheduleRevisionRef = useRef(0);
+  const promptNeedsSyncAnchorRef = useRef(false);
+  const activeEventIndexRef = useRef(0);
+  const blockTimingGradeRef = useRef<PracticeTimingGrade | null>(null);
   const advanceTimerRef = useRef<number | null>(null);
   const advanceTimerStartedAtRef = useRef(0);
   const advanceRemainingMsRef = useRef(ANSWER_FEEDBACK_MS);
   const onFinishRef = useRef(onFinish);
   const onPauseChangeRef = useRef(onPauseChange);
+  const onMetronomeSyncToggleChangeRef = useRef(onMetronomeSyncToggleChange);
+  const onMetronomeSyncPauseChangeRef = useRef(onMetronomeSyncPauseChange);
 
   promptRef.current = prompt;
   currentDataSetIdRef.current = dataSetId;
   onFinishRef.current = onFinish;
   onPauseChangeRef.current = onPauseChange;
+  onMetronomeSyncToggleChangeRef.current = onMetronomeSyncToggleChange;
+  onMetronomeSyncPauseChangeRef.current = onMetronomeSyncPauseChange;
 
   const measureElapsed = useCallback((): number => {
     const elapsed = isPausedRef.current
@@ -167,8 +227,15 @@ export function ChordTrainingRun({
       if (isFinishedRef.current) return;
       isFinishedRef.current = true;
       if (blockTimerRef.current !== null) window.clearTimeout(blockTimerRef.current);
+      if (syncMissTimerRef.current !== null) window.clearTimeout(syncMissTimerRef.current);
       if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current);
       advanceTimerRef.current = null;
+      if (syncSessionRef.current) {
+        syncSessionRef.current = false;
+        stopMetronome();
+        setMetronomeSyncLocked(false);
+      }
+      setSyncCountInBeat(null);
       onPauseChangeRef.current(false);
       onFinishRef.current({
         completed,
@@ -176,15 +243,21 @@ export function ChordTrainingRun({
         events: [...eventsRef.current],
       });
     },
-    [measureElapsed]
+    [measureElapsed, setMetronomeSyncLocked, stopMetronome]
   );
 
   useEffect(
     () => () => {
       if (blockTimerRef.current !== null) window.clearTimeout(blockTimerRef.current);
+      if (syncMissTimerRef.current !== null) window.clearTimeout(syncMissTimerRef.current);
       if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current);
+      if (syncSessionRef.current) {
+        syncSessionRef.current = false;
+        stopMetronome();
+        setMetronomeSyncLocked(false);
+      }
     },
-    []
+    [setMetronomeSyncLocked, stopMetronome]
   );
 
   useEffect(() => {
@@ -205,6 +278,18 @@ export function ChordTrainingRun({
     setRootFeedback(null);
     setIsPromptHintVisible(false);
     arpeggioIndexRef.current = 0;
+    activeEventIndexRef.current = 0;
+    setActiveEventIndex(0);
+    setScoreEventFeedback([]);
+    if (syncMissTimerRef.current !== null) {
+      window.clearTimeout(syncMissTimerRef.current);
+      syncMissTimerRef.current = null;
+    }
+    promptStartAudioTimeRef.current = null;
+    syncTempoAnchorsRef.current = [];
+    syncScheduleRevisionRef.current += 1;
+    promptNeedsSyncAnchorRef.current = syncEnabled;
+    blockTimingGradeRef.current = null;
     setEnteredMidiNotes([]);
     enteredMidiNotesRef.current = [];
     advanceRemainingMsRef.current = ANSWER_FEEDBACK_MS;
@@ -212,7 +297,7 @@ export function ChordTrainingRun({
     questionResolvedRef.current = false;
     questionWrongAttemptsRef.current = 0;
     promptStartedAtRef.current = Date.now();
-  }, [config]);
+  }, [config, syncEnabled]);
 
   const scheduleAdvance = useCallback((): void => {
     if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current);
@@ -252,6 +337,10 @@ export function ChordTrainingRun({
       if (blockTimerRef.current !== null) {
         window.clearTimeout(blockTimerRef.current);
         blockTimerRef.current = null;
+      }
+      if (syncMissTimerRef.current !== null) {
+        window.clearTimeout(syncMissTimerRef.current);
+        syncMissTimerRef.current = null;
       }
       pendingBlockNotesRef.current.clear();
       const currentPrompt = promptRef.current;
@@ -322,6 +411,262 @@ export function ChordTrainingRun({
     [config, scheduleAdvance]
   );
 
+  const setScoreEventResult = useCallback(
+    (index: number, result: ChordScoreEventFeedback): void => {
+      setScoreEventFeedback((current) => {
+        const next = [...current];
+        next[index] = result;
+        return next;
+      });
+    },
+    []
+  );
+
+  const appendSyncTempoAnchor = useCallback(
+    (audioTime: number, bpm: number): number | undefined => {
+      const anchors = syncTempoAnchorsRef.current;
+      const previous = anchors.at(-1);
+      if (!previous || !Number.isFinite(audioTime) || !Number.isFinite(bpm) || bpm <= 0) {
+        return undefined;
+      }
+
+      const beat = getPracticeBeatAtAudioTime(audioTime, anchors, previous.bpm);
+      if (beat === undefined) return undefined;
+      const isSameAnchorTime = Math.abs(audioTime - previous.audioTime) <= 0.0001;
+      if (!isSameAnchorTime && (audioTime < previous.audioTime || beat <= previous.beat)) {
+        return undefined;
+      }
+
+      const anchor: PracticeTempoAnchor = { audioTime, beat, bpm };
+      if (isSameAnchorTime) anchors[anchors.length - 1] = anchor;
+      else anchors.push(anchor);
+      return beat;
+    },
+    []
+  );
+
+  const getSyncedEventAudioTime = useCallback((eventIndex: number): number | undefined => {
+    const beatOffset = chordEventBeatOffset(promptRef.current, eventIndex);
+    return getPracticeAudioTimeAtBeat(
+      beatOffset,
+      syncTempoAnchorsRef.current,
+      metronomePreferencesRef.current.bpm
+    );
+  }, []);
+
+  const scheduleSyncedEventHighlight = useCallback(
+    (eventIndex: number): void => {
+      const audioTime = getSyncedEventAudioTime(eventIndex);
+      if (audioTime === undefined) return;
+      const revision = ++syncScheduleRevisionRef.current;
+      const currentPrompt = promptRef.current;
+      scheduleAtAudioTime(() => {
+        if (
+          syncScheduleRevisionRef.current === revision &&
+          promptRef.current === currentPrompt &&
+          activeEventIndexRef.current === eventIndex &&
+          !questionResolvedRef.current
+        ) {
+          setActiveEventIndex(eventIndex);
+        }
+      }, audioTime);
+    },
+    [getSyncedEventAudioTime, scheduleAtAudioTime]
+  );
+
+  const armSyncMissTimer = useCallback(
+    (eventIndex: number): void => {
+      if (syncMissTimerRef.current !== null) window.clearTimeout(syncMissTimerRef.current);
+      const currentPrompt = promptRef.current;
+      const anchor = promptStartAudioTimeRef.current;
+      if (!syncEnabled || anchor === null || pendingBlockNotesRef.current.size > 0) {
+        return;
+      }
+      const bpm = metronomePreferencesRef.current.bpm;
+      const expectedAudioTime = getSyncedEventAudioTime(eventIndex);
+      if (expectedAudioTime === undefined) return;
+      const deadlineAudioTime = expectedAudioTime + (60 / bpm) * SYNC_MAX_OFFSET_BEATS;
+      const delayMs = Math.max(0, (deadlineAudioTime - getMetronomeAudioTime()) * 1000);
+      syncMissTimerRef.current = window.setTimeout(() => {
+        syncMissTimerRef.current = null;
+        if (
+          questionResolvedRef.current ||
+          isPausedRef.current ||
+          isFinishedRef.current ||
+          promptRef.current !== currentPrompt ||
+          activeEventIndexRef.current !== eventIndex
+        ) {
+          return;
+        }
+        setScoreEventResult(eventIndex, "missed");
+        resolveQuestion({ correct: false, entered: enteredMidiNotesRef.current, missed: true });
+      }, delayMs);
+    },
+    [
+      getMetronomeAudioTime,
+      getSyncedEventAudioTime,
+      resolveQuestion,
+      setScoreEventResult,
+      syncEnabled,
+    ]
+  );
+
+  const setPromptSyncAnchor = useCallback(
+    (audioTime: number, bpm: number): void => {
+      promptStartAudioTimeRef.current = audioTime;
+      promptNeedsSyncAnchorRef.current = false;
+      syncTempoAnchorsRef.current = [{ audioTime, beat: 0, bpm }];
+      activeEventIndexRef.current = 0;
+      arpeggioIndexRef.current = 0;
+      setActiveEventIndex(0);
+      setScoreEventFeedback([]);
+      syncScheduleRevisionRef.current += 1;
+      scheduleSyncedEventHighlight(0);
+      armSyncMissTimer(0);
+    },
+    [armSyncMissTimer, scheduleSyncedEventHighlight]
+  );
+
+  const getSyncedTimingGrade = useCallback(
+    (inputTimestamp: number, currentPrompt: ChordPrompt): PracticeTimingGrade | null => {
+      const anchor = promptStartAudioTimeRef.current;
+      const index = activeEventIndexRef.current;
+      if (!syncEnabled || anchor === null || !currentPrompt.noteEvents[index]) return null;
+      const bpm = metronomePreferencesRef.current.bpm;
+      const expectedAudioTime = getSyncedEventAudioTime(index);
+      if (expectedAudioTime === undefined) return null;
+      const inputAudioTime = performanceTimeToAudioTime(inputTimestamp);
+      const deltaMs = (inputAudioTime - expectedAudioTime) * 1000;
+      const grade = getPracticeTimingGrade(
+        deltaMs,
+        getPracticeTimingWindowMs(
+          bpm,
+          chordDurationInBeats(currentPrompt.noteEvents[index]!.duration)
+        ),
+        getPracticeBeatDurationMs(bpm) * SYNC_MAX_OFFSET_BEATS
+      );
+      return grade ?? null;
+    },
+    [getSyncedEventAudioTime, performanceTimeToAudioTime, syncEnabled]
+  );
+
+  const acceptSyncedEvent = useCallback(
+    (eventIndex: number, grade: PracticeTimingGrade): void => {
+      if (syncMissTimerRef.current !== null) {
+        window.clearTimeout(syncMissTimerRef.current);
+        syncMissTimerRef.current = null;
+      }
+      setScoreEventResult(eventIndex, grade === "on-time" ? "correct" : grade);
+      const nextIndex = eventIndex + 1;
+      activeEventIndexRef.current = nextIndex;
+      arpeggioIndexRef.current = nextIndex;
+      if (nextIndex >= promptRef.current.noteEvents.length) {
+        resolveQuestion({ correct: true, entered: enteredMidiNotesRef.current });
+      } else {
+        scheduleSyncedEventHighlight(nextIndex);
+        armSyncMissTimer(nextIndex);
+      }
+    },
+    [armSyncMissTimer, resolveQuestion, scheduleSyncedEventHighlight, setScoreEventResult]
+  );
+
+  useEffect(() => {
+    if (!syncEnabled) {
+      setSyncCountInBeat(null);
+      setSyncError(null);
+      return undefined;
+    }
+    if (isPaused || isFinishedRef.current) return undefined;
+
+    let cancelled = false;
+    syncSessionRef.current = true;
+    syncStartSequenceRef.current = null;
+    promptStartAudioTimeRef.current = null;
+    promptNeedsSyncAnchorRef.current = true;
+    setSyncCountInBeat(4);
+    setSyncError(null);
+    setMetronomeSyncLocked(true);
+    stopMetronome();
+    const unsubscribe = subscribeMetronomeBeat((beat) => {
+      if (!syncSessionRef.current || cancelled || isPausedRef.current || isFinishedRef.current) {
+        return;
+      }
+      if (syncStartSequenceRef.current === null) {
+        syncStartSequenceRef.current = beat.sequence;
+        setSyncCountInBeat(4);
+        return;
+      }
+      const countInElapsed = beat.sequence - syncStartSequenceRef.current;
+      if (countInElapsed < 4) {
+        setSyncCountInBeat(Math.max(1, 4 - countInElapsed));
+        return;
+      }
+      if (countInElapsed === 4) setSyncCountInBeat(null);
+      if (promptNeedsSyncAnchorRef.current) {
+        setPromptSyncAnchor(beat.audioTime, beat.bpm);
+        return;
+      }
+      if (appendSyncTempoAnchor(beat.audioTime, beat.bpm) === undefined) return;
+      if (pendingBlockNotesRef.current.size === 0) {
+        const eventIndex = activeEventIndexRef.current;
+        scheduleSyncedEventHighlight(eventIndex);
+        armSyncMissTimer(eventIndex);
+      }
+    });
+
+    void startMetronome({ initialBeatIndex: 0 }).then((started) => {
+      if (cancelled || started) return;
+      syncSessionRef.current = false;
+      setMetronomeSyncLocked(false);
+      setSyncCountInBeat(null);
+      setSyncError("木鱼节拍器无法启动，请重试。");
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      if (syncMissTimerRef.current !== null) {
+        window.clearTimeout(syncMissTimerRef.current);
+        syncMissTimerRef.current = null;
+      }
+      syncSessionRef.current = false;
+      stopMetronome();
+      setMetronomeSyncLocked(false);
+      setSyncCountInBeat(null);
+      syncScheduleRevisionRef.current += 1;
+    };
+  }, [
+    appendSyncTempoAnchor,
+    armSyncMissTimer,
+    isPaused,
+    scheduleSyncedEventHighlight,
+    setMetronomeSyncLocked,
+    startMetronome,
+    stopMetronome,
+    subscribeMetronomeBeat,
+    syncEnabled,
+    setPromptSyncAnchor,
+  ]);
+
+  useEffect(() => {
+    if (!syncEnabled || !syncSessionRef.current || promptStartAudioTimeRef.current === null) {
+      return;
+    }
+    if (appendSyncTempoAnchor(getMetronomeAudioTime(), metronomePreferences.bpm) === undefined) {
+      return;
+    }
+    const eventIndex = activeEventIndexRef.current;
+    scheduleSyncedEventHighlight(eventIndex);
+    armSyncMissTimer(eventIndex);
+  }, [
+    appendSyncTempoAnchor,
+    armSyncMissTimer,
+    getMetronomeAudioTime,
+    metronomePreferences.bpm,
+    scheduleSyncedEventHighlight,
+    syncEnabled,
+  ]);
+
   useEffect(() => {
     if (isPaused) return undefined;
     const timer = window.setInterval(() => {
@@ -339,6 +684,60 @@ export function ChordTrainingRun({
     const unsubscribe = midi.subscribe((event) => {
       if (event.type !== "press" || questionResolvedRef.current || isFinishedRef.current) return;
       const note = event.note.midiNoteNumber;
+      if (syncEnabled) {
+        const currentPrompt = promptRef.current;
+        const eventIndex = activeEventIndexRef.current;
+        const expectedEvent = currentPrompt.noteEvents[eventIndex];
+        if (!expectedEvent || promptStartAudioTimeRef.current === null) return;
+        const timingGrade = getSyncedTimingGrade(
+          typeof event.note.timestamp === "number" ? event.note.timestamp : performance.now(),
+          currentPrompt
+        );
+        if (!timingGrade) return;
+
+        const nextEntered = [...enteredMidiNotesRef.current, note];
+        enteredMidiNotesRef.current = nextEntered;
+        setEnteredMidiNotes(nextEntered);
+        if (expectedEvent.notes.length > 1) {
+          if (pendingBlockNotesRef.current.size === 0) {
+            blockTimingGradeRef.current = timingGrade;
+            if (syncMissTimerRef.current !== null) {
+              window.clearTimeout(syncMissTimerRef.current);
+              syncMissTimerRef.current = null;
+            }
+          }
+          pendingBlockNotesRef.current.add(note);
+          if (blockTimerRef.current === null) {
+            blockTimerRef.current = window.setTimeout(() => {
+              blockTimerRef.current = null;
+              const enteredBlock = [...pendingBlockNotesRef.current];
+              pendingBlockNotesRef.current.clear();
+              const isBlockCorrect = chordNotesMatch(
+                expectedEvent.notes.map(({ midi }) => midi),
+                enteredBlock
+              );
+              const firstTimingGrade = blockTimingGradeRef.current ?? timingGrade;
+              blockTimingGradeRef.current = null;
+              if (!isBlockCorrect) {
+                setScoreEventResult(eventIndex, "wrong");
+                resolveQuestion({ correct: false, entered: enteredMidiNotesRef.current });
+                return;
+              }
+              acceptSyncedEvent(eventIndex, firstTimingGrade);
+            }, CHORD_INPUT_WINDOW_MS);
+          }
+          return;
+        }
+
+        if (expectedEvent.notes[0]?.midi !== note) {
+          setScoreEventResult(eventIndex, "wrong");
+          resolveQuestion({ correct: false, entered: nextEntered });
+          return;
+        }
+        acceptSyncedEvent(eventIndex, timingGrade);
+        return;
+      }
+
       if (config.task === "block") {
         pendingBlockNotesRef.current.add(note);
         setEnteredMidiNotes([...pendingBlockNotesRef.current]);
@@ -346,8 +745,10 @@ export function ChordTrainingRun({
           blockTimerRef.current = window.setTimeout(() => {
             blockTimerRef.current = null;
             const entered = [...pendingBlockNotesRef.current];
+            const correct = chordNotesMatch(getChordPromptMidiNotes(promptRef.current), entered);
+            setScoreEventResult(0, correct ? "correct" : "wrong");
             resolveQuestion({
-              correct: chordNotesMatch(getChordPromptMidiNotes(promptRef.current), entered),
+              correct,
               entered,
             });
           }, CHORD_INPUT_WINDOW_MS);
@@ -374,9 +775,11 @@ export function ChordTrainingRun({
               enteredBlock
             );
             if (!isBlockCorrect) {
+              setScoreEventResult(arpeggioIndexRef.current, "wrong");
               resolveQuestion({ correct: false, entered: enteredMidiNotesRef.current });
               return;
             }
+            setScoreEventResult(arpeggioIndexRef.current, "correct");
             const nextIndex = arpeggioIndexRef.current + 1;
             arpeggioIndexRef.current = nextIndex;
             if (nextIndex === currentPrompt.noteEvents.length) {
@@ -388,9 +791,11 @@ export function ChordTrainingRun({
       }
 
       if (expectedEvent.notes[0]?.midi !== note) {
+        setScoreEventResult(arpeggioIndexRef.current, "wrong");
         resolveQuestion({ correct: false, entered: nextEntered });
         return;
       }
+      setScoreEventResult(arpeggioIndexRef.current, "correct");
       const nextIndex = arpeggioIndexRef.current + 1;
       arpeggioIndexRef.current = nextIndex;
       if (nextIndex === currentPrompt.noteEvents.length) {
@@ -398,11 +803,20 @@ export function ChordTrainingRun({
       }
     });
     return () => unsubscribe();
-  }, [config.task, isPaused, midi, resolveQuestion]);
+  }, [
+    acceptSyncedEvent,
+    config.task,
+    getSyncedTimingGrade,
+    isPaused,
+    midi,
+    resolveQuestion,
+    setScoreEventResult,
+    syncEnabled,
+  ]);
 
   enteredMidiNotesRef.current = enteredMidiNotes;
 
-  const togglePause = (): void => {
+  const togglePause = useCallback((): void => {
     if (isFinishedRef.current) return;
     if (isPausedRef.current) {
       startedAtRef.current = performance.now();
@@ -423,6 +837,18 @@ export function ChordTrainingRun({
       advanceTimerRef.current = null;
     }
     pendingBlockNotesRef.current.clear();
+    if (syncMissTimerRef.current !== null) {
+      window.clearTimeout(syncMissTimerRef.current);
+      syncMissTimerRef.current = null;
+    }
+    if (syncEnabled) {
+      promptStartAudioTimeRef.current = null;
+      syncTempoAnchorsRef.current = [];
+      syncScheduleRevisionRef.current += 1;
+      promptNeedsSyncAnchorRef.current = true;
+      stopMetronome();
+      setMetronomeSyncLocked(false);
+    }
     arpeggioIndexRef.current = 0;
     if (blockTimerRef.current !== null) {
       window.clearTimeout(blockTimerRef.current);
@@ -432,7 +858,32 @@ export function ChordTrainingRun({
     enteredMidiNotesRef.current = [];
     setIsPaused(true);
     onPauseChangeRef.current(true);
-  };
+  }, [
+    feedback?.correct,
+    measureElapsed,
+    scheduleAdvance,
+    setMetronomeSyncLocked,
+    stopMetronome,
+    syncEnabled,
+  ]);
+
+  useEffect(() => {
+    if (!syncEnabled) {
+      onMetronomeSyncToggleChangeRef.current?.(undefined);
+      onMetronomeSyncPauseChangeRef.current?.(undefined);
+      return undefined;
+    }
+    const toggleSynchronizedPractice = (): void => togglePause();
+    const pauseSynchronizedPractice = (): void => {
+      if (!isPausedRef.current) togglePause();
+    };
+    onMetronomeSyncToggleChangeRef.current?.(toggleSynchronizedPractice);
+    onMetronomeSyncPauseChangeRef.current?.(pauseSynchronizedPractice);
+    return () => {
+      onMetronomeSyncToggleChangeRef.current?.(undefined);
+      onMetronomeSyncPauseChangeRef.current?.(undefined);
+    };
+  }, [syncEnabled, togglePause]);
 
   const elapsedSeconds = Math.max(0, Math.ceil(elapsedMs / 1000));
   const remainingSeconds = Math.max(0, config.fixedDurationSeconds - elapsedSeconds);
@@ -508,7 +959,7 @@ export function ChordTrainingRun({
   };
 
   return (
-    <section aria-labelledby="chord-training-run-title" className="chord-training-run">
+    <PracticeSessionFrame aria-label="和弦训练练习" className="chord-training-run">
       <PracticeSessionHeader
         exitAriaLabel={
           config.lengthMode === "open-ended" ? "结束练习并查看结果" : "结束练习并返回配置"
@@ -526,9 +977,33 @@ export function ChordTrainingRun({
         onRestart={onRestart}
         progress={progressLabel}
         title={<span id="chord-training-run-title">和弦训练</span>}
+        utilityChildren={
+          config.task !== "recognize" ? (
+            <MidiInputControl
+              ariaLabel="和弦训练 MIDI 输入设备"
+              className={!midi.isConnected ? "needs-attention" : undefined}
+              midi={midi}
+            />
+          ) : null
+        }
       >
         <PracticeFullscreenToggle />
       </PracticeSessionHeader>
+
+      {config.task !== "recognize" ? (
+        <div className="practice-metronome-sync-status chord-training-sync-status" role="status">
+          {syncEnabled && syncCountInBeat !== null ? (
+            <strong>准备拍 {syncCountInBeat}</strong>
+          ) : null}
+          <strong>{metronomePreferences.bpm} BPM</strong>
+          <span className="practice-metronome-sync-legend" aria-label="谱面颜色说明">
+            <span className="is-root">金色：根音</span>
+            <span className="is-error">红色：错音或漏拍</span>
+            {syncEnabled ? <span className="is-warning">黄色：时机偏早或偏晚</span> : null}
+          </span>
+          {syncError ? <span className="chord-training-sync-error">{syncError}</span> : null}
+        </div>
+      ) : null}
 
       <div className="chord-training-prompt-panel">
         <div className="chord-training-prompt-toolbar">
@@ -556,7 +1031,12 @@ export function ChordTrainingRun({
             <span>{getChordInversionLabel(prompt.inversion)}</span>
           </div>
         </div>
-        <ChordStaffPrompt prompt={prompt} />
+        <ChordStaffPrompt
+          activeEventIndex={activeEventIndex}
+          eventFeedback={scoreEventFeedback}
+          highlightRoot={config.highlightRoot}
+          prompt={prompt}
+        />
 
         {config.task === "recognize" ? (
           <div aria-label="分步选择和弦" className="chord-training-recognition">
@@ -739,6 +1219,6 @@ export function ChordTrainingRun({
       </div>
 
       {isPaused ? <PauseOverlay onResume={togglePause} showKeyboardShortcuts={false} /> : null}
-    </section>
+    </PracticeSessionFrame>
   );
 }

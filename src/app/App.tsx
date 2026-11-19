@@ -527,6 +527,7 @@ export function App({
   const practiceInputRouteKey = `${route.path}:${route.practiceTab ?? "free"}`;
   const shouldShowPracticeFloatingMetronome =
     route.levelId === 7 ||
+    route.levelId === 8 ||
     (practiceInputModeState?.routeKey === practiceInputRouteKey &&
       practiceInputModeState.mode !== "microphone");
   const handlePracticeInputModeChange = useCallback(
@@ -1641,6 +1642,7 @@ export function App({
                     <ChordTrainingView
                       dataSetId={data.settings.dataSetId}
                       midi={midi}
+                      metronomeController={metronomeController}
                       navigationExitRequest={practiceExitRequest}
                       onBeforePracticeStart={preflightBeforePracticeStart}
                       onDataChanged={refreshPracticeHistory}
@@ -1651,7 +1653,19 @@ export function App({
                       onPracticeFinished={showBackupReminderAfterActivity}
                       onPracticeStageChange={setPracticeStageActive}
                       onRunningChange={setPracticeRunning}
+                      onMetronomeSyncToggleChange={registerPracticeMetronomeSyncToggle}
+                      onMetronomeSyncPauseChange={registerPracticeMetronomeSyncPause}
                     />
+                    {shouldShowPracticeFloatingMetronome ? (
+                      <MetronomeFloating
+                        controller={metronomeController}
+                        hiddenForVisit={practiceMetronomeHiddenForVisit}
+                        onVisibilityChange={setPracticeMetronomeFloatingVisible}
+                        activePractice={practiceRunning}
+                        onHideForVisit={() => setPracticeMetronomeHiddenForVisit(true)}
+                        onSyncPauseToggle={toggleSynchronizedPractice}
+                      />
+                    ) : null}
                   </PracticeFullscreenFrame>
                 ) : null}
                 {moduleTab === "practice" && route.levelId > 1 && route.levelId < 8 ? (

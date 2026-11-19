@@ -898,6 +898,50 @@
   padding-top: 10px;
 }
 
+.chord-training-advanced-options {
+  display: grid;
+  gap: 10px;
+}
+
+.chord-training-root-highlight-option {
+  width: fit-content;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.chord-training-root-highlight-option input {
+  accent-color: var(--warning);
+}
+
+.chord-training-root-highlight-option small,
+.chord-training-sync-setting > small {
+  color: var(--muted);
+}
+
+.chord-training-sync-setting {
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+}
+
+.chord-training-sync-setting .practice-checkbox-option {
+  width: fit-content;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.chord-training-sync-setting input {
+  accent-color: var(--accent-fill);
+}
+
 .chord-training-inversion-answer-option {
   width: fit-content;
   min-height: 40px;
@@ -1255,10 +1299,10 @@
 
 .chord-training-run > .practice-session-header {
   box-sizing: border-box;
-  width: min(calc(100% - 32px), 1000px);
-  margin-bottom: 0;
-  margin-inline: auto;
-  padding-bottom: 16px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 12px;
 }
 
 .chord-training-run {
@@ -1272,7 +1316,36 @@
 }
 
 .chord-training-prompt-panel {
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  min-height: min(68vh, 720px);
+  margin: 0;
+}
+
+.chord-training-sync-status {
+  width: fit-content;
+  max-width: 100%;
+  margin: 4px auto 8px;
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 58%, var(--surface));
+  color: var(--text);
+}
+
+.chord-training-sync-status strong {
+  color: var(--accent-strong);
+}
+
+.chord-training-sync-status .practice-metronome-sync-legend .is-root {
+  color: var(--warning);
+}
+
+.chord-training-sync-status .practice-metronome-sync-legend .is-error {
+  color: var(--danger);
+}
+
+.chord-training-sync-error {
+  color: var(--danger) !important;
+  font-weight: 650;
 }
 
 .chord-training-run .practice-session-controls > .practice-session-actions {

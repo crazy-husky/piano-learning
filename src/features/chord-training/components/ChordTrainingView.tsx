@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnswerEvent } from "../../../domain/types";
 import { saveAnswerEvents } from "../../../data/db";
 import type { MidiInputController } from "../../../midi/useMidiInput";
+import type { MetronomeController } from "../../metronome/useMetronomeController";
 import type {
   PracticeNavigationExitRequest,
   PracticeNavigationExitTarget,
@@ -36,6 +37,7 @@ interface ChordRunSummary {
 export function ChordTrainingView({
   dataSetId,
   midi,
+  metronomeController,
   navigationExitRequest,
   onBeforePracticeStart,
   onDataChanged,
@@ -43,9 +45,12 @@ export function ChordTrainingView({
   onPracticeFinished,
   onPracticeStageChange,
   onRunningChange,
+  onMetronomeSyncToggleChange,
+  onMetronomeSyncPauseChange,
 }: {
   dataSetId: string;
   midi: MidiInputController;
+  metronomeController: MetronomeController;
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   onBeforePracticeStart: () => Promise<{ proceed: boolean; settings?: { dataSetId: string } }>;
   onDataChanged: () => Promise<void>;
@@ -53,7 +58,12 @@ export function ChordTrainingView({
   onPracticeFinished: () => void;
   onPracticeStageChange: (active: boolean) => void;
   onRunningChange: (running: boolean) => void;
+  onMetronomeSyncToggleChange?: (toggle: (() => void) | undefined) => void;
+  onMetronomeSyncPauseChange?: (pause: (() => void) | undefined) => void;
 }): JSX.Element {
+  const metronomeBeatsPerBar = metronomeController.preferences.beatsPerBar;
+  const prepareMetronome = metronomeController.prepare;
+  const metronomeAudioError = metronomeController.audioError;
   const [config, setConfig] = useState<ChordTrainingConfig>(readChordTrainingConfig);
   const [activeDataSetId, setActiveDataSetId] = useState(dataSetId);
   const [runInstance, setRunInstance] = useState(0);
@@ -80,9 +90,21 @@ export function ChordTrainingView({
       guideSetupRequirement('[data-setup-guide-target="chord-midi-device"]');
       return;
     }
+    if (config.task !== "recognize" && config.metronomeSyncEnabled && metronomeBeatsPerBar !== 4) {
+      setStartError("和弦谱面为 4/4 拍，请先在木鱼设置中将每小节拍数调整为 4。");
+      guideSetupRequirement('[data-setup-guide-target="chord-metronome-sync"]');
+      return;
+    }
     setIsStarting(true);
     setStartError(null);
     try {
+      if (config.task !== "recognize" && config.metronomeSyncEnabled) {
+        const prepared = await prepareMetronome();
+        if (!prepared) {
+          setStartError(metronomeAudioError ?? "木鱼节拍器无法启动，请重试。");
+          return;
+        }
+      }
       const preflight = await onBeforePracticeStart();
       if (!preflight.proceed) return;
       setActiveDataSetId(preflight.settings?.dataSetId ?? dataSetId);
@@ -107,9 +129,12 @@ export function ChordTrainingView({
     dataSetId,
     isStarting,
     midi.isConnected,
+    metronomeAudioError,
+    metronomeBeatsPerBar,
     onBeforePracticeStart,
     onPracticeStageChange,
     onRunningChange,
+    prepareMetronome,
   ]);
 
   useEffect(() => {
@@ -173,6 +198,9 @@ export function ChordTrainingView({
         config={activeConfig}
         dataSetId={activeDataSetId}
         midi={midi}
+        metronomeController={metronomeController}
+        onMetronomeSyncToggleChange={onMetronomeSyncToggleChange}
+        onMetronomeSyncPauseChange={onMetronomeSyncPauseChange}
         onExit={() => {
           onRunningChange(false);
           onPracticeStageChange(false);
