@@ -41,7 +41,7 @@ export type StaffDistanceComputerKeyboardBindings = Record<
 >;
 export type StaffDistanceFingerNumber = 1 | 2 | 3 | 4 | 5;
 export type StaffDistanceFingerBatch = "line" | "space";
-export type StaffDistanceFingerInteractionMode = "play" | "no-answer";
+export type StaffDistanceFingerInteractionMode = "play" | "no-answer" | "card-reading";
 export interface StaffDistancePracticeSettings {
   includeUnison: boolean;
   maxDistance: number;

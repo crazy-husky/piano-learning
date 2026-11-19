@@ -41,14 +41,14 @@ const FINGER_RANGES: Record<
     2: { lower: 3, upper: 4 },
     3: { lower: 4, upper: 3 },
     4: { lower: 5, upper: 2 },
-    5: { lower: 6, upper: 1 },
+    5: { lower: 6, upper: 2 },
   },
   left: {
     1: { lower: 5, upper: 2 },
     2: { lower: 4, upper: 3 },
     3: { lower: 3, upper: 4 },
     4: { lower: 2, upper: 5 },
-    5: { lower: 1, upper: 6 },
+    5: { lower: 2, upper: 6 },
   },
 };
 
@@ -105,6 +105,15 @@ export function getStaffDistanceFingerProfile(
     spaceAnchorPitchId: SPACE_ANCHORS[hand][finger],
     staff: hand === "right" ? "treble" : "bass",
   };
+}
+
+/** Number of white keys needed to cover both line and space reference ranges. */
+export function getStaffDistanceFingerKeyboardWhiteKeyCount(
+  hand: StaffDistanceFingerHand,
+  finger: StaffDistanceFingerNumber
+): number {
+  const { lower, upper } = getStaffDistanceFingerProfile(hand, finger);
+  return lower + upper + 2;
 }
 
 export function getStaffDistanceTargetFinger(
@@ -240,7 +249,8 @@ export function createStaffDistanceFingerCards(
     const targets = targetPositions.map((position) =>
       noteForStaffPosition(notesByPosition, position, staff)
     );
-    if (targets.some((target) => target === undefined) || targets.length !== 7) {
+    const expectedTargetCount = lower + upper;
+    if (targets.some((target) => target === undefined) || targets.length !== expectedTargetCount) {
       return { cards: [], error: "单指专项固定音域无法覆盖所选手指的完整活动范围，暂时无法开始。" };
     }
     batches.push({
@@ -256,6 +266,34 @@ export function createStaffDistanceFingerCards(
     const shuffled = shuffledWithoutAdjacentDuplicates(targets, random, previousTargetPitchId);
     cards.push(...shuffled.map((target) => ({ batch, reference, target })));
     previousTargetPitchId = shuffled.at(-1)?.pitchId;
+  }
+
+  return { cards };
+}
+
+/** A shuffled, non-repeating reference set for the read-only card gallery. */
+export function createStaffDistanceFingerGalleryCards(
+  availableNotes: readonly TargetNote[],
+  hand: StaffDistanceFingerHand,
+  finger: StaffDistanceFingerNumber,
+  random: () => number = Math.random
+): { cards: StaffDistanceFingerCard[]; error?: undefined } | { cards: []; error: string } {
+  const deck = createStaffDistanceFingerCards(availableNotes, hand, finger, random);
+  if (deck.error) return deck;
+
+  const seen = new Set<string>();
+  const cards = deck.cards.filter((card) => {
+    const key = `${card.batch}:${card.target.pitchId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  for (let index = cards.length - 1; index > 0; index -= 1) {
+    const sampled = random();
+    const randomIndex = Number.isFinite(sampled) ? Math.max(0, Math.min(0.999999, sampled)) : 0;
+    const swapIndex = Math.floor(randomIndex * (index + 1));
+    [cards[index], cards[swapIndex]] = [cards[swapIndex]!, cards[index]!];
   }
 
   return { cards };

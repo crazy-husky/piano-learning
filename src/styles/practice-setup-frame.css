@@ -13,6 +13,13 @@
   container-type: inline-size;
 }
 
+.practice-setup-mode-selector {
+  box-sizing: border-box;
+  width: min(100%, 1120px);
+  min-width: 0;
+  margin-inline: auto;
+}
+
 @container practice-setup-frame (max-width: 760px) {
   .practice-setup-framed-page .practice-setup-description-row .practice-setup-heading-meta,
   .practice-setup-framed-page .practice-setup-description-row .practice-midi-heading-status {

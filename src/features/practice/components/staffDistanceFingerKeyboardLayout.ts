@@ -12,23 +12,33 @@ const MILLIMETERS_PER_INCH = 25.4;
 const VIEWPORT_EDGE_SPACE_PX = 0;
 const KEYBED_FRAME_SPACE_PX = 14;
 
-const PRACTICE_PIANO_KEYBED_BASE_WIDTH_PX =
-  (PRACTICE_PIANO_WHITE_KEY_WIDTH_MM * PRACTICE_PIANO_WHITE_KEY_COUNT * CSS_PIXELS_PER_INCH) /
-  MILLIMETERS_PER_INCH;
+function getKeybedBaseWidthPx(whiteKeyCount: number): number {
+  return (
+    (PRACTICE_PIANO_WHITE_KEY_WIDTH_MM * whiteKeyCount * CSS_PIXELS_PER_INCH) / MILLIMETERS_PER_INCH
+  );
+}
 export const PRACTICE_PIANO_WHITE_KEY_MIN_HEIGHT_PX = 160;
 export const PRACTICE_PIANO_WHITE_KEY_MAX_HEIGHT_PX = Math.ceil(
   (PRACTICE_PIANO_WHITE_KEY_MAX_HEIGHT_MM * CSS_PIXELS_PER_INCH) / MILLIMETERS_PER_INCH
 );
 
-export function getPracticePianoKeyboardMinWidthPx(scale = 1): number {
-  return Math.ceil(PRACTICE_PIANO_KEYBED_BASE_WIDTH_PX * scale + KEYBED_FRAME_SPACE_PX);
+export function getPracticePianoKeyboardMinWidthPx(
+  scale = 1,
+  whiteKeyCount = PRACTICE_PIANO_WHITE_KEY_COUNT
+): number {
+  return Math.ceil(getKeybedBaseWidthPx(whiteKeyCount) * scale + KEYBED_FRAME_SPACE_PX);
 }
 
-export function getPracticePianoMinViewportWidthPx(scale = 1): number {
-  return Math.ceil(getPracticePianoKeyboardMinWidthPx(scale) + VIEWPORT_EDGE_SPACE_PX);
+export function getPracticePianoMinViewportWidthPx(
+  scale = 1,
+  whiteKeyCount = PRACTICE_PIANO_WHITE_KEY_COUNT
+): number {
+  return Math.ceil(
+    getPracticePianoKeyboardMinWidthPx(scale, whiteKeyCount) + VIEWPORT_EDGE_SPACE_PX
+  );
 }
 
-export const PRACTICE_PIANO_KEYBED_WIDTH_PX = PRACTICE_PIANO_KEYBED_BASE_WIDTH_PX;
+export const PRACTICE_PIANO_KEYBED_WIDTH_PX = getKeybedBaseWidthPx(PRACTICE_PIANO_WHITE_KEY_COUNT);
 export const PRACTICE_PIANO_KEYBOARD_MIN_WIDTH_PX = getPracticePianoKeyboardMinWidthPx();
 export const PRACTICE_PIANO_MIN_VIEWPORT_WIDTH_PX = getPracticePianoMinViewportWidthPx();
 
@@ -45,16 +55,21 @@ export function readPracticeViewportSize(): PracticeViewportSize {
   };
 }
 
-export function canFitPracticePianoKeyboard(size: PracticeViewportSize, scale = 1): boolean {
-  return size.width >= getPracticePianoMinViewportWidthPx(scale);
+export function canFitPracticePianoKeyboard(
+  size: PracticeViewportSize,
+  scale = 1,
+  whiteKeyCount = PRACTICE_PIANO_WHITE_KEY_COUNT
+): boolean {
+  return size.width >= getPracticePianoMinViewportWidthPx(scale, whiteKeyCount);
 }
 
 export function canFitPracticePianoKeyboardInEitherOrientation(
   size: PracticeViewportSize,
-  scale = 1
+  scale = 1,
+  whiteKeyCount = PRACTICE_PIANO_WHITE_KEY_COUNT
 ): boolean {
   return (
-    canFitPracticePianoKeyboard(size, scale) ||
-    canFitPracticePianoKeyboard({ width: size.height, height: size.width }, scale)
+    canFitPracticePianoKeyboard(size, scale, whiteKeyCount) ||
+    canFitPracticePianoKeyboard({ width: size.height, height: size.width }, scale, whiteKeyCount)
   );
 }

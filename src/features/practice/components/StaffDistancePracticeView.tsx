@@ -27,8 +27,10 @@ import { normalizeBlackKeyPracticeSettings } from "../../../domain/blackKeyPract
 import { getNotesForSelection, getStaffSelectedPitchIds } from "../../../domain/notes";
 import { validateStaffDistancePractice } from "../../../domain/staffDistancePractice";
 import {
+  createStaffDistanceFingerGalleryCards,
   createStaffDistanceFingerCards,
   getStaffDistanceFingerGroupIds,
+  getStaffDistanceFingerKeyboardWhiteKeyCount,
   getStaffDistanceFingerProfile,
 } from "../../../domain/staffDistanceFinger";
 import type {
@@ -60,6 +62,7 @@ import { BoundedNumberInput } from "../../../shared/components/BoundedNumberInpu
 import { PracticeMicrophoneRetryButton } from "../../../shared/components/PracticeMicrophoneRetryButton";
 import { useMidiConnectionAttention } from "../../../shared/hooks/useMidiConnectionAttention";
 import { guideSetupRequirement } from "../../../shared/utils/guideSetupRequirement";
+import { PracticeSetupFrame } from "./PracticeSetupFrame";
 import { LoadingActivityText } from "../../../shared/components/LoadingActivity";
 import { useLocalStorageState } from "../../../shared/hooks/useLocalStorageState";
 import { useConfirmDialog } from "../../../shared/components/ui/ConfirmDialog";
@@ -69,6 +72,7 @@ import {
   shouldHandleGlobalEnter,
 } from "../../../shared/keyboard/keyboardShortcuts";
 import { StaffDistanceRun, type StaffDistanceMicrophoneInput } from "./StaffDistanceRun";
+import { StaffDistanceFingerCardGallery } from "./StaffDistanceFingerCardGallery";
 import type { PracticeDistanceMode } from "../../../routing/appRoutes";
 import { PRACTICE_FIXED_COUNT_PRESETS } from "../logic/practiceLengthOptions";
 import {
@@ -263,7 +267,11 @@ function normalizePreferences(value: unknown): StaffDistancePreferences {
     fixedCount: numberInRange(record.fixedCount, 30, 1, 500),
     fixedDurationSeconds: numberInRange(record.fixedDurationSeconds, 60, 60, 7200),
     fingerHand: record.fingerHand === "left" ? "left" : "right",
-    fingerInteractionMode: record.fingerInteractionMode === "no-answer" ? "no-answer" : "play",
+    fingerInteractionMode:
+      record.fingerInteractionMode === "no-answer" ||
+      record.fingerInteractionMode === "card-reading"
+        ? record.fingerInteractionMode
+        : "play",
     fingerNumber: ([1, 2, 3, 4, 5] as number[]).includes(Number(record.fingerNumber))
       ? (Number(record.fingerNumber) as StaffDistanceFingerNumber)
       : 1,
@@ -470,18 +478,29 @@ export function StaffDistancePracticeView({
   const trainingMode = distanceMode ?? preferences.trainingMode;
   const isFingerNoAnswerSelected =
     trainingMode === "finger" && preferences.fingerInteractionMode === "no-answer";
+  const isFingerCardReadingSelected =
+    trainingMode === "finger" && preferences.fingerInteractionMode === "card-reading";
+  const isFingerInputBypassed = isFingerNoAnswerSelected || isFingerCardReadingSelected;
+  const fingerKeyboardWhiteKeyCount = getStaffDistanceFingerKeyboardWhiteKeyCount(
+    preferences.fingerHand,
+    preferences.fingerNumber
+  );
+  const keyboardWhiteKeyCount = trainingMode === "finger" ? fingerKeyboardWhiteKeyCount : undefined;
   const viewportSize = usePracticeViewportSize();
   const keyboardFitsEitherOrientation = canFitPracticePianoKeyboardInEitherOrientation(
     viewportSize,
-    preferences.keyboardScale
+    preferences.keyboardScale,
+    keyboardWhiteKeyCount
   );
   const canOfferVirtualKeyboard = canFitPracticePianoKeyboardInEitherOrientation(
     viewportSize,
-    PRACTICE_PIANO_SCALE_MIN
+    PRACTICE_PIANO_SCALE_MIN,
+    keyboardWhiteKeyCount
   );
   const keyboardFitsCurrentOrientation = canFitPracticePianoKeyboard(
     viewportSize,
-    preferences.keyboardScale
+    preferences.keyboardScale,
+    keyboardWhiteKeyCount
   );
   const previousMidiConnectionRef = useRef(midi.isConnected);
   const keyboardCalibrationRef = useRef<HTMLDetailsElement | null>(null);
@@ -515,9 +534,11 @@ export function StaffDistancePracticeView({
   const customFixedCountInputRef = useRef<HTMLInputElement | null>(null);
   const [runSession, setRunSession] = useState<PracticeSessionRecord | null>(null);
   const [summarySession, setSummarySession] = useState<PracticeSessionRecord | null>(null);
+  const [isFingerCardGalleryOpen, setIsFingerCardGalleryOpen] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const handledSummaryNavigationRequestRef = useRef<number | null>(null);
+  const handledFingerGalleryNavigationRequestRef = useRef<number | null>(null);
   const selectTrainingMode = useCallback(
     (mode: StaffDistanceTrainingMode): void => {
       setStartError(null);
@@ -681,12 +702,12 @@ export function StaffDistancePracticeView({
   useLayoutEffect(() => {
     if (isActive) {
       onInputModeChange(
-        isFingerNoAnswerSelected || activeInputMethod === "computer-keyboard"
+        isFingerInputBypassed || activeInputMethod === "computer-keyboard"
           ? null
           : activeInputMethod
       );
     }
-  }, [activeInputMethod, isActive, isFingerNoAnswerSelected, onInputModeChange]);
+  }, [activeInputMethod, isActive, isFingerInputBypassed, onInputModeChange]);
   const validation = validateStaffDistancePractice(notes, selectedPitchIds, intervalSettings);
   const fingerDeckValidation = useMemo(
     () =>
@@ -698,10 +719,23 @@ export function StaffDistancePracticeView({
       ),
     [fingerNotes, preferences.fingerHand, preferences.fingerNumber]
   );
+  const fingerGalleryValidation = useMemo(
+    () =>
+      createStaffDistanceFingerGalleryCards(
+        fingerNotes,
+        preferences.fingerHand,
+        preferences.fingerNumber,
+        () => 0.5
+      ),
+    [fingerNotes, preferences.fingerHand, preferences.fingerNumber]
+  );
   const fingerProfile = useMemo(
     () => getStaffDistanceFingerProfile(preferences.fingerHand, preferences.fingerNumber),
     [preferences.fingerHand, preferences.fingerNumber]
   );
+  const selectedFingerCardCount = isFingerCardReadingSelected
+    ? fingerGalleryValidation.cards.length
+    : fingerDeckValidation.cards.length;
   const setupDisabledReason =
     trainingMode === "finger"
       ? fingerDeckValidation.error
@@ -731,6 +765,8 @@ export function StaffDistancePracticeView({
       !midi.isConnected ||
       isSessionActive ||
       summarySession !== null ||
+      isFingerCardGalleryOpen ||
+      isFingerInputBypassed ||
       trainingMode === "look" ||
       preferences.inputMethod !== "microphone"
     ) {
@@ -752,6 +788,8 @@ export function StaffDistancePracticeView({
     });
   }, [
     isActive,
+    isFingerCardGalleryOpen,
+    isFingerInputBypassed,
     isSessionActive,
     isStarting,
     midi.isConnected,
@@ -770,9 +808,9 @@ export function StaffDistancePracticeView({
   }, [distanceMode, isActive, onDistanceModeChange, preferences.trainingMode, setPreferences]);
 
   useEffect(() => {
-    onRunStageChange(isSessionActive || summarySession !== null);
+    onRunStageChange(isSessionActive || summarySession !== null || isFingerCardGalleryOpen);
     return () => onRunStageChange(false);
-  }, [isSessionActive, onRunStageChange, summarySession]);
+  }, [isFingerCardGalleryOpen, isSessionActive, onRunStageChange, summarySession]);
 
   useEffect(() => {
     onFullscreenAvailabilityChange(isSessionActive);
@@ -792,7 +830,25 @@ export function StaffDistancePracticeView({
     onNavigationExit?.(navigationExitRequest.targetView);
   }, [navigationExitRequest, onNavigationExit, summarySession]);
 
+  useEffect(() => {
+    if (
+      !isFingerCardGalleryOpen ||
+      !navigationExitRequest ||
+      handledFingerGalleryNavigationRequestRef.current === navigationExitRequest.id
+    ) {
+      return;
+    }
+    handledFingerGalleryNavigationRequestRef.current = navigationExitRequest.id;
+    setIsFingerCardGalleryOpen(false);
+    onNavigationExit?.(navigationExitRequest.targetView);
+  }, [isFingerCardGalleryOpen, navigationExitRequest, onNavigationExit]);
+
   const startSessionAction = async (focus?: DistanceFocus): Promise<void> => {
+    if (trainingMode === "finger" && preferences.fingerInteractionMode === "card-reading") {
+      setStartError(fingerGalleryValidation.error ?? null);
+      if (!fingerGalleryValidation.error) setIsFingerCardGalleryOpen(true);
+      return;
+    }
     if (isStarting) return;
     if (setupDisabledReason) {
       const fingerSetupInvalid = trainingMode === "finger";
@@ -820,7 +876,7 @@ export function StaffDistancePracticeView({
       return;
     }
     if (
-      !isFingerNoAnswerSelected &&
+      !isFingerInputBypassed &&
       activeInputMethod === "virtual-keyboard" &&
       !keyboardFitsEitherOrientation
     ) {
@@ -830,7 +886,7 @@ export function StaffDistancePracticeView({
       return;
     }
     if (
-      !isFingerNoAnswerSelected &&
+      !isFingerInputBypassed &&
       trainingMode !== "look" &&
       activeInputMethod === "midi" &&
       !midi.isConnected
@@ -908,11 +964,7 @@ export function StaffDistancePracticeView({
         );
         return;
       }
-      if (
-        !isFingerNoAnswerSelected &&
-        trainingMode !== "look" &&
-        activeInputMethod === "microphone"
-      ) {
+      if (!isFingerInputBypassed && trainingMode !== "look" && activeInputMethod === "microphone") {
         const microphoneReady = await microphone.start({
           includeAccidentals: trainingMode !== "finger" && preferences.includeBlackKeys,
         });
@@ -972,6 +1024,8 @@ export function StaffDistancePracticeView({
     midi.inputs,
     midi.status,
     onBeforePracticeStart,
+    fingerGalleryValidation.error,
+    isFingerInputBypassed,
     isFingerNoAnswerSelected,
     preferences,
     selectedPitchIds,
@@ -994,7 +1048,7 @@ export function StaffDistancePracticeView({
   ]);
 
   useEffect(() => {
-    if (!isActive || runSession || summarySession) return undefined;
+    if (!isActive || runSession || summarySession || isFingerCardGalleryOpen) return undefined;
     function onEnter(event: KeyboardEvent): void {
       if (!shouldHandleGlobalEnter(event, isInteractiveShortcutTarget(event.target))) return;
       event.preventDefault();
@@ -1002,7 +1056,7 @@ export function StaffDistancePracticeView({
     }
     window.addEventListener("keydown", onEnter);
     return () => window.removeEventListener("keydown", onEnter);
-  }, [isActive, runSession, startSession, summarySession]);
+  }, [isActive, isFingerCardGalleryOpen, runSession, startSession, summarySession]);
 
   const finishSession = async (
     finalSession: PracticeSessionRecord,
@@ -1160,6 +1214,17 @@ export function StaffDistancePracticeView({
 
   const toggleUnison = (includeUnison: boolean): void =>
     setPreferences((current) => ({ ...current, includeUnison }));
+
+  if (isFingerCardGalleryOpen) {
+    return (
+      <StaffDistanceFingerCardGallery
+        cards={fingerGalleryValidation.cards}
+        fingerHand={preferences.fingerHand}
+        fingerNumber={preferences.fingerNumber}
+        onExit={() => setIsFingerCardGalleryOpen(false)}
+      />
+    );
+  }
 
   if (runSession?.staffDistance) {
     const runTrainingMode = runSession.staffDistance.trainingMode ?? "look";
@@ -1468,11 +1533,11 @@ export function StaffDistancePracticeView({
   }
 
   return (
-    <div
-      className={`practice-free-page practice-setup-framed-page staff-distance-page${hidePageHeading ? " is-learning-module-practice" : ""}`}
+    <PracticeSetupFrame
+      className={`practice-free-page staff-distance-page${hidePageHeading ? " is-learning-module-practice" : ""}`}
     >
       {hidePageHeading ? (
-        trainingMode !== "look" && activeInputMethod === "midi" ? (
+        !isFingerInputBypassed && trainingMode !== "look" && activeInputMethod === "midi" ? (
           <div className="practice-free-page-header is-actions-only">
             <div className="practice-midi-heading-status staff-distance-midi-status">
               <MidiInputControl
@@ -1491,14 +1556,16 @@ export function StaffDistancePracticeView({
             <div className="practice-setup-description-row">
               <p className="practice-panel-description staff-distance-description">
                 {trainingMode === "finger"
-                  ? isFingerNoAnswerSelected
-                    ? "看谱判断目标音与建议指法，再查看答案核对。"
-                    : "选择练习方式、左右手和手指，先按参考音定位，再弹奏目标音。"
+                  ? isFingerCardReadingSelected
+                    ? "按五线谱观察参考音和目标音，阅读每一种手位移动方式。"
+                    : isFingerNoAnswerSelected
+                      ? "看谱判断目标音与建议指法，再查看答案核对。"
+                      : "选择练习方式、左右手和手指，先按参考音定位，再弹奏目标音。"
                   : trainingMode === "play"
                     ? "根据谱面依次弹奏音符，练习从读谱到找到琴键。"
                     : "看清当前音与下一个音的音距，练习快速判断并找到下一个琴键。"}
               </p>
-              {trainingMode !== "look" && activeInputMethod === "midi" ? (
+              {!isFingerInputBypassed && trainingMode !== "look" && activeInputMethod === "midi" ? (
                 <div className="practice-setup-heading-meta">
                   <div className="practice-midi-heading-status staff-distance-midi-status">
                     <MidiInputControl
@@ -1643,6 +1710,7 @@ export function StaffDistancePracticeView({
                           [
                             { label: "弹奏作答", value: "play" },
                             { label: "免答模式", value: "no-answer" },
+                            { label: "卡片阅读", value: "card-reading" },
                           ] as const
                         ).map((option) => (
                           <button
@@ -1713,13 +1781,15 @@ export function StaffDistancePracticeView({
                       个谱位；线上参考音
                       {fingerProfile.lineAnchorPitchId}，间上参考音{" "}
                       {fingerProfile.spaceAnchorPitchId}。
-                      {preferences.fingerInteractionMode === "no-answer"
-                        ? "免答模式每轮 28 张卡片；点击查看答案核对琴键和建议指法，再手动进入下一张。"
-                        : "每轮 28 张卡片，每张限时 5 秒；先弹参考音，再弹目标音。"}
+                      {preferences.fingerInteractionMode === "card-reading"
+                        ? `卡片阅读展示全部 ${fingerGalleryValidation.cards.length} 张去重卡片，五线谱和手位移动答案同时显示，不需要作答。`
+                        : preferences.fingerInteractionMode === "no-answer"
+                          ? `免答模式每轮 ${fingerDeckValidation.cards.length} 张卡片；点击查看答案核对琴键和建议指法，再手动进入下一张。`
+                          : `每轮 ${fingerDeckValidation.cards.length} 张卡片，每张限时 5 秒；先弹参考音，再弹目标音。`}
                     </p>
                   </div>
                 ) : null}
-                {!isFingerNoAnswerSelected ? (
+                {!isFingerInputBypassed ? (
                   <>
                     <div className="staff-distance-input-switch">
                       <span>输入方式</span>
@@ -1789,7 +1859,8 @@ export function StaffDistancePracticeView({
                         <span className="staff-distance-keyboard-orientation-hint">
                           {canFitPracticePianoKeyboard(
                             { width: viewportSize.height, height: viewportSize.width },
-                            preferences.keyboardScale
+                            preferences.keyboardScale,
+                            keyboardWhiteKeyCount
                           )
                             ? viewportSize.height > viewportSize.width
                               ? "旋转到横向后可使用当前键盘尺寸"
@@ -1870,13 +1941,17 @@ export function StaffDistancePracticeView({
                   </>
                 ) : (
                   <div className="staff-distance-no-answer-input">
-                    <span className="control-label">输入方式</span>
+                    <span className="control-label">
+                      {isFingerCardReadingSelected ? "阅读方式" : "输入方式"}
+                    </span>
                     <p className="staff-distance-no-answer-setup-copy">
-                      无需输入设备；琴键图只供查看音高位置，不能触键作答。免答模式不计时、不统计正确率，手机竖屏也能使用。
+                      {isFingerCardReadingSelected
+                        ? "所有去重卡片纵向展示，五线谱下方直接标出手位移动答案；不需要连接设备，也不会生成练习记录。"
+                        : "无需输入设备；琴键图只供查看音高位置，不能触键作答。免答模式不计时、不统计正确率，手机竖屏也能使用。"}
                     </p>
                   </div>
                 )}
-                {!isFingerNoAnswerSelected &&
+                {!isFingerInputBypassed &&
                 activeInputMethod === "microphone" &&
                 (microphone.error ||
                   microphone.status === "error" ||
@@ -2204,7 +2279,11 @@ export function StaffDistancePracticeView({
                   {preferences.fingerNumber}指
                 </span>
                 <span className="practice-free-summary-chip">
-                  {preferences.fingerInteractionMode === "no-answer" ? "28张" : "28张 · 每张5秒"}
+                  {isFingerCardReadingSelected
+                    ? `${selectedFingerCardCount}张卡片`
+                    : isFingerNoAnswerSelected
+                      ? `${selectedFingerCardCount}张`
+                      : `${selectedFingerCardCount}张 · 每张5秒`}
                 </span>
               </>
             ) : (
@@ -2217,8 +2296,10 @@ export function StaffDistancePracticeView({
                 <span className="practice-free-summary-chip">{lengthLabel}</span>
               </>
             )}
-            {trainingMode === "finger" && preferences.fingerInteractionMode === "no-answer" ? (
-              <span className="practice-free-summary-chip">免答模式</span>
+            {trainingMode === "finger" && isFingerInputBypassed ? (
+              <span className="practice-free-summary-chip">
+                {isFingerCardReadingSelected ? "卡片阅读" : "免答模式"}
+              </span>
             ) : trainingMode !== "look" ? (
               <span className="practice-free-summary-chip">
                 {activeInputMethod === "microphone"
@@ -2250,7 +2331,7 @@ export function StaffDistancePracticeView({
                 onClick={() => void startSession()}
                 type="button"
               >
-                {isStarting ? null : trainingMode === "look" || isFingerNoAnswerSelected ? (
+                {isStarting ? null : trainingMode === "look" || isFingerInputBypassed ? (
                   <Eye
                     aria-hidden="true"
                     className="staff-distance-start-icon"
@@ -2267,12 +2348,14 @@ export function StaffDistancePracticeView({
                 )}
                 <span
                   className="staff-distance-start-label"
-                  key={`${trainingMode}-${isFingerNoAnswerSelected ? "no-answer" : "play"}`}
+                  key={`${trainingMode}-${preferences.fingerInteractionMode}`}
                 >
                   {isStarting ? (
                     <LoadingActivityText kind="dots">正在准备</LoadingActivityText>
                   ) : isFingerNoAnswerSelected ? (
                     "开始免答"
+                  ) : isFingerCardReadingSelected ? (
+                    "查看卡片"
                   ) : (
                     "开始"
                   )}
@@ -2283,6 +2366,6 @@ export function StaffDistancePracticeView({
           </div>
         </footer>
       </div>
-    </div>
+    </PracticeSetupFrame>
   );
 }

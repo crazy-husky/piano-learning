@@ -27,6 +27,7 @@ import {
   formatStaffDistanceTargetFinger,
   getStaffDistanceTargetFinger,
   getStaffDistanceFingerProfile,
+  getStaffDistanceFingerKeyboardWhiteKeyCount,
 } from "../../../domain/staffDistanceFinger";
 import { summarizeStaffDistancePair } from "../../../domain/staffDistancePractice";
 import type { MidiInputController } from "../../../midi/useMidiInput";
@@ -54,7 +55,6 @@ import {
 } from "./staffDistanceFingerKeyboardLayout";
 import { usePracticeViewportSize } from "./usePracticeViewportSize";
 
-const FINGER_CARD_COUNT = 28;
 const FINGER_CARD_TIME_LIMIT_MS = 5_000;
 const WRONG_FEEDBACK_DURATION_MS = 1_000;
 const FINGER_NOTE_DURATIONS = ["quarter", "quarter"] as const;
@@ -241,6 +241,11 @@ export function StaffDistanceFingerRun({
     const focusedCards = fullDeck.cards.filter((card) => card.batch === focusFingerBatch);
     return focusedCards.length > 0 ? { ...fullDeck, cards: focusedCards } : fullDeck;
   });
+  const fingerCardCount = deck.cards.length;
+  const fingerKeyboardWhiteKeyCount = getStaffDistanceFingerKeyboardWhiteKeyCount(
+    fingerHand,
+    fingerNumber
+  );
   const isNoAnswerMode = session.staffDistance?.fingerInteractionMode === "no-answer";
   const showsFingerKeyboard = inputMethod === "virtual-keyboard" || isNoAnswerMode;
   const [isTouchDevice, setIsTouchDevice] = useState(
@@ -274,10 +279,15 @@ export function StaffDistanceFingerRun({
   const activeKeyboardTouchPointerIdsRef = useRef(new Set<number>());
   const pendingKeyboardAdvanceRef = useRef<StaffDistanceQuestionResult[] | null>(null);
   const [keyboardHeightPx, setKeyboardHeightPx] = useState(PRACTICE_PIANO_WHITE_KEY_MAX_HEIGHT_PX);
-  const keyboardFitsCurrentOrientation = canFitPracticePianoKeyboard(viewportSize, keyboardScale);
+  const keyboardFitsCurrentOrientation = canFitPracticePianoKeyboard(
+    viewportSize,
+    keyboardScale,
+    fingerKeyboardWhiteKeyCount
+  );
   const keyboardFitsEitherOrientation = canFitPracticePianoKeyboardInEitherOrientation(
     viewportSize,
-    keyboardScale
+    keyboardScale,
+    fingerKeyboardWhiteKeyCount
   );
   const isViewportBlocked =
     !isNoAnswerMode && inputMethod === "virtual-keyboard" && !keyboardFitsCurrentOrientation;
@@ -1083,7 +1093,7 @@ export function StaffDistanceFingerRun({
     >
       <PracticeSessionHeader
         title="音距速推 · 单指专项"
-        progress={formatPracticeQuestionProgress(cardIndex, FINGER_CARD_COUNT)}
+        progress={formatPracticeQuestionProgress(cardIndex, fingerCardCount)}
         exitAriaLabel="结束练习并返回配置"
         onExit={() => void finish("manual-stop", false)}
         onPauseToggle={() => void togglePause()}
@@ -1128,7 +1138,7 @@ export function StaffDistanceFingerRun({
           />
         ) : null}
         <div
-          aria-label={`${handLabel}${fingerNumber}指专项卡片 ${cardNumber}/${FINGER_CARD_COUNT}`}
+          aria-label={`${handLabel}${fingerNumber}指专项卡片 ${cardNumber}/${fingerCardCount}`}
           className="staff-distance-score-wrap staff-distance-finger-score"
           role="group"
         >
@@ -1185,6 +1195,7 @@ export function StaffDistanceFingerRun({
           disabled={isPaused || isViewportBlocked}
           fingerNumber={fingerNumber}
           highlightedMidi={getTargetMidiNoteNumber(currentCard.reference)}
+          whiteKeyCount={fingerKeyboardWhiteKeyCount}
           answerHighlightedMidi={
             isNoAnswerMode && isAnswerRevealed
               ? getTargetMidiNoteNumber(currentCard.target)
@@ -1234,7 +1245,7 @@ export function StaffDistanceFingerRun({
           className="staff-distance-no-answer-complete"
         >
           <h2 id="staff-distance-no-answer-complete-title">本轮浏览完成</h2>
-          <p>已浏览全部 {FINGER_CARD_COUNT} 张卡片。免答练习不统计正确率。</p>
+          <p>已浏览全部 {fingerCardCount} 张卡片。免答练习不统计正确率。</p>
           <div>
             {onRestart ? (
               <button onClick={() => void restart("no-answer")} type="button">

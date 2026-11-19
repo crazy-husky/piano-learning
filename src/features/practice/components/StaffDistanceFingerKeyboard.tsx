@@ -11,7 +11,6 @@ import {
   PRACTICE_PIANO_BLACK_KEY_WIDTH_MM,
   PRACTICE_PIANO_WHITE_KEY_MAX_HEIGHT_PX,
   PRACTICE_PIANO_WHITE_KEY_MIN_HEIGHT_PX,
-  PRACTICE_PIANO_WHITE_KEY_COUNT,
   PRACTICE_PIANO_WHITE_KEY_WIDTH_MM,
 } from "./staffDistanceFingerKeyboardLayout";
 
@@ -38,6 +37,7 @@ interface StaffDistanceFingerKeyboardProps {
   answerFinger?: StaffDistanceTargetFingerAssignment;
   fingerNumber: StaffDistanceFingerNumber;
   highlightedMidi: number;
+  whiteKeyCount: number;
   keyboardHeightCapPx?: number;
   keyboardHeightPx: number;
   keyboardScale: number;
@@ -48,7 +48,11 @@ interface StaffDistanceFingerKeyboardProps {
   rangeReferenceMidi: number;
 }
 
-function getWhiteKeys(referenceMidi: number, lowerKeyCount: number): WhiteKey[] {
+function getWhiteKeys(
+  referenceMidi: number,
+  lowerKeyCount: number,
+  whiteKeyCount: number
+): WhiteKey[] {
   const referencePitchClass = ((referenceMidi % 12) + 12) % 12;
   const referenceKeyIndex = NATURAL_SEMITONES.indexOf(
     referencePitchClass as (typeof NATURAL_SEMITONES)[number]
@@ -60,7 +64,7 @@ function getWhiteKeys(referenceMidi: number, lowerKeyCount: number): WhiteKey[] 
     referenceOctave * NATURAL_KEYS.length + referenceKeyIndex - lowerKeyCount;
   const keys: WhiteKey[] = [];
 
-  for (let index = 0; index < PRACTICE_PIANO_WHITE_KEY_COUNT; index += 1) {
+  for (let index = 0; index < whiteKeyCount; index += 1) {
     const naturalIndex = firstNaturalIndex + index;
     const keyIndex =
       ((naturalIndex % NATURAL_KEYS.length) + NATURAL_KEYS.length) % NATURAL_KEYS.length;
@@ -84,6 +88,7 @@ export function StaffDistanceFingerKeyboard({
   answerFinger,
   fingerNumber,
   highlightedMidi,
+  whiteKeyCount,
   keyboardHeightCapPx,
   keyboardHeightPx,
   keyboardScale,
@@ -202,7 +207,7 @@ export function StaffDistanceFingerKeyboard({
     onKeyPress(key);
   };
 
-  const whiteKeys = getWhiteKeys(rangeReferenceMidi, lowerKeyCount);
+  const whiteKeys = getWhiteKeys(rangeReferenceMidi, lowerKeyCount, whiteKeyCount);
   const blackKeys: BlackKey[] = [];
   for (let index = 0; index < whiteKeys.length - 1; index += 1) {
     const current = whiteKeys[index]!;
@@ -225,7 +230,7 @@ export function StaffDistanceFingerKeyboard({
       style={
         {
           "--staff-distance-white-key-width": `${PRACTICE_PIANO_WHITE_KEY_WIDTH_MM * keyboardScale}mm`,
-          "--staff-distance-white-key-count": PRACTICE_PIANO_WHITE_KEY_COUNT,
+          "--staff-distance-white-key-count": whiteKeyCount,
           "--staff-distance-finger-keyboard-height": `${effectiveKeyboardHeightPx}px`,
           "--staff-distance-black-key-height": `${blackKeyHeightPercent}%`,
           ...(keyboardHeightCapPx === undefined
@@ -291,8 +296,8 @@ export function StaffDistanceFingerKeyboard({
             className="staff-distance-finger-black-key"
             key={key.midi}
             style={{
-              left: `${((key.afterWhiteKeyIndex + 1) / PRACTICE_PIANO_WHITE_KEY_COUNT - PRACTICE_PIANO_BLACK_KEY_WIDTH_MM / PRACTICE_PIANO_WHITE_KEY_WIDTH_MM / PRACTICE_PIANO_WHITE_KEY_COUNT / 2) * 100}%`,
-              width: `${(PRACTICE_PIANO_BLACK_KEY_WIDTH_MM / PRACTICE_PIANO_WHITE_KEY_WIDTH_MM / PRACTICE_PIANO_WHITE_KEY_COUNT) * 100}%`,
+              left: `${((key.afterWhiteKeyIndex + 1) / whiteKeyCount - PRACTICE_PIANO_BLACK_KEY_WIDTH_MM / PRACTICE_PIANO_WHITE_KEY_WIDTH_MM / whiteKeyCount / 2) * 100}%`,
+              width: `${(PRACTICE_PIANO_BLACK_KEY_WIDTH_MM / PRACTICE_PIANO_WHITE_KEY_WIDTH_MM / whiteKeyCount) * 100}%`,
             }}
           />
         ))}

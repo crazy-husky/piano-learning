@@ -4,6 +4,7 @@
 
 - 在审核代码、报告问题或提出修改建议前，先阅读 `docs/product-decisions.md`。
 - 该文档记录已确认的产品设计决策；实现与直觉不同，不应直接当成 bug。先核对决策及其适用范围，再判断是否需要报告。
+- 新增或改造练习配置页、练习运行页前，阅读 `docs/guides/practice-module-ui-template.md`，优先复用其中的公共页面框架和组件；如果模板与已确认的产品决策冲突，先列明冲突与影响，交由产品决策，不自行改变功能策略。
 
 ## Development And Verification
 

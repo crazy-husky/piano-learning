@@ -142,9 +142,21 @@
   gap: 2px;
 }
 
-.staff-distance-finger-choice:is(.is-mode-choice, .is-hand-choice) > .segmented {
+.staff-distance-finger-choice.is-hand-choice > .segmented {
   width: min(260px, 100%);
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.staff-distance-finger-choice.is-mode-choice > .segmented {
+  display: flex;
+  flex-wrap: wrap;
+  width: max-content;
+  max-width: 100%;
+}
+
+.staff-distance-finger-choice.is-mode-choice > .segmented > button {
+  width: auto;
+  flex: 0 0 auto;
 }
 
 .staff-distance-finger-choice button {
@@ -877,6 +889,133 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface-soft);
+}
+
+.staff-distance-finger-gallery-run {
+  gap: 18px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+.staff-distance-finger-gallery {
+  display: grid;
+  gap: 14px;
+  width: min(920px, 100%);
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.staff-distance-finger-gallery-run .practice-session-header {
+  position: static;
+  top: auto;
+  z-index: auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 16px;
+  row-gap: 0;
+}
+
+.staff-distance-finger-gallery-run .practice-session-header::before {
+  content: none;
+}
+
+.staff-distance-finger-gallery-run .practice-session-controls {
+  display: flex;
+  width: auto;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.staff-distance-finger-gallery-run .practice-session-controls > .practice-session-actions {
+  display: flex;
+  width: auto;
+  flex: 0 0 auto;
+  justify-self: end;
+  justify-content: flex-end;
+}
+
+.staff-distance-finger-gallery-run .practice-session-header .practice-run-core-actions {
+  width: auto;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
+.staff-distance-finger-gallery-intro {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.staff-distance-finger-gallery-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: clamp(12px, 2vw, 18px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.staff-distance-finger-gallery-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.staff-distance-finger-gallery-card-heading-main {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.staff-distance-finger-gallery-card-index {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.staff-distance-finger-gallery-score {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.staff-distance-finger-gallery-score .staff-page-renderer,
+.staff-distance-finger-gallery-score .staff-page-renderer > svg {
+  width: 100%;
+  max-width: 100%;
+}
+
+.staff-distance-finger-gallery-answer {
+  justify-self: center;
+  margin: 0;
+  color: var(--accent);
+  font-size: clamp(17px, 2.4vw, 22px);
+  font-weight: 800;
+  text-align: center;
+}
+
+@media (max-width: 540px) {
+  .staff-distance-finger-gallery-run .practice-session-header {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 8px;
+  }
+
+  .staff-distance-finger-gallery-run .practice-session-controls {
+    grid-column: 1;
+    justify-self: end;
+  }
 }
 
 .staff-distance-finger-keyboard {
