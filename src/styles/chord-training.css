@@ -1128,6 +1128,10 @@
   border: 0;
 }
 
+.chord-training-pattern-list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+}
+
 .chord-training-inversion-list {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

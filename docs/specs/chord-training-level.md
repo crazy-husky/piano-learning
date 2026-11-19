@@ -14,6 +14,7 @@
 - 训练和弦选项展示当前调性下的和弦音名，并保留罗马数字级数和功能名；选项按常见流行和弦顺序排列。
 - 谱面固定钢琴大谱表；和弦全部由单手演奏，不提供谱表或双手拆分选项。和弦根据所选音区显示在合适的谱号上。
 - 练习方式：认和弦、弹奏柱式和弦、弹奏分解和弦；默认认和弦。后两种方式仅支持 MIDI。
+- 分解和弦的更多配置提供三种可选伴奏型，默认全部勾选，至少保留一种：上行往返型（按当前转位的低音至高音展开后回落）、前三拍依次分解并在末拍同时弹下柱式和弦、低音与和弦内音交替的八分音符流行循环型。每题仍练一个和弦，谱面按各起音分别显示；MIDI 依照谱面起音顺序判定，柱式收尾的和弦音需在同一短时间窗口内按下。伴奏型仅使用该和弦内音，不生成调外音或跨和弦进行。
 - 练习长度沿用开放练习、固定题数及固定时长；固定题数快捷档为 30/70/200，支持自定义。
 - 认和弦依次回答根音、和弦性质和转位；关闭转位要求时，回答和弦性质后结束本题。根音选错时留在根音步骤，仅将误选项标红约 800 毫秒后恢复，不提示正确根音，用户选对后才进入下一步。和弦性质、转位或弹奏答案错误时停留在本题并显示正确答案，需由用户点击“下一题”后继续；正确答案沿用短暂反馈后自动进入下一题。提示内容默认隐藏，点击提示按钮后与按钮同行显示，进入下一题后再次隐藏。根音在谱面上以红色标记，和弦时值按流行伴奏常见程度加权抽取，四分、二分音符常见，八分音符较少，全音符最少。
 - 每组和弦算一道题；答错不重复计题，结算显示首答正确率和本局题数。练习页内容可纵向滚动，保证答案提示可见。
@@ -77,8 +78,8 @@ Run type check, lint and formatting check. Do not run the test suite or add test
 
 - `#/level/8` opens a dedicated module with guide, practice and stats tabs.
 - Users can configure key, individual in-key chord degrees, practice register groups, chord quality, selected inversions and practice length; chord degree options show key-specific chord symbols and function labels in common pop-song order. Defaults are C major, C4–B4, only I degree, triads and root position. All notation uses grand staff, and all chord notes are played by one hand.
-- Recognition accepts chord-name selection with distractors drawn from other diatonic chords in the current key and selected chord types; block/arpeggiated performance accepts MIDI only.
-- MIDI matching compares complete chord pitch sets; arpeggio matching follows the displayed low-to-high note order.
+- Recognition accepts chord-name selection with distractors drawn from other diatonic chords in the current key and selected chord types; block/arpeggiated performance accepts MIDI only. Arpeggio settings default to all three accompaniment patterns selected; score onsets and MIDI grading follow the selected pattern, including the simultaneous final block chord.
+- 柱式和弦按完整音高集合判定；分解和弦逐个起音按谱面顺序判定，柱式收尾的同时起音按完整音高集合判定。
 - Fixed-count and fixed-duration runs end at their selected limits; pause freezes active time.
 - Completed-run summary and Level 8 statistics report chord-level questions and first-try accuracy.
 - Chord-training progress appears in the home learning path and as the optional Level 5 stage in the sight-reading map; its route and stored event IDs remain 8 so existing records and links stay stable.

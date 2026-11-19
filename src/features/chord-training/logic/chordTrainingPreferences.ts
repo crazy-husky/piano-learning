@@ -1,7 +1,9 @@
 import {
+  CHORD_ARPEGGIO_PATTERN_OPTIONS,
   CHORD_DEGREE_OPTIONS,
   CHORD_MAJOR_KEYS,
   DEFAULT_CHORD_TRAINING_CONFIG,
+  type ChordArpeggioPatternId,
   type ChordDegree,
   type ChordTask,
   type ChordTrainingConfig,
@@ -92,6 +94,14 @@ export function parseChordTrainingConfig(value: unknown): ChordTrainingConfig {
           inversion <= 3
       )
     : [...DEFAULT_CHORD_TRAINING_CONFIG.inversions];
+  const validArpeggioPatterns = new Set(CHORD_ARPEGGIO_PATTERN_OPTIONS.map(({ id }) => id));
+  const arpeggioPatterns = Array.isArray(stored.arpeggioPatterns)
+    ? [...new Set(stored.arpeggioPatterns)].filter(
+        (pattern): pattern is ChordArpeggioPatternId =>
+          typeof pattern === "string" &&
+          validArpeggioPatterns.has(pattern as ChordArpeggioPatternId)
+      )
+    : [...DEFAULT_CHORD_TRAINING_CONFIG.arpeggioPatterns];
   return {
     task,
     keyId,
@@ -104,6 +114,12 @@ export function parseChordTrainingConfig(value: unknown): ChordTrainingConfig {
     ),
     qualities: qualities.length > 0 ? qualities : [...DEFAULT_CHORD_TRAINING_CONFIG.qualities],
     inversions: inversions.length > 0 ? inversions : [...DEFAULT_CHORD_TRAINING_CONFIG.inversions],
+    arpeggioPatterns:
+      arpeggioPatterns.length > 0
+        ? CHORD_ARPEGGIO_PATTERN_OPTIONS.filter(({ id }) => arpeggioPatterns.includes(id)).map(
+            ({ id }) => id
+          )
+        : [...DEFAULT_CHORD_TRAINING_CONFIG.arpeggioPatterns],
     requireInversionAnswer:
       typeof stored.requireInversionAnswer === "boolean"
         ? stored.requireInversionAnswer

@@ -238,7 +238,7 @@ export interface AnswerEvent {
       | "dominant-seventh"
       | "half-diminished-seventh";
     inversion: number;
-    noteDuration: "8" | "q" | "h" | "w";
+    noteDuration?: "8" | "q" | "h" | "w";
     targetMidiNotes: number[];
     enteredMidiNotes?: number[];
     selectedChordId?: string;
@@ -252,6 +252,11 @@ export interface AnswerEvent {
       | "dominant-seventh"
       | "half-diminished-seventh";
     selectedInversion?: number;
+    arpeggioPatternId?: "ascending-return" | "broken-block-ending" | "pop-loop";
+    noteEvents?: {
+      midiNotes: number[];
+      duration: "8" | "q" | "h" | "w";
+    }[];
   };
   recognizedMidi?: number;
   confidence?: number;

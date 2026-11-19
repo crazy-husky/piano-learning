@@ -249,6 +249,11 @@ export function ChordTrainingRun({
     }): void => {
       if (questionResolvedRef.current || isPausedRef.current || isFinishedRef.current) return;
       questionResolvedRef.current = true;
+      if (blockTimerRef.current !== null) {
+        window.clearTimeout(blockTimerRef.current);
+        blockTimerRef.current = null;
+      }
+      pendingBlockNotesRef.current.clear();
       const currentPrompt = promptRef.current;
       const chordData: ChordTrainingAnswerEventData = {
         task: config.task,
@@ -258,8 +263,17 @@ export function ChordTrainingRun({
         degree: currentPrompt.chord.degree,
         quality: currentPrompt.chord.quality,
         inversion: currentPrompt.inversion,
-        noteDuration: currentPrompt.noteDuration,
+        ...(currentPrompt.noteEvents.length === 1
+          ? { noteDuration: currentPrompt.noteEvents[0]!.duration }
+          : {}),
         targetMidiNotes: getChordPromptMidiNotes(currentPrompt),
+        noteEvents: currentPrompt.noteEvents.map(({ notes, duration }) => ({
+          midiNotes: notes.map(({ midi }) => midi),
+          duration,
+        })),
+        ...(currentPrompt.arpeggioPatternId
+          ? { arpeggioPatternId: currentPrompt.arpeggioPatternId }
+          : {}),
         ...(entered.length ? { enteredMidiNotes: entered } : {}),
         ...(selectedChordId ? { selectedChordId } : {}),
         ...(recognitionAnswer?.rootName ? { selectedRootName: recognitionAnswer.rootName } : {}),
@@ -328,30 +342,58 @@ export function ChordTrainingRun({
       if (config.task === "block") {
         pendingBlockNotesRef.current.add(note);
         setEnteredMidiNotes([...pendingBlockNotesRef.current]);
-        if (blockTimerRef.current !== null) window.clearTimeout(blockTimerRef.current);
-        blockTimerRef.current = window.setTimeout(() => {
-          blockTimerRef.current = null;
-          const entered = [...pendingBlockNotesRef.current];
-          resolveQuestion({
-            correct: chordNotesMatch(getChordPromptMidiNotes(promptRef.current), entered),
-            entered,
-          });
-        }, CHORD_INPUT_WINDOW_MS);
+        if (blockTimerRef.current === null) {
+          blockTimerRef.current = window.setTimeout(() => {
+            blockTimerRef.current = null;
+            const entered = [...pendingBlockNotesRef.current];
+            resolveQuestion({
+              correct: chordNotesMatch(getChordPromptMidiNotes(promptRef.current), entered),
+              entered,
+            });
+          }, CHORD_INPUT_WINDOW_MS);
+        }
         return;
       }
 
-      const expectedNotes = getChordPromptMidiNotes(promptRef.current);
-      const nextIndex = arpeggioIndexRef.current;
+      const currentPrompt = promptRef.current;
+      const expectedEvent = currentPrompt.noteEvents[arpeggioIndexRef.current];
+      if (!expectedEvent) return;
       const nextEntered = [...enteredMidiNotesRef.current, note];
       enteredMidiNotesRef.current = nextEntered;
       setEnteredMidiNotes(nextEntered);
-      if (expectedNotes[nextIndex] !== note) {
+
+      if (expectedEvent.notes.length > 1) {
+        pendingBlockNotesRef.current.add(note);
+        if (blockTimerRef.current === null) {
+          blockTimerRef.current = window.setTimeout(() => {
+            blockTimerRef.current = null;
+            const enteredBlock = [...pendingBlockNotesRef.current];
+            pendingBlockNotesRef.current.clear();
+            const isBlockCorrect = chordNotesMatch(
+              expectedEvent.notes.map(({ midi }) => midi),
+              enteredBlock
+            );
+            if (!isBlockCorrect) {
+              resolveQuestion({ correct: false, entered: enteredMidiNotesRef.current });
+              return;
+            }
+            const nextIndex = arpeggioIndexRef.current + 1;
+            arpeggioIndexRef.current = nextIndex;
+            if (nextIndex === currentPrompt.noteEvents.length) {
+              resolveQuestion({ correct: true, entered: enteredMidiNotesRef.current });
+            }
+          }, CHORD_INPUT_WINDOW_MS);
+        }
+        return;
+      }
+
+      if (expectedEvent.notes[0]?.midi !== note) {
         resolveQuestion({ correct: false, entered: nextEntered });
         return;
       }
-      const newIndex = nextIndex + 1;
-      arpeggioIndexRef.current = newIndex;
-      if (newIndex === expectedNotes.length) {
+      const nextIndex = arpeggioIndexRef.current + 1;
+      arpeggioIndexRef.current = nextIndex;
+      if (nextIndex === currentPrompt.noteEvents.length) {
         resolveQuestion({ correct: true, entered: nextEntered });
       }
     });
@@ -394,6 +436,10 @@ export function ChordTrainingRun({
 
   const elapsedSeconds = Math.max(0, Math.ceil(elapsedMs / 1000));
   const remainingSeconds = Math.max(0, config.fixedDurationSeconds - elapsedSeconds);
+  const arpeggioTargetCount = prompt.noteEvents.reduce(
+    (count, event) => count + event.notes.length,
+    0
+  );
   const selectRecognitionRoot = (rootName: string): void => {
     if (feedback || isPaused) return;
     setSelectedRootName(rootName);
@@ -629,8 +675,12 @@ export function ChordTrainingRun({
                 ? `已收到 ${enteredMidiNotes.length} 个音，继续按下同一组和弦音。`
                 : "同时按下谱面中的全部和弦音。"
               : enteredMidiNotes.length > 0
-                ? `已弹 ${enteredMidiNotes.length} / ${prompt.notes.length} 个音`
-                : "按谱面和弦音从低到高依次弹奏。"}
+                ? `已弹 ${enteredMidiNotes.length} / ${arpeggioTargetCount} 个音`
+                : prompt.arpeggioPatternId === "broken-block-ending"
+                  ? "前三拍依次弹奏，最后一拍同时按下和弦。"
+                  : prompt.arpeggioPatternId === "pop-loop"
+                    ? "按谱面顺序弹奏八分音符循环。"
+                    : "按谱面顺序弹奏，先上行，再按谱面返回。"}
           </div>
         )}
 

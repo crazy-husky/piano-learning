@@ -12,8 +12,31 @@ export type ChordQuality =
 export type ChordKind = "triad" | "seventh";
 export type ChordDegree = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type ChordTask = "recognize" | "block" | "arpeggio";
+export type ChordArpeggioPatternId = "ascending-return" | "broken-block-ending" | "pop-loop";
 export type ChordNoteDuration = "8" | "q" | "h" | "w";
 export type ChordLengthMode = PracticeMode;
+
+export const CHORD_ARPEGGIO_PATTERN_OPTIONS: readonly {
+  id: ChordArpeggioPatternId;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "ascending-return",
+    label: "上行往返型",
+    description: "沿当前转位由低到高展开，再顺序回落。",
+  },
+  {
+    id: "broken-block-ending",
+    label: "分解加柱式收尾",
+    description: "前三拍依次分解，最后一拍合弹整组和弦。",
+  },
+  {
+    id: "pop-loop",
+    label: "流行循环型",
+    description: "低音与高音交替，穿插和弦内音形成八分音符循环。",
+  },
+];
 
 export const CHORD_INVERSION_OPTIONS = [
   { value: 0, label: "根音" },
@@ -33,6 +56,7 @@ export interface ChordTrainingConfig {
   chordDegrees: ChordDegree[];
   qualities: ChordKind[];
   inversions: number[];
+  arpeggioPatterns: ChordArpeggioPatternId[];
   requireInversionAnswer: boolean;
   lengthMode: ChordLengthMode;
   fixedCount: number;
@@ -67,8 +91,12 @@ export interface DiatonicChord {
 export interface ChordPrompt {
   chord: DiatonicChord;
   inversion: number;
-  noteDuration: ChordNoteDuration;
   notes: ChordNote[];
+  noteEvents: {
+    notes: ChordNote[];
+    duration: ChordNoteDuration;
+  }[];
+  arpeggioPatternId?: ChordArpeggioPatternId;
 }
 
 export interface ChordTrainingAnswerEventData {
@@ -79,8 +107,13 @@ export interface ChordTrainingAnswerEventData {
   degree: number;
   quality: ChordQuality;
   inversion: number;
-  noteDuration: ChordNoteDuration;
+  noteDuration?: ChordNoteDuration;
   targetMidiNotes: number[];
+  noteEvents?: {
+    midiNotes: number[];
+    duration: ChordNoteDuration;
+  }[];
+  arpeggioPatternId?: ChordArpeggioPatternId;
   enteredMidiNotes?: number[];
   selectedChordId?: string;
   selectedRootName?: string;
@@ -110,6 +143,7 @@ export const DEFAULT_CHORD_TRAINING_CONFIG: ChordTrainingConfig = {
   chordDegrees: [1],
   qualities: ["triad"],
   inversions: [0],
+  arpeggioPatterns: CHORD_ARPEGGIO_PATTERN_OPTIONS.map(({ id }) => id),
   requireInversionAnswer: true,
   lengthMode: "fixed-count",
   fixedCount: 30,
@@ -299,10 +333,50 @@ export function generateChordPrompt(
     random
   );
   const promptNotes = makeChordNotes(chord, inversion, baseOctave);
+  if (config.task === "arpeggio") {
+    const enabledPatterns = config.arpeggioPatterns.filter((pattern) =>
+      CHORD_ARPEGGIO_PATTERN_OPTIONS.some((option) => option.id === pattern)
+    );
+    const arpeggioPatternId = pick(
+      enabledPatterns.length > 0
+        ? enabledPatterns
+        : CHORD_ARPEGGIO_PATTERN_OPTIONS.map(({ id }) => id),
+      random
+    );
+    const [low, second, third, high] = promptNotes;
+    const singleNoteEvent = (note: ChordNote | undefined, duration: ChordNoteDuration) => ({
+      notes: [note!],
+      duration,
+    });
+    const events: ChordPrompt["noteEvents"] =
+      arpeggioPatternId === "ascending-return"
+        ? chord.kind === "triad"
+          ? [low, second, third, second].map((note) => singleNoteEvent(note, "q"))
+          : [low, second, third, high, third, second, low, second].map((note) =>
+              singleNoteEvent(note, "8")
+            )
+        : arpeggioPatternId === "broken-block-ending"
+          ? [
+              ...[low, second, third].map((note) => singleNoteEvent(note, "q")),
+              { notes: promptNotes, duration: "q" },
+            ]
+          : (chord.kind === "triad"
+              ? [low, third, second, third, low, third, second, third]
+              : [low, high, third, high, second, high, third, high]
+            ).map((note) => singleNoteEvent(note, "8"));
+
+    return { chord, inversion, notes: promptNotes, noteEvents: events, arpeggioPatternId };
+  }
+
   const durationRoll = random() * 12;
   const noteDuration: ChordNoteDuration =
     durationRoll < 5 ? "q" : durationRoll < 9 ? "h" : durationRoll < 11 ? "8" : "w";
-  return { chord, inversion, noteDuration, notes: promptNotes };
+  return {
+    chord,
+    inversion,
+    notes: promptNotes,
+    noteEvents: [{ notes: promptNotes, duration: noteDuration }],
+  };
 }
 
 export function chordNotesMatch(expected: readonly number[], entered: readonly number[]): boolean {

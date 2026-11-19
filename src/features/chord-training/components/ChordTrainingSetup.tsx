@@ -5,11 +5,13 @@ import { PRACTICE_GROUPS } from "../../../domain/notes";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import {
+  CHORD_ARPEGGIO_PATTERN_OPTIONS,
   CHORD_INVERSION_OPTIONS,
   CHORD_DEGREE_OPTIONS,
   CHORD_MAJOR_KEYS,
   getDiatonicChords,
   type ChordDegree,
+  type ChordArpeggioPatternId,
   type ChordKind,
   type ChordQuality,
   type ChordTrainingConfig,
@@ -111,6 +113,15 @@ export function ChordTrainingSetup({
     }
   };
 
+  const toggleArpeggioPattern = (pattern: ChordArpeggioPatternId): void => {
+    const arpeggioPatterns = config.arpeggioPatterns.includes(pattern)
+      ? config.arpeggioPatterns.filter((item) => item !== pattern)
+      : [...config.arpeggioPatterns, pattern];
+    if (arpeggioPatterns.length > 0) {
+      onChange({ ...config, arpeggioPatterns });
+    }
+  };
+
   const lengthLabel =
     config.lengthMode === "open-ended"
       ? "不限"
@@ -129,6 +140,7 @@ export function ChordTrainingSetup({
     ...(config.task === "recognize"
       ? [config.requireInversionAnswer ? "答题要求转位" : "答题不要求转位"]
       : []),
+    ...(config.task === "arpeggio" ? [`${config.arpeggioPatterns.length} 种伴奏型`] : []),
     lengthLabel,
   ];
 
@@ -450,7 +462,7 @@ export function ChordTrainingSetup({
           </div>
         </div>
 
-        {config.task === "recognize" ? (
+        {config.task === "recognize" || config.task === "arpeggio" ? (
           <section className="practice-free-advanced-disclosure chord-training-advanced-disclosure">
             <button
               aria-controls="chord-training-advanced-options"
@@ -461,7 +473,9 @@ export function ChordTrainingSetup({
             >
               <Settings2 aria-hidden="true" size={16} />
               <span>更多配置</span>
-              <span className="practice-free-advanced-count">1项</span>
+              <span className="practice-free-advanced-count">
+                {config.task === "recognize" ? "1项" : `${CHORD_ARPEGGIO_PATTERN_OPTIONS.length}项`}
+              </span>
               <ChevronDown
                 aria-hidden="true"
                 className={isMoreConfigOpen ? "is-open" : ""}
@@ -473,17 +487,46 @@ export function ChordTrainingSetup({
               hidden={!isMoreConfigOpen}
               id="chord-training-advanced-options"
             >
-              <label className="practice-checkbox-option chord-training-inversion-answer-option">
-                <input
-                  aria-label="答题时选择转位"
-                  checked={config.requireInversionAnswer}
-                  onChange={(event) =>
-                    onChange({ ...config, requireInversionAnswer: event.currentTarget.checked })
-                  }
-                  type="checkbox"
-                />
-                <span>答题时选择转位</span>
-              </label>
+              {config.task === "recognize" ? (
+                <label className="practice-checkbox-option chord-training-inversion-answer-option">
+                  <input
+                    aria-label="答题时选择转位"
+                    checked={config.requireInversionAnswer}
+                    onChange={(event) =>
+                      onChange({ ...config, requireInversionAnswer: event.currentTarget.checked })
+                    }
+                    type="checkbox"
+                  />
+                  <span>答题时选择转位</span>
+                </label>
+              ) : (
+                <fieldset
+                  aria-label="分解和弦伴奏型"
+                  className="chord-training-option-list chord-training-pattern-list"
+                >
+                  {CHORD_ARPEGGIO_PATTERN_OPTIONS.map(({ id, label, description }) => {
+                    const selected = config.arpeggioPatterns.includes(id);
+                    return (
+                      <label
+                        aria-label={`${label}：${description}${selected && config.arpeggioPatterns.length === 1 ? "（至少保留一种伴奏型）" : ""}`}
+                        className={`practice-free-duet-range-option${selected ? " is-selected" : ""}`}
+                        key={id}
+                      >
+                        <input
+                          checked={selected}
+                          disabled={selected && config.arpeggioPatterns.length === 1}
+                          onChange={() => toggleArpeggioPattern(id)}
+                          type="checkbox"
+                        />
+                        <span className="practice-free-duet-range-copy">
+                          {label}
+                          <small>{description}</small>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </fieldset>
+              )}
             </div>
           </section>
         ) : null}

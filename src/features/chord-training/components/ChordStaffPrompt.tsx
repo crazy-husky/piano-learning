@@ -2,10 +2,42 @@ import { BarlineType, Formatter, Renderer, Stave, StaveConnector, StaveNote, Voi
 import { useEffect, useRef } from "react";
 import { getPageThemeColor, useNightMode } from "../../../shared/appearance/pageAppearance";
 import {
-  alignStaveNotesToCenters,
-  getEvenlySpacedCenters,
-} from "../../../shared/staff/staffGeometry";
-import { getChordMajorKey, getVexChordNoteKey, type ChordPrompt } from "../logic/chordTraining";
+  getChordMajorKey,
+  getVexChordNoteKey,
+  type ChordArpeggioPatternId,
+  type ChordNoteDuration,
+  type ChordPrompt,
+} from "../logic/chordTraining";
+
+const ARPEGGIO_PATTERN_LABELS: Record<ChordArpeggioPatternId, string> = {
+  "ascending-return": "上行往返型",
+  "broken-block-ending": "分解加柱式收尾",
+  "pop-loop": "流行循环型",
+};
+
+const NOTE_DURATION_LABELS: Record<ChordNoteDuration, string> = {
+  "8": "八分音符",
+  q: "四分音符",
+  h: "二分音符",
+  w: "全音符",
+};
+
+function getStaffPromptLabel(prompt: ChordPrompt): string {
+  const patternLabel = prompt.arpeggioPatternId
+    ? `，${ARPEGGIO_PATTERN_LABELS[prompt.arpeggioPatternId]}`
+    : "";
+  const eventLabels = prompt.noteEvents.map(({ notes, duration }) => {
+    const noteNames = notes
+      .map(
+        ({ letter, accidental, octave }) =>
+          `${letter}${accidental === 1 ? "升" : accidental === -1 ? "降" : ""}${octave}`
+      )
+      .join("、");
+    const onsetLabel = notes.length > 1 ? `同时弹奏 ${noteNames}` : noteNames;
+    return `${onsetLabel}，${NOTE_DURATION_LABELS[duration]}`;
+  });
+  return `五线谱和弦题目${patternLabel}。红色音符表示根音。起音顺序：${eventLabels.join("；")}`;
+}
 
 export function ChordStaffPrompt({ prompt }: { prompt: ChordPrompt }): JSX.Element {
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -40,31 +72,30 @@ export function ChordStaffPrompt({ prompt }: { prompt: ChordPrompt }): JSX.Eleme
 
       const clef = (prompt.notes[0]?.midi ?? 60) < 60 ? "bass" : "treble";
       const targetStave = clef === "bass" ? bass : treble;
-      const chord = new StaveNote({
-        clef,
-        duration: prompt.noteDuration,
-        keys: prompt.notes.map(getVexChordNoteKey),
-      }).setStave(targetStave);
       const ink = getPageThemeColor("--notation-ink", "#211c18");
-      chord.setStyle({ fillStyle: ink, strokeStyle: ink });
       const rootInk = getPageThemeColor("--notation-error", "#c84c3d");
-      prompt.notes.forEach((note, index) => {
-        if (
-          `${note.letter}${note.accidental === 1 ? "♯" : note.accidental === -1 ? "♭" : ""}` ===
-          prompt.chord.rootName
-        ) {
-          chord.setKeyStyle(index, { fillStyle: rootInk, strokeStyle: rootInk });
-        }
+      const scoreNotes = prompt.noteEvents.map(({ notes, duration }) => {
+        const scoreNote = new StaveNote({
+          clef,
+          duration,
+          keys: notes.map(getVexChordNoteKey),
+        }).setStave(targetStave);
+        scoreNote.setStyle({ fillStyle: ink, strokeStyle: ink });
+        notes.forEach((note, index) => {
+          if (
+            `${note.letter}${note.accidental === 1 ? "♯" : note.accidental === -1 ? "♭" : ""}` ===
+            prompt.chord.rootName
+          ) {
+            scoreNote.setKeyStyle(index, { fillStyle: rootInk, strokeStyle: rootInk });
+          }
+        });
+        scoreNote.setLedgerLineStyle({ fillStyle: ink, strokeStyle: ink });
+        return scoreNote;
       });
-      chord.setLedgerLineStyle({ fillStyle: ink, strokeStyle: ink });
       const voice = new Voice({ numBeats: 4, beatValue: 4 })
         .setMode(Voice.Mode.SOFT)
-        .addTickables([chord]);
+        .addTickables(scoreNotes);
       new Formatter().joinVoices([voice]).format([voice], Math.max(1, width - 180), { context });
-      alignStaveNotesToCenters(
-        [chord],
-        getEvenlySpacedCenters(1, targetStave.getX(), targetStave.getX() + targetStave.getWidth())
-      );
       voice.draw(context, targetStave);
       const svg = target.querySelector("svg");
       if (svg) {
@@ -81,7 +112,12 @@ export function ChordStaffPrompt({ prompt }: { prompt: ChordPrompt }): JSX.Eleme
   }, [isNightMode, prompt]);
 
   return (
-    <div aria-label="五线谱和弦题目" className="chord-staff-frame" ref={frameRef} role="img">
+    <div
+      aria-label={getStaffPromptLabel(prompt)}
+      className="chord-staff-frame"
+      ref={frameRef}
+      role="img"
+    >
       <div className="chord-staff-renderer" ref={targetRef} />
     </div>
   );
