@@ -906,20 +906,25 @@ function chooseGeneratedNote({
   adaptiveSelect: AdaptiveNoteSelector;
   random: number;
 }): TargetNote | undefined {
-  let eligible = candidates.filter((note) => note.staff === staff);
+  const staffCandidates = candidates.filter((note) => note.staff === staff);
+  let eligible = staffCandidates;
   if (staff === "bass" && (level === "level-2" || level === "level-3" || level === "level-6")) {
     const structuralCandidates = eligible.filter((note) => measureNames.has(note.noteName));
     if (structuralCandidates.length > 0) {
       eligible = structuralCandidates;
-    } else if (level === "level-3" && maxStaffDistance !== null) {
-      return undefined;
     }
   }
-  if (eligible.length === 0) eligible = candidates.filter((note) => note.staff === staff);
+  if (eligible.length === 0) eligible = staffCandidates;
   if (level === "level-3" && maxStaffDistance !== null && previous) {
-    const withinLimit = eligible.filter(
-      (note) => staffDistance(previous, note) <= maxStaffDistance
-    );
+    let withinLimit = eligible.filter((note) => staffDistance(previous, note) <= maxStaffDistance);
+    if (withinLimit.length === 0 && staff === "bass") {
+      // A filtered chord scale can have no note within the configured leap.
+      // Keep the onset and honor the hard distance limit by checking the full
+      // selected bass pool for an otherwise eligible pitch.
+      withinLimit = staffCandidates.filter(
+        (note) => staffDistance(previous, note) <= maxStaffDistance
+      );
+    }
     if (withinLimit.length === 0) return undefined;
     eligible = withinLimit;
   }
@@ -1003,13 +1008,12 @@ export function getDuetPracticeSetupIssue(
       return "当前指定音名在所选音区中没有可练习音符，请选择其他音名。";
     }
   }
-  if (
-    strategy === "note-drill" &&
-    (level === "level-4" || level === "level-5" || level === "level-6")
-  ) {
+  if (level === "level-4" || level === "level-5" || level === "level-6") {
     const lookup = createNoteLookup(notes);
     if (compatibleChordTemplates(lookup, strategy, drillNoteNames).length === 0) {
-      return "当前指定音名无法组成完整和弦或分解和弦，请至少选择一组完整和弦所需的音名。";
+      return strategy === "note-drill"
+        ? "当前指定音名无法组成完整和弦或分解和弦，请至少选择一组完整和弦所需的音名。"
+        : "当前音域无法组成完整和弦，无法生成伴奏，请扩大音域或启用更多可用音符。";
     }
   }
   if (level === "level-3" && maxStaffDistance !== null) {
@@ -1048,12 +1052,15 @@ export function createDuetPracticePage(
       ? poolNotes.filter((note) => drillNoteNames.includes(note.noteName))
       : [...poolNotes];
   const lookup = createNoteLookup(availableNotes);
+  const chordTemplates = compatibleChordTemplates(lookup, strategy, drillNoteNames);
   const bassNotes = availableNotes.filter((note) => note.staff === "bass");
   const trebleNotes = availableNotes.filter((note) => note.staff === "treble");
+  const requiresCompleteChord = level === "level-4" || level === "level-5" || level === "level-6";
   if (
     poolNotes.length === 0 ||
     (!options.allowSingleStaff && (bassNotes.length === 0 || trebleNotes.length === 0)) ||
-    requestedCount <= 0
+    requestedCount <= 0 ||
+    (requiresCompleteChord && chordTemplates.length === 0)
   ) {
     return {
       events: [],
@@ -1116,7 +1123,6 @@ export function createDuetPracticePage(
     bass: NOTE_NAME_ORDER.filter((noteName) => lookup.get("bass")?.has(noteName) ?? false),
   };
   const levelOneNotePools = baseLevelOneNotePools;
-  const chordTemplates = compatibleChordTemplates(lookup, strategy, drillNoteNames);
   const maxStaffDistance = level === "level-3" ? (options.maxStaffDistance ?? null) : null;
   const previousStaffNotes: Partial<Record<Staff, TargetNote>> = {
     ...(options.previousStaffNotes ?? {}),

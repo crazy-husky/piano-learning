@@ -81,7 +81,7 @@ export function ChordTrainingView({
   const startPractice = useCallback(async (): Promise<void> => {
     if (isStarting) return;
     if (config.practiceGroupIds.length === 0) {
-      setStartError("请先选择练习音区。");
+      setStartError("请先选择根音基准音区。");
       guideSetupRequirement('[data-setup-guide-target="chord-practice-range"]');
       return;
     }

@@ -75,6 +75,8 @@
   --notation-staff: #766b5f;
   --notation-correct: #2f8f5f;
   --notation-error: #c84c3d;
+  --notation-error-fill: rgba(200, 76, 61, 0.28);
+  --notation-root: #1769aa;
   --notation-active: #256f67;
   --notation-active-fill: rgba(47, 125, 116, 0.16);
   --notation-hover: rgba(37, 111, 103, 0.42);
@@ -149,6 +151,8 @@
   --notation-staff: #9aa99f;
   --notation-correct: #78c994;
   --notation-error: #f18476;
+  --notation-error-fill: rgba(241, 132, 118, 0.28);
+  --notation-root: #86bfff;
   --notation-active: #80cbb4;
   --notation-active-fill: rgba(128, 203, 180, 0.18);
   --notation-hover: rgba(128, 203, 180, 0.42);

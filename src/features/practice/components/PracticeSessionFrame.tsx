@@ -10,7 +10,7 @@ export function formatPracticeQuestionProgress(
     typeof fixedCount === "number" && Number.isFinite(fixedCount)
       ? Math.max(0, Math.floor(fixedCount))
       : "无限";
-  return `${completed} / ${total} 题`;
+  return `${completed} / ${total === "无限" ? "无限题" : `${total} 题`}`;
 }
 
 interface PracticeSessionFrameProps {

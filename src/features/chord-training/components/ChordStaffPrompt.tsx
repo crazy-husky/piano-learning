@@ -38,7 +38,7 @@ function getStaffPromptLabel(prompt: ChordPrompt, highlightRoot: boolean): strin
     const onsetLabel = notes.length > 1 ? `同时弹奏 ${noteNames}` : noteNames;
     return `${onsetLabel}，${NOTE_DURATION_LABELS[duration]}`;
   });
-  return `五线谱和弦题目${patternLabel}。${highlightRoot ? "金色音符表示根音。" : ""}起音顺序：${eventLabels.join("；")}`;
+  return `五线谱和弦题目${patternLabel}。${highlightRoot ? "蓝色音符表示根音。" : ""}起音顺序：${eventLabels.join("；")}`;
 }
 
 export function ChordStaffPrompt({
@@ -85,7 +85,7 @@ export function ChordStaffPrompt({
       const clef = (prompt.notes[0]?.midi ?? 60) < 60 ? "bass" : "treble";
       const targetStave = clef === "bass" ? bass : treble;
       const ink = getPageThemeColor("--notation-ink", "#211c18");
-      const rootInk = getPageThemeColor("--warning", "#d88c24");
+      const rootInk = getPageThemeColor("--notation-root", "#1769aa");
       const activeInk = getPageThemeColor("--notation-active", "#256f67");
       const scoreNotes = prompt.noteEvents.map(({ notes, duration }, eventIndex) => {
         const scoreNote = new StaveNote({

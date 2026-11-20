@@ -17,6 +17,7 @@ import {
   type ChordTrainingConfig,
 } from "../logic/chordTraining";
 import { PRACTICE_FIXED_COUNT_PRESETS } from "../../practice/logic/practiceLengthOptions";
+import { PracticeSetupFrame } from "../../practice/components/PracticeSetupFrame";
 
 const TASKS = [
   { id: "recognize", title: "认和弦" },
@@ -139,7 +140,7 @@ export function ChordTrainingSetup({
     CHORD_MAJOR_KEYS.find((key) => key.id === config.keyId)?.label ?? "C 大调",
     PRACTICE_GROUPS.filter(({ id }) => config.practiceGroupIds.includes(id))
       .map(({ label }) => label)
-      .join("、") || "未选音区",
+      .join("、") || "未选根音基准音区",
     `${config.chordDegrees.length} 组和弦`,
     config.qualities.map((kind) => (kind === "triad" ? "三和弦" : "七和弦")).join("、"),
     `${config.inversions.length} 种转位`,
@@ -155,7 +156,32 @@ export function ChordTrainingSetup({
   return (
     <div className="chord-training-page practice-free-page">
       <section
+        aria-labelledby="chord-training-task-title"
+        className="practice-setup-mode-selector practice-free-section"
+      >
+        <div className="practice-free-section-heading">
+          <h2 id="chord-training-task-title">练习方式</h2>
+        </div>
+        <div className="practice-free-range-module-content chord-training-task-content">
+          <div aria-label="练习方式" className="chord-training-task-list" role="group">
+            {TASKS.map((task) => (
+              <button
+                aria-pressed={config.task === task.id}
+                className={`chord-training-task${config.task === task.id ? " is-selected" : ""}`}
+                key={task.id}
+                onClick={() => onChange({ ...config, task: task.id })}
+                type="button"
+              >
+                <strong>{task.title}</strong>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <PracticeSetupFrame
         aria-label="和弦练习配置"
+        as="section"
         className="chord-training-setup practice-free-config-content"
       >
         <div className="chord-training-midi-topline">
@@ -166,27 +192,6 @@ export function ChordTrainingSetup({
             setupGuideTarget="chord-midi-device"
           />
         </div>
-
-        <section aria-labelledby="chord-training-task-title" className="practice-free-section">
-          <div className="practice-free-section-heading">
-            <h2 id="chord-training-task-title">练习方式</h2>
-          </div>
-          <div className="practice-free-range-module-content chord-training-task-content">
-            <div aria-label="练习方式" className="chord-training-task-list" role="group">
-              {TASKS.map((task) => (
-                <button
-                  aria-pressed={config.task === task.id}
-                  className={`chord-training-task${config.task === task.id ? " is-selected" : ""}`}
-                  key={task.id}
-                  onClick={() => onChange({ ...config, task: task.id })}
-                  type="button"
-                >
-                  <strong>{task.title}</strong>
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
 
         <div className="practice-free-primary-grid chord-training-settings-grid">
           <div className="chord-training-settings-row">
@@ -331,11 +336,11 @@ export function ChordTrainingSetup({
               data-setup-guide-target="chord-practice-range"
             >
               <div className="practice-free-section-heading">
-                <h2 id="chord-training-pitch-range-title">练习音区</h2>
+                <h2 id="chord-training-pitch-range-title">根音基准音区</h2>
               </div>
               <div className="practice-free-range-module-content chord-training-pitch-range-content">
                 <fieldset
-                  aria-label="练习音区"
+                  aria-label="根音基准音区"
                   className="global-range-groups chord-training-practice-groups"
                 >
                   {PRACTICE_GROUPS.map((group) => {
@@ -375,7 +380,7 @@ export function ChordTrainingSetup({
                               `${notes[0]?.pitchId}–${notes[notes.length - 1]?.pitchId}`
                           )
                           .join("、")}`
-                      : "当前未选择音区，请至少选择一个音区。"}
+                      : "当前未选择根音基准音区，请至少选择一个音区。"}
                   </span>
                   {config.practiceGroupIds.length > 0 ? (
                     <button
@@ -386,6 +391,9 @@ export function ChordTrainingSetup({
                     </button>
                   ) : null}
                 </div>
+                <small className="practice-free-helper">
+                  所选音区决定根音基准八度；转位音可延伸到相邻八度，超过钢琴最高音时整组下移八度。
+                </small>
               </div>
             </section>
 
@@ -503,7 +511,7 @@ export function ChordTrainingSetup({
                   type="checkbox"
                 />
                 <span>高亮根音</span>
-                <small>谱面以金色标记</small>
+                <small>谱面以蓝色标记</small>
               </label>
               {isPerformanceTask ? (
                 <div
@@ -604,7 +612,7 @@ export function ChordTrainingSetup({
             </span>
           </div>
         </footer>
-      </section>
+      </PracticeSetupFrame>
     </div>
   );
 }

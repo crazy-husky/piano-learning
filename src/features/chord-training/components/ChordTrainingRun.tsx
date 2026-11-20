@@ -38,10 +38,12 @@ import {
   type ChordTrainingAnswerEventData,
   type ChordTrainingConfig,
 } from "../logic/chordTraining";
+import { ChordStaffPage } from "./ChordStaffPage";
 import { ChordStaffPrompt } from "./ChordStaffPrompt";
 
 const CHORD_INPUT_WINDOW_MS = 280;
 const ANSWER_FEEDBACK_MS = 850;
+const CHORD_SCORE_BATCH_SIZE = 24;
 const SYNC_MAX_OFFSET_BEATS = 0.5;
 const CHORD_QUALITY_ORDER: readonly ChordQuality[] = [
   "major-triad",
@@ -116,12 +118,19 @@ export function ChordTrainingRun({
   onPauseChange: (paused: boolean) => void;
   onRestart: () => void;
 }): JSX.Element {
-  const [prompt, setPrompt] = useState<ChordPrompt>(() => generateChordPrompt(config));
+  const initialPromptCount =
+    config.lengthMode === "fixed-count"
+      ? Math.max(1, Math.min(config.fixedCount, CHORD_SCORE_BATCH_SIZE))
+      : CHORD_SCORE_BATCH_SIZE;
+  const [promptSequence, setPromptSequence] = useState<ChordPrompt[]>(() =>
+    Array.from({ length: initialPromptCount }, () => generateChordPrompt(config))
+  );
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [prompt, setPrompt] = useState<ChordPrompt>(() => promptSequence[0]!);
   const [isPaused, setIsPaused] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [events, setEvents] = useState<AnswerEvent[]>([]);
   const [feedback, setFeedback] = useState<ChordAnswerFeedback | null>(null);
-  const [enteredMidiNotes, setEnteredMidiNotes] = useState<number[]>([]);
   const [recognitionStep, setRecognitionStep] = useState<ChordRecognitionStep>("root");
   const [selectedRootName, setSelectedRootName] = useState<string | null>(null);
   const [selectedQuality, setSelectedQuality] = useState<ChordQuality | null>(null);
@@ -131,7 +140,9 @@ export function ChordTrainingRun({
   const [syncCountInBeat, setSyncCountInBeat] = useState<number | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [activeEventIndex, setActiveEventIndex] = useState(0);
-  const [scoreEventFeedback, setScoreEventFeedback] = useState<ChordScoreEventFeedback[]>([]);
+  const [scoreFeedbackByQuestion, setScoreFeedbackByQuestion] = useState<
+    ChordScoreEventFeedback[][]
+  >([]);
   const syncEnabled = config.task !== "recognize" && config.metronomeSyncEnabled;
   const {
     getAudioTime: getMetronomeAudioTime,
@@ -175,6 +186,9 @@ export function ChordTrainingRun({
   );
 
   const promptRef = useRef(prompt);
+  const promptSequenceRef = useRef(promptSequence);
+  const activeQuestionIndexRef = useRef(0);
+  const scoreFeedbackRef = useRef<ChordScoreEventFeedback[][]>([]);
   const eventsRef = useRef<AnswerEvent[]>([]);
   const runIdRef = useRef(createUuid());
   const currentDataSetIdRef = useRef(dataSetId);
@@ -267,7 +281,25 @@ export function ChordTrainingRun({
   }, [rootFeedback]);
 
   const beginNextQuestion = useCallback((): void => {
-    const next = generateChordPrompt(config);
+    const nextIndex = activeQuestionIndexRef.current + 1;
+    let sequence = promptSequenceRef.current;
+    const shouldAppendBatch = nextIndex >= sequence.length || sequence.length - nextIndex <= 8;
+    const remainingFixedCount =
+      config.lengthMode === "fixed-count"
+        ? Math.max(0, config.fixedCount - sequence.length)
+        : Infinity;
+    const batchCount = Math.min(CHORD_SCORE_BATCH_SIZE, remainingFixedCount);
+    if (shouldAppendBatch && batchCount > 0) {
+      sequence = [
+        ...sequence,
+        ...Array.from({ length: batchCount }, () => generateChordPrompt(config)),
+      ];
+      promptSequenceRef.current = sequence;
+      setPromptSequence(sequence);
+    }
+    const next = sequence[nextIndex]!;
+    activeQuestionIndexRef.current = nextIndex;
+    setActiveQuestionIndex(nextIndex);
     promptRef.current = next;
     setPrompt(next);
     setFeedback(null);
@@ -280,7 +312,6 @@ export function ChordTrainingRun({
     arpeggioIndexRef.current = 0;
     activeEventIndexRef.current = 0;
     setActiveEventIndex(0);
-    setScoreEventFeedback([]);
     if (syncMissTimerRef.current !== null) {
       window.clearTimeout(syncMissTimerRef.current);
       syncMissTimerRef.current = null;
@@ -290,7 +321,6 @@ export function ChordTrainingRun({
     syncScheduleRevisionRef.current += 1;
     promptNeedsSyncAnchorRef.current = syncEnabled;
     blockTimingGradeRef.current = null;
-    setEnteredMidiNotes([]);
     enteredMidiNotesRef.current = [];
     advanceRemainingMsRef.current = ANSWER_FEEDBACK_MS;
     pendingBlockNotesRef.current.clear();
@@ -313,6 +343,19 @@ export function ChordTrainingRun({
       }
     }, advanceRemainingMsRef.current);
   }, [beginNextQuestion, config.fixedCount, config.lengthMode, finishRun]);
+
+  const setScoreEventResult = useCallback(
+    (index: number, result: ChordScoreEventFeedback): void => {
+      const questionIndex = activeQuestionIndexRef.current;
+      const next = scoreFeedbackRef.current.map((eventsForQuestion) => [...eventsForQuestion]);
+      const questionFeedback = [...(next[questionIndex] ?? [])];
+      questionFeedback[index] = result;
+      next[questionIndex] = questionFeedback;
+      scoreFeedbackRef.current = next;
+      setScoreFeedbackByQuestion(next);
+    },
+    []
+  );
 
   const resolveQuestion = useCallback(
     ({
@@ -344,6 +387,14 @@ export function ChordTrainingRun({
       }
       pendingBlockNotesRef.current.clear();
       const currentPrompt = promptRef.current;
+      const feedbackForQuestion = scoreFeedbackRef.current[activeQuestionIndexRef.current] ?? [];
+      const unresolvedEventIndex = Math.min(
+        activeEventIndexRef.current,
+        Math.max(0, currentPrompt.noteEvents.length - 1)
+      );
+      if (!correct && !feedbackForQuestion[unresolvedEventIndex]) {
+        setScoreEventResult(unresolvedEventIndex, missed ? "missed" : "wrong");
+      }
       const chordData: ChordTrainingAnswerEventData = {
         task: config.task,
         keyId: config.keyId,
@@ -403,23 +454,12 @@ export function ChordTrainingRun({
         expectedName: `${getChordDegreeLabel(currentPrompt.chord.degree)} · ${currentPrompt.chord.name} · ${getChordInversionLabel(currentPrompt.inversion)}`,
       });
 
-      if (correct) {
+      if (correct || config.task !== "recognize") {
         advanceRemainingMsRef.current = ANSWER_FEEDBACK_MS;
         scheduleAdvance();
       }
     },
-    [config, scheduleAdvance]
-  );
-
-  const setScoreEventResult = useCallback(
-    (index: number, result: ChordScoreEventFeedback): void => {
-      setScoreEventFeedback((current) => {
-        const next = [...current];
-        next[index] = result;
-        return next;
-      });
-    },
-    []
+    [config, scheduleAdvance, setScoreEventResult]
   );
 
   const appendSyncTempoAnchor = useCallback(
@@ -519,7 +559,12 @@ export function ChordTrainingRun({
       activeEventIndexRef.current = 0;
       arpeggioIndexRef.current = 0;
       setActiveEventIndex(0);
-      setScoreEventFeedback([]);
+      const nextFeedback = scoreFeedbackRef.current.map((eventsForQuestion) => [
+        ...eventsForQuestion,
+      ]);
+      nextFeedback[activeQuestionIndexRef.current] = [];
+      scoreFeedbackRef.current = nextFeedback;
+      setScoreFeedbackByQuestion(nextFeedback);
       syncScheduleRevisionRef.current += 1;
       scheduleSyncedEventHighlight(0);
       armSyncMissTimer(0);
@@ -697,7 +742,6 @@ export function ChordTrainingRun({
 
         const nextEntered = [...enteredMidiNotesRef.current, note];
         enteredMidiNotesRef.current = nextEntered;
-        setEnteredMidiNotes(nextEntered);
         if (expectedEvent.notes.length > 1) {
           if (pendingBlockNotesRef.current.size === 0) {
             blockTimingGradeRef.current = timingGrade;
@@ -740,7 +784,6 @@ export function ChordTrainingRun({
 
       if (config.task === "block") {
         pendingBlockNotesRef.current.add(note);
-        setEnteredMidiNotes([...pendingBlockNotesRef.current]);
         if (blockTimerRef.current === null) {
           blockTimerRef.current = window.setTimeout(() => {
             blockTimerRef.current = null;
@@ -761,7 +804,6 @@ export function ChordTrainingRun({
       if (!expectedEvent) return;
       const nextEntered = [...enteredMidiNotesRef.current, note];
       enteredMidiNotesRef.current = nextEntered;
-      setEnteredMidiNotes(nextEntered);
 
       if (expectedEvent.notes.length > 1) {
         pendingBlockNotesRef.current.add(note);
@@ -782,6 +824,8 @@ export function ChordTrainingRun({
             setScoreEventResult(arpeggioIndexRef.current, "correct");
             const nextIndex = arpeggioIndexRef.current + 1;
             arpeggioIndexRef.current = nextIndex;
+            activeEventIndexRef.current = nextIndex;
+            setActiveEventIndex(nextIndex);
             if (nextIndex === currentPrompt.noteEvents.length) {
               resolveQuestion({ correct: true, entered: enteredMidiNotesRef.current });
             }
@@ -798,6 +842,8 @@ export function ChordTrainingRun({
       setScoreEventResult(arpeggioIndexRef.current, "correct");
       const nextIndex = arpeggioIndexRef.current + 1;
       arpeggioIndexRef.current = nextIndex;
+      activeEventIndexRef.current = nextIndex;
+      setActiveEventIndex(nextIndex);
       if (nextIndex === currentPrompt.noteEvents.length) {
         resolveQuestion({ correct: true, entered: nextEntered });
       }
@@ -814,8 +860,6 @@ export function ChordTrainingRun({
     syncEnabled,
   ]);
 
-  enteredMidiNotesRef.current = enteredMidiNotes;
-
   const togglePause = useCallback((): void => {
     if (isFinishedRef.current) return;
     if (isPausedRef.current) {
@@ -823,7 +867,9 @@ export function ChordTrainingRun({
       isPausedRef.current = false;
       setIsPaused(false);
       onPauseChangeRef.current(false);
-      if (feedback?.correct) scheduleAdvance();
+      if (feedback?.correct || (config.task !== "recognize" && questionResolvedRef.current)) {
+        scheduleAdvance();
+      }
       return;
     }
     pausedElapsedRef.current = measureElapsed();
@@ -854,12 +900,12 @@ export function ChordTrainingRun({
       window.clearTimeout(blockTimerRef.current);
       blockTimerRef.current = null;
     }
-    setEnteredMidiNotes([]);
     enteredMidiNotesRef.current = [];
     setIsPaused(true);
     onPauseChangeRef.current(true);
   }, [
     feedback?.correct,
+    config.task,
     measureElapsed,
     scheduleAdvance,
     setMetronomeSyncLocked,
@@ -887,10 +933,6 @@ export function ChordTrainingRun({
 
   const elapsedSeconds = Math.max(0, Math.ceil(elapsedMs / 1000));
   const remainingSeconds = Math.max(0, config.fixedDurationSeconds - elapsedSeconds);
-  const arpeggioTargetCount = prompt.noteEvents.reduce(
-    (count, event) => count + event.notes.length,
-    0
-  );
   const selectRecognitionRoot = (rootName: string): void => {
     if (feedback || isPaused) return;
     setSelectedRootName(rootName);
@@ -959,7 +1001,10 @@ export function ChordTrainingRun({
   };
 
   return (
-    <PracticeSessionFrame aria-label="和弦训练练习" className="chord-training-run">
+    <PracticeSessionFrame
+      aria-label="和弦训练练习"
+      className={`chord-training-run${config.task !== "recognize" ? " is-score-performance-run" : ""}`}
+    >
       <PracticeSessionHeader
         exitAriaLabel={
           config.lengthMode === "open-ended" ? "结束练习并查看结果" : "结束练习并返回配置"
@@ -976,6 +1021,7 @@ export function ChordTrainingRun({
         onPauseToggle={togglePause}
         onRestart={onRestart}
         progress={progressLabel}
+        progressInline
         title={<span id="chord-training-run-title">和弦训练</span>}
         utilityChildren={
           config.task !== "recognize" ? (
@@ -997,7 +1043,7 @@ export function ChordTrainingRun({
           ) : null}
           <strong>{metronomePreferences.bpm} BPM</strong>
           <span className="practice-metronome-sync-legend" aria-label="谱面颜色说明">
-            <span className="is-root">金色：根音</span>
+            <span className="is-root">蓝色：根音</span>
             <span className="is-error">红色：错音或漏拍</span>
             {syncEnabled ? <span className="is-warning">黄色：时机偏早或偏晚</span> : null}
           </span>
@@ -1005,38 +1051,51 @@ export function ChordTrainingRun({
         </div>
       ) : null}
 
-      <div className="chord-training-prompt-panel">
-        <div className="chord-training-prompt-toolbar">
-          <button
-            aria-expanded={isPromptHintVisible}
-            aria-controls="chord-training-prompt-hint"
-            className="chord-training-prompt-hint-toggle"
-            onClick={() => setIsPromptHintVisible((visible) => !visible)}
-            type="button"
-          >
-            {isPromptHintVisible ? "隐藏本题提示" : "显示本题提示"}
-          </button>
-          {config.task !== "recognize" ? (
-            <span className={midi.isConnected ? "is-midi-ready" : "is-midi-missing"}>
-              {midi.isConnected ? "MIDI 已连接" : "MIDI 已断开"}
-            </span>
-          ) : null}
-          <div
-            className="chord-training-prompt-meta"
-            hidden={!isPromptHintVisible}
-            id="chord-training-prompt-hint"
-          >
-            <span>{getChordMajorKey(config.keyId).label}</span>
-            <span>{getChordDegreeLabel(prompt.chord.degree)} 级</span>
-            <span>{getChordInversionLabel(prompt.inversion)}</span>
+      <div
+        className={
+          config.task === "recognize"
+            ? "chord-training-prompt-panel"
+            : "chord-training-prompt-panel is-score-performance"
+        }
+      >
+        {config.task === "recognize" ? (
+          <div className="chord-training-prompt-toolbar">
+            <button
+              aria-expanded={isPromptHintVisible}
+              aria-controls="chord-training-prompt-hint"
+              className="chord-training-prompt-hint-toggle"
+              onClick={() => setIsPromptHintVisible((visible) => !visible)}
+              type="button"
+            >
+              {isPromptHintVisible ? "隐藏本题提示" : "显示本题提示"}
+            </button>
+            <div
+              className="chord-training-prompt-meta"
+              hidden={!isPromptHintVisible}
+              id="chord-training-prompt-hint"
+            >
+              <span>{getChordMajorKey(config.keyId).label}</span>
+              <span>{getChordDegreeLabel(prompt.chord.degree)} 级</span>
+              <span>{getChordInversionLabel(prompt.inversion)}</span>
+            </div>
           </div>
-        </div>
-        <ChordStaffPrompt
-          activeEventIndex={activeEventIndex}
-          eventFeedback={scoreEventFeedback}
-          highlightRoot={config.highlightRoot}
-          prompt={prompt}
-        />
+        ) : null}
+        {config.task === "recognize" ? (
+          <ChordStaffPrompt
+            activeEventIndex={activeEventIndex}
+            eventFeedback={scoreFeedbackByQuestion[activeQuestionIndex] ?? []}
+            highlightRoot={config.highlightRoot}
+            prompt={prompt}
+          />
+        ) : (
+          <ChordStaffPage
+            activeEventIndex={activeEventIndex}
+            activeQuestionIndex={activeQuestionIndex}
+            eventFeedbackByQuestion={scoreFeedbackByQuestion}
+            highlightRoot={config.highlightRoot}
+            prompts={promptSequence}
+          />
+        )}
 
         {config.task === "recognize" ? (
           <div aria-label="分步选择和弦" className="chord-training-recognition">
@@ -1148,35 +1207,17 @@ export function ChordTrainingRun({
               </section>
             ) : null}
           </div>
-        ) : (
-          <div aria-live="polite" className="chord-training-performance-hint">
-            {config.task === "block"
-              ? enteredMidiNotes.length > 0
-                ? `已收到 ${enteredMidiNotes.length} 个音，继续按下同一组和弦音。`
-                : "同时按下谱面中的全部和弦音。"
-              : enteredMidiNotes.length > 0
-                ? `已弹 ${enteredMidiNotes.length} / ${arpeggioTargetCount} 个音`
-                : prompt.arpeggioPatternId === "broken-block-ending"
-                  ? "前三拍依次弹奏，最后一拍同时按下和弦。"
-                  : prompt.arpeggioPatternId === "pop-loop"
-                    ? "按谱面顺序弹奏八分音符循环。"
-                    : "按谱面顺序弹奏，先上行，再按谱面返回。"}
-          </div>
-        )}
+        ) : null}
 
-        {feedback || config.task !== "recognize" ? (
+        {config.task === "recognize" && feedback ? (
           <div
             aria-live="polite"
             className={`chord-training-feedback${feedback ? (feedback.correct ? " is-correct" : " is-wrong") : ""}`}
           >
-            {feedback ? (
-              <strong>{feedback.correct ? "正确" : `正确答案：${feedback.expectedName}`}</strong>
-            ) : (
-              <span>等待 MIDI 输入</span>
-            )}
+            <strong>{feedback.correct ? "正确" : `正确答案：${feedback.expectedName}`}</strong>
           </div>
         ) : null}
-        {feedback?.correct ? null : (
+        {config.task === "recognize" && !feedback?.correct ? (
           <button
             className="chord-training-skip"
             disabled={isPaused}
@@ -1198,16 +1239,11 @@ export function ChordTrainingRun({
               resolveQuestion({
                 correct: false,
                 missed: true,
-                entered: enteredMidiNotes,
-                ...(config.task === "recognize"
-                  ? {
-                      recognitionAnswer: {
-                        ...(selectedRootName ? { rootName: selectedRootName } : {}),
-                        ...(selectedQuality ? { quality: selectedQuality } : {}),
-                        ...(selectedInversion !== null ? { inversion: selectedInversion } : {}),
-                      },
-                    }
-                  : {}),
+                recognitionAnswer: {
+                  ...(selectedRootName ? { rootName: selectedRootName } : {}),
+                  ...(selectedQuality ? { quality: selectedQuality } : {}),
+                  ...(selectedInversion !== null ? { inversion: selectedInversion } : {}),
+                },
               });
             }}
             type="button"
@@ -1215,7 +1251,7 @@ export function ChordTrainingRun({
             <SkipForward aria-hidden="true" size={16} />
             {feedback || rootFeedback ? "下一题" : "跳过本题"}
           </button>
-        )}
+        ) : null}
       </div>
 
       {isPaused ? <PauseOverlay onResume={togglePause} showKeyboardShortcuts={false} /> : null}

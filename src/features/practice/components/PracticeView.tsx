@@ -81,6 +81,7 @@ import {
 import { StaffPagePrompt } from "./StaffPagePrompt";
 import { StaffPrompt } from "./StaffPrompt";
 import { ReturnToCurrentNoteButton } from "./ReturnToCurrentNoteButton";
+import { requestStaffPageManualScroll, scrollStaffPageTargetIntoView } from "./staffPageScroll";
 import {
   DUET_PRACTICE_PAGE_STAFF_LAYOUT,
   MOBILE_DUET_PRACTICE_PAGE_STAFF_LAYOUT,
@@ -1782,8 +1783,8 @@ export function PracticeView({
     ) {
       return;
     }
-    // Reuse the normal pause path so microphone capture, timers, and the pause
-    // controls all reflect that input is unavailable while the note is hidden.
+    // Reuse the normal pause path to freeze microphone capture, timers, and input
+    // while leaving the score visible for browsing.
     pausePractice();
     visibilityPausedRef.current = true;
     setIsVisibilityPaused(true);
@@ -4301,6 +4302,7 @@ export function PracticeView({
     enabled: isStaffPagePractice,
     noteKey: `${staffPageFirstNoteOffset}:${trackedFreeScoreNoteIndex}`,
     hiddenMessage: "当前音符已滚出视野，节拍与进度已暂停。",
+    notifyOnVisibilityChange: false,
     onHidden: pauseForTrackedNoteHidden,
     toastId: "practice-current-note-visibility",
     visibleMessage: "当前音符已回到视野，正在恢复练习。",
@@ -4350,6 +4352,22 @@ export function PracticeView({
     staffPageNoteCount,
     trackedFreeScoreNoteIndex,
   ]);
+  const handlePauseOverlayResume = useCallback((): void => {
+    if (isStaffPagePractice && !freeTrackedNoteVisibilityRef.current) {
+      requestStaffPageManualScroll();
+      const target = getFreeCurrentNoteTarget();
+      if (target) {
+        scrollStaffPageTargetIntoView(target);
+      } else {
+        window.requestAnimationFrame(() => {
+          const renderedTarget = getFreeCurrentNoteTarget();
+          if (renderedTarget) scrollStaffPageTargetIntoView(renderedTarget);
+        });
+      }
+      return;
+    }
+    void resumePractice();
+  }, [freeTrackedNoteVisibilityRef, getFreeCurrentNoteTarget, isStaffPagePractice, resumePractice]);
   const {
     formatQualifiedTimeMedian,
     formatQualifiedTimeP90,
@@ -4798,7 +4816,12 @@ export function PracticeView({
                   {practiceMicrophone.isPreparingSwiftF0 ? "正在准备识别模型" : "正在连接麦克风"}
                 </LoadingActivityText>
               ) : (
-                (practiceMicrophone.error ?? (isPaused ? "已暂停，麦克风已释放" : "麦克风未连接"))
+                (practiceMicrophone.error ??
+                (isVisibilityPaused
+                  ? "麦克风已释放"
+                  : isPaused
+                    ? "已暂停，麦克风已释放"
+                    : "麦克风未连接"))
               )}
             </span>
           )}
@@ -5104,9 +5127,9 @@ export function PracticeView({
       <span className="sr-only" aria-live="polite">
         {tick} {wrongAnswerCount}
       </span>
-      {isPaused ? (
+      {isPaused && !isVisibilityPaused ? (
         <PauseOverlay
-          onResume={resumePractice}
+          onResume={handlePauseOverlayResume}
           allowBackdropResume={!isMobileViewport}
           resumeBlockedMessage={
             answerPitchMode === "exact-pitch" && !midi.isConnected

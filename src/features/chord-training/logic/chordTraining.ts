@@ -52,6 +52,7 @@ export function getChordInversionLabel(inversion: number): string {
 export interface ChordTrainingConfig {
   task: ChordTask;
   keyId: string;
+  /** Octaves in which each chord's root-position reference note is placed. */
   practiceGroupIds: CurrentPracticeGroupId[];
   chordDegrees: ChordDegree[];
   qualities: ChordKind[];
@@ -282,13 +283,16 @@ function notesForDiatonicChord(
   ];
 }
 
+const STANDARD_PIANO_TOP_MIDI = 108; // C8
+
 function makeChordNotes(chord: DiatonicChord, inversion: number, baseOctave: number): ChordNote[] {
   const key = getChordMajorKey(chord.keyId);
   const notes = notesForDiatonicChord(key, chord.degree - 1, chord.kind, inversion, baseOctave);
-  const lowestMidi = Math.min(...notes.map((note) => note.midi));
-  const baseOctaveLowestMidi = (baseOctave + 1) * 12;
+  // The selected octave anchors the chord's root position. Inversions may
+  // cross octave boundaries; shift the whole voicing down only if it would
+  // exceed the top C of a standard piano, preserving the inversion.
   const octaveShift =
-    lowestMidi < baseOctaveLowestMidi ? 12 : lowestMidi >= baseOctaveLowestMidi + 12 ? -12 : 0;
+    Math.max(...notes.map((note) => note.midi)) > STANDARD_PIANO_TOP_MIDI ? -12 : 0;
   return octaveShift === 0
     ? notes
     : notes.map((note) => ({
