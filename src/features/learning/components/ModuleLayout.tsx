@@ -11,12 +11,14 @@ const TABS: readonly { id: LearningModuleTab; label: string }[] = [
 export function ModuleLayout({
   activeTab,
   children,
+  hideNavigation = false,
   immersive = false,
   module,
   onTabChange,
 }: {
   activeTab: LearningModuleTab;
   children: ReactNode;
+  hideNavigation?: boolean;
   immersive?: boolean;
   module: LearningModuleDefinition;
   onTabChange: (tab: LearningModuleTab) => void;
@@ -24,7 +26,7 @@ export function ModuleLayout({
   return (
     <section
       aria-labelledby="learning-module-title"
-      className={`learning-module-shell${immersive ? " is-immersive" : ""}`}
+      className={`learning-module-shell${immersive ? " is-immersive" : ""}${hideNavigation ? " is-navigation-hidden" : ""}`}
     >
       <header className="learning-module-header">
         <div className="learning-module-heading-copy">

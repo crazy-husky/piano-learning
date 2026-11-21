@@ -44,13 +44,13 @@ function getStaffPromptLabel(prompt: ChordPrompt, highlightRoot: boolean): strin
 export function ChordStaffPrompt({
   prompt,
   highlightRoot = true,
-  activeEventIndex = 0,
   eventFeedback = [],
+  compact = false,
 }: {
   prompt: ChordPrompt;
   highlightRoot?: boolean;
-  activeEventIndex?: number;
   eventFeedback?: readonly (ChordScoreEventFeedback | undefined)[];
+  compact?: boolean;
 }): JSX.Element {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const targetRef = useRef<HTMLDivElement | null>(null);
@@ -63,8 +63,8 @@ export function ChordStaffPrompt({
 
     const render = (): void => {
       target.innerHTML = "";
-      const width = Math.max(440, frame.clientWidth || 720);
-      const height = 210;
+      const width = Math.max(compact ? 280 : 440, frame.clientWidth || 720);
+      const height = compact ? 136 : 210;
       const renderer = new Renderer(target, Renderer.Backends.SVG);
       renderer.resize(width, height);
       const context = renderer.getContext();
@@ -72,21 +72,28 @@ export function ChordStaffPrompt({
       context.setStrokeStyle(getPageThemeColor("--notation-staff", "#766b5f"));
 
       const keySignature = getChordMajorKey(prompt.chord.keyId).vexKey;
-      const treble = new Stave(18, 24, width - 36).addClef("treble").addKeySignature(keySignature);
-      const bass = new Stave(18, 112, width - 36).addClef("bass").addKeySignature(keySignature);
-      treble.setEndBarType(BarlineType.NONE);
-      bass.setEndBarType(BarlineType.NONE);
-      treble.setContext(context).draw();
-      bass.setContext(context).draw();
-      new StaveConnector(treble, bass).setType("brace").setContext(context).draw();
-      new StaveConnector(treble, bass).setType("singleLeft").setContext(context).draw();
-      new StaveConnector(treble, bass).setType("singleRight").setContext(context).draw();
-
       const clef = (prompt.notes[0]?.midi ?? 60) < 60 ? "bass" : "treble";
-      const targetStave = clef === "bass" ? bass : treble;
+      let targetStave: Stave;
+      if (compact) {
+        targetStave = new Stave(18, 8, width - 36).addClef(clef).addKeySignature(keySignature);
+        targetStave.setEndBarType(BarlineType.NONE);
+        targetStave.setContext(context).draw();
+      } else {
+        const treble = new Stave(18, 24, width - 36)
+          .addClef("treble")
+          .addKeySignature(keySignature);
+        const bass = new Stave(18, 112, width - 36).addClef("bass").addKeySignature(keySignature);
+        treble.setEndBarType(BarlineType.NONE);
+        bass.setEndBarType(BarlineType.NONE);
+        treble.setContext(context).draw();
+        bass.setContext(context).draw();
+        new StaveConnector(treble, bass).setType("brace").setContext(context).draw();
+        new StaveConnector(treble, bass).setType("singleLeft").setContext(context).draw();
+        new StaveConnector(treble, bass).setType("singleRight").setContext(context).draw();
+        targetStave = clef === "bass" ? bass : treble;
+      }
       const ink = getPageThemeColor("--notation-ink", "#211c18");
       const rootInk = getPageThemeColor("--notation-root", "#1769aa");
-      const activeInk = getPageThemeColor("--notation-active", "#256f67");
       const scoreNotes = prompt.noteEvents.map(({ notes, duration }, eventIndex) => {
         const scoreNote = new StaveNote({
           clef,
@@ -108,8 +115,7 @@ export function ChordStaffPrompt({
             highlightRoot &&
             `${note.letter}${note.accidental === 1 ? "♯" : note.accidental === -1 ? "♭" : ""}` ===
               prompt.chord.rootName;
-          const keyInk =
-            eventInk ?? (isRoot ? rootInk : eventIndex === activeEventIndex ? activeInk : ink);
+          const keyInk = eventInk ?? (isRoot ? rootInk : ink);
           scoreNote.setKeyStyle(index, { fillStyle: keyInk, strokeStyle: keyInk });
         });
         scoreNote.setLedgerLineStyle({ fillStyle: ink, strokeStyle: ink });
@@ -118,7 +124,17 @@ export function ChordStaffPrompt({
       const voice = new Voice({ numBeats: 4, beatValue: 4 })
         .setMode(Voice.Mode.SOFT)
         .addTickables(scoreNotes);
-      new Formatter().joinVoices([voice]).format([voice], Math.max(1, width - 180), { context });
+      const formatWidth = Math.max(24, scoreNotes.length * (compact ? 32 : 28));
+      new Formatter().joinVoices([voice]).format([voice], formatWidth, { context });
+      const noteBounds = scoreNotes.map((scoreNote) => ({
+        left: scoreNote.getAbsoluteX(),
+        right: scoreNote.getAbsoluteX() + scoreNote.getWidth(),
+      }));
+      const groupLeft = Math.min(...noteBounds.map(({ left }) => left));
+      const groupRight = Math.max(...noteBounds.map(({ right }) => right));
+      const groupCenter = (groupLeft + groupRight) / 2;
+      const horizontalShift = width / 2 - groupCenter;
+      scoreNotes.forEach((scoreNote) => scoreNote.setXShift(horizontalShift));
       voice.draw(context, targetStave);
       const svg = target.querySelector("svg");
       if (svg) {
@@ -132,7 +148,7 @@ export function ChordStaffPrompt({
     const observer = new ResizeObserver(render);
     observer.observe(frame);
     return () => observer.disconnect();
-  }, [activeEventIndex, eventFeedback, highlightRoot, isNightMode, prompt]);
+  }, [compact, eventFeedback, highlightRoot, isNightMode, prompt]);
 
   return (
     <div

@@ -19,6 +19,7 @@ import {
 import { ChordTrainingRun } from "./ChordTrainingRun";
 import { ChordTrainingSetup } from "./ChordTrainingSetup";
 import { ChordTrainingSummary } from "./ChordTrainingSummary";
+import { ChordRecognitionCardGallery } from "./ChordRecognitionCardGallery";
 import {
   isInteractiveShortcutTarget,
   shouldHandleGlobalEnter,
@@ -43,6 +44,7 @@ export function ChordTrainingView({
   onDataChanged,
   onNavigationExit,
   onPracticeFinished,
+  onCardGalleryChange,
   onPracticeStageChange,
   onRunningChange,
   onMetronomeSyncToggleChange,
@@ -56,6 +58,7 @@ export function ChordTrainingView({
   onDataChanged: () => Promise<void>;
   onNavigationExit?: (targetView: PracticeNavigationExitTarget) => void;
   onPracticeFinished: () => void;
+  onCardGalleryChange: (active: boolean) => void;
   onPracticeStageChange: (active: boolean) => void;
   onRunningChange: (running: boolean) => void;
   onMetronomeSyncToggleChange?: (toggle: (() => void) | undefined) => void;
@@ -70,7 +73,7 @@ export function ChordTrainingView({
   const [activeConfig, setActiveConfig] = useState<ChordTrainingConfig>(
     DEFAULT_CHORD_TRAINING_CONFIG
   );
-  const [stage, setStage] = useState<"setup" | "running" | "summary">("setup");
+  const [stage, setStage] = useState<"setup" | "cards" | "running" | "summary">("setup");
   const [summary, setSummary] = useState<ChordRunSummary | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -78,7 +81,31 @@ export function ChordTrainingView({
 
   useEffect(() => writeChordTrainingConfig(config), [config]);
 
+  useEffect(() => {
+    if (stage !== "cards") return undefined;
+    onCardGalleryChange(true);
+    return () => onCardGalleryChange(false);
+  }, [onCardGalleryChange, stage]);
+
   const startPractice = useCallback(async (): Promise<void> => {
+    if (config.task === "recognize" && config.recognitionMode === "cards") {
+      if (config.practiceGroupIds.length === 0) {
+        setStartError("请先选择根音基准音区。");
+        guideSetupRequirement('[data-setup-guide-target="chord-practice-range"]');
+        return;
+      }
+      setStartError(null);
+      setActiveConfig({
+        ...config,
+        practiceGroupIds: [...config.practiceGroupIds],
+        chordDegrees: [...config.chordDegrees],
+        qualities: [...config.qualities],
+        inversions: [...config.inversions],
+        arpeggioPatterns: [...config.arpeggioPatterns],
+      });
+      setStage("cards");
+      return;
+    }
     if (isStarting) return;
     if (config.practiceGroupIds.length === 0) {
       setStartError("请先选择根音基准音区。");
@@ -113,6 +140,8 @@ export function ChordTrainingView({
         practiceGroupIds: [...config.practiceGroupIds],
         chordDegrees: [...config.chordDegrees],
         qualities: [...config.qualities],
+        inversions: [...config.inversions],
+        arpeggioPatterns: [...config.arpeggioPatterns],
       });
       setSummary(null);
       setRunInstance((current) => current + 1);
@@ -179,15 +208,19 @@ export function ChordTrainingView({
 
   useEffect(() => {
     if (
-      stage !== "running" ||
+      (stage !== "running" && stage !== "cards") ||
       !navigationExitRequest ||
       handledExitRequestIdRef.current === navigationExitRequest.id
     ) {
       return;
     }
     handledExitRequestIdRef.current = navigationExitRequest.id;
-    onRunningChange(false);
-    onPracticeStageChange(false);
+    if (stage === "running") {
+      onRunningChange(false);
+      onPracticeStageChange(false);
+    } else {
+      setStage("setup");
+    }
     onNavigationExit?.(navigationExitRequest.targetView);
   }, [navigationExitRequest, onNavigationExit, onPracticeStageChange, onRunningChange, stage]);
 
@@ -235,6 +268,10 @@ export function ChordTrainingView({
         ) : null}
       </>
     );
+  }
+
+  if (stage === "cards") {
+    return <ChordRecognitionCardGallery config={activeConfig} onExit={() => setStage("setup")} />;
   }
 
   return (

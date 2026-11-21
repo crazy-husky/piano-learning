@@ -12,6 +12,8 @@ export type ChordQuality =
 export type ChordKind = "triad" | "seventh";
 export type ChordDegree = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type ChordTask = "recognize" | "block" | "arpeggio";
+export type ChordRecognitionMode = "quiz" | "cards";
+export type ChordRecognitionArrangement = "block" | "arpeggio" | "mixed";
 export type ChordArpeggioPatternId = "ascending-return" | "broken-block-ending" | "pop-loop";
 export type ChordNoteDuration = "8" | "q" | "h" | "w";
 export type ChordLengthMode = PracticeMode;
@@ -51,6 +53,8 @@ export function getChordInversionLabel(inversion: number): string {
 
 export interface ChordTrainingConfig {
   task: ChordTask;
+  recognitionMode: ChordRecognitionMode;
+  recognitionArrangement: ChordRecognitionArrangement;
   keyId: string;
   /** Octaves in which each chord's root-position reference note is placed. */
   practiceGroupIds: CurrentPracticeGroupId[];
@@ -102,6 +106,15 @@ export interface ChordPrompt {
   arpeggioPatternId?: ChordArpeggioPatternId;
 }
 
+export interface ChordRecognitionCard {
+  id: string;
+  chord: DiatonicChord;
+  inversion: number;
+  practiceGroupId: CurrentPracticeGroupId;
+  blockPrompt: ChordPrompt;
+  arpeggioPrompt: ChordPrompt;
+}
+
 export interface ChordTrainingAnswerEventData {
   task: ChordTask;
   keyId: string;
@@ -141,6 +154,8 @@ export const CHORD_MAJOR_KEYS: readonly ChordMajorKey[] = [
 
 export const DEFAULT_CHORD_TRAINING_CONFIG: ChordTrainingConfig = {
   task: "recognize",
+  recognitionMode: "quiz",
+  recognitionArrangement: "block",
   keyId: "C",
   practiceGroupIds: ["C4-B4"],
   chordDegrees: [1],
@@ -302,6 +317,53 @@ function makeChordNotes(chord: DiatonicChord, inversion: number, baseOctave: num
       }));
 }
 
+function makeRecognitionPrompt(
+  chord: DiatonicChord,
+  inversion: number,
+  baseOctave: number,
+  arrangement: Exclude<ChordRecognitionArrangement, "mixed">,
+  blockDuration: ChordNoteDuration = "q"
+): ChordPrompt {
+  const notes = makeChordNotes(chord, inversion, baseOctave);
+  return {
+    chord,
+    inversion,
+    notes,
+    noteEvents:
+      arrangement === "block"
+        ? [{ notes, duration: blockDuration }]
+        : notes.map((note) => ({ notes: [note], duration: "q" })),
+  };
+}
+
+export function getChordRecognitionCards(config: ChordTrainingConfig): ChordRecognitionCard[] {
+  const chords = getDiatonicChords(config.keyId, config.chordDegrees, config.qualities);
+  const practiceGroupIds =
+    config.practiceGroupIds.length > 0
+      ? config.practiceGroupIds
+      : DEFAULT_CHORD_TRAINING_CONFIG.practiceGroupIds;
+  return practiceGroupIds.flatMap((practiceGroupId) => {
+    const baseOctave = Number(practiceGroupId.slice(1, 2));
+    return chords.flatMap((chord) => {
+      const validInversions = config.inversions.filter(
+        (inversion) => inversion < (chord.kind === "triad" ? 3 : 4)
+      );
+      const inversions =
+        validInversions.length > 0
+          ? validInversions
+          : [0, 1, 2].slice(0, chord.kind === "triad" ? 3 : 4);
+      return inversions.map((inversion) => ({
+        id: `${practiceGroupId}:${chord.id}:${inversion}`,
+        chord,
+        inversion,
+        practiceGroupId,
+        blockPrompt: makeRecognitionPrompt(chord, inversion, baseOctave, "block"),
+        arpeggioPrompt: makeRecognitionPrompt(chord, inversion, baseOctave, "arpeggio"),
+      }));
+    });
+  });
+}
+
 export function getChordDegreeLabel(degree: number): string {
   return ["I", "ii", "iii", "IV", "V", "vi", "vii°"][degree - 1] ?? "";
 }
@@ -340,6 +402,19 @@ export function generateChordPrompt(
       : [0, 1, 2].slice(0, chord.kind === "triad" ? 3 : 4),
     random
   );
+  if (config.task === "recognize") {
+    const arrangement =
+      config.recognitionArrangement === "mixed"
+        ? pick(["block", "arpeggio"] as const, random)
+        : config.recognitionArrangement;
+    if (arrangement === "arpeggio") {
+      return makeRecognitionPrompt(chord, inversion, baseOctave, arrangement);
+    }
+    const durationRoll = random() * 12;
+    const blockDuration: ChordNoteDuration =
+      durationRoll < 5 ? "q" : durationRoll < 9 ? "h" : durationRoll < 11 ? "8" : "w";
+    return makeRecognitionPrompt(chord, inversion, baseOctave, arrangement, blockDuration);
+  }
   const promptNotes = makeChordNotes(chord, inversion, baseOctave);
   if (config.task === "arpeggio") {
     const enabledPatterns = config.arpeggioPatterns.filter((pattern) =>

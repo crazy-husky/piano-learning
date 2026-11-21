@@ -5,6 +5,8 @@ import {
   DEFAULT_CHORD_TRAINING_CONFIG,
   type ChordArpeggioPatternId,
   type ChordDegree,
+  type ChordRecognitionArrangement,
+  type ChordRecognitionMode,
   type ChordTask,
   type ChordTrainingConfig,
 } from "./chordTraining";
@@ -65,6 +67,16 @@ export function parseChordTrainingConfig(value: unknown): ChordTrainingConfig {
     stored.task === "block" || stored.task === "arpeggio" || stored.task === "recognize"
       ? stored.task
       : DEFAULT_CHORD_TRAINING_CONFIG.task;
+  const recognitionMode: ChordRecognitionMode =
+    stored.recognitionMode === "cards" || stored.recognitionMode === "quiz"
+      ? stored.recognitionMode
+      : DEFAULT_CHORD_TRAINING_CONFIG.recognitionMode;
+  const recognitionArrangement: ChordRecognitionArrangement =
+    stored.recognitionArrangement === "block" ||
+    stored.recognitionArrangement === "arpeggio" ||
+    stored.recognitionArrangement === "mixed"
+      ? stored.recognitionArrangement
+      : DEFAULT_CHORD_TRAINING_CONFIG.recognitionArrangement;
   const keyId = CHORD_MAJOR_KEYS.some((key) => key.id === stored.keyId)
     ? stored.keyId!
     : DEFAULT_CHORD_TRAINING_CONFIG.keyId;
@@ -104,6 +116,8 @@ export function parseChordTrainingConfig(value: unknown): ChordTrainingConfig {
     : [...DEFAULT_CHORD_TRAINING_CONFIG.arpeggioPatterns];
   return {
     task,
+    recognitionMode,
+    recognitionArrangement,
     keyId,
     practiceGroupIds:
       practiceGroupIds.length > 0

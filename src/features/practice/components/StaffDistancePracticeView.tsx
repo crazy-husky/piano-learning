@@ -378,7 +378,7 @@ function createDistanceSession(
         : [...settings.enabledGroupIds],
       enabledPitchIds:
         !isFingerMode && settings.enabledPitchIds ? [...settings.enabledPitchIds] : undefined,
-      crossGroupPitchIds: isFingerMode ? [] : [...(settings.crossGroupPitchIds ?? [])],
+      crossGroupPitchIds: [],
       includeInterStaffLedgerSpellings:
         staffNotationMode === "grand" ? false : settings.includeInterStaffLedgerSpellings,
       includeUnison: isFingerMode ? false : preferences.includeUnison,
@@ -416,17 +416,14 @@ function createDistanceSession(
 }
 
 function getDistanceNotes(
-  settings: Pick<
-    AppSettings,
-    "enabledGroupIds" | "enabledPitchIds" | "crossGroupPitchIds" | "staffNotationMode"
-  >
+  settings: Pick<AppSettings, "enabledGroupIds" | "enabledPitchIds" | "staffNotationMode">
 ) {
   // Distance practice uses one canonical staff per pitch: C4 and above on treble,
   // B3 and below on bass. Alternate ledger spellings would duplicate pitch choices.
   return getNotesForSelection(
     settings.enabledGroupIds,
     settings.enabledPitchIds,
-    settings.crossGroupPitchIds,
+    [],
     false,
     settings.staffNotationMode
   );
@@ -592,24 +589,17 @@ export function StaffDistancePracticeView({
       setCustomFixedCount(preferences.fixedCount);
     }
   }, [preferences.fixedCount]);
-  const distanceCrossGroupPitchIds = settings.crossGroupPitchIds;
   const distanceEnabledGroupIds = settings.enabledGroupIds;
   const distanceEnabledPitchIds = settings.enabledPitchIds;
   const distanceStaffNotationMode = settings.staffNotationMode;
   const allSelectedNotes = useMemo(
     () =>
       getDistanceNotes({
-        crossGroupPitchIds: distanceCrossGroupPitchIds,
         enabledGroupIds: distanceEnabledGroupIds,
         enabledPitchIds: distanceEnabledPitchIds,
         staffNotationMode: distanceStaffNotationMode,
       }),
-    [
-      distanceCrossGroupPitchIds,
-      distanceEnabledGroupIds,
-      distanceEnabledPitchIds,
-      distanceStaffNotationMode,
-    ]
+    [distanceEnabledGroupIds, distanceEnabledPitchIds, distanceStaffNotationMode]
   );
   const notes = allSelectedNotes;
   const fingerGroupIds = useMemo(
@@ -631,7 +621,7 @@ export function StaffDistancePracticeView({
   const selectedPitchIds = getStaffSelectedPitchIds(
     settings.enabledGroupIds,
     settings.enabledPitchIds,
-    settings.crossGroupPitchIds,
+    [],
     settings.staffNotationMode
   );
   const computerKeyboardRange = useMemo(
@@ -948,7 +938,7 @@ export function StaffDistancePracticeView({
                 getStaffSelectedPitchIds(
                   currentSettings.enabledGroupIds,
                   currentSettings.enabledPitchIds,
-                  currentSettings.crossGroupPitchIds,
+                  [],
                   currentSettings.staffNotationMode
                 ),
                 intervalSettings
@@ -1710,7 +1700,7 @@ export function StaffDistancePracticeView({
                           [
                             { label: "弹奏作答", value: "play" },
                             { label: "免答模式", value: "no-answer" },
-                            { label: "卡片阅读", value: "card-reading" },
+                            { label: "卡片展示", value: "card-reading" },
                           ] as const
                         ).map((option) => (
                           <button
@@ -1782,7 +1772,7 @@ export function StaffDistancePracticeView({
                       {fingerProfile.lineAnchorPitchId}，间上参考音{" "}
                       {fingerProfile.spaceAnchorPitchId}。
                       {preferences.fingerInteractionMode === "card-reading"
-                        ? `卡片阅读展示全部 ${fingerGalleryValidation.cards.length} 张去重卡片，五线谱和手位移动答案同时显示，不需要作答。`
+                        ? `卡片展示全部 ${fingerGalleryValidation.cards.length} 张去重卡片，五线谱和手位移动答案同时显示，不需要作答。`
                         : preferences.fingerInteractionMode === "no-answer"
                           ? `免答模式每轮 ${fingerDeckValidation.cards.length} 张卡片；点击查看答案核对琴键和建议指法，再手动进入下一张。`
                           : `每轮 ${fingerDeckValidation.cards.length} 张卡片，每张限时 5 秒；先弹参考音，再弹目标音。`}
@@ -2191,18 +2181,6 @@ export function StaffDistancePracticeView({
                 </section>
 
                 <section className="staff-distance-advanced-section">
-                  <GlobalRangeControls
-                    allowInterStaffLedgerChoice={false}
-                    rangeControlPart="extensions"
-                    settings={settings}
-                    onSettingsSaved={onSettingsSaved}
-                  />
-                  <p className="staff-distance-field-hint">
-                    加练音会低权重穿插；大谱表按 C4/B3 分界分别记入对应谱表，不会产生跨谱表音对。
-                  </p>
-                </section>
-
-                <section className="staff-distance-advanced-section">
                   <h2>谱面音符时值</h2>
                   <div
                     aria-label="谱面音符时值"
@@ -2298,7 +2276,7 @@ export function StaffDistancePracticeView({
             )}
             {trainingMode === "finger" && isFingerInputBypassed ? (
               <span className="practice-free-summary-chip">
-                {isFingerCardReadingSelected ? "卡片阅读" : "免答模式"}
+                {isFingerCardReadingSelected ? "卡片展示" : "免答模式"}
               </span>
             ) : trainingMode !== "look" ? (
               <span className="practice-free-summary-chip">

@@ -343,6 +343,139 @@
   overflow: hidden;
 }
 
+.chord-recognition-card-gallery-shell {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  gap: 18px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+.chord-recognition-card-gallery-shell .practice-session-header {
+  position: relative;
+  top: 0;
+  z-index: 20;
+}
+
+.chord-recognition-card-gallery {
+  display: grid;
+  gap: 14px;
+  width: min(920px, 100%);
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.chord-recognition-card-gallery-intro {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.chord-recognition-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.chord-recognition-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: clamp(12px, 2vw, 18px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.chord-recognition-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.chord-recognition-card-title,
+.chord-recognition-card-meta {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.chord-recognition-card-title {
+  color: var(--text);
+  font-size: 17px;
+}
+
+.chord-recognition-card-index {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.chord-recognition-card-arrangements {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.chord-recognition-card-arrangements.is-mixed {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.chord-recognition-card-arrangement {
+  min-width: 0;
+}
+
+.chord-recognition-card-arrangement h3 {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.chord-recognition-card-score {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chord-recognition-card-score-placeholder {
+  height: 136px;
+}
+
+.chord-recognition-card-notes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.chord-recognition-card-notes span {
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.chord-recognition-card-notes span.is-root {
+  border-color: color-mix(in srgb, var(--notation-root) 55%, var(--border));
+  color: var(--notation-root);
+}
+
 .chord-staff-renderer,
 .chord-staff-renderer svg {
   display: block;
@@ -1112,6 +1245,10 @@
   flex-direction: column;
 }
 
+.chord-training-settings-row.is-recognition-card-mode > .practice-free-section {
+  grid-column: 1 / -1;
+}
+
 .chord-training-settings-row > .practice-free-section > .practice-free-range-module-content {
   flex: 1 1 auto;
   align-content: start;
@@ -1222,14 +1359,55 @@
 }
 
 .chord-training-task-content {
-  display: flex;
+  display: grid;
   box-sizing: border-box;
-  align-items: center;
+  gap: 12px;
 }
 
 .chord-training-task-list {
   width: 100%;
   gap: 6px;
+}
+
+.chord-training-recognition-mode-picker {
+  display: grid;
+  gap: 7px;
+}
+
+.chord-training-recognition-mode-picker .segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.chord-training-recognition-mode-picker button {
+  display: grid;
+  min-height: 56px;
+  align-content: center;
+  justify-items: start;
+  gap: 3px;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.chord-training-recognition-mode-picker button small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.chord-training-settings-row.is-recognition-arrangement-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.chord-training-arrangement-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.chord-training-cards-info p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .chord-training-task {
@@ -1240,8 +1418,13 @@
 
 .chord-training-practice-groups {
   --global-range-group-columns: 5;
+  box-sizing: border-box;
   grid-template-columns: repeat(var(--global-range-group-columns), minmax(0, 1fr));
   gap: 6px;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 .chord-training-practice-groups .global-range-group-choice {
@@ -1281,7 +1464,7 @@
   box-sizing: border-box;
   width: 100%;
   max-width: none;
-  margin: 0;
+  margin: 0 0 24px;
 }
 
 .chord-training-run {
@@ -1292,6 +1475,12 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+.chord-training-run.chord-recognition-card-gallery-shell {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
 }
 
 .chord-training-run.is-score-performance-run {
@@ -1409,9 +1598,19 @@
   }
 
   .chord-training-task-list,
+  .chord-training-arrangement-options,
   .chord-training-option-list,
   .chord-training-inversion-list {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chord-recognition-card-arrangements.is-mixed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chord-recognition-card-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .chord-training-config-summary {

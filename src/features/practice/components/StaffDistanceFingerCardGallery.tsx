@@ -35,7 +35,7 @@ export function StaffDistanceFingerCardGallery({
 
   return (
     <PracticeSessionFrame
-      aria-label="音距速推单指专项卡片阅读"
+      aria-label="音距速推单指专项卡片展示"
       className="staff-distance-run-shell staff-distance-finger-gallery-run"
     >
       <div
@@ -43,7 +43,7 @@ export function StaffDistanceFingerCardGallery({
         className="staff-distance-finger-gallery"
       >
         <PracticeSessionHeader
-          title="音距速推 · 单指专项 · 卡片阅读"
+          title="音距速推 · 单指专项 · 卡片展示"
           progress={`${cards.length} 张卡片`}
           exitAriaLabel="返回单指专项设置"
           exitLabel="返回设置"

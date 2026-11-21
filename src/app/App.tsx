@@ -454,6 +454,7 @@ export function App({
     if (practiceRunning) window.scrollTo(0, 0);
   }, [practiceRunning]);
   const [practiceStageActive, setPracticeStageActive] = useState(false);
+  const [practiceCardGalleryActive, setPracticeCardGalleryActive] = useState(false);
   const practiceStageActiveRef = useRef(false);
   practiceStageActiveRef.current = practiceStageActive;
   const pendingNavigationRef = useRef<{ route: AppRoute; replace: boolean } | null>(null);
@@ -1613,6 +1614,7 @@ export function App({
             {route.levelId && module ? (
               <ModuleLayout
                 activeTab={moduleTab}
+                hideNavigation={practiceCardGalleryActive}
                 immersive={practiceRunning || practiceStageActive}
                 module={module}
                 onTabChange={selectModuleTab}
@@ -1651,6 +1653,7 @@ export function App({
                         handleNavigationExit(targetView);
                       }}
                       onPracticeFinished={showBackupReminderAfterActivity}
+                      onCardGalleryChange={setPracticeCardGalleryActive}
                       onPracticeStageChange={setPracticeStageActive}
                       onRunningChange={setPracticeRunning}
                       onMetronomeSyncToggleChange={registerPracticeMetronomeSyncToggle}

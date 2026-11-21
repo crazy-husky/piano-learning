@@ -503,7 +503,9 @@
 }
 
 .learning-module-shell.is-immersive > .learning-module-header,
-.learning-module-shell.is-immersive > .learning-module-tabs {
+.learning-module-shell.is-immersive > .learning-module-tabs,
+.learning-module-shell.is-navigation-hidden > .learning-module-header,
+.learning-module-shell.is-navigation-hidden > .learning-module-tabs {
   display: none;
 }
 

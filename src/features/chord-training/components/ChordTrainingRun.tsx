@@ -1082,7 +1082,6 @@ export function ChordTrainingRun({
         ) : null}
         {config.task === "recognize" ? (
           <ChordStaffPrompt
-            activeEventIndex={activeEventIndex}
             eventFeedback={scoreFeedbackByQuestion[activeQuestionIndex] ?? []}
             highlightRoot={config.highlightRoot}
             prompt={prompt}

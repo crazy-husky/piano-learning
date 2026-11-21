@@ -14,6 +14,7 @@ import {
   type ChordArpeggioPatternId,
   type ChordKind,
   type ChordQuality,
+  type ChordRecognitionArrangement,
   type ChordTrainingConfig,
 } from "../logic/chordTraining";
 import { PRACTICE_FIXED_COUNT_PRESETS } from "../../practice/logic/practiceLengthOptions";
@@ -24,6 +25,21 @@ const TASKS = [
   { id: "block", title: "弹奏柱式和弦" },
   { id: "arpeggio", title: "弹奏分解和弦" },
 ] as const;
+
+const RECOGNITION_MODES = [
+  { id: "quiz", title: "答题模式", description: "按根音、性质和转位回答" },
+  { id: "cards", title: "卡片展示", description: "一次展示所选和弦及答案" },
+] as const;
+
+const RECOGNITION_ARRANGEMENTS: readonly {
+  id: ChordRecognitionArrangement;
+  label: string;
+  description: string;
+}[] = [
+  { id: "block", label: "柱式和弦", description: "和弦音同时显示" },
+  { id: "arpeggio", label: "分解和弦", description: "和弦音紧凑排列" },
+  { id: "mixed", label: "混合", description: "答题随机切换；卡片同时展示两种" },
+];
 
 const QUALITY_OPTIONS = [
   ["triad", "三和弦", "大三、小三与减三和弦"],
@@ -61,10 +77,11 @@ export function ChordTrainingSetup({
 }): JSX.Element {
   const [isMoreConfigOpen, setIsMoreConfigOpen] = useState(false);
   const isPerformanceTask = config.task !== "recognize";
+  const isRecognitionCardMode = config.task === "recognize" && config.recognitionMode === "cards";
   const moreConfigCount =
     1 +
     Number(isPerformanceTask) +
-    Number(config.task === "recognize") +
+    Number(config.task === "recognize" && !isRecognitionCardMode) +
     (config.task === "arpeggio" ? CHORD_ARPEGGIO_PATTERN_OPTIONS.length : 0);
   const canUseThirdInversion =
     config.qualities.includes("seventh") && !config.qualities.includes("triad");
@@ -137,6 +154,14 @@ export function ChordTrainingSetup({
         : `${Math.round(config.fixedDurationSeconds / 60)} 分钟`;
   const summaryItems = [
     TASKS.find((task) => task.id === config.task)?.title ?? "认和弦",
+    ...(config.task === "recognize"
+      ? [
+          RECOGNITION_MODES.find((mode) => mode.id === config.recognitionMode)?.title ?? "答题模式",
+          RECOGNITION_ARRANGEMENTS.find(
+            (arrangement) => arrangement.id === config.recognitionArrangement
+          )?.label ?? "柱式和弦",
+        ]
+      : []),
     CHORD_MAJOR_KEYS.find((key) => key.id === config.keyId)?.label ?? "C 大调",
     PRACTICE_GROUPS.filter(({ id }) => config.practiceGroupIds.includes(id))
       .map(({ label }) => label)
@@ -146,11 +171,11 @@ export function ChordTrainingSetup({
     `${config.inversions.length} 种转位`,
     config.highlightRoot ? "高亮根音" : "根音不高亮",
     ...(isPerformanceTask && config.metronomeSyncEnabled ? ["节拍同步"] : []),
-    ...(config.task === "recognize"
+    ...(config.task === "recognize" && !isRecognitionCardMode
       ? [config.requireInversionAnswer ? "答题要求转位" : "答题不要求转位"]
       : []),
     ...(config.task === "arpeggio" ? [`${config.arpeggioPatterns.length} 种伴奏型`] : []),
-    lengthLabel,
+    ...(!isRecognitionCardMode ? [lengthLabel] : []),
   ];
 
   return (
@@ -176,6 +201,25 @@ export function ChordTrainingSetup({
               </button>
             ))}
           </div>
+          {config.task === "recognize" ? (
+            <div className="chord-training-recognition-mode-picker">
+              <span className="control-label">认和弦模式</span>
+              <div aria-label="认和弦模式" className="segmented" role="group">
+                {RECOGNITION_MODES.map((mode) => (
+                  <button
+                    aria-pressed={config.recognitionMode === mode.id}
+                    className={config.recognitionMode === mode.id ? "active" : ""}
+                    key={mode.id}
+                    onClick={() => onChange({ ...config, recognitionMode: mode.id })}
+                    type="button"
+                  >
+                    <span>{mode.title}</span>
+                    <small>{mode.description}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -184,14 +228,16 @@ export function ChordTrainingSetup({
         as="section"
         className="chord-training-setup practice-free-config-content"
       >
-        <div className="chord-training-midi-topline">
-          <MidiInputControl
-            ariaLabel="和弦训练 MIDI 输入设备"
-            label="连接 MIDI 键盘"
-            midi={midi}
-            setupGuideTarget="chord-midi-device"
-          />
-        </div>
+        {isPerformanceTask ? (
+          <div className="chord-training-midi-topline">
+            <MidiInputControl
+              ariaLabel="和弦训练 MIDI 输入设备"
+              label="连接 MIDI 键盘"
+              midi={midi}
+              setupGuideTarget="chord-midi-device"
+            />
+          </div>
+        ) : null}
 
         <div className="practice-free-primary-grid chord-training-settings-grid">
           <div className="chord-training-settings-row">
@@ -246,6 +292,43 @@ export function ChordTrainingSetup({
               </div>
             </section>
           </div>
+          {config.task === "recognize" ? (
+            <div className="chord-training-settings-row is-recognition-arrangement-row">
+              <section
+                aria-labelledby="chord-training-recognition-arrangement-title"
+                className="practice-free-section"
+              >
+                <div className="practice-free-section-heading">
+                  <h2 id="chord-training-recognition-arrangement-title">和弦呈现</h2>
+                </div>
+                <div className="practice-free-range-module-content">
+                  <fieldset
+                    aria-label="和弦呈现方式"
+                    className="chord-training-option-list chord-training-arrangement-options"
+                  >
+                    {RECOGNITION_ARRANGEMENTS.map(({ id, label, description }) => (
+                      <label
+                        aria-label={`${label}，${description}`}
+                        className={`practice-free-duet-range-option${config.recognitionArrangement === id ? " is-selected" : ""}`}
+                        key={id}
+                      >
+                        <input
+                          checked={config.recognitionArrangement === id}
+                          onChange={() => onChange({ ...config, recognitionArrangement: id })}
+                          type="radio"
+                          name="chord-recognition-arrangement"
+                        />
+                        <span className="practice-free-duet-range-copy">
+                          {label}
+                          <small>{description}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                </div>
+              </section>
+            </div>
+          ) : null}
           <div className="chord-training-settings-row">
             <section
               aria-labelledby="chord-training-groups-title"
@@ -329,7 +412,9 @@ export function ChordTrainingSetup({
               </div>
             </section>
           </div>
-          <div className="chord-training-settings-row">
+          <div
+            className={`chord-training-settings-row${isRecognitionCardMode ? " is-recognition-card-mode" : ""}`}
+          >
             <section
               aria-labelledby="chord-training-pitch-range-title"
               className="practice-free-section"
@@ -397,84 +482,86 @@ export function ChordTrainingSetup({
               </div>
             </section>
 
-            <section
-              aria-labelledby="chord-training-length-title"
-              className="practice-free-section"
-            >
-              <div className="practice-free-section-heading">
-                <h2 id="chord-training-length-title">练习长度</h2>
-              </div>
-              <div className="practice-free-range-module-content chord-training-length-content">
-                <div aria-label="练习长度模式" className="segmented practice-free-segmented">
-                  {(
-                    [
-                      ["open-ended", "不限"],
-                      ["fixed-count", "固定题数"],
-                      ["fixed-duration", "固定时长"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      aria-pressed={config.lengthMode === value}
-                      className={config.lengthMode === value ? "active" : ""}
-                      key={value}
-                      onClick={() => onChange({ ...config, lengthMode: value })}
-                      type="button"
-                    >
-                      {label}
-                    </button>
-                  ))}
+            {!isRecognitionCardMode ? (
+              <section
+                aria-labelledby="chord-training-length-title"
+                className="practice-free-section"
+              >
+                <div className="practice-free-section-heading">
+                  <h2 id="chord-training-length-title">练习长度</h2>
                 </div>
-                {config.lengthMode === "fixed-count" ? (
-                  <div className="practice-free-value-options">
-                    {PRACTICE_FIXED_COUNT_PRESETS.map((count) => (
+                <div className="practice-free-range-module-content chord-training-length-content">
+                  <div aria-label="练习长度模式" className="segmented practice-free-segmented">
+                    {(
+                      [
+                        ["open-ended", "不限"],
+                        ["fixed-count", "固定题数"],
+                        ["fixed-duration", "固定时长"],
+                      ] as const
+                    ).map(([value, label]) => (
                       <button
-                        aria-pressed={config.fixedCount === count}
-                        className={config.fixedCount === count ? "active" : ""}
-                        key={count}
-                        onClick={() => onChange({ ...config, fixedCount: count })}
+                        aria-pressed={config.lengthMode === value}
+                        className={config.lengthMode === value ? "active" : ""}
+                        key={value}
+                        onClick={() => onChange({ ...config, lengthMode: value })}
                         type="button"
                       >
-                        {count} 题
+                        {label}
                       </button>
                     ))}
+                  </div>
+                  {config.lengthMode === "fixed-count" ? (
+                    <div className="practice-free-value-options">
+                      {PRACTICE_FIXED_COUNT_PRESETS.map((count) => (
+                        <button
+                          aria-pressed={config.fixedCount === count}
+                          className={config.fixedCount === count ? "active" : ""}
+                          key={count}
+                          onClick={() => onChange({ ...config, fixedCount: count })}
+                          type="button"
+                        >
+                          {count} 题
+                        </button>
+                      ))}
+                      <label className="chord-training-custom-count">
+                        自定义
+                        <input
+                          aria-label="自定义练习题数"
+                          max={500}
+                          min={1}
+                          onChange={(event) => {
+                            const value = Number(event.target.value);
+                            if (Number.isInteger(value) && value >= 1 && value <= 500) {
+                              onChange({ ...config, fixedCount: value });
+                            }
+                          }}
+                          type="number"
+                          value={config.fixedCount}
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+                  {config.lengthMode === "fixed-duration" ? (
                     <label className="chord-training-custom-count">
-                      自定义
+                      时长（分钟）
                       <input
-                        aria-label="自定义练习题数"
-                        max={500}
+                        aria-label="固定练习时长，分钟"
+                        max={120}
                         min={1}
                         onChange={(event) => {
-                          const value = Number(event.target.value);
-                          if (Number.isInteger(value) && value >= 1 && value <= 500) {
-                            onChange({ ...config, fixedCount: value });
+                          const minutes = Number(event.target.value);
+                          if (Number.isInteger(minutes) && minutes >= 1 && minutes <= 120) {
+                            onChange({ ...config, fixedDurationSeconds: minutes * 60 });
                           }
                         }}
                         type="number"
-                        value={config.fixedCount}
+                        value={Math.round(config.fixedDurationSeconds / 60)}
                       />
                     </label>
-                  </div>
-                ) : null}
-                {config.lengthMode === "fixed-duration" ? (
-                  <label className="chord-training-custom-count">
-                    时长（分钟）
-                    <input
-                      aria-label="固定练习时长，分钟"
-                      max={120}
-                      min={1}
-                      onChange={(event) => {
-                        const minutes = Number(event.target.value);
-                        if (Number.isInteger(minutes) && minutes >= 1 && minutes <= 120) {
-                          onChange({ ...config, fixedDurationSeconds: minutes * 60 });
-                        }
-                      }}
-                      type="number"
-                      value={Math.round(config.fixedDurationSeconds / 60)}
-                    />
-                  </label>
-                ) : null}
-              </div>
-            </section>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
           </div>
         </div>
 
@@ -534,7 +621,7 @@ export function ChordTrainingSetup({
                   ) : null}
                 </div>
               ) : null}
-              {config.task === "recognize" ? (
+              {config.task === "recognize" && !isRecognitionCardMode ? (
                 <label className="practice-checkbox-option chord-training-inversion-answer-option">
                   <input
                     aria-label="答题时选择转位"
@@ -607,7 +694,8 @@ export function ChordTrainingSetup({
                 type="button"
               >
                 <Play aria-hidden="true" size={18} />
-                开始<kbd>Enter</kbd>
+                {isRecognitionCardMode ? "查看卡片" : "开始答题"}
+                <kbd>Enter</kbd>
               </button>
             </span>
           </div>

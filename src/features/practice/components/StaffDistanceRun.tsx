@@ -372,7 +372,7 @@ function StaffDistanceIntervalRun({
 }: StaffDistanceIntervalRunProps): JSX.Element {
   const [isChaseSettingsOpen, setIsChaseSettingsOpen] = useState(false);
   const subscribeMidi = midi.subscribe;
-  const extraPitchIds = session.staffDistance?.crossGroupPitchIds ?? EMPTY_EXTRA_PITCH_IDS;
+  const extraPitchIds = EMPTY_EXTRA_PITCH_IDS;
   const initialScoreBufferEvents =
     typeof window !== "undefined" && window.matchMedia("(max-width: 820px)").matches
       ? MOBILE_STAFF_PAGE_NOTE_COUNT
