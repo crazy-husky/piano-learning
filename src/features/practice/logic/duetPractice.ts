@@ -305,14 +305,6 @@ function getLevelOneStaffSequence(
         index >= 2 && staff === boundarySequence[index - 1] && staff === boundarySequence[index - 2]
     );
     if (createsThreeHandRun) continue;
-    // The default pattern is staggered, with occasional repeated hand assignments;
-    // strict left-right alternation is reserved for the advanced option.
-    if (
-      onsetCount >= 3 &&
-      !sequence.some((staff, index) => index > 0 && sequence[index - 1] === staff)
-    ) {
-      continue;
-    }
     candidates.push(sequence);
   }
 
@@ -321,8 +313,20 @@ function getLevelOneStaffSequence(
       getMeasureRandom(seed, measureIndex, channel + index * 0x101) < 0.5 ? "treble" : "bass"
     );
   }
-  const selection = Math.floor(getMeasureRandom(seed, measureIndex, channel) * candidates.length);
-  return candidates[selection] ?? candidates[0]!;
+  const alternatingSequences = candidates.filter(
+    (sequence) => !sequence.some((staff, index) => index > 0 && sequence[index - 1] === staff)
+  );
+  const repeatedSequences = candidates.filter(
+    (sequence) => !alternatingSequences.includes(sequence)
+  );
+  const sequencePool =
+    alternatingSequences.length > 0 &&
+    repeatedSequences.length > 0 &&
+    getMeasureRandom(seed, measureIndex, channel ^ 0x616c7465) < 0.65
+      ? alternatingSequences
+      : candidates;
+  const selection = Math.floor(getMeasureRandom(seed, measureIndex, channel) * sequencePool.length);
+  return sequencePool[selection] ?? sequencePool[0]!;
 }
 
 function shuffleLevelOneNoteBag(

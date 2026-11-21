@@ -22,7 +22,13 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --registry=https://registry.npmjs.org
+      - run: pnpm lint
+      - run: pnpm format:check
       - run: pnpm test
       - run: pnpm run build
         env:
           GITHUB_PAGES: "true"
+          GITHUB_REPOSITORY: crazy-husky/piano-learning
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e

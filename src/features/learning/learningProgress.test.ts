@@ -124,13 +124,13 @@ describe("evaluateLearningProgress", () => {
       "level-6",
     ];
     const duetEvents = duetLevels.flatMap((duetLevel) =>
-      Array.from({ length: 10 }, (_, index) =>
+      Array.from({ length: 40 }, (_, index) =>
         makeEvent({
           id: `${duetLevel}-${index}`,
           mode: "free-practice",
           duetLevel,
           duetTargetNoteIds: ["C4", "C3"],
-          isCorrectFirstTry: index < 8,
+          isCorrectFirstTry: index < 32,
         })
       )
     );

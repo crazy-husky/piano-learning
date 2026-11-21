@@ -119,23 +119,26 @@ describe("createDuetPracticePage", () => {
   });
 
   it("balances each Level 1 hand's note bags and avoids repeats across bag boundaries", () => {
+    const availableNotes = ["C", "D", "E", "F", "G", "A", "B"] as const;
     const page = createDuetPracticePage(pool, "level-1", 700, {
+      queueStrategy: "note-drill",
+      drillNoteNames: availableNotes,
       seed: "balanced-note-bags",
     });
     const notesByStaff = {
       treble: page.events.flatMap((event) => event.high.map((note) => note.noteName)),
       bass: page.events.flatMap((event) => event.low.map((note) => note.noteName)),
     };
-    const availableNotes = ["C", "D", "E", "F", "G", "A", "B"].sort();
+    const sortedAvailableNotes = [...availableNotes].sort();
 
-    (Object.values(notesByStaff) as (typeof availableNotes)[]).forEach((notes) => {
+    (Object.values(notesByStaff) as (typeof sortedAvailableNotes)[]).forEach((notes) => {
       for (
         let start = 0;
-        start + availableNotes.length <= notes.length;
-        start += availableNotes.length
+        start + sortedAvailableNotes.length <= notes.length;
+        start += sortedAvailableNotes.length
       ) {
-        const bag = notes.slice(start, start + availableNotes.length).sort();
-        expect(bag).toEqual(availableNotes);
+        const bag = notes.slice(start, start + sortedAvailableNotes.length).sort();
+        expect(bag).toEqual(sortedAvailableNotes);
         if (start > 0) expect(notes[start - 1]).not.toBe(notes[start]);
       }
     });
@@ -247,7 +250,7 @@ describe("createDuetPracticePage", () => {
     });
   });
 
-  it("Level 3 follows the 20/50/20/10 one-to-four sync distribution", () => {
+  it("Level 3 follows the 10/30/40/20 one-to-four sync distribution", () => {
     const measureCount = 1_000;
     const page = createDuetPracticePage(pool, "level-3", measureCount * 4, {
       measureCount,
@@ -260,14 +263,14 @@ describe("createDuetPracticePage", () => {
 
     expect(synchronizedCounts).toHaveLength(measureCount);
     expect(page.events.every((event) => event.high.length === 1)).toBe(true);
-    expect(distribution[0]).toBeGreaterThanOrEqual(160);
-    expect(distribution[0]).toBeLessThanOrEqual(240);
-    expect(distribution[1]).toBeGreaterThanOrEqual(430);
-    expect(distribution[1]).toBeLessThanOrEqual(570);
-    expect(distribution[2]).toBeGreaterThanOrEqual(160);
-    expect(distribution[2]).toBeLessThanOrEqual(240);
-    expect(distribution[3]).toBeGreaterThanOrEqual(50);
-    expect(distribution[3]).toBeLessThanOrEqual(150);
+    expect(distribution[0]).toBeGreaterThanOrEqual(50);
+    expect(distribution[0]).toBeLessThanOrEqual(150);
+    expect(distribution[1]).toBeGreaterThanOrEqual(250);
+    expect(distribution[1]).toBeLessThanOrEqual(350);
+    expect(distribution[2]).toBeGreaterThanOrEqual(350);
+    expect(distribution[2]).toBeLessThanOrEqual(450);
+    expect(distribution[3]).toBeGreaterThanOrEqual(150);
+    expect(distribution[3]).toBeLessThanOrEqual(250);
   });
 
   it("Level 4 uses a left-hand block triad under a right-hand melody", () => {
@@ -280,7 +283,7 @@ describe("createDuetPracticePage", () => {
   });
 
   it("Level 5 keeps a left-hand chord sounding under an even eighth-note melody", () => {
-    const page = createDuetPracticePage(pool, "level-5", 8);
+    const page = createDuetPracticePage(pool, "level-5", 8, { queueStrategy: "melody" });
     const trebleMidis = page.events.map((event) => getTargetMidiNoteNumber(event.high[0]!));
 
     expect(page.rhythm.onsets).toEqual([0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]);

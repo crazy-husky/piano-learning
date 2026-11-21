@@ -4,10 +4,14 @@ dist.backup-*/
 .vite-dev.*.log
 *.local
 *.tsbuildinfo
+/playwright-report/
+/test-results/
 /vite.config.js
 /vite.config.d.ts
 /vitest.config.js
 /vitest.config.d.ts
+/playwright.config.js
+/playwright.config.d.ts
 /backup/
 /analysis/output/
 /analysis/.venv/

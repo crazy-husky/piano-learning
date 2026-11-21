@@ -3,6 +3,10 @@ const APP_ASSET_FILES = __APP_ASSET_FILES__;
 const APP_SHARED_MEDIA_FILES = __APP_SHARED_MEDIA_FILES__;
 const APP_CACHE_PREFIX = "anki-note-app-";
 const CACHE_NAME = `${APP_CACHE_PREFIX}${APP_BUILD_ID}`;
+const UPDATE_APPROVAL_CACHE_KEY = new URL(
+  "__app-update-approval__",
+  self.registration.scope
+).toString();
 const SHARED_MEDIA_CACHE_NAME = "anki-note-shared-media-v1";
 // Bump this only when the files in public/audio/salamander change.
 const PIANO_SAMPLE_CACHE_VERSION = "salamander-v1";
@@ -265,8 +269,54 @@ self.addEventListener("message", (event) => {
   }
 
   if (event.data === "skip-waiting") {
-    event.waitUntil(self.skipWaiting());
+    event.waitUntil(
+      (async () => {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(
+          UPDATE_APPROVAL_CACHE_KEY,
+          new Response(
+            JSON.stringify({ buildId: APP_BUILD_ID, sourceClientId: event.source?.id ?? null }),
+            { headers: { "Content-Type": "application/json" } }
+          )
+        );
+        await self.skipWaiting();
+      })()
+    );
   }
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      await self.clients.claim();
+
+      const cache = await caches.open(CACHE_NAME);
+      const approvalResponse = await cache.match(UPDATE_APPROVAL_CACHE_KEY);
+      if (!approvalResponse) return;
+
+      const approval = await approvalResponse.json().catch(() => null);
+      if (!approval || approval.buildId !== APP_BUILD_ID) return;
+
+      const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      await Promise.all(
+        clients.map(async (client) => {
+          const clientUrl = new URL(client.url);
+          if (
+            client.id === approval.sourceClientId ||
+            clientUrl.origin !== scopeUrl.origin ||
+            !clientUrl.pathname.startsWith(scopeUrl.pathname) ||
+            typeof client.navigate !== "function"
+          ) {
+            return;
+          }
+
+          await client.navigate(client.url).catch(() => undefined);
+        })
+      );
+
+      await cache.delete(UPDATE_APPROVAL_CACHE_KEY);
+    })()
+  );
 });
 
 function canHandle(request) {
