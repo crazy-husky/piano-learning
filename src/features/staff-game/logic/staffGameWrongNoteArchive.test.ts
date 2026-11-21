@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  makeTrendOnlyWrongNoteRun,
   summarizeStaffGameWrongNoteOutcomes,
   summarizeStaffGameWrongNoteRunPerformance,
 } from "./staffGameWrongNoteArchive";
@@ -121,5 +122,60 @@ describe("summarizeStaffGameWrongNoteRunPerformance", () => {
       averageResponseMs: null,
       weakNoteCount: 0,
     });
+  });
+});
+
+describe("makeTrendOnlyWrongNoteRun", () => {
+  it("keeps performance totals while removing study errors from the run", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-21T10:00:00.000Z"));
+
+    try {
+      const run = makeTrendOnlyWrongNoteRun({
+        runId: "run-3",
+        source: "review",
+        level: null,
+        difficulty: "normal",
+        inputMode: "midi",
+        startedAt: "2026-11-21T09:00:00.000Z",
+        endedAt: "2026-11-21T09:05:00.000Z",
+        updatedAt: "2026-11-21T09:05:00.000Z",
+        reviewRange: 7,
+        totalTargets: 4,
+        firstTryCorrect: 2,
+        lowSample: false,
+        notes: {
+          "60": {
+            midi: 60,
+            note: "C4",
+            appear: 2,
+            correct: 1,
+            wrong: 1,
+            missed: 0,
+            confusions: { D4: 1 },
+            totalResponseMs: 900,
+            responseSampleCount: 1,
+          },
+        },
+      });
+
+      expect(run.trendOnly).toBe(true);
+      expect(run.totalTargets).toBe(4);
+      expect(run.firstTryCorrect).toBe(2);
+      expect(run.notes["60"]).toMatchObject({
+        appear: 2,
+        correct: 1,
+        wrong: 0,
+        missed: 0,
+        confusions: {},
+        totalResponseMs: 900,
+        responseSampleCount: 1,
+      });
+      expect(Date.parse(run.updatedAt ?? "")).toBeGreaterThan(
+        Date.parse("2026-11-21T09:05:00.000Z")
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -2,7 +2,6 @@ import { Settings2, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getPianoAudioTime, playMuffledMidiNote, playTargetNote } from "../../../audio/piano";
-import { resolveDrillNoteNames } from "../../../data/db";
 import { writeBackupIfSafe } from "../../../data/backup";
 import {
   markMidiLatencyStage,
@@ -10,7 +9,6 @@ import {
 } from "../../../diagnostics/midiLatencyDiagnostics";
 import { markMidiLatencyAfterPaint } from "../../../diagnostics/midiLatencyPaint";
 import {
-  isPracticeAnswerCorrect,
   getTargetMidiNoteNumber,
   normalizeAnswerPitchMode,
   type PracticeAnswerInput,
@@ -47,7 +45,6 @@ import type {
   ReviewRecord,
   Staff,
   TargetNote,
-  TargetNoteId,
 } from "../../../domain/types";
 import type { MidiInputController } from "../../../midi/useMidiInput";
 import { MidiInputControl } from "../../../midi/MidiInputControl";
@@ -109,11 +106,7 @@ import {
   type StaffPageNoteDuration,
 } from "../logic/staffPageNotation";
 import type { ScoreChaseEvent } from "../logic/scoreChase";
-import {
-  DEFAULT_SCORE_CHASE_PREFERENCES,
-  SCORE_CHASE_SPEED_OPTIONS,
-  uniformFreePracticeChaseSegmentDuration,
-} from "../logic/scoreChase";
+import { uniformFreePracticeChaseSegmentDuration } from "../logic/scoreChase";
 import { useScoreChase } from "../hooks/useScoreChase";
 import { useSongRowPlayback, type SongRowPlaybackNote } from "../song-practice/useSongRowPlayback";
 import {
@@ -150,11 +143,7 @@ import {
   PracticeSessionHeader,
 } from "./PracticeSessionFrame";
 import { StaffDistancePracticeView } from "./StaffDistancePracticeView";
-import {
-  PracticeSetupView,
-  type PracticeSetupTab,
-  type PracticeSetupUiPreferences,
-} from "./PracticeSetupView";
+import { PracticeSetupView, type PracticeSetupTab } from "./PracticeSetupView";
 import { SongPracticeView } from "../song-practice/SongPracticeView";
 import { NameToKeyPracticeView } from "../name-to-key/NameToKeyPracticeView";
 import {
@@ -172,12 +161,10 @@ import {
   releasePracticeMicrophoneOnPause,
 } from "../logic/practiceInputLifecycle";
 import {
-  DEFAULT_DUET_PRACTICE_RANGE_PRESET,
   DUET_PRACTICE_RANGE_GROUPS,
   getDuetPracticeGroupIds,
   getDuetPracticeSetupIssue,
   getDuetPracticeRangeGroupSummary,
-  getDuetTargetMidis,
   isDuetPracticeCustomRangeLevel,
   normalizeDuetPracticeRangeGroupIds,
   normalizeDuetPracticeRangePreset,
@@ -188,49 +175,37 @@ import {
   getPracticeBeatAtAudioTime,
   getPracticeAudioTimeAtBeat,
   getPracticeBeatDurationMs,
-  getPracticeTimingGrade,
-  getPracticeTimingWindowMs,
   PRACTICE_PROGRESS_MARKER_LEAD_SECONDS,
   PRACTICE_TEMPO_ANCHOR_HISTORY_LIMIT,
   type PracticeTimingGrade,
   type PracticeTempoAnchor,
 } from "../logic/practiceMetronomeSync";
+import { DUET_PROMPT_TIMEOUT_MS, normalizeDuetPracticeLevel } from "../logic/duetPractice";
 import {
-  DUET_PRACTICE_CURRICULUM_VERSION,
-  DUET_PROMPT_TIMEOUT_MS,
-  normalizeDuetPracticeLevel,
-} from "../logic/duetPractice";
+  PRACTICE_SETUP_UI_PREFERENCES_KEY,
+  makeDefaultPracticeSetupUiPreferences,
+  normalizeFixedCount,
+  normalizeFixedDurationSeconds,
+  normalizePromptNoteDurations,
+  parsePracticeSetupUiPreferences,
+  type PracticeSetupUiPreferences,
+} from "../logic/practiceSetupUiPreferences";
+import {
+  combineDuetPairHint,
+  getDuetPairHint,
+  pickRangeExtensionNote,
+} from "../logic/practiceViewHelpers";
+import { usePracticeDuetHints, type PendingDuetHandPair } from "../hooks/usePracticeDuetHints";
+import {
+  DUET_HAND_SIMULTANEITY_TIMER_GRACE_MS,
+  DUET_HAND_SIMULTANEITY_WINDOW_MS,
+  type PracticeSyncTimingFeedback,
+  usePracticeAnswerSubmission,
+} from "../hooks/usePracticeAnswerSubmission";
 
 const FREE_STAFF_ROW_PREVIEW_TEMPO_BPM = 60;
 const BLIND_PRACTICE_NOTE_DURATIONS: PromptNoteDuration[] = ["quarter"];
-const DUET_HAND_SIMULTANEITY_WINDOW_MS = 150;
-const DUET_HAND_SIMULTANEITY_TIMER_GRACE_MS = 25;
-const DUET_FEEDBACK_MIN_INTERVAL_MS = 1_500;
 const DUET_WRONG_NOTE_TEST_MIN_STARTING_DURATION_MS = 1_000;
-
-interface PendingDuetHandPair {
-  prompt: PromptRuntime;
-  firstStaff: Staff;
-  firstInputAtMs: number;
-  wrongStaves: Set<Staff>;
-  hasUnknownWrong: boolean;
-  timeoutId: number | null;
-}
-
-interface DuetWrongHintBatch {
-  prompt: PromptRuntime | null;
-  hands: Set<Staff>;
-  timeoutId: number | null;
-}
-
-interface DuetHintContent {
-  key: string;
-  message: string;
-}
-
-interface PendingDuetHintRequest extends DuetHintContent {
-  prompt: PromptRuntime;
-}
 
 interface PracticeViewProps {
   midi: MidiInputController;
@@ -298,10 +273,6 @@ function formatDuration(ms: number): string {
 
 const STAFF_PAGE_SCROLL_DURATION_MS = 200;
 const MELODY_BUFFER_SIZE = 16;
-const PRACTICE_SETUP_UI_PREFERENCES_KEY = "anki-note.practiceSetupUiPreferences";
-const PRACTICE_QUEUE_STRATEGY_PREFERENCE_VERSION = 1 as const;
-const PRACTICE_MODES: readonly PracticeMode[] = ["open-ended", "fixed-count", "fixed-duration"];
-const PROMPT_DISPLAY_MODES: readonly PromptDisplayMode[] = ["single-note", "staff-page"];
 
 function DuetWrongNoteMidiDialog({
   midi,
@@ -351,298 +322,7 @@ function DuetWrongNoteMidiDialog({
     </dialog>
   );
 }
-
-const PRACTICE_QUEUE_STRATEGIES: readonly PracticeQueueStrategy[] = [
-  "adaptive",
-  "focused",
-  "melody",
-  "note-drill",
-];
 const CROSS_GROUP_NOTE_RATE = 0.08;
-
-function pickRangeExtensionNote(
-  notes: readonly TargetNote[],
-  lastTargetNoteId?: TargetNoteId
-): TargetNote | undefined {
-  const eligible = notes.filter((note) => note.id !== lastTargetNoteId);
-  const pool = eligible.length > 0 ? eligible : notes;
-  return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : undefined;
-}
-
-function getDuetFeedbackStaff(answerMidi: number | undefined, prompt: PromptRuntime): Staff | null {
-  const targets = [...(prompt.duetTargets?.high ?? []), ...(prompt.duetTargets?.low ?? [])].filter(
-    (target) => !prompt.completedDuetTargetNoteIds.includes(target.id)
-  );
-  if (targets.length === 0) return null;
-  if (answerMidi === undefined) {
-    return targets.length === 1 ? targets[0]!.staff : null;
-  }
-  return targets.reduce((closest, target) =>
-    Math.abs(getTargetMidiNoteNumber(target) - answerMidi) <
-    Math.abs(getTargetMidiNoteNumber(closest) - answerMidi)
-      ? target
-      : closest
-  ).staff;
-}
-
-function getDuetPairHint(firstStaff: Staff, lateStaff?: Staff): DuetHintContent {
-  if (lateStaff && lateStaff !== firstStaff) {
-    return lateStaff === "bass"
-      ? { key: "late:bass", message: "左手按晚了，请左右手同时下键" }
-      : { key: "late:treble", message: "右手按晚了，请左右手同时下键" };
-  }
-  const missingStaff = firstStaff === "bass" ? "treble" : "bass";
-  return missingStaff === "bass"
-    ? { key: "missed:bass", message: "左手漏弹，请与右手同时下键" }
-    : { key: "missed:treble", message: "右手漏弹，请与左手同时下键" };
-}
-
-function getDuetWrongHint(
-  staves: readonly Staff[],
-  hasUnknownWrong: boolean
-): DuetHintContent | null {
-  if (hasUnknownWrong) {
-    return { key: "wrong:unknown", message: "音符不对，请检查当前谱面目标" };
-  }
-  const hands = [...new Set(staves)].sort();
-  if (hands.length === 0) return null;
-  const handKey = hands.join("-");
-  const message =
-    hands.length > 1
-      ? "左右手音符不对，请检查两手"
-      : hands[0] === "bass"
-        ? "左手音符不对，请检查左手"
-        : "右手音符不对，请检查右手";
-  return { key: `wrong:${handKey}`, message };
-}
-
-function combineDuetPairHint(
-  pairHint: DuetHintContent,
-  wrongStaves: readonly Staff[],
-  hasUnknownWrong: boolean
-): DuetHintContent {
-  const wrongHint = getDuetWrongHint(wrongStaves, hasUnknownWrong);
-  if (!wrongHint) return pairHint;
-  return {
-    key: `combined:${wrongHint.key}:${pairHint.key}`,
-    message: `${wrongHint.message.split("，")[0]}；${pairHint.message}`,
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isPracticeMode(value: unknown): value is PracticeMode {
-  return typeof value === "string" && PRACTICE_MODES.includes(value as PracticeMode);
-}
-
-function isPromptDisplayMode(value: unknown): value is PromptDisplayMode {
-  return typeof value === "string" && PROMPT_DISPLAY_MODES.includes(value as PromptDisplayMode);
-}
-
-function isPromptNoteDuration(value: unknown): value is PromptNoteDuration {
-  return typeof value === "string" && PROMPT_NOTE_DURATIONS.includes(value as PromptNoteDuration);
-}
-
-function normalizePromptNoteDurations(
-  value: unknown,
-  fallback: readonly PromptNoteDuration[]
-): PromptNoteDuration[] {
-  const candidates = Array.isArray(value) ? value.filter(isPromptNoteDuration) : [...fallback];
-  const selected = new Set(candidates);
-  const normalized = PROMPT_NOTE_DURATIONS.filter((duration) => selected.has(duration));
-  return normalized.length > 0 ? normalized : [...fallback];
-}
-
-function isPracticeQueueStrategy(value: unknown): value is PracticeQueueStrategy {
-  return (
-    typeof value === "string" && PRACTICE_QUEUE_STRATEGIES.includes(value as PracticeQueueStrategy)
-  );
-}
-
-function normalizeFixedCount(value: unknown, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.min(500, Math.max(1, Math.floor(parsed))) : fallback;
-}
-
-function normalizeFixedDurationSeconds(value: unknown, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(60, Math.round(parsed)) : fallback;
-}
-
-function normalizeDrillNoteNames(value: unknown, fallback: NoteName[]): NoteName[] {
-  if (!Array.isArray(value)) {
-    return fallback;
-  }
-  const selected = new Set(
-    value.filter((noteName): noteName is string => typeof noteName === "string")
-  );
-  return ANSWER_BUTTONS.map((button) => button.noteName).filter((noteName) =>
-    selected.has(noteName)
-  );
-}
-
-function makeDefaultPracticeSetupUiPreferences(settings: AppSettings): PracticeSetupUiPreferences {
-  const promptNoteDurations = normalizePromptNoteDurations(settings.promptNoteDurations, [
-    settings.promptNoteDuration ?? "quarter",
-  ]);
-  return {
-    answerPitchMode: settings.answerPitchMode,
-    practiceMode: "single",
-    metronomeSyncEnabled: false,
-    blindPracticeMetronomeSyncEnabled: false,
-    duetMetronomeSyncEnabled: true,
-    duetLevel: "level-1",
-    duetRangePreset: DEFAULT_DUET_PRACTICE_RANGE_PRESET,
-    duetRangeGroupIds: getDuetPracticeGroupIds(DEFAULT_DUET_PRACTICE_RANGE_PRESET),
-    duetMaxStaffDistance: null,
-    duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
-    duetAllowDottedRhythms: false,
-    duetStrictHandAlternation: false,
-    singleBlackKeys: { enabled: false, ratio: 20, spelling: "mixed" },
-    duetBlackKeys: { enabled: false, ratio: 20, spelling: "mixed" },
-    autoPlayTarget: settings.autoPlayTarget,
-    midiAutoPlayTarget: false,
-    chaseEnabled: DEFAULT_SCORE_CHASE_PREFERENCES.enabled,
-    chaseHandMode: "both",
-    chasePreferencesVersion: 2,
-    chaseSpeedMultiplier: DEFAULT_SCORE_CHASE_PREFERENCES.speedMultiplier,
-    chaseStartCount: DEFAULT_SCORE_CHASE_PREFERENCES.startCount,
-    playAnswerNote: settings.playAnswerNote,
-    midiPlayAnswerNote: false,
-    drillNoteNames: resolveDrillNoteNames(settings),
-    fixedCount: settings.fixedCount,
-    fixedDurationSeconds: settings.fixedDurationSeconds,
-    mode: settings.defaultMode,
-    promptDisplayMode:
-      promptNoteDurations.length > 1 ? "staff-page" : (settings.promptDisplayMode ?? "staff-page"),
-    promptNoteDuration: promptNoteDurations[0]!,
-    promptNoteDurations,
-    queueStrategy: "adaptive",
-    queueStrategyPreferenceVersion: PRACTICE_QUEUE_STRATEGY_PREFERENCE_VERSION,
-  };
-}
-
-function parsePracticeSetupUiPreferences(
-  value: unknown,
-  fallback: PracticeSetupUiPreferences
-): PracticeSetupUiPreferences {
-  if (!isRecord(value)) {
-    return fallback;
-  }
-
-  const migrateLegacyChaseDefaults =
-    value.chasePreferencesVersion !== 2 &&
-    value.chaseSpeedMultiplier === 1.5 &&
-    value.chaseStartCount === 4;
-  const promptNoteDurations = normalizePromptNoteDurations(value.promptNoteDurations, [
-    isPromptNoteDuration(value.promptNoteDuration)
-      ? value.promptNoteDuration
-      : fallback.promptNoteDuration,
-  ]);
-  const duetCurriculumVersion =
-    typeof value.duetCurriculumVersion === "number" ? value.duetCurriculumVersion : undefined;
-  const hasCurrentQueueStrategyPreferenceVersion =
-    value.queueStrategyPreferenceVersion === PRACTICE_QUEUE_STRATEGY_PREFERENCE_VERSION;
-  const duetRangePreset = normalizeDuetPracticeRangePreset(value.duetRangePreset);
-
-  return {
-    answerPitchMode: normalizeAnswerPitchMode(value.answerPitchMode, fallback.answerPitchMode),
-    practiceMode: value.practiceMode === "duet" ? "duet" : "single",
-    metronomeSyncEnabled:
-      typeof value.metronomeSyncEnabled === "boolean" ? value.metronomeSyncEnabled : false,
-    blindPracticeMetronomeSyncEnabled:
-      typeof value.blindPracticeMetronomeSyncEnabled === "boolean"
-        ? value.blindPracticeMetronomeSyncEnabled
-        : false,
-    duetMetronomeSyncEnabled:
-      typeof value.duetMetronomeSyncEnabled === "boolean"
-        ? value.duetMetronomeSyncEnabled
-        : fallback.duetMetronomeSyncEnabled,
-    duetLevel: normalizeDuetPracticeLevel(
-      value.duetLevel ?? value.duetDifficulty,
-      duetCurriculumVersion
-    ),
-    duetRangePreset,
-    duetRangeGroupIds: normalizeDuetPracticeRangeGroupIds(
-      value.duetRangeGroupIds,
-      getDuetPracticeGroupIds(duetRangePreset)
-    ),
-    duetMaxStaffDistance:
-      typeof value.duetMaxStaffDistance === "number" &&
-      Number.isInteger(value.duetMaxStaffDistance) &&
-      value.duetMaxStaffDistance >= 1 &&
-      value.duetMaxStaffDistance <= 7
-        ? value.duetMaxStaffDistance
-        : null,
-    duetCurriculumVersion: DUET_PRACTICE_CURRICULUM_VERSION,
-    duetAllowDottedRhythms:
-      typeof value.duetAllowDottedRhythms === "boolean" ? value.duetAllowDottedRhythms : false,
-    duetStrictHandAlternation:
-      typeof value.duetStrictHandAlternation === "boolean"
-        ? value.duetStrictHandAlternation
-        : false,
-    singleBlackKeys: normalizeBlackKeyPracticeSettings(value.singleBlackKeys),
-    duetBlackKeys: normalizeBlackKeyPracticeSettings(value.duetBlackKeys),
-    autoPlayTarget:
-      typeof value.autoPlayTarget === "boolean" ? value.autoPlayTarget : fallback.autoPlayTarget,
-    midiAutoPlayTarget:
-      typeof value.midiAutoPlayTarget === "boolean" ? value.midiAutoPlayTarget : false,
-    chaseEnabled:
-      typeof value.chaseEnabled === "boolean"
-        ? value.chaseEnabled
-        : DEFAULT_SCORE_CHASE_PREFERENCES.enabled,
-    chaseHandMode:
-      value.chaseHandMode === "left" ||
-      value.chaseHandMode === "right" ||
-      value.chaseHandMode === "both"
-        ? value.chaseHandMode
-        : "both",
-    chasePreferencesVersion: 2,
-    chaseSpeedMultiplier:
-      !migrateLegacyChaseDefaults &&
-      typeof value.chaseSpeedMultiplier === "number" &&
-      SCORE_CHASE_SPEED_OPTIONS.some((speed) => speed === value.chaseSpeedMultiplier)
-        ? value.chaseSpeedMultiplier
-        : DEFAULT_SCORE_CHASE_PREFERENCES.speedMultiplier,
-    chaseStartCount:
-      !migrateLegacyChaseDefaults &&
-      typeof value.chaseStartCount === "number" &&
-      Number.isInteger(value.chaseStartCount) &&
-      value.chaseStartCount >= 2 &&
-      value.chaseStartCount <= 12
-        ? value.chaseStartCount
-        : DEFAULT_SCORE_CHASE_PREFERENCES.startCount,
-    playAnswerNote:
-      typeof value.playAnswerNote === "boolean" ? value.playAnswerNote : fallback.playAnswerNote,
-    midiPlayAnswerNote:
-      typeof value.midiPlayAnswerNote === "boolean" ? value.midiPlayAnswerNote : false,
-    drillNoteNames: normalizeDrillNoteNames(value.drillNoteNames, fallback.drillNoteNames),
-    fixedCount: normalizeFixedCount(value.fixedCount, fallback.fixedCount),
-    fixedDurationSeconds: normalizeFixedDurationSeconds(
-      value.fixedDurationSeconds,
-      fallback.fixedDurationSeconds
-    ),
-    mode: isPracticeMode(value.mode) ? value.mode : fallback.mode,
-    promptDisplayMode:
-      promptNoteDurations.length > 1
-        ? "staff-page"
-        : isPromptDisplayMode(value.promptDisplayMode)
-          ? value.promptDisplayMode
-          : fallback.promptDisplayMode,
-    promptNoteDuration: promptNoteDurations[0]!,
-    promptNoteDurations,
-    queueStrategy: hasCurrentQueueStrategyPreferenceVersion
-      ? isPracticeQueueStrategy(value.queueStrategy)
-        ? value.queueStrategy === "focused"
-          ? "adaptive"
-          : value.queueStrategy
-        : "adaptive"
-      : "adaptive",
-    queueStrategyPreferenceVersion: PRACTICE_QUEUE_STRATEGY_PREFERENCE_VERSION,
-  };
-}
 
 export function PracticeView({
   midi,
@@ -817,14 +497,7 @@ export function PracticeView({
   const [staffPageRendererWidthPx, setStaffPageRendererWidthPx] = useState(0);
   const [syncCountInBeat, setSyncCountInBeat] = useState<number | null>(null);
   const [syncProgressMarkerLeadEnabled, setSyncProgressMarkerLeadEnabled] = useState(false);
-  const [syncTimingFeedback, setSyncTimingFeedback] = useState<
-    Array<{
-      noteIndex: number;
-      staff: Staff;
-      midi?: number;
-      result: "matched" | "missed" | "offbeat";
-    }>
-  >([]);
+  const [syncTimingFeedback, setSyncTimingFeedback] = useState<PracticeSyncTimingFeedback[]>([]);
   const [isStaffPageScrolling, setIsStaffPageScrolling] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isVisibilityPaused, setIsVisibilityPaused] = useState(false);
@@ -1341,15 +1014,11 @@ export function PracticeView({
     []
   );
   const pendingDuetHandPairRef = useRef<PendingDuetHandPair | null>(null);
+  const { queueDuetWrongHint, showDuetHint } = usePracticeDuetHints(
+    promptRef,
+    pendingDuetHandPairRef
+  );
   const acceptedDuetHandPairPromptRef = useRef<PromptRuntime | null>(null);
-  const duetWrongHintBatchRef = useRef<DuetWrongHintBatch>({
-    prompt: null,
-    hands: new Set(),
-    timeoutId: null,
-  });
-  const pendingDuetHintsRef = useRef<PendingDuetHintRequest[]>([]);
-  const duetHintTimeoutRef = useRef<number | null>(null);
-  const lastDuetHintAtRef = useRef(Number.NEGATIVE_INFINITY);
   const firstSyncInputByOnsetRef = useRef(
     new Map<number, { answer: PracticeAnswerInput; timingGrade?: PracticeTimingGrade }>()
   );
@@ -3152,73 +2821,6 @@ export function PracticeView({
       setWrongAnswerCount,
     },
   });
-  const showDuetHint = useCallback((prompt: PromptRuntime, key: string, message: string): void => {
-    const pendingHints = pendingDuetHintsRef.current;
-    const currentHints = pendingHints.filter((hint) => hint.prompt === prompt);
-    pendingHints.splice(0, pendingHints.length, ...currentHints);
-    if (!pendingHints.some((hint) => hint.prompt === prompt && hint.key === key)) {
-      pendingHints.push({ key, message, prompt });
-    }
-
-    const scheduleNextHint = (): void => {
-      if (duetHintTimeoutRef.current !== null || pendingHints.length === 0) return;
-      const delayMs = Math.max(
-        0,
-        DUET_FEEDBACK_MIN_INTERVAL_MS - (performance.now() - lastDuetHintAtRef.current)
-      );
-      duetHintTimeoutRef.current = window.setTimeout(() => {
-        duetHintTimeoutRef.current = null;
-        const nextHint = pendingHints.shift();
-        if (nextHint && promptRef.current === nextHint.prompt) {
-          toast.message(nextHint.message, {
-            id: "duet-practice-feedback",
-            duration: DUET_FEEDBACK_MIN_INTERVAL_MS,
-          });
-          lastDuetHintAtRef.current = performance.now();
-        }
-        scheduleNextHint();
-      }, delayMs);
-    };
-
-    scheduleNextHint();
-  }, []);
-  const queueDuetWrongHint = useCallback(
-    (prompt: PromptRuntime, staff: Staff | null): void => {
-      const pendingPair = pendingDuetHandPairRef.current;
-      if (pendingPair?.prompt === prompt) {
-        if (staff) pendingPair.wrongStaves.add(staff);
-        else pendingPair.hasUnknownWrong = true;
-        return;
-      }
-
-      if (!staff) {
-        showDuetHint(prompt, "wrong:unknown", "音符不对，请检查当前谱面目标");
-        return;
-      }
-
-      const batch = duetWrongHintBatchRef.current;
-      if (batch.prompt !== prompt) {
-        if (batch.timeoutId !== null) window.clearTimeout(batch.timeoutId);
-        batch.prompt = prompt;
-        batch.hands = new Set();
-        batch.timeoutId = null;
-      }
-      batch.hands.add(staff);
-      if (batch.timeoutId !== null) return;
-      batch.timeoutId = window.setTimeout(() => {
-        batch.timeoutId = null;
-        if (promptRef.current !== prompt) {
-          batch.hands.clear();
-          return;
-        }
-        const hands = [...batch.hands].sort();
-        batch.hands.clear();
-        const hint = getDuetWrongHint(hands, false);
-        if (hint) showDuetHint(prompt, hint.key, hint.message);
-      }, 100);
-    },
-    [showDuetHint]
-  );
   const resetIncompleteDuetHandPair = useCallback(
     (prompt: PromptRuntime): void => {
       if (promptRef.current !== prompt) return;
@@ -3291,340 +2893,41 @@ export function PracticeView({
       if (pending?.timeoutId !== null && pending?.timeoutId !== undefined) {
         window.clearTimeout(pending.timeoutId);
       }
-      const wrongHint = duetWrongHintBatchRef.current;
-      if (wrongHint.timeoutId !== null) window.clearTimeout(wrongHint.timeoutId);
-      if (duetHintTimeoutRef.current !== null) window.clearTimeout(duetHintTimeoutRef.current);
     },
     []
   );
 
-  const submitPracticeAnswer = useCallback(
-    (answer: PracticeAnswerInput): void => {
-      if (isPausedRef.current) return;
-      if (isStaffPagePractice && !freeTrackedNoteVisibilityRef.current) return;
-      if (freeRowPlaybackActiveRef.current !== null) return;
-      if (isPreReadingPractice && preReadingScoreWindow.phase !== "training") return;
-
-      const currentPrompt = promptRef.current;
-      const duetTargets = currentPrompt?.duetTargets;
-      const isUnsynchronizedDuetPrompt =
-        isDuetPractice && !shouldSynchronizeMetronome && duetTargets !== undefined;
-      const isDuetTwoHandGroup =
-        duetTargets !== undefined && duetTargets.high.length > 0 && duetTargets.low.length > 0;
-      if (isUnsynchronizedDuetPrompt && currentPrompt && duetTargets) {
-        const answerMidi = answer.midiNoteNumber;
-        const targetMidis = getDuetTargetMidis(duetTargets);
-        const matchedStaff: Staff | undefined = (["treble", "bass"] as const).find(
-          (staff) =>
-            targetMidis[staff].includes(answerMidi ?? Number.NaN) &&
-            !currentPrompt.completedDuetMidis.includes(answerMidi ?? Number.NaN)
-        );
-
-        if (!matchedStaff) {
-          queueDuetWrongHint(currentPrompt, getDuetFeedbackStaff(answerMidi, currentPrompt));
-        } else if (isDuetTwoHandGroup && acceptedDuetHandPairPromptRef.current !== currentPrompt) {
-          let pending = pendingDuetHandPairRef.current;
-          if (pending && pending.prompt !== currentPrompt) {
-            if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
-            pendingDuetHandPairRef.current = null;
-            pending = null;
-          }
-
-          const inputAtMs = Number.isFinite(answer.inputTimeMs)
-            ? answer.inputTimeMs!
-            : performance.now();
-          if (pending) {
-            const elapsedMs = Math.abs(inputAtMs - pending.firstInputAtMs);
-            if (elapsedMs > DUET_HAND_SIMULTANEITY_WINDOW_MS) {
-              const firstStaff = pending.firstStaff;
-              const wrongStaves = [...pending.wrongStaves];
-              const hasUnknownWrong = pending.hasUnknownWrong;
-              if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
-              resetIncompleteDuetHandPair(currentPrompt);
-              pendingDuetHandPairRef.current = null;
-              pending = null;
-              acceptedDuetHandPairPromptRef.current = null;
-              const hint = getDuetPairHint(
-                firstStaff,
-                matchedStaff !== firstStaff ? matchedStaff : undefined
-              );
-              const combinedHint = combineDuetPairHint(hint, wrongStaves, hasUnknownWrong);
-              showDuetHint(currentPrompt, combinedHint.key, combinedHint.message);
-              return;
-            } else if (matchedStaff !== pending.firstStaff) {
-              const wrongHint = getDuetWrongHint([...pending.wrongStaves], pending.hasUnknownWrong);
-              if (pending.timeoutId !== null) window.clearTimeout(pending.timeoutId);
-              pendingDuetHandPairRef.current = null;
-              acceptedDuetHandPairPromptRef.current = currentPrompt;
-              if (wrongHint) {
-                showDuetHint(currentPrompt, wrongHint.key, wrongHint.message);
-              }
-            }
-          }
-
-          if (
-            !pendingDuetHandPairRef.current &&
-            acceptedDuetHandPairPromptRef.current !== currentPrompt
-          ) {
-            const nextPending: PendingDuetHandPair = {
-              prompt: currentPrompt,
-              firstStaff: matchedStaff,
-              firstInputAtMs: inputAtMs,
-              wrongStaves: new Set(),
-              hasUnknownWrong: false,
-              timeoutId: null,
-            };
-            pendingDuetHandPairRef.current = nextPending;
-            armDuetHandPairTimeout(nextPending);
-          }
-        }
-      }
-
-      let answerWithTiming = answer;
-      if (
-        isMetronomeSyncActive &&
-        (answer.source === "midi" || (isBlindPractice && answer.source === "microphone"))
-      ) {
-        // The final count-in callback establishes the first score-beat anchor.
-        // Keep accepting input inside the half-beat early window while the count-in
-        // numeral is still visible on screen.
-        if (syncTempoAnchorsRef.current.length === 0) return;
-        const prompt = promptRef.current;
-        const page = staffPageRef.current;
-        const answerMidi = answer.midiNoteNumber;
-        const inputTime = performanceTimeToAudioTime(answer.inputTimeMs ?? performance.now());
-        const onset = getCurrentSyncOnset();
-        const currentTargets = prompt?.duetTargets
-          ? [...prompt.duetTargets.high, ...prompt.duetTargets.low]
-          : prompt
-            ? [prompt.note]
-            : [];
-        const beatDurationMs = getPracticeBeatDurationMs(metronomePreferences.bpm);
-        const timingCandidates: Array<{
-          index: number;
-          deltaMs: number;
-          grade: PracticeTimingGrade;
-          targets: Array<{ staff: Staff; midi: number }>;
-          matchedTarget?: { staff: Staff; midi: number };
-        }> = [];
-        const maximumBeatOffsetMs = beatDurationMs * 0.5;
-        if (page && answerMidi !== undefined) {
-          for (let index = page.index; index < page.notes.length; index += 1) {
-            const candidateOnset = getSyncOnsetAtIndex(index);
-            if (!candidateOnset) continue;
-            const expectedTime = getPracticeAudioTimeAtBeat(
-              candidateOnset.currentBeat,
-              syncTempoAnchorsRef.current,
-              metronomePreferences.bpm
-            );
-            if (expectedTime === undefined) continue;
-            const deltaMs = (inputTime - expectedTime) * 1000;
-            if (deltaMs < -maximumBeatOffsetMs) break;
-            const grade = getPracticeTimingGrade(
-              deltaMs,
-              getPracticeTimingWindowMs(metronomePreferences.bpm, candidateOnset.gapBeats),
-              maximumBeatOffsetMs
-            );
-            if (!grade) continue;
-
-            const rawTargets =
-              index === page.index
-                ? currentTargets
-                : (page.noteGroups?.[index] ?? (page.notes[index] ? [page.notes[index]!] : []));
-            const targets = rawTargets
-              .map((target) => ({
-                staff: target.staff,
-                midi: getTargetMidiNoteNumber(target),
-              }))
-              .filter(
-                (target) =>
-                  index !== page.index ||
-                  !prompt?.duetTargets ||
-                  !prompt.completedDuetMidis.includes(target.midi)
-              );
-            timingCandidates.push({
-              index,
-              deltaMs,
-              grade,
-              targets,
-              matchedTarget: targets.find((target) => target.midi === answerMidi),
-            });
-          }
-        }
-
-        const matchingCandidates = timingCandidates.filter((candidate) => candidate.matchedTarget);
-        const preferredCandidates = matchingCandidates.length
-          ? matchingCandidates
-          : timingCandidates;
-        const onTimeMatches = preferredCandidates.filter(
-          (candidate) => candidate.matchedTarget && candidate.grade === "on-time"
-        );
-        const candidatePool = onTimeMatches.length ? onTimeMatches : preferredCandidates;
-        const selectedCandidate = [...candidatePool].sort(
-          (left, right) =>
-            Math.abs(left.deltaMs) - Math.abs(right.deltaMs) || left.index - right.index
-        )[0];
-
-        if (selectedCandidate?.matchedTarget && page && selectedCandidate.index > page.index) {
-          const targetIndex = selectedCandidate.index;
-          const targetNoteIndex = staffPageFirstNoteOffset + targetIndex;
-          const targetKey = targetNoteIndex;
-          const priorFirstInput = firstSyncInputByOnsetRef.current.get(targetKey);
-          const isFirstInput = priorFirstInput === undefined;
-          let queuedAnswer = answer;
-          if (isFirstInput && prompt?.duetTargets) {
-            queuedAnswer = { ...answer, duetTimingGrade: selectedCandidate.grade };
-          }
-          if (isFirstInput) {
-            firstSyncInputByOnsetRef.current.set(targetKey, {
-              answer: queuedAnswer,
-              timingGrade: selectedCandidate.grade,
-            });
-          }
-
-          const target = selectedCandidate.matchedTarget;
-          setSyncTimingFeedback((current) => {
-            const next = current.filter(
-              (entry) =>
-                entry.noteIndex !== targetNoteIndex ||
-                entry.staff !== target.staff ||
-                (entry.midi !== undefined && entry.midi !== answerMidi)
-            );
-            if (!isFirstInput) return next;
-            return [
-              ...next,
-              {
-                noteIndex: targetNoteIndex,
-                staff: target.staff,
-                midi: answerMidi,
-                result: selectedCandidate.grade === "on-time" ? "matched" : "offbeat",
-              },
-            ];
-          });
-
-          const isDuplicateQueuedInput = pendingSyncAnswersRef.current.some(
-            (entry) =>
-              entry.targetIndex === targetIndex &&
-              entry.answer.midiNoteNumber === answerMidi &&
-              entry.answer.inputTimeMs === answer.inputTimeMs
-          );
-          if (!isDuplicateQueuedInput) {
-            pendingSyncAnswersRef.current.push({ targetIndex, answer: queuedAnswer });
-          }
-          return;
-        }
-
-        if (prompt && onset && !answerInputLockedRef.current) {
-          const noteIndex = staffPageFirstNoteOffset + onset.index;
-          const targetKey = noteIndex;
-          const priorFirstInput = firstSyncInputByOnsetRef.current.get(targetKey);
-          const belongsToCurrentOnset = selectedCandidate?.index === onset.index;
-          const isReplayOfFirstInput = priorFirstInput?.answer === answer;
-          const isFirstOnsetInput = priorFirstInput === undefined && belongsToCurrentOnset;
-          const timingGrade = !belongsToCurrentOnset
-            ? undefined
-            : isFirstOnsetInput
-              ? selectedCandidate?.grade
-              : isReplayOfFirstInput
-                ? priorFirstInput?.timingGrade
-                : undefined;
-          if (isFirstOnsetInput) {
-            firstSyncInputByOnsetRef.current.set(targetKey, {
-              answer,
-              ...(timingGrade ? { timingGrade } : {}),
-            });
-          }
-
-          const targetMidis = prompt.duetTargets
-            ? getDuetTargetMidis(prompt.duetTargets)
-            : undefined;
-          let matchedStaff: Staff | undefined;
-          if (targetMidis && answerMidi !== undefined) {
-            for (const staff of ["treble", "bass"] as const) {
-              if (
-                targetMidis[staff].includes(answerMidi) &&
-                !prompt.completedDuetMidis.includes(answerMidi)
-              ) {
-                matchedStaff = staff;
-                break;
-              }
-            }
-          }
-          const answeredCorrectly = targetMidis
-            ? matchedStaff !== undefined
-            : isPracticeAnswerCorrect(answer, prompt.note, "exact-pitch");
-          if (answeredCorrectly && selectedCandidate?.index !== onset.index) return;
-          if (timingGrade && prompt.duetTargets) {
-            answerWithTiming = { ...answer, duetTimingGrade: timingGrade };
-          }
-          if (!answeredCorrectly) {
-            if (isFirstOnsetInput && timingGrade) {
-              const staves = targetMidis
-                ? (["treble", "bass"] as const).filter(
-                    (staff) => !prompt.completedDuetStaves.includes(staff)
-                  )
-                : [prompt.note.staff];
-              setSyncTimingFeedback((current) => {
-                const next = current.filter(
-                  (entry) =>
-                    entry.noteIndex !== noteIndex ||
-                    !staves.includes(entry.staff) ||
-                    entry.midi !== undefined
-                );
-                return [
-                  ...next,
-                  ...staves.map((staff) => ({ noteIndex, staff, result: "missed" as const })),
-                ];
-              });
-            }
-          } else {
-            const staff = matchedStaff ?? prompt.note.staff;
-            setSyncTimingFeedback((current) => {
-              const next = current.filter(
-                (entry) =>
-                  entry.noteIndex !== noteIndex ||
-                  entry.staff !== staff ||
-                  (entry.midi !== undefined && entry.midi !== answerMidi)
-              );
-              if (!timingGrade) return next;
-              return [
-                ...next,
-                {
-                  noteIndex,
-                  staff,
-                  midi: answerMidi,
-                  result: timingGrade === "on-time" ? "matched" : "offbeat",
-                },
-              ];
-            });
-          }
-        }
-      }
-      void submitAnswer(answerWithTiming);
-    },
-    [
-      armDuetHandPairTimeout,
-      answerInputLockedRef,
-      freeTrackedNoteVisibilityRef,
-      getCurrentSyncOnset,
-      getSyncOnsetAtIndex,
-      isBlindPractice,
-      isDuetPractice,
-      isMetronomeSyncActive,
-      isStaffPagePractice,
-      isPreReadingPractice,
-      preReadingScoreWindow.phase,
-      metronomePreferences.bpm,
-      performanceTimeToAudioTime,
-      queueDuetWrongHint,
-      resetIncompleteDuetHandPair,
-      shouldSynchronizeMetronome,
-      showDuetHint,
-      staffPageFirstNoteOffset,
-      submitAnswer,
-      setSyncTimingFeedback,
-    ]
-  );
+  const submitPracticeAnswer = usePracticeAnswerSubmission({
+    armDuetHandPairTimeout,
+    acceptedDuetHandPairPromptRef,
+    answerInputLockedRef,
+    freeRowPlaybackActiveRef,
+    freeTrackedNoteVisibilityRef,
+    firstSyncInputByOnsetRef,
+    getCurrentSyncOnset,
+    getSyncOnsetAtIndex,
+    isBlindPractice,
+    isDuetPractice,
+    isMetronomeSyncActive,
+    isPausedRef,
+    isPreReadingPractice,
+    isStaffPagePractice,
+    metronomeBpm: metronomePreferences.bpm,
+    pendingDuetHandPairRef,
+    pendingSyncAnswersRef,
+    performanceTimeToAudioTime,
+    preReadingScoreWindow,
+    promptRef,
+    queueDuetWrongHint,
+    resetIncompleteDuetHandPair,
+    shouldSynchronizeMetronome,
+    showDuetHint,
+    staffPageFirstNoteOffset,
+    staffPageRef,
+    submitAnswer,
+    setSyncTimingFeedback,
+    syncTempoAnchorsRef,
+  });
   submitAnswerRef.current = submitPracticeAnswer;
 
   const { pressedAnswerKeys } = usePracticeInput({

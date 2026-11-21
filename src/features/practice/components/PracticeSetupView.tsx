@@ -23,7 +23,6 @@ import type {
   PromptNoteDuration,
   StaffNotationMode,
 } from "../../../domain/types";
-import type { ChaseHandMode } from "../logic/scoreChase";
 import {
   DUET_PRACTICE_RANGE_GROUPS,
   getDuetPracticeLevelDescription,
@@ -69,41 +68,7 @@ import {
 } from "../song-practice/songPracticePreferences";
 import { getSongPracticeProgressEntries } from "../song-practice/songPracticeProgress";
 import type { PracticeMicrophoneStatus } from "../../vocal-pitch/logic/usePracticeMicrophoneInput";
-
-export interface PracticeSetupUiPreferences {
-  answerPitchMode: AnswerPitchMode;
-  practiceMode: "single" | "duet";
-  metronomeSyncEnabled: boolean;
-  blindPracticeMetronomeSyncEnabled: boolean;
-  duetMetronomeSyncEnabled: boolean;
-  duetLevel: DuetPracticeLevel;
-  duetRangePreset: DuetPracticeRangePreset;
-  duetRangeGroupIds: DuetPracticeRangeGroupId[];
-  duetMaxStaffDistance: number | null;
-  duetCurriculumVersion: number;
-  duetAllowDottedRhythms: boolean;
-  duetStrictHandAlternation: boolean;
-  singleBlackKeys: BlackKeyPracticeSettings;
-  duetBlackKeys: BlackKeyPracticeSettings;
-  autoPlayTarget: boolean;
-  midiAutoPlayTarget: boolean;
-  chaseEnabled: boolean;
-  chaseHandMode: ChaseHandMode;
-  chasePreferencesVersion: 2;
-  chaseSpeedMultiplier: number;
-  chaseStartCount: number;
-  playAnswerNote: boolean;
-  midiPlayAnswerNote: boolean;
-  drillNoteNames: NoteName[];
-  fixedCount: number;
-  fixedDurationSeconds: number;
-  mode: PracticeMode;
-  promptDisplayMode: PromptDisplayMode;
-  promptNoteDuration: PromptNoteDuration;
-  promptNoteDurations: PromptNoteDuration[];
-  queueStrategy: PracticeQueueStrategy;
-  queueStrategyPreferenceVersion: 1;
-}
+import type { PracticeSetupUiPreferences } from "../logic/practiceSetupUiPreferences";
 
 interface PracticeSetupActions {
   onAnswerPitchModeChange: (mode: AnswerPitchMode) => void;

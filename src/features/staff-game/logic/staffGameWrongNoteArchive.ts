@@ -82,3 +82,32 @@ export function summarizeStaffGameWrongNoteOutcomes(
 
   return { notes, firstTryCorrect };
 }
+
+export function nextWrongNoteRunUpdatedAt(run: StaffGameWrongNoteArchiveRun): string {
+  const previous = Date.parse(run.updatedAt ?? run.endedAt);
+  const timestamp = Math.max(Date.now(), Number.isFinite(previous) ? previous + 1 : 0);
+  return new Date(timestamp).toISOString();
+}
+
+export function makeTrendOnlyWrongNoteRun(
+  run: StaffGameWrongNoteArchiveRun
+): StaffGameWrongNoteArchiveRun {
+  const notes = Object.fromEntries(
+    Object.entries(run.notes).map(([key, note]) => [
+      key,
+      {
+        ...note,
+        wrong: 0,
+        missed: 0,
+        confusions: {},
+      },
+    ])
+  );
+
+  return {
+    ...run,
+    updatedAt: nextWrongNoteRunUpdatedAt(run),
+    trendOnly: true,
+    notes,
+  };
+}

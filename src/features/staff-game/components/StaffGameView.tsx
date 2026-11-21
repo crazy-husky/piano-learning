@@ -33,19 +33,13 @@ import {
   getStaffGameWrongNotePriorityPreview,
   getStaffGameWrongNoteRunErrorCount,
   filterStaffGameWrongNoteLearningChallengeArchivesWithErrors,
-  mergeStaffGameWrongNoteArchives,
   type StaffGameWrongNoteComparison,
   type StaffGameWrongNoteRange,
 } from "../../../domain/staffGameWrongNoteArchives";
 import { localDateKey } from "../../../domain/stats";
 import {
-  archiveStaffGameWrongNoteRun,
   deleteStaffGameWrongNoteArchiveRuns,
-  db,
-  enqueuePendingStaffGameWrongNoteArchiveRun,
-  removePendingStaffGameWrongNoteArchiveRun,
   restoreStaffGameWrongNoteArchiveResponseTimes,
-  retryPendingStaffGameWrongNoteArchives,
   saveStaffGameProficiencySamples,
 } from "../../../data/db";
 import { answerDeviceInfo, currentMicrophoneContext } from "../../../data/answerEvents";
@@ -84,7 +78,6 @@ import { useStaffGameScoring } from "../hooks/useStaffGameScoring";
 import { triggerStaffGameHitHaptic } from "../logic/staffGameHaptics";
 import { useStaffGameAudio } from "../hooks/useStaffGameAudio";
 import type { StaffGameSoundPlaybackTiming } from "../audio/staffGameSounds";
-import { resolveStaffGameInputMode } from "../logic/staffGameSettings";
 import {
   staffGamePromptSuppressedMidiNotes,
   STAFF_GAME_PROMPT_RECOGNITION_TAIL_MS,
@@ -102,7 +95,7 @@ import { LoadingActivityIndicator } from "../../../shared/components/LoadingActi
 import { StaffGameSummaryDialog } from "./StaffGameSummaryDialog";
 import { StaffGameWrongNoteStudyDialog } from "./StaffGameWrongNoteStudyDialog";
 import { StaffGameWrongNoteArchiveManagerDialog } from "./StaffGameWrongNoteArchiveManagerDialog";
-import { disconnectStaffGameBackgroundAudio } from "../audio/staffGameBackgroundAudio";
+import { useStaffGameResources } from "../hooks/useStaffGameResources";
 import {
   StaffGameMascot,
   StaffGameParticles,
@@ -110,15 +103,7 @@ import {
   StaffGameShootingStar,
 } from "./StaffGameEffects";
 import type { StaffGameMascotAction } from "./StaffGameEffects";
-import {
-  createStaffGameResourceProgress,
-  preloadStaffGameResources,
-  STAFF_GAME_ART,
-  STAFF_GAME_RESOURCE_MAX_RETRIES,
-  STAFF_GAME_RESOURCE_RETRY_DELAY_MS,
-  type StaffGameResourceProgress,
-  type StaffGameResourceUpdate,
-} from "../logic/staffGameResources";
+import { STAFF_GAME_ART, STAFF_GAME_RESOURCE_MAX_RETRIES } from "../logic/staffGameResources";
 import {
   BUBBLE_FADE_IN_MS,
   COMBO_INDICATOR_FADE_DURATION_MS,
@@ -145,7 +130,6 @@ import {
   starsForAccuracy,
   type StaffGameNotePoolScope,
   type StaffGameNoteSchedulingStrategy,
-  type StaffGameArcadeDuration,
   type StaffGamePitch,
 } from "../logic/staffGameRules";
 import {
@@ -168,40 +152,32 @@ import {
   shouldShowFastPlayingHint,
 } from "../logic/staffGameProficiency";
 import type { GameDifficulty } from "../logic/staffGameRules";
+import {
+  readProgress,
+  saveProgress,
+  type StaffGameArcadeProgress,
+  type StaffGameModeProgress,
+  type StaffGameProgress,
+} from "../logic/staffGameProgress";
+import {
+  areStaffGameSettingsEqual,
+  readGameSettings,
+  saveGameSettings,
+  staffGameWrongNoteReviewConditionId,
+  STAFF_GAME_REVIEW_SCOPE_LABELS,
+  updateModeAudioSettings,
+  type GameDisplayMode,
+  type GameInputMode,
+  type StaffGameMode,
+  type StaffGameSettings,
+  type StaffGameWrongNoteReviewCondition,
+} from "../logic/staffGameViewSettings";
+import { useStaffGameWrongNoteArchiveStorage } from "../hooks/useStaffGameWrongNoteArchiveStorage";
 
 function parseWrongNoteArchiveRange(value: unknown, fallback: StaffGameWrongNoteRange) {
   return value === 3 || value === 7 || value === 15 || value === 30 || value === "all"
     ? value
     : fallback;
-}
-
-function nextWrongNoteRunUpdatedAt(run: StaffGameWrongNoteArchiveRun): string {
-  const previous = Date.parse(run.updatedAt ?? run.endedAt);
-  const timestamp = Math.max(Date.now(), Number.isFinite(previous) ? previous + 1 : 0);
-  return new Date(timestamp).toISOString();
-}
-
-function makeTrendOnlyWrongNoteRun(
-  run: StaffGameWrongNoteArchiveRun
-): StaffGameWrongNoteArchiveRun {
-  const notes = Object.fromEntries(
-    Object.entries(run.notes).map(([key, note]) => [
-      key,
-      {
-        ...note,
-        wrong: 0,
-        missed: 0,
-        confusions: {},
-      },
-    ])
-  );
-
-  return {
-    ...run,
-    updatedAt: nextWrongNoteRunUpdatedAt(run),
-    trendOnly: true,
-    notes,
-  };
 }
 
 const {
@@ -248,126 +224,16 @@ function isNearComboVoiceMilestone(comboCount: number): boolean {
   const offset = (comboCount - COMBO_UNBELIEVABLE_MILESTONE) % COMBO_UNBELIEVABLE_INTERVAL;
   return Math.min(offset, COMBO_UNBELIEVABLE_INTERVAL - offset) <= COMBO_VOICE_MILESTONE_BUFFER;
 }
-
-const GAME_PROGRESS_KEY = "anki-note.staffGameProgress.v6";
-const GAME_SETTINGS_KEY = "anki-note.staffGameSettings.v1";
 const LOW_FPS_PROMPT_SESSION_KEY = "anki-note.staffGameLowFpsPrompted.v1";
 const NIGHTMARE_LANDSCAPE_PROMPT_SNOOZE_KEY =
   "anki-note.staffGameNightmareLandscapePromptSnoozedUntil.v1";
 const NIGHTMARE_LANDSCAPE_PROMPT_SNOOZE_MS = 3 * 24 * 60 * 60 * 1000;
 let lowFpsPromptShownThisPage = false;
 const BURST_STAR_COUNT = 14;
-type GameInputMode = "physical" | "virtual" | "midi";
-type GameDisplayMode = "note" | "solfege" | "number" | "none";
-type StaffGameMode = "levels" | "songs";
 type StaffGameRoundPurpose = "level" | "wrong-note-review";
 type WrongNoteArchiveStatus = "idle" | "manual" | "saving" | "saved" | "error";
 type WrongNoteArchiveMode = "automatic" | "manual" | "trend" | null;
 type SongSelectionStep = "list" | "detail" | null;
-
-interface StaffGameAudioSettings {
-  soundEffectsEnabled: boolean;
-  backgroundMusicEnabled: boolean;
-  pianoSoundEnabled: boolean;
-}
-
-interface StaffGameSettings {
-  inputMode: GameInputMode;
-  displayMode: GameDisplayMode;
-  difficulty: GameDifficulty;
-  notePoolScope: StaffGameNotePoolScope;
-  noteSchedulingStrategy: StaffGameNoteSchedulingStrategy;
-  challengeMode: StaffGameChallengeMode;
-  arcadeDuration: StaffGameArcadeDuration;
-  wrongNoteStatisticsEnabled: boolean;
-  autoArchiveWrongNotesEnabled: boolean;
-  audioByMode: Record<StaffGameMode, StaffGameAudioSettings>;
-  gameEffectsEnabled: boolean;
-}
-
-interface StaffGameWrongNoteReviewCondition {
-  id: string;
-  level: number;
-  difficulty: GameDifficulty;
-  notePoolScope: StaffGameNotePoolScope;
-  gameMode: StaffGameChallengeMode;
-  runCount: number;
-  latestEndedAt: string;
-  label: string;
-}
-
-const STAFF_GAME_REVIEW_SCOPE_LABELS: Record<StaffGameNotePoolScope, string> = {
-  "current-group": "仅当前组已解锁音符",
-  "all-history": "全部已解锁音符",
-  "all-history-current-clef": "当前谱号全部已解锁音符",
-};
-
-function staffGameWrongNoteReviewConditionId(
-  level: number,
-  difficulty: GameDifficulty,
-  notePoolScope: StaffGameNotePoolScope,
-  gameMode: StaffGameChallengeMode
-): string {
-  return `${level}|${difficulty}|${notePoolScope}|${gameMode}`;
-}
-
-function areStaffGameSettingsEqual(left: StaffGameSettings, right: StaffGameSettings): boolean {
-  const sameAudioSettings = (mode: StaffGameMode): boolean =>
-    left.audioByMode[mode].soundEffectsEnabled === right.audioByMode[mode].soundEffectsEnabled &&
-    left.audioByMode[mode].backgroundMusicEnabled ===
-      right.audioByMode[mode].backgroundMusicEnabled &&
-    left.audioByMode[mode].pianoSoundEnabled === right.audioByMode[mode].pianoSoundEnabled;
-
-  return (
-    left.inputMode === right.inputMode &&
-    left.displayMode === right.displayMode &&
-    left.difficulty === right.difficulty &&
-    left.notePoolScope === right.notePoolScope &&
-    left.noteSchedulingStrategy === right.noteSchedulingStrategy &&
-    left.challengeMode === right.challengeMode &&
-    left.arcadeDuration === right.arcadeDuration &&
-    left.wrongNoteStatisticsEnabled === right.wrongNoteStatisticsEnabled &&
-    left.autoArchiveWrongNotesEnabled === right.autoArchiveWrongNotesEnabled &&
-    left.gameEffectsEnabled === right.gameEffectsEnabled &&
-    sameAudioSettings("levels") &&
-    sameAudioSettings("songs")
-  );
-}
-
-interface StaffGameModeProgress {
-  bestStars: number[];
-  bestAccuracy: Array<Record<GameDifficulty, number | null>>;
-  bestResponseMs: Array<Record<GameDifficulty, number | null>>;
-  maxCombos: number[];
-}
-
-interface StaffGameArcadeProgress extends StaffGameModeProgress {
-  bestScores: number[];
-}
-
-interface StaffGameProgress {
-  version: 6;
-  modes: {
-    learning: StaffGameModeProgress;
-    arcade: StaffGameArcadeProgress;
-  };
-  /** 仅调试用，后续清理。 */
-  _debugLastRound: StaffGameLevelRoundSummary | null;
-  unlockedLevel: number;
-  selectedLevel: number;
-}
-
-interface StaffGameLevelRoundSummary {
-  level: number;
-  difficulty: GameDifficulty;
-  generatedBubbleCount: number;
-  firstTryCorrectCount: number;
-  correctBubbleCount: number;
-  responseTotalMs: number;
-  responseSampleCount: number;
-  accuracy: number | null;
-  averageResponseMs: number | null;
-}
 
 interface BubbleBurst {
   token: number;
@@ -414,17 +280,6 @@ interface StaffGamePromptSuppressionWindow {
   startAtMs: number;
 }
 
-function createDifficultyMetricSlots(): Array<Record<GameDifficulty, number | null>> {
-  return Array.from(
-    { length: GAME_LEVEL_COUNT },
-    () =>
-      Object.fromEntries(GAME_DIFFICULTIES.map(({ id }) => [id, null])) as Record<
-        GameDifficulty,
-        number | null
-      >
-  );
-}
-
 function createRoundMetrics(): StaffGameLevelRoundMetrics {
   return {
     generatedBubbleCount: 0,
@@ -437,28 +292,6 @@ function createRoundMetrics(): StaffGameLevelRoundMetrics {
     firstInputByToken: new Map(),
     pendingLateInputMidi: null,
     lateInputShield: null,
-  };
-}
-
-function defaultProgress(): StaffGameProgress {
-  const defaultModeProgress = (): StaffGameModeProgress => ({
-    bestStars: Array(GAME_LEVEL_COUNT).fill(0),
-    bestAccuracy: createDifficultyMetricSlots(),
-    bestResponseMs: createDifficultyMetricSlots(),
-    maxCombos: Array(GAME_LEVEL_COUNT).fill(0),
-  });
-  return {
-    version: 6,
-    modes: {
-      learning: defaultModeProgress(),
-      arcade: {
-        ...defaultModeProgress(),
-        bestScores: Array(GAME_LEVEL_COUNT).fill(0),
-      },
-    },
-    _debugLastRound: null,
-    unlockedLevel: 1,
-    selectedLevel: 1,
   };
 }
 
@@ -507,279 +340,6 @@ function snoozeNightmareLandscapePrompt(): void {
 
 function supportsMidi(status: MidiAccessStatus): boolean {
   return status !== "unsupported" && status !== "insecure-context";
-}
-
-function defaultGameSettings(): StaffGameSettings {
-  return {
-    inputMode: "virtual",
-    displayMode: "note",
-    difficulty: "normal",
-    notePoolScope: "all-history",
-    noteSchedulingStrategy: "system",
-    challengeMode: "learning",
-    arcadeDuration: "level-default",
-    wrongNoteStatisticsEnabled: true,
-    autoArchiveWrongNotesEnabled: true,
-    audioByMode: {
-      levels: { soundEffectsEnabled: true, backgroundMusicEnabled: true, pianoSoundEnabled: false },
-      songs: { soundEffectsEnabled: false, backgroundMusicEnabled: false, pianoSoundEnabled: true },
-    },
-    gameEffectsEnabled: true,
-  };
-}
-
-function readGameSettings(virtualAvailable: boolean, midiAvailable: boolean): StaffGameSettings {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(GAME_SETTINGS_KEY) ?? "null") as
-      | (Partial<Omit<StaffGameSettings, "audioByMode">> & {
-          audioByMode?: Partial<Record<StaffGameMode, Partial<StaffGameAudioSettings>>>;
-          soundEffectsEnabled?: unknown;
-          backgroundMusicEnabled?: unknown;
-          speed?: unknown;
-        })
-      | null;
-    const base = defaultGameSettings();
-    const inputMode: GameInputMode = resolveStaffGameInputMode(parsed?.inputMode, {
-      midiAvailable,
-      virtualAvailable,
-    });
-    const displayMode: GameDisplayMode =
-      parsed?.displayMode === "solfege" ||
-      parsed?.displayMode === "number" ||
-      parsed?.displayMode === "none"
-        ? parsed.displayMode
-        : "note";
-    const validDifficulty = GAME_DIFFICULTIES.some((item) => item.id === parsed?.difficulty);
-    const legacySpeed = Number(parsed?.speed);
-    const legacyDifficulty: GameDifficulty = !Number.isFinite(legacySpeed)
-      ? base.difficulty
-      : legacySpeed <= 1
-        ? "easy"
-        : legacySpeed <= 3
-          ? "normal"
-          : legacySpeed <= 4
-            ? "hard"
-            : "nightmare";
-    const readModeAudio = (mode: StaffGameMode): StaffGameAudioSettings => {
-      const saved = parsed?.audioByMode?.[mode];
-      const defaults = base.audioByMode[mode];
-      const canMigrateLegacyAudio = mode === "levels";
-      return {
-        soundEffectsEnabled:
-          typeof saved?.soundEffectsEnabled === "boolean"
-            ? saved.soundEffectsEnabled
-            : canMigrateLegacyAudio && typeof parsed?.soundEffectsEnabled === "boolean"
-              ? parsed.soundEffectsEnabled
-              : defaults.soundEffectsEnabled,
-        backgroundMusicEnabled:
-          typeof saved?.backgroundMusicEnabled === "boolean"
-            ? saved.backgroundMusicEnabled
-            : canMigrateLegacyAudio && typeof parsed?.backgroundMusicEnabled === "boolean"
-              ? parsed.backgroundMusicEnabled
-              : defaults.backgroundMusicEnabled,
-        pianoSoundEnabled:
-          typeof saved?.pianoSoundEnabled === "boolean"
-            ? saved.pianoSoundEnabled
-            : defaults.pianoSoundEnabled,
-      };
-    };
-    return {
-      inputMode,
-      displayMode,
-      difficulty: validDifficulty ? (parsed!.difficulty as GameDifficulty) : legacyDifficulty,
-      wrongNoteStatisticsEnabled:
-        typeof parsed?.wrongNoteStatisticsEnabled === "boolean"
-          ? parsed.wrongNoteStatisticsEnabled
-          : base.wrongNoteStatisticsEnabled,
-      autoArchiveWrongNotesEnabled:
-        typeof parsed?.autoArchiveWrongNotesEnabled === "boolean"
-          ? parsed.autoArchiveWrongNotesEnabled
-          : base.autoArchiveWrongNotesEnabled,
-      notePoolScope:
-        parsed?.notePoolScope === "current-group"
-          ? "current-group"
-          : parsed?.notePoolScope === "all-history-current-clef"
-            ? "all-history-current-clef"
-            : base.notePoolScope,
-      noteSchedulingStrategy:
-        parsed?.noteSchedulingStrategy === "random" ? "random" : base.noteSchedulingStrategy,
-      challengeMode: parsed?.challengeMode === "arcade" ? "arcade" : "learning",
-      arcadeDuration:
-        parsed?.arcadeDuration === 60_000 ||
-        parsed?.arcadeDuration === 120_000 ||
-        parsed?.arcadeDuration === 180_000
-          ? parsed.arcadeDuration
-          : "level-default",
-      audioByMode: { levels: readModeAudio("levels"), songs: readModeAudio("songs") },
-      gameEffectsEnabled:
-        typeof parsed?.gameEffectsEnabled === "boolean"
-          ? parsed.gameEffectsEnabled
-          : base.gameEffectsEnabled,
-    };
-  } catch {
-    return defaultGameSettings();
-  }
-}
-
-function saveGameSettings(settings: StaffGameSettings): void {
-  try {
-    localStorage.setItem(
-      GAME_SETTINGS_KEY,
-      JSON.stringify({
-        ...settings,
-        // Retain the old fields so older app versions can still read level-mode audio preferences.
-        soundEffectsEnabled: settings.audioByMode.levels.soundEffectsEnabled,
-        backgroundMusicEnabled: settings.audioByMode.levels.backgroundMusicEnabled,
-      })
-    );
-  } catch {
-    // Settings still apply for this visit if storage is unavailable.
-  }
-}
-
-function readStoredJson(key: string): unknown {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function updateModeAudioSettings(
-  settings: StaffGameSettings,
-  mode: StaffGameMode,
-  update: Partial<StaffGameAudioSettings>
-): StaffGameSettings {
-  return {
-    ...settings,
-    audioByMode: {
-      ...settings.audioByMode,
-      [mode]: { ...settings.audioByMode[mode], ...update },
-    },
-  };
-}
-
-function readProgress(): StaffGameProgress {
-  try {
-    const stored = readStoredJson(GAME_PROGRESS_KEY);
-    const base = defaultProgress();
-    if (
-      !stored ||
-      typeof stored !== "object" ||
-      Array.isArray(stored) ||
-      (stored as { version?: unknown }).version !== 6
-    ) {
-      saveProgress(base);
-      return base;
-    }
-    const parsed = stored as Partial<StaffGameProgress>;
-    const readArray = (value: unknown, maxValue = Number.MAX_SAFE_INTEGER): number[] =>
-      Array.from({ length: GAME_LEVEL_COUNT }, (_, index) => {
-        const item = Array.isArray(value) ? Number(value[index]) : 0;
-        return Number.isFinite(item) ? Math.max(0, Math.min(maxValue, Math.floor(item))) : 0;
-      });
-    const readMetricSlots = (
-      value: unknown,
-      maxValue: number
-    ): Array<Record<GameDifficulty, number | null>> =>
-      Array.from({ length: GAME_LEVEL_COUNT }, (_, index) => {
-        const row = Array.isArray(value) ? value[index] : null;
-        const record =
-          row && typeof row === "object" && !Array.isArray(row)
-            ? (row as Partial<Record<GameDifficulty, unknown>>)
-            : {};
-        return Object.fromEntries(
-          GAME_DIFFICULTIES.map(({ id }) => {
-            const raw = record[id];
-            if (raw === null || raw === undefined) return [id, null];
-            const metric = Number(raw);
-            return [id, Number.isFinite(metric) ? Math.max(0, Math.min(maxValue, metric)) : null];
-          })
-        ) as Record<GameDifficulty, number | null>;
-      });
-    const normalizeModeProgress = (
-      value: unknown,
-      includeArcadeRecords: boolean
-    ): StaffGameModeProgress | StaffGameArcadeProgress => {
-      const record =
-        value && typeof value === "object" && !Array.isArray(value)
-          ? (value as Partial<StaffGameModeProgress & StaffGameArcadeProgress>)
-          : {};
-      return {
-        bestStars: readArray(record.bestStars, 3),
-        bestAccuracy: readMetricSlots(record.bestAccuracy, 1),
-        bestResponseMs: readMetricSlots(record.bestResponseMs, Number.MAX_SAFE_INTEGER),
-        maxCombos: readArray(record.maxCombos),
-        ...(includeArcadeRecords
-          ? {
-              bestScores: readArray(record.bestScores),
-            }
-          : {}),
-      };
-    };
-    const readLastRound = (value: unknown): StaffGameLevelRoundSummary | null => {
-      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-      const record = value as Record<string, unknown>;
-      const difficulty = GAME_DIFFICULTIES.find(({ id }) => id === record.difficulty)?.id;
-      const level = Math.floor(Number(record.level));
-      if (!difficulty || level < 1 || level > GAME_LEVEL_COUNT) return null;
-      const readCount = (key: string): number => Math.max(0, Math.floor(Number(record[key]) || 0));
-      const readDuration = (key: string): number => Math.max(0, Number(record[key]) || 0);
-      const readOptionalMetric = (key: string): number | null => {
-        if (record[key] === null || record[key] === undefined) return null;
-        const metric = Number(record[key]);
-        return Number.isFinite(metric) ? Math.max(0, metric) : null;
-      };
-      return {
-        level,
-        difficulty,
-        generatedBubbleCount: readCount("generatedBubbleCount"),
-        firstTryCorrectCount: readCount("firstTryCorrectCount"),
-        correctBubbleCount: readCount("correctBubbleCount"),
-        responseTotalMs: readDuration("responseTotalMs"),
-        responseSampleCount: readCount("responseSampleCount"),
-        accuracy: readOptionalMetric("accuracy"),
-        averageResponseMs: readOptionalMetric("averageResponseMs"),
-      };
-    };
-    const lastRound = readLastRound(parsed._debugLastRound);
-    const progress: StaffGameProgress = {
-      version: 6,
-      modes: {
-        learning: normalizeModeProgress(parsed.modes?.learning, false) as StaffGameModeProgress,
-        arcade: normalizeModeProgress(parsed.modes?.arcade, true) as StaffGameArcadeProgress,
-      },
-      _debugLastRound: lastRound,
-      unlockedLevel: Math.max(
-        1,
-        Math.min(GAME_LEVEL_COUNT, Math.floor(Number(parsed.unlockedLevel) || base.unlockedLevel))
-      ),
-      selectedLevel: Math.max(
-        1,
-        Math.min(
-          GAME_LEVEL_COUNT,
-          Math.floor(
-            Number(parsed.selectedLevel) || Number(parsed.unlockedLevel) || base.selectedLevel
-          )
-        )
-      ),
-    };
-    saveProgress(progress);
-    return progress;
-  } catch {
-    return defaultProgress();
-  }
-}
-
-function saveProgress(progress: StaffGameProgress): boolean {
-  try {
-    localStorage.setItem(GAME_PROGRESS_KEY, JSON.stringify(progress));
-    return true;
-  } catch {
-    // The current game remains playable if browser storage is unavailable.
-    return false;
-  }
 }
 
 function noteLabel(note: GameNote): string {
@@ -915,14 +475,13 @@ export function StaffGameView({
   const startMicrophone = microphone.start;
   const stopMicrophone = microphone.stop;
   const subscribeMidi = midi.subscribe;
-  const [resourceLoadState, setResourceLoadState] = useState<"loading" | "ready" | "error">(
-    "loading"
-  );
-  const [resourceProgress, setResourceProgress] = useState<StaffGameResourceProgress[]>(
-    createStaffGameResourceProgress
-  );
-  const [resourceLoadAttempt, setResourceLoadAttempt] = useState(0);
-  const [resourceLoadRetryCount, setResourceLoadRetryCount] = useState(0);
+  const {
+    backgroundMusicRef,
+    resourceLoadRetryCount,
+    resourceLoadState,
+    resourceProgress,
+    setResourceLoadAttempt,
+  } = useStaffGameResources();
   const [progress, setProgress] = useState<StaffGameProgress>(readProgress);
   const [level, setLevel] = useState(() => readProgress().selectedLevel);
   const [gameMode, setGameMode] = useState<StaffGameMode>(initialMode);
@@ -947,7 +506,6 @@ export function StaffGameView({
   const [isWrongNoteNoticeOpen, setIsWrongNoteNoticeOpen] = useState(false);
   const [isUnsavedSettingsPromptOpen, setIsUnsavedSettingsPromptOpen] = useState(false);
   const [dialog, setDialog] = useState<GameDialog>(null);
-  const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
   const settingsDialogShakeLockRef = useRef(false);
   const [target, setTarget] = useState<GameNote | null>(null);
   const [rushBubbleSpeedLineLane, setRushBubbleSpeedLineLane] = useState<{
@@ -1063,6 +621,13 @@ export function StaffGameView({
   const wrongAnswerRecordsRef = useRef<StaffGameWrongAnswerRecord[]>([]);
   const pendingWrongNoteArchiveRunsRef = useRef<StaffGameWrongNoteArchiveRun[]>([]);
   const summaryArchiveRunIdRef = useRef<string | null>(null);
+  const { archiveWrongNoteRun } = useStaffGameWrongNoteArchiveStorage({
+    pendingRunsRef: pendingWrongNoteArchiveRunsRef,
+    summaryArchiveRunIdRef,
+    setWrongNoteArchiveRetryQueued,
+    setWrongNoteArchiveStatus,
+    setWrongNoteArchives,
+  });
   const roundStartedAtRef = useRef(new Date().toISOString());
   const roundReviewRangeRef = useRef<StaffGameWrongNoteRange | null>(null);
   const wrongNoteReviewDifficultyOverrideRef = useRef<GameDifficulty | null>(null);
@@ -1308,32 +873,6 @@ export function StaffGameView({
   );
 
   useEffect(() => {
-    let active = true;
-    void db.staffGameWrongNoteArchives
-      .orderBy("date")
-      .toArray()
-      .then((archives) => {
-        if (active) setWrongNoteArchives(archives);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    void retryPendingStaffGameWrongNoteArchives().then((archives) => {
-      if (active && archives.length > 0) {
-        setWrongNoteArchives((current) => mergeStaffGameWrongNoteArchives(current, archives));
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
     resetStaffGameMicrophoneDebug();
   }, []);
 
@@ -1395,65 +934,6 @@ export function StaffGameView({
   useEffect(() => {
     if (phase !== "ready" || gameMode !== "levels") readyMascotCheerLockRef.current = false;
   }, [gameMode, phase]);
-
-  useEffect(() => {
-    let active = true;
-    let retryTimer: number | null = null;
-    let retryCount = 0;
-    const backgroundMusicPreloadController = new AbortController();
-    const backgroundMusic = new Audio();
-    backgroundMusic.loop = true;
-    backgroundMusic.preload = "auto";
-    backgroundMusicRef.current = backgroundMusic;
-    setResourceLoadState("loading");
-    setResourceLoadRetryCount(0);
-    setResourceProgress(createStaffGameResourceProgress());
-    const updateResourceProgress = (update: StaffGameResourceUpdate): void => {
-      if (!active) return;
-      setResourceProgress((resources) =>
-        resources.map((resource) =>
-          resource.id === update.id
-            ? { ...resource, status: update.status, error: update.error }
-            : resource
-        )
-      );
-    };
-    const loadResources = async (): Promise<void> => {
-      const failureCount = await preloadStaffGameResources(
-        backgroundMusic,
-        backgroundMusicPreloadController.signal,
-        retryCount > 0,
-        updateResourceProgress
-      );
-      if (!active) return;
-      if (failureCount === 0) {
-        setResourceLoadState("ready");
-        return;
-      }
-      if (retryCount >= STAFF_GAME_RESOURCE_MAX_RETRIES) {
-        setResourceLoadState("error");
-        return;
-      }
-
-      retryCount += 1;
-      setResourceLoadRetryCount(retryCount);
-      retryTimer = window.setTimeout(() => {
-        retryTimer = null;
-        void loadResources();
-      }, STAFF_GAME_RESOURCE_RETRY_DELAY_MS * retryCount);
-    };
-    void loadResources();
-    return () => {
-      active = false;
-      if (retryTimer !== null) window.clearTimeout(retryTimer);
-      backgroundMusicPreloadController.abort();
-      backgroundMusic.pause();
-      disconnectStaffGameBackgroundAudio(backgroundMusic);
-      backgroundMusic.removeAttribute("src");
-      backgroundMusic.load();
-      if (backgroundMusicRef.current === backgroundMusic) backgroundMusicRef.current = null;
-    };
-  }, [resourceLoadAttempt]);
 
   phaseRef.current = phase;
   targetRef.current = target;
@@ -1834,57 +1314,6 @@ export function StaffGameView({
     setSongProgress(next);
     saveStaffGameSongProgress(next);
   }, []);
-
-  const archiveWrongNoteRun = useCallback(
-    async (
-      runId: string | null = null,
-      mode: "full" | "trend" = "full",
-      keepTrendRunPendingForManualArchive = false
-    ): Promise<void> => {
-      const run = [...pendingWrongNoteArchiveRunsRef.current]
-        .reverse()
-        .find((item) => runId === null || item.runId === runId);
-      if (!run) return;
-      const shouldUpdateArchiveStatus =
-        summaryArchiveRunIdRef.current === run.runId &&
-        (mode === "full" || (mode === "trend" && !keepTrendRunPendingForManualArchive));
-      const runToSave =
-        mode === "trend"
-          ? makeTrendOnlyWrongNoteRun(run)
-          : { ...run, updatedAt: nextWrongNoteRunUpdatedAt(run), trendOnly: false };
-      if (shouldUpdateArchiveStatus) {
-        setWrongNoteArchiveStatus("saving");
-        setWrongNoteArchiveRetryQueued(false);
-      }
-      try {
-        const savedArchive = await archiveStaffGameWrongNoteRun(runToSave);
-        if (mode === "full" || !keepTrendRunPendingForManualArchive) {
-          pendingWrongNoteArchiveRunsRef.current = pendingWrongNoteArchiveRunsRef.current.filter(
-            (item) => item.runId !== run.runId
-          );
-        }
-        setWrongNoteArchives((current) => mergeStaffGameWrongNoteArchives(current, [savedArchive]));
-        await removePendingStaffGameWrongNoteArchiveRun(runToSave);
-        if (shouldUpdateArchiveStatus) {
-          setWrongNoteArchiveStatus("saved");
-          setWrongNoteArchiveRetryQueued(false);
-        }
-      } catch {
-        const retryQueued = await enqueuePendingStaffGameWrongNoteArchiveRun(runToSave);
-        if (shouldUpdateArchiveStatus) {
-          setWrongNoteArchiveRetryQueued(retryQueued);
-          setWrongNoteArchiveStatus("error");
-        } else if (mode === "trend") {
-          toast.error(
-            retryQueued
-              ? "本局趋势数据保存失败，已暂存并会在下次进入游戏页时自动重试。"
-              : "本局趋势数据和本地暂存都失败了；如需保留错漏记录，请在结算页点“加入错题集”重试。"
-          );
-        }
-      }
-    },
-    []
-  );
 
   const recordRoundNoteOutcomes = useCallback(
     (
