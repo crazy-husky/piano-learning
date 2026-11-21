@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AnswerEvent } from "../../../domain/types";
 import { saveAnswerEvents } from "../../../data/db";
 import type { MidiInputController } from "../../../midi/useMidiInput";
@@ -45,6 +45,7 @@ export function ChordTrainingView({
   onNavigationExit,
   onPracticeFinished,
   onCardGalleryChange,
+  onMetronomeAvailabilityChange,
   onPracticeStageChange,
   onRunningChange,
   onMetronomeSyncToggleChange,
@@ -59,6 +60,7 @@ export function ChordTrainingView({
   onNavigationExit?: (targetView: PracticeNavigationExitTarget) => void;
   onPracticeFinished: () => void;
   onCardGalleryChange: (active: boolean) => void;
+  onMetronomeAvailabilityChange: (available: boolean) => void;
   onPracticeStageChange: (active: boolean) => void;
   onRunningChange: (running: boolean) => void;
   onMetronomeSyncToggleChange?: (toggle: (() => void) | undefined) => void;
@@ -80,6 +82,10 @@ export function ChordTrainingView({
   const handledExitRequestIdRef = useRef<number | null>(null);
 
   useEffect(() => writeChordTrainingConfig(config), [config]);
+
+  useLayoutEffect(() => {
+    onMetronomeAvailabilityChange(config.task !== "recognize");
+  }, [config.task, onMetronomeAvailabilityChange]);
 
   useEffect(() => {
     if (stage !== "cards") return undefined;

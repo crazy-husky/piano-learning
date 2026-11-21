@@ -344,17 +344,23 @@
 }
 
 .chord-recognition-card-gallery-shell {
+  box-sizing: border-box;
   height: auto;
   min-height: 0;
-  overflow: visible;
+  overflow-x: clip;
+  overflow-y: visible;
   gap: 18px;
   padding-bottom: max(24px, env(safe-area-inset-bottom));
 }
 
 .chord-recognition-card-gallery-shell .practice-session-header {
-  position: relative;
-  top: 0;
-  z-index: 20;
+  position: static;
+  top: auto;
+  z-index: auto;
+}
+
+.chord-recognition-card-gallery-shell .practice-session-header::before {
+  content: none;
 }
 
 .chord-recognition-card-gallery {
@@ -362,6 +368,7 @@
   gap: 14px;
   width: min(920px, 100%);
   min-width: 0;
+  max-width: 100%;
   margin: 0 auto;
 }
 

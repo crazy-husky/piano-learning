@@ -893,15 +893,8 @@
 
 .staff-distance-finger-gallery-run {
   gap: 18px;
+  overflow-x: clip;
   padding-bottom: max(24px, env(safe-area-inset-bottom));
-}
-
-.staff-distance-finger-gallery {
-  display: grid;
-  gap: 14px;
-  width: min(920px, 100%);
-  min-width: 0;
-  margin: 0 auto;
 }
 
 .staff-distance-finger-gallery-run .practice-session-header {
@@ -937,6 +930,16 @@
   width: auto;
   flex-wrap: nowrap;
   justify-content: flex-end;
+}
+
+.staff-distance-finger-gallery {
+  box-sizing: border-box;
+  display: grid;
+  gap: 14px;
+  width: min(920px, 100%);
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 .staff-distance-finger-gallery-intro {

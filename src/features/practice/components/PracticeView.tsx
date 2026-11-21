@@ -253,6 +253,7 @@ interface PracticeViewProps {
   onPracticeDistanceModeChange: (mode: PracticeDistanceMode, replace?: boolean) => void;
   onPracticeTabChange: (tab: PracticeSetupTab) => void;
   onPracticeFinished: () => void;
+  onCardGalleryChange: (active: boolean) => void;
   onPracticeStageChange: (active: boolean) => void;
   onFullscreenAvailabilityChange: (active: boolean) => void;
   onVirtualKeyboardActiveChange: (active: boolean) => void;
@@ -661,6 +662,7 @@ export function PracticeView({
   onPracticeDistanceModeChange,
   onPracticeTabChange,
   onPracticeFinished,
+  onCardGalleryChange,
   onPracticeStageChange,
   onFullscreenAvailabilityChange,
   onVirtualKeyboardActiveChange,
@@ -4493,6 +4495,7 @@ export function PracticeView({
             onNavigationExit={onNavigationExit}
             onDistanceModeChange={onPracticeDistanceModeChange}
             onPracticeFinished={onPracticeFinished}
+            onCardGalleryChange={onCardGalleryChange}
             onFullscreenAvailabilityChange={setIsStaffDistanceFullscreenActive}
             onRunStageChange={handleStaffDistanceStageChange}
             onRunningChange={setIsStaffDistanceRunning}

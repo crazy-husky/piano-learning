@@ -142,6 +142,7 @@ interface StaffDistancePracticeViewProps {
   navigationExitRequest?: PracticeNavigationExitRequest | null;
   onBeforePracticeStart: () => Promise<{ proceed: boolean; settings?: AppSettings }>;
   onDistanceModeChange: (mode: PracticeDistanceMode, replace?: boolean) => void;
+  onCardGalleryChange: (active: boolean) => void;
   onDataChanged: () => Promise<void>;
   onMicrophoneAnswerHandlerChange: (
     handler: ((answer: PracticeAnswerInput) => void) | null
@@ -450,6 +451,7 @@ export function StaffDistancePracticeView({
   navigationExitRequest,
   onBeforePracticeStart,
   onDistanceModeChange,
+  onCardGalleryChange,
   onDataChanged,
   onMicrophoneAnswerHandlerChange,
   onInputModeChange,
@@ -801,6 +803,12 @@ export function StaffDistancePracticeView({
     onRunStageChange(isSessionActive || summarySession !== null || isFingerCardGalleryOpen);
     return () => onRunStageChange(false);
   }, [isFingerCardGalleryOpen, isSessionActive, onRunStageChange, summarySession]);
+
+  useEffect(() => {
+    if (!isFingerCardGalleryOpen) return undefined;
+    onCardGalleryChange(true);
+    return () => onCardGalleryChange(false);
+  }, [isFingerCardGalleryOpen, onCardGalleryChange]);
 
   useEffect(() => {
     onFullscreenAvailabilityChange(isSessionActive);

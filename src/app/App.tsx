@@ -455,6 +455,8 @@ export function App({
   }, [practiceRunning]);
   const [practiceStageActive, setPracticeStageActive] = useState(false);
   const [practiceCardGalleryActive, setPracticeCardGalleryActive] = useState(false);
+  const [practiceCardGalleryReturnHidden, setPracticeCardGalleryReturnHidden] = useState(false);
+  const [chordMetronomeAvailable, setChordMetronomeAvailable] = useState(false);
   const practiceStageActiveRef = useRef(false);
   practiceStageActiveRef.current = practiceStageActive;
   const pendingNavigationRef = useRef<{ route: AppRoute; replace: boolean } | null>(null);
@@ -515,6 +517,22 @@ export function App({
     clearMidiDeviceGuide();
   }, [moduleTab, route.path, route.practiceDistanceMode, route.practiceTab]);
 
+  useLayoutEffect(() => {
+    setPracticeCardGalleryReturnHidden(false);
+    if (!practiceCardGalleryActive) return undefined;
+
+    const returnButton = document.querySelector<HTMLElement>(
+      ".chord-recognition-card-gallery-shell .practice-return-home, .staff-distance-finger-gallery-run .practice-return-home"
+    );
+    if (!returnButton || typeof IntersectionObserver === "undefined") return undefined;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setPracticeCardGalleryReturnHidden(!entry?.isIntersecting);
+    });
+    observer.observe(returnButton);
+    return () => observer.disconnect();
+  }, [practiceCardGalleryActive]);
+
   const isPracticePageRoute =
     (route.levelId !== undefined && route.levelId > 1 && moduleTab === "practice") ||
     route.path === "/playground/songs/score";
@@ -528,8 +546,13 @@ export function App({
   const practiceInputRouteKey = `${route.path}:${route.practiceTab ?? "free"}`;
   const shouldShowPracticeFloatingMetronome =
     route.levelId === 7 ||
-    route.levelId === 8 ||
-    (practiceInputModeState?.routeKey === practiceInputRouteKey &&
+    (route.levelId === 4 &&
+      (route.practiceDistanceMode === "play" || route.practiceDistanceMode === "finger") &&
+      !practiceCardGalleryActive) ||
+    (route.levelId === 8 && chordMetronomeAvailable && !practiceCardGalleryActive) ||
+    (route.levelId !== 4 &&
+      route.levelId !== 8 &&
+      practiceInputModeState?.routeKey === practiceInputRouteKey &&
       practiceInputModeState.mode !== "microphone");
   const handlePracticeInputModeChange = useCallback(
     (mode: PracticeInputMode): void => {
@@ -1371,9 +1394,11 @@ export function App({
   const showMobileBackButton =
     view !== "home" &&
     !(view === "practice" && isStaffGameRoutePath(route.path)) &&
+    (!practiceCardGalleryActive || practiceCardGalleryReturnHidden) &&
     !practiceVirtualKeyboardActive &&
     (!practiceRunning || view === "practice");
-  const mobileBackReturnsToSetup = view === "practice" && (practiceRunning || practiceStageActive);
+  const mobileBackReturnsToSetup =
+    view === "practice" && (practiceRunning || practiceStageActive || practiceCardGalleryActive);
   useLayoutEffect(() => {
     if (!showMobileBackButton || !mobileBackPosition) return;
     const button = mobileBackButtonRef.current;
@@ -1414,7 +1439,8 @@ export function App({
     "app-shell",
     practiceRunning ? "app-shell-practice-running" : "",
     view === "practice" ? "app-shell-practice-page" : "",
-    view === "practice" && (practiceRunning || practiceStageActive)
+    view === "practice" &&
+    (practiceRunning || practiceStageActive || (route.levelId === 8 && practiceCardGalleryActive))
       ? "app-shell-practice-immersive"
       : "",
     view === "home" ? "app-shell-home" : "",
@@ -1654,6 +1680,7 @@ export function App({
                       }}
                       onPracticeFinished={showBackupReminderAfterActivity}
                       onCardGalleryChange={setPracticeCardGalleryActive}
+                      onMetronomeAvailabilityChange={setChordMetronomeAvailable}
                       onPracticeStageChange={setPracticeStageActive}
                       onRunningChange={setPracticeRunning}
                       onMetronomeSyncToggleChange={registerPracticeMetronomeSyncToggle}
@@ -1731,6 +1758,7 @@ export function App({
                         onBeforePracticeStart={preflightBeforePracticeStart}
                         onPracticeFinished={showBackupReminderAfterActivity}
                         onRunningChange={setPracticeRunning}
+                        onCardGalleryChange={setPracticeCardGalleryActive}
                         onPracticeStageChange={setPracticeStageActive}
                         onFullscreenAvailabilityChange={setPracticeFullscreenAvailable}
                         onVirtualKeyboardActiveChange={setPracticeVirtualKeyboardActive}
@@ -1826,6 +1854,7 @@ export function App({
                       onBeforePracticeStart={preflightBeforePracticeStart}
                       onPracticeFinished={showBackupReminderAfterActivity}
                       onRunningChange={setPracticeRunning}
+                      onCardGalleryChange={setPracticeCardGalleryActive}
                       onPracticeStageChange={setPracticeStageActive}
                       onFullscreenAvailabilityChange={setPracticeFullscreenAvailable}
                       onVirtualKeyboardActiveChange={setPracticeVirtualKeyboardActive}
